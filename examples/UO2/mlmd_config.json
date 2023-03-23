@@ -1,0 +1,19 @@
+{
+"srt_temp":[100.0 ,5000.0], 
+"end_temp":[100.0 ,5000.0], 
+"amp_temp":[0.0   ,2000.0], 
+"per_temp":[2.0   ,50.0],
+"end_dens":[0.9   ,1.1],  
+"amp_dens":[0.0   ,0.1],
+"per_dens":[0.5   ,50.0],  
+"maxt":1000.0, 
+"dt":1.0, 
+"Ncheck":50, 
+"Escut":2.0,
+"Fscut":0.044,
+"meta_dir":"sampling/",
+"use_potential_specific_code":"neurochem",
+"ase_calculator":"alframework.ml_interfaces.neurochem_interface.NeuroChemCalculator",
+"ase_calculator_options":null
+}
+

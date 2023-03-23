@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import ase
 from ase.md.langevin import Langevin
@@ -5,52 +6,23 @@ from ase import units
 import time
 from ase import Atoms
 import pickle as pkl
+from importlib import import_module
+from parsl import python_app, bash_app
 
 from alframework.tools.tools import annealing_schedule
+from alframework.tools.tools import system_checker
+from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator
+    
 
-def mlmd_sampling(moleculeid, ase_atoms, ase_calculator, sample_params, meta_path=None):
-
-    # Load MD parameters
-    dt = sample_params['dt']
-    maxt = sample_params['maxt']
-    Escut = sample_params['Escut']
-    Fscut = sample_params['Fscut']
-    Ncheck = sample_params['Ncheck']
-
-    # Setup T
-    str_Trange = sample_params['srt_temp']
-    end_Trange = sample_params['end_temp']
-    amp_Trange = sample_params['amp_temp']
-    per_Trange = sample_params['per_temp']
-
-    Tamp = np.random.uniform(amp_Trange[0], amp_Trange[1])
-    Tper = np.random.uniform(per_Trange[0], per_Trange[1])
-    Tsrt = np.random.uniform(str_Trange[0], str_Trange[1])
-    Tend = np.random.uniform(end_Trange[0], end_Trange[1])
-
+#For now I will take a dictionary with all sample parameters.
+#We may want to make this explicit. Ying Wai, what do you think? 
+def mlmd_sampling(molecule_object, ase_calculator,dt,maxt,Escut,Fscut,Ncheck,Tamp,Tper,Tsrt,Tend,Ramp,Rper,Rend,meta_dir=None,use_potential_specific_code=None):
+    system_checker(molecule_object)
+    ase_atoms = molecule_object[1]
     T = annealing_schedule(0.0, maxt, Tamp, Tper, Tsrt, Tend)
 
     # Setup Rho
     str_Rvalue = (1.66054e-24/1.0e-24)*(np.sum(ase_atoms.get_masses())/ase_atoms.get_volume())
-    end_Rrange = [sample_params['end_dens'][0]*str_Rvalue, sample_params['end_dens'][1]*str_Rvalue]
-    #end_Rrange = self.sample_params['end_dens']
-    amp_Rrange = sample_params['amp_dens']
-    per_Rrange = sample_params['per_dens']
-
-    Ramp = np.random.uniform(amp_Rrange[0], amp_Rrange[1])
-    Rper = np.random.uniform(per_Rrange[0], per_Rrange[1])
-    Rend = np.random.uniform(end_Rrange[0], end_Rrange[1])
-
-    #select_dens = self.annealing_schedule(0.0, maxt, Ramp, Rper, str_Rvalue, Rend)
-
-    # Build molecule ID
-    #moleculeid = 'mol-{:04d}-{:010d}'.format(model_id,molecule_index)
-    print('MolID:', moleculeid)
-
-    #write(moleculeid+'.pdb',ase_atoms, parallel=False)
-
-    # Set the momenta corresponding to T
-    #MaxwellBoltzmannDistribution(mol, T / 2 * units.kB)
 
     # Set the ASE Calculator
     ase_atoms.set_calculator(ase_calculator)
@@ -71,12 +43,21 @@ def mlmd_sampling(moleculeid, ase_atoms, ase_calculator, sample_params, meta_pat
 
     temps = []
     denss = []
+    
+    dyn.run(1)
 
     for i in range(int(np.ceil((1000*maxt)/(dt*Ncheck)))):
 
-        # Check if MD should be run
-        Es = ase_atoms.calc.Estddev*1000.0
-        Fs, Fsmax = ase_atoms.calc.get_Fstddev()
+        # Check if MD should be ran
+        if use_potential_specific_code==None:
+            ase_atoms.calc.calculate(ase_atoms,properties=['energy_stdev','forces_stdev_mean','forces_stdev_max'])
+            Es = ase_atoms.calc.results['energy_stdev']
+            Fs = ase_atoms.calc.results['forces_stdev_mean']
+            Fsmax = ase_atoms.calc.results['forces_stdev_max']
+        	
+        elif use_potential_specific_code.lower() == 'neurochem':
+            Es = ase_atoms.calc.Estddev*1000.0
+            Fs, Fsmax = ase_atoms.calc.get_Fstddev()
 
         Ecrit = Es > Escut
         Fcrit = Fs > Fscut
@@ -104,8 +85,7 @@ def mlmd_sampling(moleculeid, ase_atoms, ase_calculator, sample_params, meta_pat
         # Run MD
         dyn.run(Ncheck)
 
-    meta_dict = {"moleculeid" : moleculeid,
-                    "realtime_simulation" : time.time()-sim_start_time,
+    meta_dict = {"realtime_simulation" : time.time()-sim_start_time,
                     "Es"    : Es,
                     "Fs"    : Fs,
                     "Fsmax" : Fsmax,
@@ -128,13 +108,81 @@ def mlmd_sampling(moleculeid, ase_atoms, ase_calculator, sample_params, meta_pat
                     "positions" : ase_atoms.get_positions(wrap=True),
                     "cell" : ase_atoms.get_cell()
                 }
-    if meta_path is not None:
-        pkl.dump( meta_dict, open( meta_path+"/metadata-"+moleculeid+'.p', "wb" ) )
+    meta_dict.update(molecule_object[0])
+    if meta_dir is not None:
+        pkl.dump( meta_dict, open( meta_dir+"/metadata-"+molecule_object[0]['moleculeid']+'.p', "wb" ) )
     
     ase_atoms.calc = None  #replace calculator for return
     
     if failed:
-        return [moleculeid, ase_atoms]
+        return [meta_dict, ase_atoms,{}]
     else:
-        print('MD SUCCESS',self.counter)
-        return [moleculeid, None]
+        #print('MD SUCCESS',self.counter)
+        return [meta_dict, None,{}]
+
+@python_app(executors=['alf_sampler_executor'])
+def simple_mlmd_sampling_task(molecule_object,sample_params,model_path):
+    """
+    A simple implementation of uncertanty based MD sampling
+    parameters:
+    molecules_object: an object that conforms the the standard inposed by 'system_checker'
+    sample_params: a dictionary containing the following quantities
+      dt: MD time step in fs
+      maxt: maximum number of MD time steps in ps
+      Escut: Energy standard deviation threshold for capturing frame
+      Fscut: Force standard deviation threshold for capturing frame
+      Ncheck: Every X steps perform uncertanty checking
+      srt_temp: [min,max] for starting temperature
+      end_temp: [min,max] for ending temperature
+      amp_temp: [min,max] for temperature fluctuations
+      per_temp: [min,max] for temperature fluctuation period in ps
+      end_dens: [min,max] ending pressure range
+      amp_dens: [min,max] pressure fluctuation range
+      per_dens: [min,max] pressure amplitude range
+      meta_dir: path to store sampling statistics. 
+    model_path (Set by master): Path to current ML model
+    
+    """
+    system_checker(molecule_object)
+    feed_parameters = {}
+    # Load MD parameters
+    feed_parameters['dt'] = sample_params['dt']
+    feed_parameters['maxt'] = sample_params['maxt']
+    feed_parameters['Escut'] = sample_params['Escut']
+    feed_parameters['Fscut'] = sample_params['Fscut']
+    feed_parameters['Ncheck'] = sample_params['Ncheck']
+
+    # Setup T
+    feed_parameters['Tamp'] = np.random.uniform(sample_params['amp_temp'][0], sample_params['amp_temp'][1])
+    feed_parameters['Tper'] = np.random.uniform(sample_params['per_temp'][0], sample_params['per_temp'][1])
+    feed_parameters['Tsrt'] = np.random.uniform(sample_params['srt_temp'][0], sample_params['srt_temp'][1])
+    feed_parameters['Tend'] = np.random.uniform(sample_params['end_temp'][0], sample_params['end_temp'][1])
+    
+    feed_parameters['Ramp'] = np.random.uniform(sample_params['amp_dens'][0], sample_params['amp_dens'][1])
+    feed_parameters['Rper'] = np.random.uniform(sample_params['per_dens'][0], sample_params['per_dens'][1])
+    feed_parameters['Rend'] = np.random.uniform(sample_params['end_dens'][0], sample_params['end_dens'][1])
+    
+    feed_parameters['meta_dir'] = sample_params['meta_dir']
+    
+    module_string = '.'.join(sample_params['ase_calculator'].split('.')[:-1])
+    class_string = sample_params['ase_calculator'].split('.')[-1]
+    calc_class = getattr(import_module(module_string),class_string)
+    
+    if "use_potential_specific_code" in sample_params:
+        if sample_params['use_potential_specific_code'].lower() == 'neurochem':
+            model_info = {}
+            model_info['model_path'] = model_path + '/'
+            model_info['Nn'] = 8
+            model_info['gpu'] = os.environ.get('PARSL_WORKER_RANK')
+            ase_calculator = calc_class(model_info)
+            
+    else:
+        gpu = os.environ.get('PARSL_WORKER_RANK')
+        calculator_list = calc_class(model_path + '/',device='cuda:'+gpu)
+        ase_calculator = MLMD_calculator(calculator_list,**sample_params['ase_calculator_options'])
+    
+    feed_parameters['use_potential_specific_code'] = sample_params['use_potential_specific_code']
+    
+    molecule_output = mlmd_sampling(molecule_object, ase_calculator,**feed_parameters)
+    
+    return(molecule_output)

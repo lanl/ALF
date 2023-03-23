@@ -1,0 +1,4 @@
+{
+	"molecule_library_dir":"fragment_library/",
+	"shake":0.05
+}

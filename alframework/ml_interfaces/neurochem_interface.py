@@ -1,5 +1,3 @@
-#TODO: Add instruction for installing 'anitraintools' and 'ase_interface' package
-
 import anitraintools as alt
 
 from ase_interface import aniensloader
@@ -83,15 +81,15 @@ class NeuroChemTrainer():
                                        ipt,
                                        tparam['data_store'],
                                        self.ensemble_size, random_seed=local_seeds[0])
-
+        #
         # Build training cache
-        # TODO: 16,1,1 should probably be exposed to the user, maybe.
+        #16,1,1 should probably be exposed to the user, maybe.
         ens.build_strided_training_cache(16, 1, 1, build_test=self.build_test, Ekey='energy',
                                              forces=self.force_training, grad=False, Fkey='forces',
                                              dipole=False,
                                              rmhighf=self.rmhighf, rmhighe=self.rmhighe, pbc=self.periodic)
 
-        # TODO: Train a single model, outside interface should handle ensembles?
+        # Train a single model, outside interface should handle ensembles?
         #os.environ['CUDA_VISIBLE_DEVICES'] = str(self.gpuid)
         ens.train_ensemble(self.gpuids, self.remove_existing)
 
@@ -108,19 +106,23 @@ def NeuroChemCalculator(model_details):
     os.environ['CUDA_VISIBLE_DEVICES'] = str(gpu)
     return ANIENS(batchedensemblemolecule(model_path+'/'+cns, model_path+'/'+sae, model_path, Nn, 0))
 
+#Gen
+#configuration,h5_train_dir,ensemble_path,ensemble_index,remove_existing=False,h5_test_dir=None)
 @python_app(executors=['alf_ML_executor'])
-def train_ANI_model_task(configuration,data_directory,model_path,model_index,remove_existing=False):
+def train_ANI_model_task(configuration,h5_dir,model_path,model_index,nGPU,remove_existing=False,h5_test_dir=None):
     
     #nct = NeuroChemTrainer(ensemble_size, gpuids, force_training=True, periodic=False, rmhighe=False, rmhighf=False, build_test=True)
-    nct = NeuroChemTrainer(8,[0,1,2,3], force_training=True, periodic=True, rmhighe=False, rmhighf=False, build_test=True,remove_existing=False)
+    nct = NeuroChemTrainer(8,list(range(nGPU)), force_training=True, periodic=True, rmhighe=False, rmhighf=False, build_test=True,remove_existing=remove_existing)
     
-    configuration['ensemble_path'] = model_path
-    configuration['data_store'] = data_directory
-    configuration['seed'] = np.random.randint(1e8)   # Change before production to a random number generated on the fly
+    #this is a little awkward
+    configuration['ensemble_path'] = model_path.format(model_index)
+    configuration['data_store'] = h5_dir
+    configuration['seed'] = np.random.randint(1e8) #Change before production to a random number generated on the fly
     
     (all_nets, completed) = nct.train_models(configuration)
     
-    # No need to return network parameters
+    #No need to return network parameters
+    
     #return(all_nets, completed, model_index)
     return(completed, model_index)
 

@@ -1,0 +1,11 @@
+{
+	"molecule_library_path":"fragment_library/",
+	"solute_molecule_options": [["imim-10.xyz","chloride.xyz"],["imim-10.xyz","nitrate.xyz"],["imim-10.xyz","thiocyanate.xyz"]],
+	"solvent_molecules":["water.xyz"],
+	"cell_range":[[8.0,10.0],[8.0,10.0],[25.0,27.0]],
+	"Rrange": [0.8,1.2],
+	"min_dist": 1.5,
+	"max_patience": 500,
+	"center_first_molecule":true,
+	"shake":0.05
+}

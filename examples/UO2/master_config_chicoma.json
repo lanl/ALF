@@ -1,0 +1,23 @@
+{
+	"master_directory":"pwd",
+	"h5_path":"h5store/data-{:04d}.h5",
+	"model_path":"models/model-{:04d}",
+	"QM_task":"custom_modules.ase_calculator_task",
+	"QM_config_path":"vasp_2step_config.json",
+	"ML_task":"alframework.ml_interfaces.neurochem_interface.train_ANI_model_task",
+	"ML_config_path":"ani_config.json",
+	"builder_task":"alframework.samplers.builders.simple_cfg_loader_task",
+	"builder_config_path":"builder_config.json",
+	"sampler_task":"alframework.samplers.mlmd_sampling.simple_mlmd_sampling_task",
+	"sampler_config_path":"mlmd_config.json", 
+	"QM_scratch_dir":"/users/bnebgen/scratch4/ALrunning",
+	"status_path":"status.txt",
+	"bootstrap_set":100,
+	"target_queued_QM": 50, 
+	"minimum_QM": 1, 
+	"save_h5_threshold": 25, 
+	"parallel_samplers": 24, 
+	"properties_list": {"energy":["energyNonDiff","system",0.03674932247495664],"free_energy":["energy","system",0.03674932247495664],"forces":["forces","atomic",0.03674932247495664]},
+	"gpus_per_node":4,
+	"parsl_configuration":"alframework.parsl_resource_configs.chicoma.config_debug"
+}

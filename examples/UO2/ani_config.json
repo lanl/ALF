@@ -1,0 +1,43 @@
+{
+    "aev_params": {
+                   "elements":["U","O"], 
+                   "NRrad":32, 
+                   "Rradcut":7.0, 
+                   "NArad":8, 
+                   "NAang":8,
+                   "Aradcut":5.0, 
+                   "x0":1.25 
+                  },
+    "input_params": {
+                     "eta":0.001, 
+                     "energy":1,
+                     "nmax":0, 
+                     "force":1,
+                     "fmult":0.1,
+                     "feps":0.001,
+                     "dipole":0,
+                     "cdweight":2.0,
+                     "repuls":0,
+                     "tolr":100,
+                     "tbtchsz":256,
+                     "vbtchsz":256,
+                     "nkde":0,
+                     "pbc":1,
+                     "bboxx":16.0,
+                     "bboxy":16.0,
+                     "bboxz":16.0
+                    },
+    "layers": {
+              "U": [
+		   {"nodes":96,"activation":11,"type":0,"l2norm":1,"l2valu":0.000001},
+                   {"nodes":96,"activation":11,"type":0,"l2norm":1,"l2valu":0.000001},
+                   {"nodes":64,"activation":11,"type":0,"l2norm":1,"l2valu":0.000001}
+                   ],
+              "O": [
+                   {"nodes":96,"activation":11,"type":0,"l2norm":1,"l2valu":0.000001},
+                   {"nodes":96,"activation":11,"type":0,"l2norm":1,"l2valu":0.000001},
+                   {"nodes":64,"activation":11,"type":0,"l2norm":1,"l2valu":0.000001}
+                   ]
+             
+              }
+}

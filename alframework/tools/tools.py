@@ -1,7 +1,9 @@
 import os
 import glob
 import numpy as np
+import json
 from ase.geometry import complete_cell
+from ase import Atoms
 from alframework.tools import pyanitools as pyt
 
 def annealing_schedule(t, tmax, amp, per, srt, end):
@@ -27,18 +29,43 @@ def compute_empirical_formula(S):
     arg_sort = np.argsort(uniques[0])
     return "_".join([i+str(j).zfill(2) for i,j in zip(uniques[0][arg_sort],uniques[1][arg_sort])])
 
+def random_rotation_matrix(deflection=1.0, randnums=None):
+    if randnums is None:
+        randnums = np.random.uniform(size=(3,))
+
+    theta, phi, z = randnums
+
+    theta = theta * 2.0 * deflection * np.pi  # Rotation about the pole (Z).
+    phi = phi * 2.0 * np.pi  # For direction of pole deflection.
+    z = z * 2.0 * deflection  # For magnitude of pole deflection.
+
+    r = np.sqrt(z)
+    Vx, Vy, Vz = V = (
+        np.sin(phi) * r,
+        np.cos(phi) * r,
+        np.sqrt(2.0 - z)
+    )
+
+    st = np.sin(theta)
+    ct = np.cos(theta)
+
+    R = np.array(((ct, st, 0), (-st, ct, 0), (0, 0, 1)))
+
+    M = (np.outer(V, V) - np.eye(3)).dot(R)
+    return M
 
 def store_current_data(h5path, system_data, properties):
 #    system data is a list of [mol-id(string), atoms, properties dictionary]
     data_dict = {}
     for system in system_data:
         # We can append the system data to an existing set of system data
-        cur_moliculeid = system[0]
+        cur_moliculeid = system[0]['moleculeid']
         cur_atoms = system[1]
         cur_properties = system[2]
         molkey = compute_empirical_formula(cur_atoms.get_chemical_symbols())
         #Ensure system converged before saving 
         if cur_properties['converged']:
+            #The 
             atom_index = np.argsort(cur_atoms.get_atomic_numbers())
             #If there is already a molecule with the same formula, append
             if molkey in data_dict:
@@ -91,7 +118,7 @@ def store_current_data(h5path, system_data, properties):
 
 
 
-# Recommend creation of parsl queue object
+#Recommend creation of parsl queue object
 class parsl_task_queue():
     def __init__(self):
         #Create a list 
@@ -136,7 +163,53 @@ class parsl_task_queue():
         
     def print_status(self):
        print('Total Tasks: {:d}'.format(self.get_number()))
-       print('Queued Tasks: {:d}'.format(self.get_queued_number()))
-       print('Running Tasks: {:d}'.format(self.get_running_number()))
+       #print('Queued Tasks: {:d}'.format(self.get_queued_number()))
+       #print('Running Tasks: {:d}'.format(self.get_running_number()))
        print('Finished Tasks: {:d}'.format(self.get_completed_number()))
+       
+#used to find current version of directories to re-start with
+def find_empty_directory(pattern,limit=9999):
+    curI = 0
+    while os.path.exists(pattern.format(curI)):
+        curI=curI+1
+    return(curI)
+    
+#Throughout this code individual systems are passed around as three element lists
+#element 1: metadata: this is required to include moleculeid,  but may also include sampling and other metadata
+#element 2: an ASE atoms object. 
+#element 3: Evaluated QM properties
+def system_checker(system,kill_on_fail=True):
+    try: 
+	      assert isinstance(system,list) or isinstance(system,tuple)
+	      assert len(system) == 3
+	      assert isinstance(system[0],dict)
+	      assert isinstance(system[0]['moleculeid'],str)
+	      assert isinstance(system[1],Atoms)
+	      assert isinstance(system[2],dict)
+    except Exception as e:
+	      print(e)
+	      if kill_on_fail:
+	          raise RuntimeError('Atomic system failed to meet requirements.')
+	          
+def load_config_file(path,master_directory=None):
+    with open(path,'r') as input_file:
+        config = json.load(input_file)
+    if master_directory is None and "master_directory" in config:
+        if config["master_directory"] == 'pwd':
+            master_directory = os.getcwd() + '/'
+        else: 
+            master_directory = config["master_directory"] + '/' 
+        config["master_directory"] = master_directory
+    if isinstance(config, dict):
+        dir_dict = {}
+        for entry in config:
+            if (entry[-3:].lower() == 'dir') and config[entry][0] != '/':
+                config[entry] = master_directory + config[entry]
+            elif (entry[-4:].lower() == 'path'):
+                if config[entry][0] != '/':
+                    config[entry] = master_directory + config[entry]
+                #For every 'path' entry, make a corresponding 'dir' entry that holds files in the path
+                dir_dict[entry[:-4]+'dir'] = '/'.join(config[entry].split('/')[:-1]) + '/'
+        config.update(dir_dict)
+    return(config)
     

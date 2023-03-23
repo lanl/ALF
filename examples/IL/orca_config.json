@@ -1,0 +1,7 @@
+{
+  "QM_run_command":"",
+  "orca_env_file":"",
+  "ncpu":36,
+  "orcasimpleinput":"engrad wb87x aug-cc-pvtz TightSCF",
+  "orcablocks":"\n%maxcore 12000\n%scf maxiter 200 end\n%elprop Dipole True end"
+}

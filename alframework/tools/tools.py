@@ -57,14 +57,22 @@ def random_rotation_matrix(deflection=1.0, randnums=None):
 def store_current_data(h5path, system_data, properties):
 #    system data is a list of [mol-id(string), atoms, properties dictionary]
     data_dict = {}
+    print("Saving h5 file: " + h5path)
+    totalNumber = len(system_data)
+    savedNumber = 0
+    nanNumber = 0
+    convergedNumber = 0
     for system in system_data:
         # We can append the system data to an existing set of system data
         cur_moliculeid = system[0]['moleculeid']
         cur_atoms = system[1]
         cur_properties = system[2]
         molkey = compute_empirical_formula(cur_atoms.get_chemical_symbols())
+        #Ensure no nan data before saving
+        
         #Ensure system converged before saving 
-        if cur_properties['converged']:
+        if cur_properties['converged'] and system_checker(system,kill_on_fail=False):
+            savedNumber = savedNumber + 1
             #The 
             atom_index = np.argsort(cur_atoms.get_atomic_numbers())
             #If there is already a molecule with the same formula, append
@@ -95,9 +103,19 @@ def store_current_data(h5path, system_data, properties):
                         data_dict[molkey][properties[prop][0]]=[np.array(cur_properties[prop])[atom_index]*properties[prop][2]]
                     else:
                         raise RuntimeError('Unknown property format')
+        elif not(system_checker(system,kill_on_fail=False)):
+            nanNumber = nanNumber + 1
+        elif not(cur_properties['converged']):
+            convergedNumber = convergedNumber + 1
+        else:
+            print("Warning: molecule not saved for unknown reason")
+    print("Total Systems: " + str(totalNumber))
+    print("Saved Systems: " + str(savedNumber))
+    print("NAN Systems: " + str(nanNumber))
+    print("Unconverged Systems: " + str(convergedNumber))
 
     for isokey in data_dict:
-        print('isokeys:',isokey)
+        #print('isokeys:',isokey)
         for propkey in data_dict[isokey]:
             if propkey.lower() in ['species','_id']:
                 data_dict[isokey][propkey] = [el.encode('utf-8') for el in list(data_dict[isokey][propkey])]
@@ -180,16 +198,33 @@ def find_empty_directory(pattern,limit=9999):
 #element 3: Evaluated QM properties
 def system_checker(system,kill_on_fail=True):
     try: 
-	      assert isinstance(system,list) or isinstance(system,tuple)
-	      assert len(system) == 3
-	      assert isinstance(system[0],dict)
-	      assert isinstance(system[0]['moleculeid'],str)
-	      assert isinstance(system[1],Atoms)
-	      assert isinstance(system[2],dict)
+        assert isinstance(system,list) or isinstance(system,tuple)
+        assert len(system) == 3
+        assert isinstance(system[0],dict)
+        assert isinstance(system[0]['moleculeid'],str)
+        assert isinstance(system[1],Atoms)
+        assert isinstance(system[2],dict)
+        
+        no_nan = True
+        if np.sum(np.isnan(system[1].get_positions())) > 0:
+            no_nan = False
+        if any(system[1].get_pbc()):
+            if np.sum(np.isnan(system[1].get_cell())) > 0:
+                no_nan = False
+        for prop in system[2]:
+            if isinstance(system[2][prop],np.ndarray):
+                if np.sum(np.isnan(system[2][prop]))>0:
+                    no_nan = False
+        if not(no_nan):
+            raise RuntimeError('NAN in system')
+        
+        return(True)
+        
     except Exception as e:
-	      print(e)
-	      if kill_on_fail:
-	          raise RuntimeError('Atomic system failed to meet requirements.')
+        print(e)
+        if kill_on_fail:
+            raise RuntimeError('Atomic system failed to meet requirements.')
+        return(False)
 	          
 def load_config_file(path,master_directory=None):
     with open(path,'r') as input_file:

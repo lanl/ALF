@@ -1,6 +1,8 @@
 import numpy as np
+import sys
 
 from ase.calculators.calculator import Calculator,all_changes
+from ase.calculators.mixing import Mixer
 
 class Well_Potential(Calculator):
     """
@@ -15,7 +17,7 @@ class Well_Potential(Calculator):
     #TODO: Add drag term when in the potential to prevent orbits. 
     """
     def __init__(self,r_start,force,origin=[0,0,0],zero_properties=[],mass_weighted=True):
-        super().__init__()
+        Calculator.__init__(self)
         self.r_start=r_start
         self.force=force
         self.origin=np.array(origin)
@@ -24,11 +26,13 @@ class Well_Potential(Calculator):
         if 'energy' in self.zero_properties:
             self.zero_properties.remove('energy')
         if 'forces' in self.zero_properties:
+            self.zero_properties.remove('potential_energy')
+        if 'forces' in self.zero_properties:
             self.zero_properties.remove('forces')
-        self.implemented_properties = ['energy', 'forces'] + zero_properties
+        self.implemented_properties = ['energy', 'forces', 'potential_energy'] + zero_properties
     
     def calculate(self, atoms=None, properties=['energy'],system_changes=all_changes):
-        super().calculate(self, atoms, properties, system_changes)
+        Calculator.calculate(self, atoms, properties, system_changes)
         self.atoms = atoms.copy()
         relative_positions = self.atoms.get_positions() - self.origin[np.newaxis]
         
@@ -43,8 +47,7 @@ class Well_Potential(Calculator):
         depth[depth<0] = 0
         unit_vectors = (relative_positions.T/(1e-4*in_hole+np.linalg.norm(relative_positions,axis=1))).T #Unit vectors not perfectly normalized for atoms in the flat piece of well
         self.results['energy'] = np.sum(mass_vector*depth*self.force)
-        if 'forces' in properties:
-            self.results['forces'] = -1*(unit_vectors.T*in_potential*mass_vector).T
+        self.results['forces'] = -1*(unit_vectors.T*in_potential*mass_vector).T
         for current_property in properties:
             if current_property in self.zero_properties:
                 self.results[current_property] = np.array(0)
@@ -55,37 +58,49 @@ class MLMD_calculator(Calculator):
     models: a list of ASE calculators that are joined to perform MD. 
     well_params: Inputs for the well potential above, which enables constrained MD simulations
     """
-    def __init__(self,models,well_params=None):
-        super().__init__()
+    def __init__(self,models,well_params=None,debug_print=False):
+        Calculator.__init__(self)
+        self.debug_print = debug_print
         self.N_models = len(models)
         self.models = models
         self.weights = [1/self.N_models for i in range(self.N_models)]
         self.calculator_properties = list(set.intersection(*(set(calc.implemented_properties) for calc in self.models)))
-        self.implemented_properties = self.calculator_properties.copy()
+        if debug_print:
+            print("calculator properties:" + str(self.calculator_properties))
+            sys.stdout.flush()
+        #self.implemented_properties = self.calculator_properties.copy()
+        
+        if not(well_params is None):
+            if 'zero_properties' in well_params:
+                well_params['zero_properties'] = list(set.union(set(well_params['zero_properties']),set(self.calculator_properties)))
+            else: 
+                well_params['zero_properties'] = self.calculator_properties.copy()
+            self.models.append(Well_Potential(**well_params))
+            self.weights.append(1.0)
+        
+        self.mixer = Mixer(self.models,np.array(self.weights))
+        self.implemented_properties = self.mixer.implemented_properties.copy()
+        
+            
         if 'energy' in self.implemented_properties:
             self.implemented_properties.append('energy_stdev')
         if 'forces' in self.implemented_properties:
             self.implemented_properties.append('forces_stdev_mean')
             self.implemented_properties.append('forces_stdev_max')
-        
-        if not(well_params is None):
-            if 'zero_properties' in well_params:
-                well_params['zero_properties'] = list(set.intersection(set(well_params['zero_properties']),set(self.implemented_properties)))
-            else: 
-                well_params['zero_properties'] = self.implemented_properties
-            self.models.append[Well_Potential(**well_params)]
-            self.weights.append(1.0)
-        
-        self.mixer = Mixer(self.models,np.array(self.weights))
     def calculate(self,atoms,properties,system_changes=all_changes):
-        super().calculate(self, atoms, properties, system_changes)
-        run_properties = set.intersection(set(properties),set(self.calculator_properties))
+        Calculator.calculate(self, atoms, properties, system_changes)
+        add_properties = properties.copy()
+        if 'energy_stdev' in add_properties:
+            add_properties.append("energy")
+        if 'forces_stdev_max' in add_properties or 'forces_stdev_mean' in add_properties:
+            add_properties.append("forces")
+        run_properties = list(set.intersection(set(self.calculator_properties),set(add_properties)))
         self.atoms = atoms.copy()
         self.results = self.mixer.get_properties(run_properties,atoms)
         if 'energy_stdev' in properties:
-            self.results['energy_stdev'] = np.stdev(self.results['energy_contributions'][:self.N_models])
-        if 'forces_stdev' in properties or 'forces_stdev_max' in properties:
-            force_stdev = np.std(np.array(self.results['forces'][:self.N_models]),axis=0)
+            self.results['energy_stdev'] = np.std(self.results['energy_contributions'][:self.N_models])
+        if 'forces_stdev_mean' in properties or 'forces_stdev_max' in properties:
+            force_stdev = np.std(np.array(self.results['forces_contributions'][:self.N_models]),axis=0)
             self.results['forces_stdev_mean'] = np.mean(np.abs(force_stdev))
             self.results['forces_stdev_max'] = np.max(np.abs(force_stdev))
         

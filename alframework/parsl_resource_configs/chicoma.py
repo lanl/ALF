@@ -40,7 +40,7 @@ config_standard = Config(
                 scheduler_options='#SBATCH --ntasks-per-node=36 --nodes=1 -A w23_ml4chem',
 
                 # Command to be run before starting a worker
-
+                #worker_init=
 
                 # We request all hyperthreads on a node.
                 #launcher=SrunLauncher(overrides='-c 64'),
@@ -79,7 +79,7 @@ config_standard = Config(
                 scheduler_options='#SBATCH --nodes=1 -p gpu -A w23_ml4chem_g',
 
                 # Command to be run before starting a worker
-
+                #worker_init=
 
                 # We request all hyperthreads on a node.
                 #launcher=SrunLauncher(overrides='-c 64'),
@@ -117,7 +117,7 @@ config_standard = Config(
                 scheduler_options='#SBATCH --nodes=1 -p gpu -A w23_ml4chem_g',
 
                 # Command to be run before starting a worker
-                
+                #worker_init=
 
                 # We request all hyperthreads on a node.
                 #launcher=SrunLauncher(overrides='-c 64'),
@@ -163,7 +163,7 @@ config_gpu = Config(
                 scheduler_options='#SBATCH --ntasks-per-node=32 --nodes=4 -A w23_ml4chem_g',
 
                 # Command to be run before starting a worker
-                
+                #worker_init=
 
                 # We request all hyperthreads on a node.
                 #launcher=SrunLauncher(overrides='-c 64'),
@@ -202,7 +202,7 @@ config_gpu = Config(
                 scheduler_options='#SBATCH --nodes=1 -p gpu -A w23_ml4chem_g',
 
                 # Command to be run before starting a worker
-                
+                #worker_init=
 
                 # We request all hyperthreads on a node.
                 #launcher=SrunLauncher(overrides='-c 64'),
@@ -240,7 +240,7 @@ config_gpu = Config(
                 scheduler_options='#SBATCH --nodes=1 -p gpu -A w23_ml4chem_g',
 
                 # Command to be run before starting a worker
-                
+                #worker_init=
 
                 # We request all hyperthreads on a node.
                 #launcher=SrunLauncher(overrides='-c 64'),
@@ -281,10 +281,10 @@ config_debug = Config(
                 #workers_per_node=1,
 
                 # string to prepend to #SBATCH blocks in the submit
-                scheduler_options='#SBATCH --ntasks-per-node=32 --nodes=1 -A w23_ml4chem --qos=debug --reservation=debug',
+                scheduler_options='#SBATCH --ntasks-per-node=36 --nodes=1 -A w23_ml4chem --qos=debug --reservation=debug',
 
                 # Command to be run before starting a worker
-                
+                #worker_init=
 
                 # We request all hyperthreads on a node.
                 #launcher=SrunLauncher(overrides='-c 64'),
@@ -323,7 +323,7 @@ config_debug = Config(
                 scheduler_options='#SBATCH --nodes=1 -p gpu -A w23_ml4chem_g --qos=debug --reservation=gpu_debug',
 
                 # Command to be run before starting a worker
-                
+                #worker_init=
 
                 # We request all hyperthreads on a node.
                 #launcher=SrunLauncher(overrides='-c 64'),
@@ -361,7 +361,7 @@ config_debug = Config(
                 scheduler_options='#SBATCH --nodes=1 -p gpu -A w23_ml4chem_g --qos=debug --reservation=gpu_debug',
 
                 # Command to be run before starting a worker
-                
+                #worker_init=
 
                 # We request all hyperthreads on a node.
                 #launcher=SrunLauncher(overrides='-c 64'),
@@ -395,25 +395,25 @@ config_debug_hybrid = Config(
                 'standard',
                 init_blocks = 0,
                 min_blocks = 0,
-                max_blocks = 10,
+                max_blocks = 50,
 
                 nodes_per_block=1,
                 #workers_per_node=1,
 
                 # string to prepend to #SBATCH blocks in the submit
-                scheduler_options='#SBATCH --ntasks-per-node=32 --nodes=4 -A w23_ml4chem',
+                scheduler_options='#SBATCH --ntasks-per-node=36 --nodes=4 -A w23_ml4chem',
 
                 # Command to be run before starting a worker
-                
+                #worker_init=
 
                 # We request all hyperthreads on a node.
                 #launcher=SrunLauncher(overrides='-c 64'),
                 launcher=SimpleLauncher(),
-                walltime='12:00:00',
+                walltime='16:00:00',
 
                 # Slurm scheduler on Cori can be slow at times,
                 # increase the command timeouts
-                cmd_timeout=5,
+                cmd_timeout=120,
             ),
         ),
         HighThroughputExecutor(
@@ -443,16 +443,16 @@ config_debug_hybrid = Config(
                 scheduler_options='#SBATCH --nodes=1 -p gpu -A w23_ml4chem_g --qos=debug --reservation=gpu_debug',
 
                 # Command to be run before starting a worker
-                
+                #worker_init=
 
                 # We request all hyperthreads on a node.
                 #launcher=SrunLauncher(overrides='-c 64'),
                 launcher=SingleNodeLauncher(),
-                walltime='2:00:00',
+                walltime='1:00:00',
 
                 # Slurm scheduler on Cori can be slow at times,
                 # increase the command timeouts
-                cmd_timeout=5,
+                cmd_timeout=120,
             ),
         ),
         HighThroughputExecutor(
@@ -481,16 +481,16 @@ config_debug_hybrid = Config(
                 scheduler_options='#SBATCH --nodes=1 -p gpu -A w23_ml4chem_g --qos=debug --reservation=gpu_debug',
 
                 # Command to be run before starting a worker
-                
+                #worker_init=
 
                 # We request all hyperthreads on a node.
                 #launcher=SrunLauncher(overrides='-c 64'),
                 launcher=SingleNodeLauncher(),
-                walltime='2:00:00',
+                walltime='1:00:00',
 
                 # Slurm scheduler on Cori can be slow at times,
                 # increase the command timeouts
-                cmd_timeout=5,
+                cmd_timeout=120,
             ),
         )
     ]

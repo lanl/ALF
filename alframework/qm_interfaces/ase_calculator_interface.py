@@ -32,5 +32,8 @@ def ase_calculator_task(input_system,configuration,directory,properties=['energy
     return_results = calc.results
     return_results['converged'] = calc.converged
     
-    return([input_system[0],input_system[1],return_results])
+    return_system = [input_system[0],input_system[1],return_results]
+    system_checker(return_system)
+    
+    return(return_system)
 

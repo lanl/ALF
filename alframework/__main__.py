@@ -9,6 +9,8 @@ import time
 from importlib import import_module
 import sys
 from pathlib import Path
+import numpy as np
+np.set_printoptions(threshold=np.inf)
 
 # Load ASE library
 import ase
@@ -23,6 +25,7 @@ from alframework.tools.tools import store_current_data
 from alframework.tools.tools import load_config_file
 from alframework.tools.tools import find_empty_directory
 from alframework.tools.tools import system_checker
+from alframework.tools.pyanitools import anidataloader
 #import logging
 #logging.basicConfig(level=logging.DEBUG)
 
@@ -102,7 +105,7 @@ else:
     if status['current_training_id'] > 0:
         status['current_model_id'] = status['current_training_id'] - 1
     else:
-        status['current_model_id'] = None
+        status['current_model_id'] = -1
 
     status['current_h5_id'] = find_empty_directory(master_config['h5_path'])
     ##If data exists, start training model
@@ -137,7 +140,7 @@ if '--test_builder' in sys.argv[2:] or '--test_sampler' in sys.argv[2:] or '--te
 if '--test_sampler' in sys.argv[2:]:
     #Check that there is a model available
     next_model = find_empty_directory(master_config['model_path'])
-    if status['current_model_id']==None:
+    if status['current_model_id']<0:
         raise RuntimeError("Need to train model before testing sampling")
     print(master_config['model_path'].format(status['current_model_id']))
     sampler_task_queue.add_task(sampler_task(test_configuration,sampler_config,master_config['model_path'].format(status['current_model_id'])))
@@ -153,25 +156,56 @@ if '--test_sampler' in sys.argv[2:]:
 if '--test_qm' in sys.argv[2:]:
     QM_task_queue.add_task(qm_task(test_configuration,QM_config,master_config['QM_scratch_dir'] + '/' + test_configuration[0]['moleculeid'] + '/',list(master_config['properties_list'])))
     qm_result = QM_task_queue.task_list[0].result()
-    queue_output = QM_task_queue.get_task_results()
-    test_configuration = queue_output[0][0]
+    queue_output,failed = QM_task_queue.get_task_results()
+    sys.stdout.write('Job Failed: {:d}'.format(failed))
+    test_configuration = queue_output[0]
     system_checker(test_configuration)
-    print("QM testing Returned:")
-    print(test_configuration)
+    print("Ensure the following data matches that in the QM output and test.h5 after unit conversion:")
+    sys.stdout.write('Atomic Numbers: ' + np.array_str(test_configuration[1].get_atomic_numbers()) + '\n')
+    sys.stdout.write('Coordinates: \n' + np.array_str(test_configuration[1].get_positions(),precision=4) + '\n')
+    sys.stdout.write('PBCs: ' + np.array_str(test_configuration[1].get_pbc()) + '\n')
+    if any(test_configuration[1].get_pbc()):
+        sys.stdout.write('Cell: \n' + np.array_str(test_configuration[1].get_cell(),precision=4) + '\n')
+    for property_key in  list(master_config['properties_list']):
+        if isinstance(test_configuration[2][property_key], np.ndarray):
+            sys.stdout.write(property_key + ':\n' + np.array_str(test_configuration[2][property_key],precision=4) + '\n')
+        else:
+            sys.stdout.write(property_key + ': ' + str(test_configuration[2][property_key]) + '\n')
+    if os.path.exists(master_config['master_directory'] + '/qm_test.h5'):
+        os.remove(master_config['master_directory'] + '/qm_test.h5')
+    store_current_data(master_config['master_directory'] + '/qm_test.h5',queue_output,master_config['properties_list'])
+    test_db = anidataloader(master_config['master_directory'] + '/qm_test.h5')
+    
+    print("Data written to qm_test.h5:")
+    for test_data in test_db:
+        sys.stdout.write('Species: ' + " ".join(test_data['species']) + '\n')
+        sys.stdout.write("Coordinates:\n" + np.array_str(test_data['coordinates'],precision=4) + '\n')
+        if 'cell' in test_data.keys():
+            sys.stdout.write('cell: \n' + np.array_str(test_data['cell'],precision=4) + '\n')
+        for property_key in list(master_config['properties_list']):
+            db_string = master_config['properties_list'][property_key][0]
+            sys.stdout.write(db_string + ': \n' + np.array_str(test_data[db_string],precision=4) + '\n')
+        
     testing=True
     
 #train_ANI_model_task(configuration,data_directory,model_path,model_index,remove_existing=False):
 if '--test_ml' in sys.argv[2:]:
     #configuration,data_directory,model_path,model_index,remove_existing=False
-    ML_task_queue.add_task(ml_task(ML_config,master_config['h5_dir'],master_config['model_path'],status['current_training_id'],master_config['nGPU'],remove_existing=False))
+    ML_task_queue.add_task(ml_task(ML_config,master_config['h5_dir'],master_config['model_path'].format(status['current_training_id']),status['current_training_id'],master_config['gpus_per_node'],remove_existing=False))
     status['current_training_id'] = status['current_training_id'] + 1
     with open(master_config['status_path'], "w") as outfile:
         json.dump(status, outfile, indent=2)
     ml_result = ML_task_queue.task_list[0].result()
-    queue_output = QM_task_queue.get_task_results()
+    queue_output = ML_task_queue.get_task_results()
     returned_models = queue_output[0]
-    print("ML training Returned:")
+    print("ML ensemble training status:")
     print(returned_models)
+    for network in returned_models:
+        if all(network[0]) and network[1]>status['current_model_id']:
+            print('New Model: {:04d}'.format(network[1]))
+            status['current_model_id'] = network[1]
+    with open(master_config['status_path'], "w") as outfile:
+        json.dump(status, outfile, indent=2)
     testing=True
     
 if testing:
@@ -182,19 +216,18 @@ if testing:
 ########################
     
 #If there is no data and no models, start boostrap jobs
-if status['current_h5_id']==0 and status['current_model_id'] == None:
+if status['current_h5_id']==0 and status['current_model_id']<0:
     print("Building Bootstrap Set")
-    while QM_task_queue.get_completed_number() < master_config['bootstrap_set']:
+    while QM_task_queue.get_number() < master_config['bootstrap_set']:
         if (QM_task_queue.get_queued_number() < master_config['target_queued_QM']):
             while (builder_task_queue.get_number() < master_config['parallel_samplers']):
-                builder_task_queue.add_task(builder_task('mol-boot-{:10d}'.format(status['current_molecule_id']),builder_config))
+                builder_task_queue.add_task(builder_task('mol-boot-{:010d}'.format(status['current_molecule_id']),builder_config))
                 status['current_molecule_id'] = status['current_molecule_id'] + 1
         
         if (builder_task_queue.get_completed_number()>master_config['minimum_QM']):
             builder_results,failed = builder_task_queue.get_task_results()
             status['lifetime_failed_builder_tasks'] = status['lifetime_failed_builder_tasks'] + failed
             for structure in builder_results:
-                system_checker(structure)
                 QM_task_queue.add_task(qm_task(structure,QM_config,master_config['QM_scratch_dir'] + '/' + structure[0]['moleculeid'] + '/',list(master_config['properties_list'])))
                 
         print("### Bootstraping Learning Status at: " + time.ctime() + " ###")
@@ -206,14 +239,18 @@ if status['current_h5_id']==0 and status['current_model_id'] == None:
         with open(master_config['status_path'], "w") as outfile:
             json.dump(status, outfile, indent=2)
             
-        sleep(60)
+        time.sleep(60)
     
-    print("Saving Bootstrap and training model")    
+    print("Saving Bootstrap and training model")
+    results_list,failed = QM_task_queue.get_task_results()
+    status['lifetime_failed_QM_tasks'] = status['lifetime_failed_QM_tasks'] + failed    
     store_current_data(master_config['h5_path'].format(status['current_h5_id']),results_list,master_config['properties_list'])
     status['current_h5_id'] = status['current_h5_id'] + 1
-    ML_task_queue.add_task(ml_task(ML_config,master_config['h5_dir'],master_config['model_path'],status['current_training_id'],remove_existing=True))
+    ML_task_queue.add_task(ml_task(ML_config,master_config['h5_dir'],master_config['model_path'].format(status['current_training_id']),status['current_training_id'],master_config['gpus_per_node'],remove_existing=True))
     status['current_training_id'] = status['current_training_id'] + 1
     
+    with open(master_config['status_path'], "w") as outfile:
+        json.dump(status, outfile, indent=2)
     network = ML_task_queue.task_list[0].result()
     if all(network[0]):
         status['current_model_id'] = network[1]
@@ -246,7 +283,7 @@ while True:
         # Load the ML config:
         ML_config_new = load_config_file(master_config_new['ML_config_path'],master_config_new['master_directory'])
     except Exception as e:
-        print("Failed to re-load configu files:")
+        print("Failed to re-load configuration files:")
         print(e)
     else:
         master_config = master_config_new
@@ -266,7 +303,6 @@ while True:
         structure_list,failed = builder_task_queue.get_task_results()
         status['lifetime_failed_builder_tasks'] = status['lifetime_failed_builder_tasks'] + failed
         for structure in structure_list:
-            system_checker(structure)
             sampler_task_queue.add_task(sampler_task(structure,sampler_config,master_config['model_path'].format(status['current_model_id'])))
 
     #Run more QM
@@ -275,7 +311,6 @@ while True:
         status['lifetime_failed_sampler_tasks'] = status['lifetime_failed_sampler_tasks'] + failed
         for structure in sampler_results: #may need [0]
             if not structure[1]==None:
-                system_checker(structure)
                 QM_task_queue.add_task(qm_task(structure,QM_config,master_config['QM_scratch_dir'] + '/' + structure[0]['moleculeid'] + '/',list(master_config['properties_list'])))
 
     #Train more models
@@ -287,8 +322,10 @@ while True:
         #with open('temp-{:04d}.pkl'.format(status['current_h5_id']),'wb') as pickle_file:
         #    pickle.dump(results_list,pickle_file)
         store_current_data(master_config['h5_path'].format(status['current_h5_id']),results_list,master_config['properties_list'])
+        with open('data-bk-{:04d}.pickle'.format(status['current_h5_id']),'wb') as pkbk: 
+            pickle.dump(results_list,pkbk)
         status['current_h5_id'] = status['current_h5_id'] + 1
-        ML_task_queue.add_task(ml_task(ML_config,master_config['h5_dir'],master_config['model_path'],status['current_training_id'],master_config['gpus_per_node'],remove_existing=True))
+        ML_task_queue.add_task(ml_task(ML_config,master_config['h5_dir'],master_config['model_path'].format(status['current_training_id']),status['current_training_id'],master_config['gpus_per_node'],remove_existing=True))
         status['current_training_id'] = status['current_training_id'] + 1
         
     #Update Model
@@ -309,6 +346,7 @@ while True:
     QM_task_queue.print_status()
     print("ML status:")
     ML_task_queue.print_status()
+    sys.stdout.flush()
     
     with open(master_config['status_path'], "w") as outfile:
         json.dump(status, outfile, indent=2)

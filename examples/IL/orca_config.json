@@ -1,7 +1,7 @@
 {
-  "QM_run_command":"",
-  "orca_env_file":"",
-  "ncpu":36,
-  "orcasimpleinput":"engrad wb87x aug-cc-pvtz TightSCF",
-  "orcablocks":"\n%maxcore 12000\n%scf maxiter 200 end\n%elprop Dipole True end"
+  "QM_run_command":"/usr/projects/w20_mlhamil/orca_5_0_1_linux_x86-64_shared_openmpi411/orca",
+  "ncpu":144,
+  "orca_env_file":"/usr/projects/ml4chem/envs/exports-orca-5.0.1.bash",
+  "orcasimpleinput":"engrad RHF RI-MP2 RIJCOSX def2-TZVP def2/J def2-TZVP/C TightSCF Float Hirshfeld",
+  "orcablocks":"%maxcore 15000\n%scf maxiter 200 end\n%elprop Dipole True end%elprop quadrupole 1 end"
 }

@@ -1,0 +1,12 @@
+{
+	"molecule_library_path":"fragment_library/",
+	"solute_molecule_options": [["water.xyz","water.xyz"],["butane.xyz"],["heptane.xyz"],["hexane.xyz"],["pentane.xyz"],["propane.xyz"]],
+	"solvent_molecules":[],
+	"cell_range":[[8.0,10.0],[8.0,10.0],[8.0,10.0]],
+	"Rrange": [0.8,1.2],
+	"min_dist": 1.5,
+	"max_patience": 500,
+	"center_first_molecule":true,
+	"max_atoms": 100,
+	"shake":0.05
+}

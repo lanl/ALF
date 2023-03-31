@@ -53,7 +53,7 @@ def readMolFiles(molecule_sample_path):
             continue
     return(moldict,mols)
 
-def condensed_phase_builder(start_system, molecule_library, solute_molecules=[], solvent_molecules=[], density=1.0, min_dist=1.2, max_patience=200, center_first_molecule=False, shake = 0.05, print_attempt=False):
+def condensed_phase_builder(start_system, molecule_library, solute_molecules=[], solvent_molecules=[], density=1.0, min_dist=1.2, max_patience=200, max_atoms=None, center_first_molecule=False, shake = 0.05, print_attempt=False):
     #ensure system adhears to formating convention
     system_checker(start_system)
     curr_sys = start_system[1]
@@ -70,7 +70,7 @@ def condensed_phase_builder(start_system, molecule_library, solute_molecules=[],
     #solvent_molecules can be a dictionary, where the lookup value is a relative probability of selecting that molecule
     
     solvent_weights = np.ones(len(solvent_molecules))
-    if solvent_molecules is dict:
+    if isinstance(solvent_molecules,dict):
         solvent_list = list(solvent_molecules)
         for ind,solvent in  enumerate(solvent_list):
             solvent_weights[ind] = solvent_molecules[solvent]
@@ -82,6 +82,9 @@ def condensed_phase_builder(start_system, molecule_library, solute_molecules=[],
     attempts_lsucc = 0
     
     while actual_dens < density or len(solute_molecules)>1:
+        if not(max_atoms is None):
+            if len(curr_sys) > max_atoms:
+                break
         if len(solute_molecules)>0:
             new_mol_name = solute_molecules.pop(0)
             new_mol_solute = True
@@ -195,7 +198,7 @@ def simple_condensed_phase_builder_task(moleculeid,builder_params):
     #    outfile.write(json.dumps(feed_parameters))
        
     system = condensed_phase_builder(empty_system,molecule_library,**feed_parameters)
-    
+    system_checker(system)
     return(system)
     
     

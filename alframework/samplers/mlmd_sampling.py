@@ -28,7 +28,7 @@ def mlmd_sampling(molecule_object, ase_calculator,dt,maxt,Escut,Fscut,Ncheck,Tam
     ase_atoms.set_calculator(ase_calculator)
 
     # Compute energies
-    ase_atoms.get_potential_energy()
+    #ase_atoms.calc.get_potential_energy()
 
     # Define thermostat
     dyn = Langevin(ase_atoms, dt * units.fs, friction=0.02, temperature_K=T, communicator=None)
@@ -179,10 +179,15 @@ def simple_mlmd_sampling_task(molecule_object,sample_params,model_path):
     else:
         gpu = os.environ.get('PARSL_WORKER_RANK')
         calculator_list = calc_class(model_path + '/',device='cuda:'+gpu)
-        ase_calculator = MLMD_calculator(calculator_list,**sample_params['ase_calculator_options'])
+        ase_calculator = MLMD_calculator(calculator_list,**sample_params['MLMD_calculator_options'])
     
-    feed_parameters['use_potential_specific_code'] = sample_params['use_potential_specific_code']
+    if "use_potential_specific_code" in list(sample_params):
+        feed_parameters['use_potential_specific_code'] = sample_params['use_potential_specific_code']
+    
+    if 'translate_to_center' in list(sample_params):
+        if sample_params['translate_to_center']:
+            molecule_object[1].set_positions(molecule_object[1].get_positions()-molecule_object[1].get_center_of_mass())
     
     molecule_output = mlmd_sampling(molecule_object, ase_calculator,**feed_parameters)
-    
+    system_checker(molecule_output)
     return(molecule_output)

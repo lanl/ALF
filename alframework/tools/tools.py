@@ -5,6 +5,7 @@ import json
 from ase.geometry import complete_cell
 from ase import Atoms
 from alframework.tools import pyanitools as pyt
+import inspect
 
 def annealing_schedule(t, tmax, amp, per, srt, end):
     linear = t / tmax
@@ -247,4 +248,28 @@ def load_config_file(path,master_directory=None):
                 dir_dict[entry[:-4]+'dir'] = '/'.join(config[entry].split('/')[:-1]) + '/'
         config.update(dir_dict)
     return(config)
+    
+def build_input_dict(function, dictionary_list, use_local_space=False, raise_on_fail=False):
+    
+    if use_local_space:
+        local_space_dict = locals()
+    return_dictionary = {}
+    sig = inspect.signature(function)
+    input_params = list(sig.parameters)
+    for parameter in input_params:
+        for cur_dict in dictionary_list:
+            if parameter in cur_dict:
+                return_dictionary[parameter] = cur_dict[parameter]
+                break
+        if not( parameter in return_dictionary ): #Still have not found the variable
+            if use_local_space and ( parameter in local_space_dict ):
+                return_dictionary[parameter] = local_space_dict[parameter]
+            elif sig.parameters[parameter].default != inspect._empty:
+                #There is a defulat value for this entry
+                pass
+            elif parameter == 'self':
+                pass
+            elif raise_on_fail:
+                raise ValueError("Required input parameter {:s} of {:s} not defined in any space.".format(parameter,function.__name__))
+    return(return_dictionary)
     

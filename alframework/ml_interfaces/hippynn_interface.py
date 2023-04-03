@@ -1,4 +1,5 @@
 from parsl import python_app, bash_app
+import sys
 import multiprocessing
 import re
 import numpy as np
@@ -24,6 +25,7 @@ def train_HIPNN_model(model_dir,h5_train_dir,energy_key,coordinates_key,species_
                       scheduler_options = {"max_batch_size":128,"patience":25,"factor":0.5},
                       controller_options = {"batch_size":64,"eval_batch_size":128,"max_epochs":1000,"termination_patience":50},
                       device_string = '0',
+                      from_multiprocessing_nGPU = None,
                       remove_high_energy_cut = None, 
                       remove_high_energy_std = None,
                       remove_high_forces_cut = None, 
@@ -60,10 +62,9 @@ def train_HIPNN_model(model_dir,h5_train_dir,energy_key,coordinates_key,species_
     import torch
     if device_string.lower() == "from_multiprocessing":
         process = multiprocessing.current_process()
-        os.environ["CUDA_VISIBLE_DEVICES"] = str(process._identity[-1]-1)
+        os.environ["CUDA_VISIBLE_DEVICES"] = str((process._identity[-1]-1)%from_multiprocessing_nGPU)
     else:
         os.environ["CUDA_VISIBLE_DEVICES"] = device_string
-        
     torch.cuda.set_device('cuda:0')
     import hippynn
     from hippynn import plotting
@@ -106,7 +107,7 @@ def train_HIPNN_model(model_dir,h5_train_dir,energy_key,coordinates_key,species_
             sys_energy = henergy.mol_energy
             sys_energy.db_name = energy_key
             
-            en_peratom = physics.PerAtom("T/Atom", sys_energy)
+            en_peratom = physics.PerAtom("TperAtom", sys_energy)
             en_peratom.db_name = energy_key+"peratom"
             
             hierarchicality = henergy.hierarchicality
@@ -148,8 +149,8 @@ def train_HIPNN_model(model_dir,h5_train_dir,energy_key,coordinates_key,species_
                 validation_losses = {
                     "T-MAE": mae_energy,
                     "T-RMSE": rmse_energy,
-                    "T/Atom-MAE": mae_energyperatom,
-                    "T/Atom-RMSE": rmse_energyperatom,
+                    "TperAtom-MAE": mae_energyperatom,
+                    "TperAtom-RMSE": rmse_energyperatom,
                     "ForceMAE": mae_force,
                     "ForceRMSE": rmse_force,
                     "T-Hier": rbar,
@@ -162,8 +163,8 @@ def train_HIPNN_model(model_dir,h5_train_dir,energy_key,coordinates_key,species_
                 validation_losses = {
                     "T-MAE": mae_energy,
                     "T-RMSE": rmse_energy,
-                    "T/Atom-MAE": mae_energyperatom,
-                    "T/Atom-RMSE": rmse_energyperatom,
+                    "TperAtom-MAE": mae_energyperatom,
+                    "TperAtom-RMSE": rmse_energyperatom,
                     "T-Hier": rbar,
                     "L2Reg": l2_reg,
                     "Loss-Error": loss_error,
@@ -277,7 +278,7 @@ def train_HIPNN_model_wrapper(arg_dict):
     return(train_HIPNN_model(**arg_dict))
 
 @python_app(executors=['alf_ML_executor'])
-def train_ensemble(configuration,h5_dir,model_path,model_index,nGPU,remove_existing=False,h5_test_dir=None):
+def train_HIPPYNN_ensemble_task(configuration,h5_dir,model_path,model_index,nGPU,remove_existing=False,h5_test_dir=None):
     p = multiprocessing.Pool(nGPU)
     general_configuration = configuration.copy()
     n_models = general_configuration.pop('n_models')
@@ -285,10 +286,12 @@ def train_ensemble(configuration,h5_dir,model_path,model_index,nGPU,remove_exist
     for i,cur_dict in enumerate(params_list):
         cur_dict['model_dir'] = model_path + '/model-{:02d}'.format(i)
         cur_dict['h5_train_dir'] = h5_dir
-    
+        cur_dict['from_multiprocessing_nGPU'] = nGPU
     out = p.map(train_HIPNN_model_wrapper,params_list)
     completed = []
     HIPNN_complete = re.compile('Training complete')
+    
+    p.close()
     for i in range(n_models):
         log = open(model_path + '/model-{:02d}/training_log.txt'.format(i),'r').read()
         if len(HIPNN_complete.findall(log))==1:

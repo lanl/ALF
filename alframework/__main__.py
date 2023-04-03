@@ -322,8 +322,8 @@ while True:
         #with open('temp-{:04d}.pkl'.format(status['current_h5_id']),'wb') as pickle_file:
         #    pickle.dump(results_list,pickle_file)
         store_current_data(master_config['h5_path'].format(status['current_h5_id']),results_list,master_config['properties_list'])
-        with open('data-bk-{:04d}.pickle'.format(status['current_h5_id']),'wb') as pkbk: 
-            pickle.dump(results_list,pkbk)
+#        with open('data-bk-{:04d}.pickle'.format(status['current_h5_id']),'wb') as pkbk: 
+#            pickle.dump(results_list,pkbk)
         status['current_h5_id'] = status['current_h5_id'] + 1
         ML_task_queue.add_task(ml_task(ML_config,master_config['h5_dir'],master_config['model_path'].format(status['current_training_id']),status['current_training_id'],master_config['gpus_per_node'],remove_existing=True))
         status['current_training_id'] = status['current_training_id'] + 1
@@ -336,6 +336,7 @@ while True:
             if all(network[0]) and network[1]>status['current_model_id']:
                 print('New Model: {:04d}'.format(network[1]))
                 status['current_model_id'] = network[1]
+                status['current_molecule_id']=0
                 
     print("### Active Learning Status at: " + time.ctime() + " ###")
     print("builder status:")

@@ -1,13 +1,17 @@
+import numpy as np
+import os
+import shutil
+
 import anitraintools as alt
 
 from ase_interface import aniensloader
 from ase_interface import ANIENS, batchedensemblemolecule
 
-import numpy as np
-import os
-import shutil
+from alframework.tools.tools import build_input_dict
 
 from parsl import python_app, bash_app
+
+import time
 
 class NeuroChemTrainer():
     def __init__(self, ensemble_size, gpuids, force_training=True, periodic=False, rmhighe=False, rmhighf=False, build_test=True, remove_existing=False):
@@ -112,7 +116,12 @@ def NeuroChemCalculator(model_details):
 def train_ANI_model_task(configuration,h5_dir,model_path,model_index,nGPU,remove_existing=False,h5_test_dir=None):
     
     #nct = NeuroChemTrainer(ensemble_size, gpuids, force_training=True, periodic=False, rmhighe=False, rmhighf=False, build_test=True)
-    nct = NeuroChemTrainer(8,list(range(nGPU)), force_training=True, periodic=True, rmhighe=False, rmhighf=False, build_test=True,remove_existing=remove_existing)
+    nct_input = build_input_dict(NeuroChemTrainer.__init__,[{"gpuids":list(range(nGPU))},configuration])
+    #nct = NeuroChemTrainer(8,list(range(nGPU)), force_training=True, periodic=True, rmhighe=False, rmhighf=False, build_test=True,remove_existing=remove_existing)
+    with open('/users/bnebgen/dtt_log.txt','w') as logF:
+        logF.write(str(nct_input))
+        logF.flush()
+    nct = NeuroChemTrainer(**nct_input)
     
     #this is a little awkward
     configuration['ensemble_path'] = model_path.format(model_index)

@@ -32,6 +32,12 @@ def ase_calculator_task(input_system,configuration_list,directory,properties=['e
     calc2.calculate(atoms=input_system[1], properties=properties)
     
     input_system[2] = calc2.results
-    input_system[2]['converged'] = calc.converged
+    
+    convergedre = re.compile('aborting loop because EDIFF is reached')
+    txt = open(directory + '/OUTCAR','r').read()
+    if len(convergedre.findall(txt)) == 1:
+        input_system[2]['converged'] = True
+    else:
+        input_system[2]['converged'] = False
         
     return(input_system)

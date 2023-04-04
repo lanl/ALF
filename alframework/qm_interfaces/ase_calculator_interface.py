@@ -1,8 +1,15 @@
+import os
+import json
+import pickle
+
+import parsl
 from parsl import python_app, bash_app
+
 from importlib import import_module
 import os
 import ase
 from ase import Atoms
+from ase.io import vasp as vasp_io
 from alframework.tools.tools import system_checker
 
 @python_app(executors=['alf_QM_executor'])
@@ -36,4 +43,32 @@ def ase_calculator_task(input_system,configuration,directory,properties=['energy
     system_checker(return_system)
     
     return(return_system)
+
+   
+@python_app(executors=['alf_QM_executor'])
+def VASP_ase_calculator_task(input_system,configuration,directory,properties=['energy','forces']):
+    
+    import glob
+    
+    from ase.calculators.vasp import Vasp as calc_class
+    command = configuration_list['QM_run_command']
+    #Define the calculator
+
+    calc_input = configuration['input'].copy()
+    calc_input['kpts'] = input_system[0]['kpoints']
+    calc = calc_class(directory=directory, command=command, **calc_input)
+    
+    #Run the calculation
+    calc.calculate(atoms=input_system[1], properties=properties)
+
+    input_system[2] = calc.results
+
+    convergedre = re.compile('aborting loop because EDIFF is reached')
+    txt = open(directory + '/OUTCAR','r').read()
+    if len(convergedre.findall(txt)) == 1:
+        input_system[2]['converged'] = True
+    else:
+        input_system[2]['converged'] = False
+
+    return(input_system)
 

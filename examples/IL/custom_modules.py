@@ -40,7 +40,7 @@ config_4node= Config(
                 scheduler_options='#SBATCH --ntasks-per-node=36 --nodes=4 -A w23_ml4chem',
 
                 # Command to be run before starting a worker
-                #worker_init='module load python/3.8-anaconda-2020.07; source /usr/projects/ml4chem/envs/p38-parsl-ani-load.bash',
+                #worker_init=
 
                 # We request all hyperthreads on a node.
                 #launcher=SrunLauncher(overrides='-c 64'),
@@ -79,7 +79,7 @@ config_4node= Config(
                 scheduler_options='#SBATCH --nodes=1 -p gpu -A w23_ml4chem_g',
 
                 # Command to be run before starting a worker
-                #worker_init='module load python/3.8-anaconda-2020.07; source /usr/projects/ml4chem/envs/p38-parsl-ani-load.bash',
+                #worker_init=
 
                 # We request all hyperthreads on a node.
                 #launcher=SrunLauncher(overrides='-c 64'),
@@ -117,7 +117,7 @@ config_4node= Config(
                 scheduler_options='#SBATCH --nodes=1 -p gpu -A w23_ml4chem_g',
 
                 # Command to be run before starting a worker
-                #worker_init='module load python/3.8-anaconda-2020.07; source /usr/projects/ml4chem/envs/p38-parsl-ani-load.bash',
+                #worker_init=
 
                 # We request all hyperthreads on a node.
                 #launcher=SrunLauncher(overrides='-c 64'),
@@ -132,7 +132,7 @@ config_4node= Config(
     ]
 )
 
-config_debug_1node = Config(
+config_debug = Config(
     executors=[
         HighThroughputExecutor(
             label='alf_QM_executor',
@@ -148,24 +148,24 @@ config_debug_1node = Config(
                 # Partition / QOS
                 #'regular',
                 #'ml4chem',
-                'standard',
+                'debug',
                 init_blocks = 0,
                 min_blocks = 0,
-                max_blocks = 50,
+                max_blocks = 1,
 
                 nodes_per_block=1,
                 #workers_per_node=1,
 
                 # string to prepend to #SBATCH blocks in the submit
-                scheduler_options='#SBATCH --ntasks-per-node=36 --nodes=1 -A w23_ml4chem',
+                scheduler_options='#SBATCH --ntasks-per-node=36 --nodes=4 -A w23_ml4chem --qos debug --reservation debug',
 
                 # Command to be run before starting a worker
-                #worker_init='module load python/3.8-anaconda-2020.07; source /usr/projects/ml4chem/envs/p38-parsl-ani-load.bash',
+                #worker_init=
 
                 # We request all hyperthreads on a node.
                 #launcher=SrunLauncher(overrides='-c 64'),
                 launcher=SimpleLauncher(),
-                walltime='16:00:00',
+                walltime='2:00:00',
 
                 # Slurm scheduler on Cori can be slow at times,
                 # increase the command timeouts
@@ -199,7 +199,7 @@ config_debug_1node = Config(
                 scheduler_options='#SBATCH --nodes=1 -p gpu -A w23_ml4chem_g --qos=debug --reservation=gpu_debug',
 
                 # Command to be run before starting a worker
-                #worker_init='module load python/3.8-anaconda-2020.07; source /usr/projects/ml4chem/envs/p38-parsl-ani-load.bash',
+                #worker_init=
 
                 # We request all hyperthreads on a node.
                 #launcher=SrunLauncher(overrides='-c 64'),
@@ -237,7 +237,7 @@ config_debug_1node = Config(
                 scheduler_options='#SBATCH --nodes=1 -p gpu -A w23_ml4chem_g --qos=debug --reservation=gpu_debug',
 
                 # Command to be run before starting a worker
-                #worker_init='module load python/3.8-anaconda-2020.07; source /usr/projects/ml4chem/envs/p38-parsl-ani-load.bash',
+                #worker_init=
 
                 # We request all hyperthreads on a node.
                 #launcher=SrunLauncher(overrides='-c 64'),

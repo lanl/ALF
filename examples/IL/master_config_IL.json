@@ -15,7 +15,7 @@
 	"target_queued_QM": 100, 
 	"minimum_QM": 0, 
 	"save_h5_threshold": 100, 
-	"parallel_samplers": 24, 
+	"parallel_samplers": 100, 
 	"bootstrap_set": 200,
 	"parsl_configuration":"custom_modules.config_4node",
 	"gpus_per_node":4,

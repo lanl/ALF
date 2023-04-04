@@ -1,12 +1,12 @@
 {
 	"molecule_library_path":"fragment_library/",
-	"solute_molecule_options": [["imim-10.xyz","chloride.xyz"],["imim-10.xyz","nitrate.xyz"],["imim-10.xyz","thiocyanate.xyz"],["imim-head.xyz","imim-head.xyz","chloride.xyz","chloride.xyz"],["imim-head.xyz","imim-head.xyz","nitrate.xyz","nitrate.xyz"],["imim-head.xyz","imim-head.xyz","thiocyanate.xyz","thiocyanate.xyz"]],
+	"solute_molecule_options": [["water.xyz"],["imim-10.xyz","chloride.xyz"],["imim-10.xyz","nitrate.xyz"],["imim-10.xyz","thiocyanate.xyz"],["imim-head.xyz","imim-head.xyz","chloride.xyz","chloride.xyz"],["imim-head.xyz","imim-head.xyz","nitrate.xyz","nitrate.xyz"],["imim-head.xyz","imim-head.xyz","thiocyanate.xyz","thiocyanate.xyz"]],
 	"solvent_molecules":{"water.xyz":1.0,"butane.xyz":0.05,"heptane.xyz":0.05,"hexane.xyz":0.05,"pentane.xyz":0.05,"propane.xyz":0.05},
 	"cell_range":[[10.0,12.0],[10.0,12.0],[25.0,27.0]],
 	"Rrange": [0.8,1.2],
 	"min_dist": 1.5,
 	"max_patience": 500,
 	"center_first_molecule":true,
-	"max_atoms": 80,
+	"max_atoms": 60,
 	"shake":0.05
 }

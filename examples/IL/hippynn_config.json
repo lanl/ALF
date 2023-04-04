@@ -31,7 +31,7 @@
 "controller_options":{"batch_size":32,"eval_batch_size":64,"max_epochs":1000,"termination_patience":50},
 "device_string":"from_multiprocessing",
 "remove_high_energy_cut":null, 
-"remove_high_energy_std":10,
+"remove_high_energy_std":null,
 "remove_high_forces_cut":1000, 
-"remove_high_forces_std":2.5
+"remove_high_forces_std":10
 }

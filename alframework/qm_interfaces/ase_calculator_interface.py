@@ -55,7 +55,8 @@ def VASP_ase_calculator_task(input_system,configuration,directory,properties=['e
     #Define the calculator
 
     calc_input = configuration['input'].copy()
-    calc_input['kpts'] = input_system[0]['kpoints']
+    if 'kpoints' in input_system[0]:
+        calc_input['kpts'] = input_system[0]['kpoints']
     calc = calc_class(directory=directory, command=command, **calc_input)
     
     #Run the calculation

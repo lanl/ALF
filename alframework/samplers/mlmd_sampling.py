@@ -22,7 +22,10 @@ def mlmd_sampling(molecule_object, ase_calculator,dt,maxt,Escut,Fscut,Ncheck,Tam
     T = annealing_schedule(0.0, maxt, Tamp, Tper, Tsrt, Tend)
 
     # Setup Rho
-    str_Rvalue = (1.66054e-24/1.0e-24)*(np.sum(ase_atoms.get_masses())/ase_atoms.get_volume())
+    if Rend == None:
+        str_Rvalue=None
+    else:
+        str_Rvalue = (1.66054e-24/1.0e-24)*(np.sum(ase_atoms.get_masses())/ase_atoms.get_volume())
 
     # Set the ASE Calculator
     ase_atoms.set_calculator(ase_calculator)
@@ -75,12 +78,15 @@ def mlmd_sampling(molecule_object, ase_calculator,dt,maxt,Escut,Fscut,Ncheck,Tam
         dyn.set_temperature(temperature_K = set_temp)
 
         # Set the density
-        set_dens = (1.0e-24 / 1.66054e-24) * annealing_schedule((i * Ncheck * dt) / 1000, maxt, Ramp, Rper, str_Rvalue, Rend)
-        scalar = np.power(np.sum(ase_atoms.get_masses()) / (ase_atoms.get_volume() * set_dens), 1. / 3.)
-        ase_atoms.set_cell(scalar * ase_atoms.get_cell(), scale_atoms=True)
+        if str_Rvalue ==None:
+            pass
+        else:
+            set_dens = (1.0e-24 / 1.66054e-24) * annealing_schedule((i * Ncheck * dt) / 1000, maxt, Ramp, Rper, str_Rvalue, Rend)
+            scalar = np.power(np.sum(ase_atoms.get_masses()) / (ase_atoms.get_volume() * set_dens), 1. / 3.)
+            ase_atoms.set_cell(scalar * ase_atoms.get_cell(), scale_atoms=True)
+            denss.append(set_dens)
 
         temps.append(set_temp)
-        denss.append(set_dens)
 
         # Run MD
         dyn.run(Ncheck)
@@ -158,9 +164,18 @@ def simple_mlmd_sampling_task(molecule_object,sample_params,model_path):
     feed_parameters['Tsrt'] = np.random.uniform(sample_params['srt_temp'][0], sample_params['srt_temp'][1])
     feed_parameters['Tend'] = np.random.uniform(sample_params['end_temp'][0], sample_params['end_temp'][1])
     
-    feed_parameters['Ramp'] = np.random.uniform(sample_params['amp_dens'][0], sample_params['amp_dens'][1])
-    feed_parameters['Rper'] = np.random.uniform(sample_params['per_dens'][0], sample_params['per_dens'][1])
-    feed_parameters['Rend'] = np.random.uniform(sample_params['end_dens'][0], sample_params['end_dens'][1])
+    if sample_params['amp_dens'] == None:
+        feed_parameters['Ramp'] = None
+    else: 
+        feed_parameters['Ramp'] = np.random.uniform(sample_params['amp_dens'][0], sample_params['amp_dens'][1])
+    if sample_params['per_dens'] == None:
+        feed_parameters['Ramp'] = None
+    else:
+        feed_parameters['Rper'] = np.random.uniform(sample_params['per_dens'][0], sample_params['per_dens'][1])
+    if sample_params['end_dens'] == None:
+        feed_parameters['Rend'] = None
+    else:
+        feed_parameters['Rend'] = np.random.uniform(sample_params['end_dens'][0], sample_params['end_dens'][1])
     
     feed_parameters['meta_dir'] = sample_params['meta_dir']
     

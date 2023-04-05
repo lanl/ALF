@@ -1,6 +1,7 @@
 import os
 import json
 import pickle
+import re
 
 import parsl
 from parsl import python_app, bash_app

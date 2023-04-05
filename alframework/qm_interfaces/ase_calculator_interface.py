@@ -1,6 +1,7 @@
 import os
 import json
 import pickle
+import re
 
 import parsl
 from parsl import python_app, bash_app
@@ -51,7 +52,7 @@ def VASP_ase_calculator_task(input_system,configuration,directory,properties=['e
     import glob
     
     from ase.calculators.vasp import Vasp as calc_class
-    command = configuration_list['QM_run_command']
+    command = configuration['QM_run_command']
     #Define the calculator
 
     calc_input = configuration['input'].copy()

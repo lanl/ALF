@@ -218,7 +218,7 @@ if testing:
 #If there is no data and no models, start boostrap jobs
 if status['current_h5_id']==0 and status['current_model_id']<0:
     print("Building Bootstrap Set")
-    while QM_task_queue.get_number() < master_config['bootstrap_set']:
+    while QM_task_queue.get_completed_number() < master_config['bootstrap_set']:
         if (QM_task_queue.get_queued_number() < master_config['target_queued_QM']):
             while (builder_task_queue.get_number() < master_config['parallel_samplers']):
                 builder_task_queue.add_task(builder_task('mol-boot-{:010d}'.format(status['current_molecule_id']),builder_config))

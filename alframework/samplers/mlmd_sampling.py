@@ -169,7 +169,7 @@ def simple_mlmd_sampling_task(molecule_object,sample_params,model_path):
     else: 
         feed_parameters['Ramp'] = np.random.uniform(sample_params['amp_dens'][0], sample_params['amp_dens'][1])
     if sample_params['per_dens'] == None:
-        feed_parameters['Ramp'] = None
+        feed_parameters['Rper'] = None
     else:
         feed_parameters['Rper'] = np.random.uniform(sample_params['per_dens'][0], sample_params['per_dens'][1])
     if sample_params['end_dens'] == None:

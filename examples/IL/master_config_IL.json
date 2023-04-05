@@ -2,7 +2,7 @@
 	"master_directory":"pwd",
 	"h5_path":"h5store/data-{:04d}.h5",
 	"model_path":"models/model-{:04d}",
-	"QM_task":"alframework.qm_interfaces.orca5_interface.orca_calculator_task",
+	"QM_task":"alframework.qm_interfaces.orca5_interface.orca_double_calculator_task",
 	"QM_config_path":"orca_config.json",
 	"ML_task":"alframework.ml_interfaces.hippynn_interface.train_HIPPYNN_ensemble_task",
 	"ML_config_path":"hippynn_config.json",
@@ -16,7 +16,7 @@
 	"minimum_QM": 0, 
 	"save_h5_threshold": 100, 
 	"parallel_samplers": 100, 
-	"bootstrap_set": 200,
+	"bootstrap_set": 500,
 	"parsl_configuration":"custom_modules.config_4node",
 	"gpus_per_node":4,
 	"QM_scratch_dir":"/users/bnebgen/scratch4/ALrunning/"

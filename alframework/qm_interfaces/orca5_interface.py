@@ -64,8 +64,7 @@ class orcaGenerator():
         #logF = open('orca_run.log','w')
         #assert molecule.periodic() == False, 'ORCA does not support periodic boundary condition'
         job_path = self.scratch_path 
-        if not os.path.exists(job_path):
-            os.mkdir(job_path)
+        os.makedirs(job_path,exist_ok=True)
             
         #logF.write('directory made\n')
         # prepare orca input
@@ -156,6 +155,40 @@ def orca_calculator_task(input_system,configuration,directory,properties=['energ
     orca = orcaGenerator(scratch_path=directory,nproc=configuration['ncpu'],orca_env_file=configuration['orca_env_file'],orca_command=configuration['QM_run_command'],orcainput=configuration['orcasimpleinput'],orcablocks=configuration['orcablocks'])
     
     properties = orca.single_point(molecule=atoms)
+    
+    return_system = [input_system[0],input_system[1],properties]
+    system_checker(return_system)
+    
+    return(return_system)
+
+
+@python_app(executors=['alf_QM_executor'])
+def orca_double_calculator_task(input_system,configuration,directory,properties=['energy','forces']):
+    system_checker(input_system)
+    molecule_id = input_system[0]['moleculeid']
+    atoms = input_system[1]
+    directory1 = directory + '/1/'
+    directory2 = directory + '/2/'
+    
+    orca1 = orcaGenerator(scratch_path=directory1,nproc=configuration['ncpu'],orca_env_file=configuration['orca_env_file'],orca_command=configuration['QM_run_command'],orcainput=configuration['orcasimpleinput'],orcablocks=configuration['orcablocks'])
+    
+    properties1 = orca1.single_point(molecule=atoms)
+    
+    orca2 = orcaGenerator(scratch_path=directory2,nproc=configuration['ncpu'],orca_env_file=configuration['orca_env_file'],orca_command=configuration['QM_run_command'],orcainput=configuration['orcasimpleinput'],orcablocks=configuration['orcablocks'])
+    
+    properties2 =  orca2.single_point(molecule=atoms)
+    
+    maxEdev = np.abs(properties1['energy'] - properties2['energy'])
+    maxFdev = np.max(np.abs(properties1['forces']-properties2['forces']))
+    
+    properties = {}
+    for key in list(properties1):
+        properties[key] = np.mean([properties1[key],properties2[key]],axis=0)
+    
+    if (maxEdev < configuration['Ediff']) and (maxFdev < configuration['Fdiff']) and properties1['converged'] and properties2['converged']:
+        properties['converged'] = True
+    else:
+        properties['converged'] = False
     
     return_system = [input_system[0],input_system[1],properties]
     system_checker(return_system)

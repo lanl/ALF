@@ -4,6 +4,6 @@
   "orca_env_file":null,
   "orcasimpleinput":"engrad RHF RI-MP2 RIJCOSX def2-TZVP def2/J def2-TZVP/C TightSCF Float Hirshfeld",
   "orcablocks":"%maxcore 15000\n%scf maxiter 200 end\n%elprop Dipole True end%elprop quadrupole 1 end",
-  "Ediff": 1e-1,
-  "Fdiff":1e-2
+  "Ediff": 1e-3,
+  "Fdiff":1e-4
 }

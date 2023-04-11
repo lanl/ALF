@@ -17,7 +17,6 @@ from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator
 #For now I will take a dictionary with all sample parameters.
 #We may want to make this explicit. Ying Wai, what do you think? 
 def mlmd_sampling(molecule_object, ase_calculator,dt,maxt,Escut,Fscut,Ncheck,Tamp,Tper,Tsrt,Tend,Ramp,Rper,Rend,meta_dir=None,use_potential_specific_code=None):
-    import hippynn
     system_checker(molecule_object)
     ase_atoms = molecule_object[1]
     T = annealing_schedule(0.0, maxt, Tamp, Tper, Tsrt, Tend)
@@ -113,7 +112,7 @@ def mlmd_sampling(molecule_object, ase_calculator,dt,maxt,Escut,Fscut,Ncheck,Tam
                     "Fmcrit" : Fmcrit,
                     "chemical_symbols" : ase_atoms.get_chemical_symbols(),
                     "positions" : ase_atoms.get_positions(wrap=True),
-                    "cell" : ase_atoms.get_cell(),
+                    "cell" : ase_atoms.get_cell()
                 }
     meta_dict.update(molecule_object[0])
     if meta_dir is not None:
@@ -190,11 +189,11 @@ def simple_mlmd_sampling_task(molecule_object,sample_params,model_path):
             model_info = {}
             model_info['model_path'] = model_path + '/'
             model_info['Nn'] = 8
-            model_info['gpu'] = '0' #os.environ.get('PARSL_WORKER_RANK')
+            model_info['gpu'] = '0' #os.environ.get('PARSL_WORKER_RANK') now using cuda visible devices
             ase_calculator = calc_class(model_info)
             
     else:
-        gpu = '0' #os.environ.get('PARSL_WORKER_RANK')
+        gpu = '0' #os.environ.get('PARSL_WORKER_RANK') now using  cuda visible devices
         calculator_list = calc_class(model_path + '/',device='cuda:'+gpu)
         ase_calculator = MLMD_calculator(calculator_list,**sample_params['MLMD_calculator_options'])
     

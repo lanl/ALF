@@ -149,6 +149,7 @@ def simple_mlmd_sampling_task(molecule_object,sample_params,model_path):
     model_path (Set by master): Path to current ML model
     
     """
+    os.environ["CUDA_VISIBLE_DEVICES"] = os.environ.get('PARSL_WORKER_RANK')
     system_checker(molecule_object)
     feed_parameters = {}
     # Load MD parameters
@@ -188,11 +189,11 @@ def simple_mlmd_sampling_task(molecule_object,sample_params,model_path):
             model_info = {}
             model_info['model_path'] = model_path + '/'
             model_info['Nn'] = 8
-            model_info['gpu'] = os.environ.get('PARSL_WORKER_RANK')
+            model_info['gpu'] = '0' #os.environ.get('PARSL_WORKER_RANK') now using cuda visible devices
             ase_calculator = calc_class(model_info)
             
     else:
-        gpu = os.environ.get('PARSL_WORKER_RANK')
+        gpu = '0' #os.environ.get('PARSL_WORKER_RANK') now using  cuda visible devices
         calculator_list = calc_class(model_path + '/',device='cuda:'+gpu)
         ase_calculator = MLMD_calculator(calculator_list,**sample_params['MLMD_calculator_options'])
     

@@ -52,9 +52,14 @@ ML_task_queue = parsl_task_queue()
 builder_task_queue = parsl_task_queue()
 sampler_task_queue = parsl_task_queue()
 
-module_string = '.'.join(master_config['parsl_configuration'].split('.')[:-1])
-class_string = master_config['parsl_configuration'].split('.')[-1]
-parsl_configuration = getattr(import_module(module_string),class_string)
+if ('--test_ml' in sys.argv[2:] or '--test_builder' in sys.argv[2:] or '--test_sampler' in sys.argv[2:] or '--test_qm' in sys.argv[2:]) and 'parsl_debug_configuration' in master_config:
+    module_string = '.'.join(master_config['parsl_debug_configuration'].split('.')[:-1])
+    class_string = master_config['parsl_debug_configuration'].split('.')[-1]
+    parsl_configuration = getattr(import_module(module_string),class_string)
+else: 
+    module_string = '.'.join(master_config['parsl_configuration'].split('.')[:-1])
+    class_string = master_config['parsl_configuration'].split('.')[-1]
+    parsl_configuration = getattr(import_module(module_string),class_string)
 
 # Load the Parsl config
 parsl.load(parsl_configuration)

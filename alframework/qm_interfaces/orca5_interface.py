@@ -183,11 +183,11 @@ def orca_double_calculator_task(input_system,configuration,directory,properties=
     
     orca1 = orcaGenerator(scratch_path=directory1,nproc=configuration['ncpu'],orca_env_file=configuration['orca_env_file'],orca_command=configuration['QM_run_command'],orcainput=configuration['orcasimpleinput'],orcablocks=configuration['orcablocks'])
     
-    properties1 = orca1.single_point(molecule=atoms,properties)
+    properties1 = orca1.single_point(molecule=atoms,properties=properties)
     
     orca2 = orcaGenerator(scratch_path=directory2,nproc=configuration['ncpu'],orca_env_file=configuration['orca_env_file'],orca_command=configuration['QM_run_command'],orcainput=configuration['orcasimpleinput'],orcablocks=configuration['orcablocks'])
     
-    properties2 =  orca2.single_point(molecule=atoms,properties)
+    properties2 =  orca2.single_point(molecule=atoms,properties=properties)
     
     maxEdev = np.abs(properties1['energy'] - properties2['energy'])
     maxFdev = np.max(np.abs(properties1['forces']-properties2['forces']))

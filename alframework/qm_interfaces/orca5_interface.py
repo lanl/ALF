@@ -165,7 +165,7 @@ def orca_calculator_task(input_system,configuration,directory,properties=['energ
     
     orca = orcaGenerator(scratch_path=directory,nproc=configuration['ncpu'],orca_env_file=configuration['orca_env_file'],orca_command=configuration['QM_run_command'],orcainput=configuration['orcasimpleinput'],orcablocks=configuration['orcablocks'])
     
-    out_properties = orca.single_point(molecule=atoms,properties)
+    out_properties = orca.single_point(molecule=atoms,properties=properties)
     
     return_system = [input_system[0],input_system[1],out_properties]
     system_checker(return_system)

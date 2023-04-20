@@ -18,7 +18,7 @@
 	"parallel_samplers": 100, 
 	"bootstrap_set": 500,
 	"parsl_configuration":"custom_modules.config_1node",
-	"parsl_configuration":"custom_modules.config_debug",
+	"parsl_debug_configuration":"custom_modules.config_debug",
 	"gpus_per_node":4,
 	"QM_scratch_dir":"/users/bnebgen/scratch4/water-test-running/"
 }

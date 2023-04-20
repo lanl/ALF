@@ -10,7 +10,7 @@
 	"builder_config_path":"builder_config.json",
 	"sampler_task":"alframework.samplers.mlmd_sampling.simple_mlmd_sampling_task",
 	"sampler_config_path":"mlmd_config.json",
-	"properties_list": {"energy":["energy","system",27.211386024367243],"forces":["forces","atomic",51.422067090480645],"hirshfeld":["hirshfeld","atomic",1.0],"dipole":["dipole","system",1.0],"quadrupole":["quadrupole","system",1.0]},
+	"properties_list": {"energy":["energy","system",27.211386024367243],"forces":["forces","atomic",51.422067090480645],"dipole":["dipole","system",1.0],"quadrupole":["quadrupole","system",1.0]},
 	"status_path":"status.txt",
 	"target_queued_QM": 100, 
 	"minimum_QM": 0, 

@@ -50,12 +50,13 @@ class orcaGenerator():
 
         with open(job_path+filename,"w") as f:
             f.write("! "+ self.orcainput + "\n")
-            f.write("%pal nproc " + str(self.nproc) + " end\n")
+            if not(self.nproc == None) and not(self.nproc == 1):
+                f.write("%pal nproc " + str(self.nproc) + " end\n")
             f.write(self.orcablocks)
             f.write("* xyzfile %d %d input.xyz\n" % (charge, multiplicity))
         ase.io.write(job_path+"input.xyz", ase_atoms,format='xyz')
     
-    def single_point(self, molecule, prefix="orca"):
+    def single_point(self, molecule, prefix="orca",properties=['energy','forces']):
         """
         mol : ase.atoms.Atoms object, will get chemical symbols and positions
         prefix : all the input and output file will start with this prefix, eg. orca.log, orca.inp, orca.engrad
@@ -83,10 +84,10 @@ class orcaGenerator():
         # parse output, force and energy
         if self.check_normal_termination( job_path + prefix + ".log"):
             n_atom = len(molecule)
-            properties = self.parse_output(job_path, prefix, n_atom)
-            properties['converged'] = True
+            propertiesout = self.parse_output(job_path, prefix, n_atom,properties)
+            propertiesout['converged'] = True
         else:
-            properties = {"converged":False}
+            propertiesout = {"converged":False}
             
         # save files and clean up
         if not(self.store_path == None):
@@ -94,18 +95,19 @@ class orcaGenerator():
             shutil.rmtree(job_path)
         
         self.datacounter += 1
-        return properties
+        return propertiesout
 
     def check_normal_termination(self, logfile):
         d = open(logfile).read()
         return "TOTAL RUN TIME: " in d  and "SCF CONVERGED AFTER" in d
     
-    def parse_output(self,job_path, prefix, natom, sign=-1):
+    def parse_output(self,job_path, prefix, natom, properties, sign=-1):
         # sign: -1: force, +1, gradient
         outengrad = open(job_path + prefix + '.engrad','r').read()
         outlog = open(job_path + prefix + '.log','r').read()
         outproperty = open(job_path + prefix + '_property.txt','r').read()
         
+        reTOTALenergy = re.compile("The current total energy in Eh\n#\n([\s\S]+?)#")
         reSCFenergy = re.compile("SCF Energy:([\s\S]+?)\n")
         reCORRenergy = re.compile("Correlation Energy:([\s\S]+?)\n")
         reEnergy = re.compile("Total[\s\S]+?Energy:([\s\S]+?)\n")
@@ -115,16 +117,25 @@ class orcaGenerator():
         reHirshTrue = re.compile("HIRSHFELD ANALYSIS")
         reHirsh = re.compile("HIRSHFELD ANALYSIS\n[\s\S]+?SPIN  \n([\s\S]+?)TOTAL")
         
-        properties = {}
-        properties['forces'] = np.array([float(i) for i in reGrad.findall(outengrad)[-1].split("\n")[:natom*3]]).reshape([natom,3]) * sign * self.E_unit/self.L_unit
-        properties['energy'] = float(reEnergy.findall(outproperty)[-1]) * self.E_unit
-        properties['SCF_energy'] = float(reEnergy.findall(outproperty)[-1]) * self.E_unit
-        properties['CORR_energy'] = float(reEnergy.findall(outproperty)[-1]) * self.E_unit
-        properties['dipole'] = np.array([float(i.split()[1]) for i in reDipole.findall(outproperty)[-1].split("\n")[1:4]])
-        properties['quadrupole'] = np.array([[float(j) for j in i.split()[1:4]] for i in reQuad.findall(outproperty)[-1].split("\n")[1:4]])
-        properties['hirshfeld'] = np.array([float(i.split()[2]) for i in reHirsh.findall(outlog)[-1].split("\n")[:natom]])
-        properties['hirshfeld_spin'] = np.array([float(i.split()[3]) for i in reHirsh.findall(outlog)[-1].split("\n")[:natom]])
-        return properties
+        #Always pull in energies and forces from engrad
+        outproperties = {}
+        if 'forces' in properties:
+            outproperties['forces'] = np.array([float(i) for i in reGrad.findall(outengrad)[-1].split("\n")[:natom*3]]).reshape([natom,3]) * sign * self.E_unit/self.L_unit
+        if 'energy' in properties:
+            outproperties['energy'] = float(reTOTALenergy.findall(outengrad)[-1]) * self.E_unit
+        if 'SCF_energy' in properties:
+            outproperties['SCF_energy'] = float(reEnergy.findall(outproperty)[-1]) * self.E_unit
+        if 'CORR_energy' in properties:
+            outproperties['CORR_energy'] = float(reEnergy.findall(outproperty)[-1]) * self.E_unit
+        if 'dipole' in properties:
+            outproperties['dipole'] = np.array([float(i.split()[1]) for i in reDipole.findall(outproperty)[-1].split("\n")[1:4]])
+        if 'quadrupole' in properties:
+            outproperties['quadrupole'] = np.array([[float(j) for j in i.split()[1:4]] for i in reQuad.findall(outproperty)[-1].split("\n")[1:4]])
+        if 'hirshfeld' in properties:
+            outproperties['hirshfeld'] = np.array([float(i.split()[2]) for i in reHirsh.findall(outlog)[-1].split("\n")[:natom]])
+        if 'hirshfeld_spin' in properties:
+            outproperties['hirshfeld_spin'] = np.array([float(i.split()[3]) for i in reHirsh.findall(outlog)[-1].split("\n")[:natom]])
+        return outproperties
     
 #    def parse_output(self, job_path, prefix, natom, sign=-1):
 #        # sign: -1: force, +1, gradient
@@ -154,9 +165,9 @@ def orca_calculator_task(input_system,configuration,directory,properties=['energ
     
     orca = orcaGenerator(scratch_path=directory,nproc=configuration['ncpu'],orca_env_file=configuration['orca_env_file'],orca_command=configuration['QM_run_command'],orcainput=configuration['orcasimpleinput'],orcablocks=configuration['orcablocks'])
     
-    properties = orca.single_point(molecule=atoms)
+    out_properties = orca.single_point(molecule=atoms,properties=properties)
     
-    return_system = [input_system[0],input_system[1],properties]
+    return_system = [input_system[0],input_system[1],out_properties]
     system_checker(return_system)
     
     return(return_system)
@@ -172,11 +183,11 @@ def orca_double_calculator_task(input_system,configuration,directory,properties=
     
     orca1 = orcaGenerator(scratch_path=directory1,nproc=configuration['ncpu'],orca_env_file=configuration['orca_env_file'],orca_command=configuration['QM_run_command'],orcainput=configuration['orcasimpleinput'],orcablocks=configuration['orcablocks'])
     
-    properties1 = orca1.single_point(molecule=atoms)
+    properties1 = orca1.single_point(molecule=atoms,properties=properties)
     
     orca2 = orcaGenerator(scratch_path=directory2,nproc=configuration['ncpu'],orca_env_file=configuration['orca_env_file'],orca_command=configuration['QM_run_command'],orcainput=configuration['orcasimpleinput'],orcablocks=configuration['orcablocks'])
     
-    properties2 =  orca2.single_point(molecule=atoms)
+    properties2 =  orca2.single_point(molecule=atoms,properties=properties)
     
     maxEdev = np.abs(properties1['energy'] - properties2['energy'])
     maxFdev = np.max(np.abs(properties1['forces']-properties2['forces']))

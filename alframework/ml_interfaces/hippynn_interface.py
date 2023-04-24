@@ -19,7 +19,7 @@ def train_HIPNN_model(model_dir,h5_train_dir,energy_key,coordinates_key,species_
                       pairwise_inference_parameters = None,
                       valid_size = .1,
                       test_size = .1,
-                      plot_every = 5,
+                      plot_every = 50,
                       h5_test_dir = None,
                       learning_rate = 1e-3,
                       scheduler_options = {"max_batch_size":128,"patience":25,"factor":0.5},

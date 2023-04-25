@@ -138,18 +138,18 @@ def train_HIPNN_model(model_dir,
                     raise RuntimeError('Unrecognized hipnn_order parameter')
             print(electrostatics_flag)
             if not(electrostatics_flag): # Just the energy Nodes, i.e. standard HIPNN. 
-                henergy = targets.HEnergyNode("HEnergy",network,first_is_interacting)
+                henergy = targets.HEnergyNode("node_HEnergy",network,first_is_interacting)
                 sys_energy = henergy.mol_energy
                 sys_energy.db_name = energy_key
                 
-                en_peratom = physics.PerAtom("TperAtom", sys_energy)
+                en_peratom = physics.PerAtom("node_EperAtom", sys_energy)
                 en_peratom.db_name = energy_key+"peratom"
                 
                 hierarchicality = henergy.hierarchicality
                 hierarchicality = physics.PerAtom("RperAtom", hierarchicality)
                 
                 if not(force_key is None):
-                    force = physics.GradientNode("forces", (sys_energy, positions), sign=-1)
+                    force = physics.GradientNode("node_forces", (sys_energy, positions), sign=-1)
                     force.db_name = force_key
                 
                 ### Energy Contribution to the Loss graph 
@@ -165,20 +165,20 @@ def train_HIPNN_model(model_dir,
               
             else : # For charge & energy training; we use the need 2 networks.  
                 # The 'first' network is responsible for the electrostatic predictions. 
-                hcharge = targets.HChargeNode("HCharge", network)
+                hcharge = targets.HChargeNode("node_HCharge", network)
                 atom_charges = hcharge.atom_charges
             
                 if not(charges_key is None): # Partial charges to train to. 
                     atom_charges.db_name = charges_key
             
-                system_charges = physics.AtomToMolSummer("sysCharges", atom_charges)
+                system_charges = physics.AtomToMolSummer("node_sysCharges", atom_charges)
                 q_hierarchicality = hcharge.charge_hierarchality
 
                 if not(dipole_key is None): 
-                    dipole = physics.DipoleNode("dipole", (hcharge, positions), db_name=dipole_key)
+                    dipole = physics.DipoleNode("node_dipole", (hcharge, positions), db_name=dipole_key)
                 
                 if not(quadrupole_key is None): 
-                    quadrupole = physics.QuadrupoleNode("quadrapole", (hcharge, positions), db_name=quadrupole_key)
+                    quadrupole = physics.QuadrupoleNode("node_quadrapole", (hcharge, positions), db_name=quadrupole_key)
         
                 # Manually define indexers for Coulomb energy 
                 coulomb_r_max = torch.tensor(aca_params["r_coulomb_cut"], device=device_cuda) 
@@ -208,7 +208,7 @@ def train_HIPNN_model(model_dir,
                     raise NotImplementedError("Only 'Wolf' or 'null' supported screening types.")
                     
                 coulomb_energy = physics.ScreenedCoulombEnergyNode(
-                    "cEnergy",
+                    "node_cEnergy",
                     (atom_charges,
                         pairfinder.pair_dist, pairfinder.pair_first, pairfinder.pair_second,
                         padidxer.mol_index, padidxer.n_molecules),
@@ -239,18 +239,18 @@ def train_HIPNN_model(model_dir,
                         raise RuntimeError('Unrecognized hipnn_order parameter')
             
                 
-                henergy = targets.HEnergyNode("HEnergy", network_energy,first_is_interacting)
+                henergy = targets.HEnergyNode("node_HEnergy", network_energy,first_is_interacting)
                 sys_energy = henergy.mol_energy + coulomb_energy 
                 sys_energy.db_name = energy_key
                 
-                en_peratom = physics.PerAtom("TperAtom", sys_energy)
+                en_peratom = physics.PerAtom("node_EperAtom", sys_energy)
                 en_peratom.db_name = energy_key+"peratom"
                 
                 hierarchicality = henergy.hierarchicality 
                 hierarchicality = physics.PerAtom("RperAtom", hierarchicality)
                 
                 if not(force_key == None):
-                    force = physics.GradientNode("forces", (sys_energy, positions), sign=-1)
+                    force = physics.GradientNode("node_forces", (sys_energy, positions), sign=-1)
                     force.db_name = force_key
                 
                 ### Contribution to the loss graph 
@@ -523,7 +523,7 @@ def train_HIPPYNN_ensemble_task(configuration,h5_dir,model_path,model_index,nGPU
     return(completed, model_index)
     
 
-def HIPNN_ASE_calculator(HIPNN_model_directory,device="cuda:0"):
+def HIPNN_ASE_calculator(HIPNN_model_directory,energy_key='energy',device="cuda:0"):
     from hippynn.experiment.serialization import load_checkpoint_from_cwd
     from hippynn.tools import active_directory
     from hippynn.interfaces.ase_interface import HippynnCalculator
@@ -531,7 +531,7 @@ def HIPNN_ASE_calculator(HIPNN_model_directory,device="cuda:0"):
     with active_directory(HIPNN_model_directory):
         bundle = load_checkpoint_from_cwd(map_location="cpu", restore_db=False)
     model = bundle["training_modules"].model
-    energy_node = model.node_from_name("energy")
+    energy_node = model.node_from_name(energy_key)
     calc = HippynnCalculator(energy_node, en_unit=units.eV)
     calc.to(torch.float32)
     calc.to(torch.device(device))

@@ -12,7 +12,7 @@ import ase
 from ase import Atoms
 from ase.io import vasp as vasp_io
    
-@python_app(executors=['alf_QM_executor'])
+@python_app(executors=['alf_QM_executor','alf_QM_standby_executor'])
 def ase_calculator_task(input_system,configuration_list,directory,properties=['energy','forces']):
     
     import glob

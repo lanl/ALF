@@ -52,6 +52,7 @@ config_4node= Config(
                 cmd_timeout=30,
             ),
         ),
+        HighThroughputExecutor(
             label='alf_QM_standby_executor',
             #This executor is kinda strange. We manually increase the node count so that 
             #our parallel qm job gets multiple nodes, but leave nodes_per_block=1 so 

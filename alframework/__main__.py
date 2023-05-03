@@ -6,7 +6,6 @@ import os
 import json
 import pickle
 import time
-from importlib import import_module
 import sys
 from pathlib import Path
 import numpy as np
@@ -25,6 +24,7 @@ from alframework.tools.tools import store_current_data
 from alframework.tools.tools import load_config_file
 from alframework.tools.tools import find_empty_directory
 from alframework.tools.tools import system_checker
+from alframework.tools.tools import load_module_from_config
 from alframework.tools.pyanitools import anidataloader
 #import logging
 #logging.basicConfig(level=logging.DEBUG)
@@ -53,13 +53,9 @@ builder_task_queue = parsl_task_queue()
 sampler_task_queue = parsl_task_queue()
 
 if ('--test_ml' in sys.argv[2:] or '--test_builder' in sys.argv[2:] or '--test_sampler' in sys.argv[2:] or '--test_qm' in sys.argv[2:]) and 'parsl_debug_configuration' in master_config:
-    module_string = '.'.join(master_config['parsl_debug_configuration'].split('.')[:-1])
-    class_string = master_config['parsl_debug_configuration'].split('.')[-1]
-    parsl_configuration = getattr(import_module(module_string),class_string)
+    parsl_configuration = load_module_from_config(master_config, 'parsl_debug_configuration')
 else: 
-    module_string = '.'.join(master_config['parsl_configuration'].split('.')[:-1])
-    class_string = master_config['parsl_configuration'].split('.')[-1]
-    parsl_configuration = getattr(import_module(module_string),class_string)
+    parsl_configuration = load_module_from_config(master_config, 'parsl_configuration')
 
 # Load the Parsl config
 parsl.load(parsl_configuration)
@@ -79,24 +75,16 @@ tempPath.mkdir(parents=True,exist_ok=True)
 # Step 2: Define Parsl tasks#
 #############################
 #Builder
-module_string = '.'.join(master_config['builder_task'].split('.')[:-1])
-class_string = master_config['builder_task'].split('.')[-1]
-builder_task = getattr(import_module(module_string),class_string)
+builder_task = load_module_from_config(master_config, 'builder_task')
 
 #Sampler
-module_string = '.'.join(master_config['sampler_task'].split('.')[:-1])
-class_string = master_config['sampler_task'].split('.')[-1]
-sampler_task = getattr(import_module(module_string),class_string)
+sampler_task = load_module_from_config(master_config, 'sampler_task')
 
 #QM
-module_string = '.'.join(master_config['QM_task'].split('.')[:-1])
-class_string = master_config['QM_task'].split('.')[-1]
-qm_task = getattr(import_module(module_string),class_string)
+qm_task = load_module_from_config(master_config, 'QM_task')
 
 #ML
-module_string = '.'.join(master_config['ML_task'].split('.')[:-1])
-class_string = master_config['ML_task'].split('.')[-1]
-ml_task = getattr(import_module(module_string),class_string)
+ml_task = load_module_from_config(master_config, 'ML_task')
 
 ##########################################
 ## Step 3: Evaluate restart possibilites #

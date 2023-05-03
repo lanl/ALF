@@ -6,11 +6,11 @@ from ase import units
 import time
 from ase import Atoms
 import pickle as pkl
-from importlib import import_module
 from parsl import python_app, bash_app
 
 from alframework.tools.tools import annealing_schedule
 from alframework.tools.tools import system_checker
+from alframework.tools.tools import load_module_from_config
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator
     
 
@@ -180,9 +180,7 @@ def simple_mlmd_sampling_task(molecule_object,sample_params,model_path):
     
     feed_parameters['meta_dir'] = sample_params['meta_dir']
     
-    module_string = '.'.join(sample_params['ase_calculator'].split('.')[:-1])
-    class_string = sample_params['ase_calculator'].split('.')[-1]
-    calc_class = getattr(import_module(module_string),class_string)
+    calc_class = load_module_from_config(sample_params, 'ase_calculator')
     
     if "use_potential_specific_code" in sample_params:
         if sample_params['use_potential_specific_code'].lower() == 'neurochem':

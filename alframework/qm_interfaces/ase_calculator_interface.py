@@ -6,12 +6,12 @@ import re
 import parsl
 from parsl import python_app, bash_app
 
-from importlib import import_module
 import os
 import ase
 from ase import Atoms
 from ase.io import vasp as vasp_io
 from alframework.tools.tools import system_checker
+from alframework.tools.tools import load_module_from_config
 
 @python_app(executors=['alf_QM_executor'])
 def ase_calculator_task(input_system,configuration,directory,properties=['energy','forces']):
@@ -26,9 +26,7 @@ def ase_calculator_task(input_system,configuration,directory,properties=['energy
     #This isn't the prettist thing
     #ase calculators are classes residing within a similarly named module
     #Pass in the full class path, This code seperates the two
-    module_string = '.'.join(configuration['ASE_calculator'].split('.')[:-1])
-    class_string = configuration['ASE_calculator'].split('.')[-1]
-    calc_class = getattr(import_module(module_string),class_string)
+    calc_class = load_module_from_config(configuration, 'ASE_calculator')
     
     
     #Define the calculator

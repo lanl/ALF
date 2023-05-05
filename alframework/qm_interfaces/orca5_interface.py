@@ -157,7 +157,7 @@ class orcaGenerator():
 #        return return_dictionary
 
 
-@python_app(executors=['alf_QM_executor'])
+@python_app(executors=['alf_QM_executor','alf_QM_standby_executor'])
 def orca_calculator_task(input_system,configuration,directory,properties=['energy','forces']):
     system_checker(input_system)
     molecule_id = input_system[0]['moleculeid']
@@ -173,7 +173,7 @@ def orca_calculator_task(input_system,configuration,directory,properties=['energ
     return(return_system)
 
 
-@python_app(executors=['alf_QM_executor'])
+@python_app(executors=['alf_QM_executor','alf_QM_standby_executor'])
 def orca_double_calculator_task(input_system,configuration,directory,properties=['energy','forces']):
     system_checker(input_system)
     molecule_id = input_system[0]['moleculeid']

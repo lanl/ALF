@@ -13,7 +13,7 @@ from ase import Atoms
 from ase.io import vasp as vasp_io
 from alframework.tools.tools import system_checker
 
-@python_app(executors=['alf_QM_executor'])
+@python_app(executors=['alf_QM_executor','alf_QM_standby_executor'])
 def ase_calculator_task(input_system,configuration,directory,properties=['energy','forces']):
     system_checker(input_system)
     molecule_id = input_system[0]['moleculeid']
@@ -46,7 +46,7 @@ def ase_calculator_task(input_system,configuration,directory,properties=['energy
     return(return_system)
 
    
-@python_app(executors=['alf_QM_executor'])
+@python_app(executors=['alf_QM_executor','alf_QM_standby_executor'])
 def VASP_ase_calculator_task(input_system,configuration,directory,properties=['energy','forces']):
     
     import glob

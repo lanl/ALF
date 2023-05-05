@@ -298,7 +298,7 @@ while True:
         ML_config = ML_config_new
 	
     #Run more builders
-    if (QM_task_queue.get_queued_number() < master_config['target_queued_QM']):
+    if (QM_task_queue.get_queued_number() < master_config['target_queued_QM']) and (QM_task_queue.get_number() < master_config.get('maximum_completed_QM',1e12)):
         while (sampler_task_queue.get_number()+builder_task_queue.get_number() < master_config['parallel_samplers']):
             builder_task_queue.add_task(builder_task('mol-{:04d}-{:010d}'.format(status['current_model_id'],status['current_molecule_id']),builder_config))
             status['current_molecule_id'] = status['current_molecule_id'] + 1

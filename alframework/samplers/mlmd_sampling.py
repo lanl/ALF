@@ -3,6 +3,7 @@ import numpy as np
 import ase
 from ase.md.langevin import Langevin
 from ase import units
+from ase.io.trajectory import Trajectory
 import time
 from ase import Atoms
 import pickle as pkl
@@ -16,7 +17,7 @@ from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator
 
 #For now I will take a dictionary with all sample parameters.
 #We may want to make this explicit. Ying Wai, what do you think? 
-def mlmd_sampling(molecule_object, ase_calculator,dt,maxt,Escut,Fscut,Ncheck,Tamp,Tper,Tsrt,Tend,Ramp,Rper,Rend,meta_dir=None,use_potential_specific_code=None):
+def mlmd_sampling(molecule_object, ase_calculator,dt,maxt,Escut,Fscut,Ncheck,Tamp,Tper,Tsrt,Tend,Ramp,Rper,Rend,meta_dir=None,use_potential_specific_code=None,trajectory_interval=None):
     system_checker(molecule_object)
     ase_atoms = molecule_object[1]
     T = annealing_schedule(0.0, maxt, Tamp, Tper, Tsrt, Tend)
@@ -35,6 +36,9 @@ def mlmd_sampling(molecule_object, ase_calculator,dt,maxt,Escut,Fscut,Ncheck,Tam
 
     # Define thermostat
     dyn = Langevin(ase_atoms, dt * units.fs, friction=0.02, temperature_K=T, communicator=None)
+    if trajectory_step != None:
+        trajob = Trajectory( meta_dir+"/metadata-"+molecule_object[0]['moleculeid']+'.traj',mode='w',atoms=ase_atoms)
+        dyn.attach(trajob.write,interval=trajectory_interval)
 
     # Iterate MD
     failed = False
@@ -203,6 +207,12 @@ def simple_mlmd_sampling_task(molecule_object,sample_params,model_path):
     if 'translate_to_center' in list(sample_params):
         if sample_params['translate_to_center']:
             molecule_object[1].set_positions(molecule_object[1].get_positions()-molecule_object[1].get_center_of_mass())
+    
+    if sample_params.get('trajectory_frequency',None) != None:
+        if np.random.rand() < sample_params['trajectory_frequency']:
+            feed_parameters['trajectory_interval'] = sample_params.get('trajectory_interval',20)
+    else:
+        feed_parameters['trajectory_interval'] = sample_params.get('trajectory_interval',None)
     
     molecule_output = mlmd_sampling(molecule_object, ase_calculator,**feed_parameters)
     system_checker(molecule_output)

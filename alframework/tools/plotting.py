@@ -5,7 +5,7 @@ import pickle
 import re
 import os
 
-def analysis_plot(meta_dir, master_directory, meta_n_cols=50):
+def analysis_plot(meta_dir, plot_dir, meta_n_cols=50):
     if not hasattr(analysis_plot, '__plot_number'):
         analysis_plot.__plot_number = 0
     num_models = 0
@@ -27,15 +27,18 @@ def analysis_plot(meta_dir, master_directory, meta_n_cols=50):
             if model_number > num_models:
                 num_models = model_number
             with open(meta_dir + '/' + pickle_filename, 'rb') as fp:
-                model = pickle.load(fp)
-                metadata_record['model'].append(model_number)
-                metadata_record['realtime'].append(model['realtime_simulation'])
-                metadata_record['log realtime'].append(np.log10(model['realtime_simulation']))
-                metadata_record['simtime'].append(model['simulationtime'])
-                metadata_record['log simtime'].append(np.log10(model['simulationtime']))
-                metadata_record['Es'].append(model['Es'])
-                metadata_record['Fs'].append(model['Fs'])
-                metadata_record['Fsmax'].append(model['Fsmax'])
+                try:
+                    model = pickle.load(fp)
+                    metadata_record['model'].append(model_number)
+                    metadata_record['realtime'].append(model['realtime_simulation'])
+                    metadata_record['log realtime'].append(np.log10(model['realtime_simulation']))
+                    metadata_record['simtime'].append(model['simulationtime'])
+                    metadata_record['log simtime'].append(np.log10(model['simulationtime']))
+                    metadata_record['Es'].append(model['Es'])
+                    metadata_record['Fs'].append(model['Fs'])
+                    metadata_record['Fsmax'].append(model['Fsmax'])
+                except:
+                    pass
 
     # Don't do anything if there are no models
     if num_models > 0:

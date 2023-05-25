@@ -24,9 +24,8 @@ from alframework.tools.tools import store_current_data
 from alframework.tools.tools import load_config_file
 from alframework.tools.tools import find_empty_directory
 from alframework.tools.tools import system_checker
-from alframework.tools.tools import load_module_from_config
+from alframework.tools.tools import load_module_from_string
 from alframework.tools.tools import build_input_dict
-from alframework.tools.plotting import analysis_plot
 from alframework.tools.pyanitools import anidataloader
 #import logging
 #logging.basicConfig(level=logging.DEBUG)
@@ -57,38 +56,38 @@ builder_task_queue = parsl_task_queue()
 sampler_task_queue = parsl_task_queue()
 
 if ('--test_ml' in sys.argv[2:] or '--test_builder' in sys.argv[2:] or '--test_sampler' in sys.argv[2:] or '--test_qm' in sys.argv[2:]) and 'parsl_debug_configuration' in master_config:
-    parsl_configuration = load_module_from_config(master_config, 'parsl_debug_configuration')
+    parsl_configuration = load_module_from_string(master_config['parsl_debug_configuration'])
 else: 
-    parsl_configuration = load_module_from_config(master_config, 'parsl_configuration')
+    parsl_configuration = load_module_from_string(master_config['parsl_configuration'])
+
+if master_config.get('plotting_utility',None)!=None:
+    analysis_plot = load_module_from_string(master_config['plotting_utility'])
+else:
+    analysis_plot = None
 
 # Load the Parsl config
 parsl.load(parsl_configuration)
 
 #make needed directories
-#This is kinda inflexible, may need to revisit.
-tempPath = Path('/'.join(master_config['h5_path'].split('/')[:-1]))
-tempPath.mkdir(parents=True,exist_ok=True)
-
-tempPath = Path('/'.join(master_config['model_path'].split('/')[:-1]))
-tempPath.mkdir(parents=True,exist_ok=True)
-
-tempPath = Path(sampler_config['meta_dir'])
-tempPath.mkdir(parents=True,exist_ok=True)
+for entry in master_config.keys():
+    if entry[-3:] == 'dir':
+        tempPath = master_config[entry]
+        tempPath.mkdir(parents=True,exists_ok=True)
 
 #############################
 # Step 2: Define Parsl tasks#
 #############################
 #Builder
-builder_task = load_module_from_config(master_config, 'builder_task')
+builder_task = load_module_from_string(master_config['builder_task'])
 
 #Sampler
-sampler_task = load_module_from_config(master_config, 'sampler_task')
+sampler_task = load_module_from_string(master_config['sampler_task'])
 
 #QM
-qm_task = load_module_from_config(master_config, 'QM_task')
+qm_task = load_module_from_string(master_config['QM_task'])
 
 #ML
-ml_task = load_module_from_config(master_config, 'ML_task')
+ml_task = load_module_from_string(master_config['ML_task'])
 
 ##########################################
 ## Step 3: Evaluate restart possibilites #
@@ -337,7 +336,7 @@ while True:
                 status['current_molecule_id']=0
     
     # Construct analysis plots
-    if (master_loop_iter % update_plots_every) == 0:
+    if (master_loop_iter % update_plots_every) == 0 and (analysis_plot!=None) :
         analysis_input = build_input_dict(analysis_plot, [master_config, sampler_config, QM_config, builder_config, ML_config])
         analysis_plot(**analysis_input)
                 

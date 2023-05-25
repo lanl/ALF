@@ -254,6 +254,11 @@ def load_module_from_config(config, module_field):
     module_string = '.'.join(config[module_field].split('.')[:-1])
     class_string = config[module_field].split('.')[-1]
     return getattr(import_module(module_string), class_string)
+    
+def load_module_from_string(module_string):
+    module_string = '.'.join(module_string.split('.')[:-1])
+    class_string = module_string.split('.')[-1]
+    return getattr(import_module(module_string), class_string)
 
 def build_input_dict(function, dictionary_list, use_local_space=False, raise_on_fail=False):
     

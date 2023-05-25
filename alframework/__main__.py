@@ -72,7 +72,7 @@ else:
 for entry in master_config.keys():
     if entry[-3:] == 'dir':
         tempPath = Path(master_config[entry])
-        tempPath.mkdir(parents=True,exists_ok=True)
+        tempPath.mkdir(parents=True,exist_ok=True)
 
 #############################
 # Step 2: Define Parsl tasks#

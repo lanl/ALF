@@ -63,8 +63,6 @@ else:
 # Load the Parsl config
 parsl.load(parsl_configuration)
 
-
-
 if master_config.get('plotting_utility',None)!=None:
     analysis_plot = load_module_from_string(master_config['plotting_utility'])
 else:
@@ -73,7 +71,7 @@ else:
 #make needed directories
 for entry in master_config.keys():
     if entry[-3:] == 'dir':
-        tempPath = master_config[entry]
+        tempPath = Path(master_config[entry])
         tempPath.mkdir(parents=True,exists_ok=True)
 
 #############################

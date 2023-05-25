@@ -385,7 +385,8 @@ def train_HIPNN_model(model_dir,
                     del arrays[key]
             
             # Remove High energies and forces. 
-            database.remove_high_property(force_key, True, species_key=species_key, cut=remove_high_forces_cut, std_factor=remove_high_forces_std)
+            if force_key != None:
+                database.remove_high_property(force_key, True, species_key=species_key, cut=remove_high_forces_cut, std_factor=remove_high_forces_std)
             database.remove_high_property(energy_key, False, species_key=species_key, cut=remove_high_energy_cut, std_factor=remove_high_energy_std)
             
             print("Array Shapes After Cleaning")

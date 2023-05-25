@@ -1,5 +1,6 @@
 import os
 import glob
+from importlib import import_module
 import numpy as np
 import json
 from ase.geometry import complete_cell
@@ -249,6 +250,11 @@ def load_config_file(path,master_directory=None):
         config.update(dir_dict)
     return(config)
     
+def load_module_from_config(config, module_field):
+    module_string = '.'.join(config[module_field].split('.')[:-1])
+    class_string = config[module_field].split('.')[-1]
+    return getattr(import_module(module_string), class_string)
+
 def build_input_dict(function, dictionary_list, use_local_space=False, raise_on_fail=False):
     
     if use_local_space:
@@ -272,4 +278,3 @@ def build_input_dict(function, dictionary_list, use_local_space=False, raise_on_
             elif raise_on_fail:
                 raise ValueError("Required input parameter {:s} of {:s} not defined in any space.".format(parameter,function.__name__))
     return(return_dictionary)
-    

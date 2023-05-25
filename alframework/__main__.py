@@ -60,13 +60,15 @@ if ('--test_ml' in sys.argv[2:] or '--test_builder' in sys.argv[2:] or '--test_s
 else: 
     parsl_configuration = load_module_from_string(master_config['parsl_configuration'])
 
+# Load the Parsl config
+parsl.load(parsl_configuration)
+
+
+
 if master_config.get('plotting_utility',None)!=None:
     analysis_plot = load_module_from_string(master_config['plotting_utility'])
 else:
     analysis_plot = None
-
-# Load the Parsl config
-parsl.load(parsl_configuration)
 
 #make needed directories
 for entry in master_config.keys():

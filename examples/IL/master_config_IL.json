@@ -22,8 +22,6 @@
 	"gpus_per_node":4,
 	"QM_scratch_dir":"/users/bnebgen/scratch4/ALrunning/",
 	"plotting_utility":"alframework.tools.plotting.analysis_plot",
-	"plot_dir":"status_plots/",
-	"trajectory_frequency":0.5,
-	"trajectory_interval":1
+	"plot_dir":"status_plots/"
 	
 }

@@ -366,7 +366,7 @@ def train_HIPNN_model(model_dir,
             arrays[species_key] = arrays[species_key].astype('int64')
             n_atoms = arrays[species_key].astype(bool).astype(int).sum(axis=1)
             if not( energy_key+"peratom" in arrays):
-                arrays[energy_key+"peratom"] =  arrays["energy"] / n_atoms
+                arrays[energy_key+"peratom"] =  arrays[energy_key] / n_atoms
             
             #Ensure that float arrays are float32
             for k, v in arrays.items():

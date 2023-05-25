@@ -78,7 +78,7 @@ config_4node= Config(
                 #workers_per_node=1,
 
                 # string to prepend to #SBATCH blocks in the submit
-                scheduler_options='#SBATCH --ntasks-per-node=36 --nodes=4 -A w23_ml4chem --qos=standby',
+                scheduler_options='#SBATCH --ntasks-per-node=36 --nodes=4 -A w23_ml4chem --qos=standby --time-min=00:45:00',
 
                 # Command to be run before starting a worker
                 #worker_init=
@@ -155,7 +155,7 @@ config_4node= Config(
 
                 # string to prepend to #SBATCH blocks in the submit
                 #scheduler_options='#SBATCH --qos=debug',
-                scheduler_options='#SBATCH --nodes=1 -p gpu -A w23_ml4chem_g',
+                scheduler_options='#SBATCH --nodes=1 -p gpu -A w23_ml4chem_g --time-min=00:10:00',
 
                 # Command to be run before starting a worker
                 #worker_init=

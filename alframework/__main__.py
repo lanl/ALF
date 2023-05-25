@@ -35,8 +35,6 @@ master_config = load_config_file(sys.argv[1])
 if 'master_directory' not in master_config:
     master_config['master_directory'] = None
 
-update_plots_every = master_config.get('update_plots_every', 100)
-
 # Load the builder config:
 builder_config = load_config_file(master_config['builder_config_path'],master_config['master_directory'])
 
@@ -336,7 +334,7 @@ while True:
                 status['current_molecule_id']=0
     
     # Construct analysis plots
-    if (master_loop_iter % update_plots_every) == 0 and (analysis_plot!=None) :
+    if (master_loop_iter %  master_config.get('update_plots_every', 100)) == 0 and (analysis_plot!=None) :
         analysis_input = build_input_dict(analysis_plot, [master_config, sampler_config, QM_config, builder_config, ML_config])
         analysis_plot(**analysis_input)
                 

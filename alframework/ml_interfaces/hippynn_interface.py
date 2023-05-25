@@ -391,10 +391,10 @@ def train_HIPNN_model(model_dir,
             
             print("Array Shapes After Cleaning")
             prettyprint_arrays(database.arr_dict)
-            print(np.max(database.arr_dict['forces']))
-            print(np.min(database.arr_dict['forces']))
-            print(np.max(database.arr_dict['energyperatom']))
-            print(np.min(database.arr_dict['energyperatom']))
+            print(np.max(database.arr_dict[force_key]))
+            print(np.min(database.arr_dict[force_key]))
+            print(np.max(database.arr_dict[energy_key+"peratom"]))
+            print(np.min(database.arr_dict[energy_key+"peratom"]))
                         
             database.make_random_split("valid",valid_size)
             if not(h5_test_dir == None):

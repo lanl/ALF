@@ -25,6 +25,8 @@ from alframework.tools.tools import load_config_file
 from alframework.tools.tools import find_empty_directory
 from alframework.tools.tools import system_checker
 from alframework.tools.tools import load_module_from_config
+from alframework.tools.tools import build_input_dict
+from alframework.tools.plotting import analysis_plot
 from alframework.tools.pyanitools import anidataloader
 #import logging
 #logging.basicConfig(level=logging.DEBUG)
@@ -33,6 +35,8 @@ from alframework.tools.pyanitools import anidataloader
 master_config = load_config_file(sys.argv[1])
 if 'master_directory' not in master_config:
     master_config['master_directory'] = None
+
+update_plots_every = master_config.get('update_plots_every', 100)
 
 # Load the builder config:
 builder_config = load_config_file(master_config['builder_config_path'],master_config['master_directory'])
@@ -256,6 +260,7 @@ if status['current_h5_id']==0 and status['current_model_id']<0:
 ##################################
 ## Step 6: Begin Active Learning #
 ##################################
+master_loop_iter = 1
 while True:
     #Re-load configurations, but watch for stupid errors
     try:
@@ -330,6 +335,11 @@ while True:
                 print('New Model: {:04d}'.format(network[1]))
                 status['current_model_id'] = network[1]
                 status['current_molecule_id']=0
+    
+    # Construct analysis plots
+    if (master_loop_iter % update_plots_every) == 0:
+        analysis_input = build_input_dict(analysis_plot, [master_config, sampler_config, QM_config, builder_config, ML_config])
+        analysis_plot(**analysis_input)
                 
     print("### Active Learning Status at: " + time.ctime() + " ###")
     print("builder status:")
@@ -345,6 +355,6 @@ while True:
     with open(master_config['status_path'], "w") as outfile:
         json.dump(status, outfile, indent=2)
     
+    master_loop_iter += 1
     time.sleep(60)
 	
-    

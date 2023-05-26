@@ -334,7 +334,7 @@ while True:
                 status['current_molecule_id']=0
     
     # Construct analysis plots
-    if (master_loop_iter %  master_config.get('update_plots_every', 100)) == 0 and (analysis_plot!=None) :
+    if (master_loop_iter %  master_config.get('update_plots_every', 1000)) == 0 and (analysis_plot!=None) :
         analysis_input = build_input_dict(analysis_plot, [master_config, sampler_config, QM_config, builder_config, ML_config])
         analysis_plot(**analysis_input)
                 

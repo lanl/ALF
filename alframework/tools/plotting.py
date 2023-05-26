@@ -6,8 +6,6 @@ import re
 import os
 
 def analysis_plot(meta_dir, plot_dir, meta_n_cols=50):
-    if not hasattr(analysis_plot, '__plot_number'):
-        analysis_plot.__plot_number = 0
     num_models = 0
     metadata_pattern = re.compile(r'metadata-mol-(.{4})-\d{10}.p')
 
@@ -15,7 +13,7 @@ def analysis_plot(meta_dir, plot_dir, meta_n_cols=50):
                        'realtime': [],
                        'log realtime': [],
                        'simtime': [],
-                       'log simtime': [],
+                       'log_simtime': [],
                        'Es': [],
                        'Fs': [],
                        'Fsmax': []}
@@ -33,7 +31,7 @@ def analysis_plot(meta_dir, plot_dir, meta_n_cols=50):
                     metadata_record['realtime'].append(model['realtime_simulation'])
                     metadata_record['log realtime'].append(np.log10(model['realtime_simulation']))
                     metadata_record['simtime'].append(model['simulationtime'])
-                    metadata_record['log simtime'].append(np.log10(model['simulationtime']))
+                    metadata_record['log_simtime'].append(np.log10(model['simulationtime']))
                     metadata_record['Es'].append(model['Es'])
                     metadata_record['Fs'].append(model['Fs'])
                     metadata_record['Fsmax'].append(model['Fsmax'])
@@ -48,12 +46,11 @@ def analysis_plot(meta_dir, plot_dir, meta_n_cols=50):
             model_filter = np.linspace(1, num_models, num=meta_n_cols, dtype=int)
             df = df[df['model'].isin(model_filter)]
 
-        plot_vars = ['realtime', 'log realtime', 'simtime', 'log simtime' 'Es', 'Fs', 'Fsmax']
+        plot_vars = ['realtime', 'log realtime', 'simtime', 'log_simtime' 'Es', 'Fs', 'Fsmax']
         plot_titles = ['Real Time Simulation', 'Log Real Time Simulation', 'Simulation Time', 'Log Simulation Time', 'Es', 'Fs', 'Fsmax Error']
         for var, title in zip(plot_vars, plot_titles):
             plot = df.boxplot(var, by='model', grid=False, rot=45)
             plot.set_title(title)
             plot.set_ylabel(var)
-            plt.savefig(master_directory + '/analysis-plot-{:04d}-{:s}.png'.format(analysis_plot.__plot_number, var))
+            plt.savefig(plot_dir + '/analysis-plot-{:s}.png'.format( var))
 
-        analysis_plot.__plot_number += 1

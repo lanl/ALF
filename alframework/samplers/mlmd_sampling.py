@@ -153,7 +153,7 @@ def simple_mlmd_sampling_task(molecule_object,sample_params,model_path):
     model_path (Set by master): Path to current ML model
     
     """
-    os.environ["CUDA_VISIBLE_DEVICES"] = os.environ.get('PARSL_WORKER_RANK')
+    os.environ["CUDA_VISIBLE_DEVICES"] = os.environ.get('PARSL_WORKER_RANK')%4 #Hack, will fix later
     system_checker(molecule_object)
     feed_parameters = {}
     # Load MD parameters

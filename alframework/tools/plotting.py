@@ -20,7 +20,8 @@ def analysis_plot(meta_dir, plot_dir, meta_n_cols=50):
 
     for pickle_filename in os.listdir(meta_dir):
         match = metadata_pattern.fullmatch(pickle_filename)
-        if match.group(1) != 'boot':
+        #if match.group(1) != None and match.group(1).isdigit():
+        if match.group(1).isdigit():
             model_number = int(match.group(1))
             if model_number > num_models:
                 num_models = model_number
@@ -49,6 +50,7 @@ def analysis_plot(meta_dir, plot_dir, meta_n_cols=50):
         plot_vars = ['realtime', 'log realtime', 'simtime', 'log_simtime' 'Es', 'Fs', 'Fsmax']
         plot_titles = ['Real Time Simulation', 'Log Real Time Simulation', 'Simulation Time', 'Log Simulation Time', 'Es', 'Fs', 'Fsmax Error']
         for var, title in zip(plot_vars, plot_titles):
+            print(var)
             plot = df.boxplot(var, by='model', grid=False, rot=45)
             plot.set_title(title)
             plot.set_ylabel(var)

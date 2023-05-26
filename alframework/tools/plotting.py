@@ -11,7 +11,7 @@ def analysis_plot(meta_dir, plot_dir, meta_n_cols=50):
 
     metadata_record = {'model': [],
                        'realtime': [],
-                       'log realtime': [],
+                       'log_realtime': [],
                        'simtime': [],
                        'log_simtime': [],
                        'Es': [],
@@ -21,7 +21,7 @@ def analysis_plot(meta_dir, plot_dir, meta_n_cols=50):
     for pickle_filename in os.listdir(meta_dir):
         match = metadata_pattern.fullmatch(pickle_filename)
         #if match.group(1) != None and match.group(1).isdigit():
-        if match.group(1).isdigit():
+        if (match.group(1).isdigit() if match!=None else False):
             model_number = int(match.group(1))
             if model_number > num_models:
                 num_models = model_number
@@ -30,7 +30,7 @@ def analysis_plot(meta_dir, plot_dir, meta_n_cols=50):
                     model = pickle.load(fp)
                     metadata_record['model'].append(model_number)
                     metadata_record['realtime'].append(model['realtime_simulation'])
-                    metadata_record['log realtime'].append(np.log10(model['realtime_simulation']))
+                    metadata_record['log_realtime'].append(np.log10(model['realtime_simulation']))
                     metadata_record['simtime'].append(model['simulationtime'])
                     metadata_record['log_simtime'].append(np.log10(model['simulationtime']))
                     metadata_record['Es'].append(model['Es'])
@@ -47,7 +47,7 @@ def analysis_plot(meta_dir, plot_dir, meta_n_cols=50):
             model_filter = np.linspace(1, num_models, num=meta_n_cols, dtype=int)
             df = df[df['model'].isin(model_filter)]
 
-        plot_vars = ['realtime', 'log realtime', 'simtime', 'log_simtime' 'Es', 'Fs', 'Fsmax']
+        plot_vars = ['realtime', 'log_realtime', 'simtime', 'log_simtime', 'Es', 'Fs', 'Fsmax']
         plot_titles = ['Real Time Simulation', 'Log Real Time Simulation', 'Simulation Time', 'Log Simulation Time', 'Es', 'Fs', 'Fsmax Error']
         for var, title in zip(plot_vars, plot_titles):
             print(var)
@@ -55,4 +55,3 @@ def analysis_plot(meta_dir, plot_dir, meta_n_cols=50):
             plot.set_title(title)
             plot.set_ylabel(var)
             plt.savefig(plot_dir + '/analysis-plot-{:s}.png'.format( var))
-

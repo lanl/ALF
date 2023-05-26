@@ -42,7 +42,6 @@ def analysis_plot(meta_dir, plot_dir, meta_n_cols=50):
     # Don't do anything if there are no models
     if num_models > 0:
         df = pd.DataFrame(metadata_record)
-
         if num_models > meta_n_cols:
             model_filter = np.linspace(1, num_models, num=meta_n_cols, dtype=int)
             df = df[df['model'].isin(model_filter)]
@@ -50,7 +49,6 @@ def analysis_plot(meta_dir, plot_dir, meta_n_cols=50):
         plot_vars = ['realtime', 'log_realtime', 'simtime', 'log_simtime', 'Es', 'Fs', 'Fsmax']
         plot_titles = ['Real Time Simulation', 'Log Real Time Simulation', 'Simulation Time', 'Log Simulation Time', 'Es', 'Fs', 'Fsmax Error']
         for var, title in zip(plot_vars, plot_titles):
-            print(var)
             plot = df.boxplot(var, by='model', grid=False, rot=45)
             plot.set_title(title)
             plot.set_ylabel(var)

@@ -7,6 +7,7 @@ import json
 import pickle
 import time
 import sys
+from multiprocessing import Process
 from pathlib import Path
 import numpy as np
 np.set_printoptions(threshold=np.inf)
@@ -336,7 +337,7 @@ while True:
     # Construct analysis plots
     if (master_loop_iter %  master_config.get('update_plots_every', 1000)) == 0 and (analysis_plot!=None) :
         analysis_input = build_input_dict(analysis_plot, [master_config, sampler_config, QM_config, builder_config, ML_config])
-        analysis_plot(**analysis_input)
+        Process(target=analysis_plot,kwargs=analysis_input).start()
                 
     print("### Active Learning Status at: " + time.ctime() + " ###")
     print("builder status:")

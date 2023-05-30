@@ -3,20 +3,21 @@ import numpy as np
 import ase
 from ase.md.langevin import Langevin
 from ase import units
+from ase.io.trajectory import Trajectory
 import time
 from ase import Atoms
 import pickle as pkl
-from importlib import import_module
 from parsl import python_app, bash_app
 
 from alframework.tools.tools import annealing_schedule
 from alframework.tools.tools import system_checker
+from alframework.tools.tools import load_module_from_config
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator
     
 
 #For now I will take a dictionary with all sample parameters.
 #We may want to make this explicit. Ying Wai, what do you think? 
-def mlmd_sampling(molecule_object, ase_calculator,dt,maxt,Escut,Fscut,Ncheck,Tamp,Tper,Tsrt,Tend,Ramp,Rper,Rend,meta_dir=None,use_potential_specific_code=None):
+def mlmd_sampling(molecule_object, ase_calculator,dt,maxt,Escut,Fscut,Ncheck,Tamp,Tper,Tsrt,Tend,Ramp,Rper,Rend,meta_dir=None,use_potential_specific_code=None,trajectory_interval=None):
     system_checker(molecule_object)
     ase_atoms = molecule_object[1]
     T = annealing_schedule(0.0, maxt, Tamp, Tper, Tsrt, Tend)
@@ -35,6 +36,9 @@ def mlmd_sampling(molecule_object, ase_calculator,dt,maxt,Escut,Fscut,Ncheck,Tam
 
     # Define thermostat
     dyn = Langevin(ase_atoms, dt * units.fs, friction=0.02, temperature_K=T, communicator=None)
+    if trajectory_interval != None:
+        trajob = Trajectory( meta_dir+"/metadata-"+molecule_object[0]['moleculeid']+'.traj',mode='w',atoms=ase_atoms)
+        dyn.attach(trajob.write,interval=trajectory_interval)
 
     # Iterate MD
     failed = False
@@ -149,7 +153,7 @@ def simple_mlmd_sampling_task(molecule_object,sample_params,model_path):
     model_path (Set by master): Path to current ML model
     
     """
-    os.environ["CUDA_VISIBLE_DEVICES"] = os.environ.get('PARSL_WORKER_RANK')
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(int(os.environ.get('PARSL_WORKER_RANK'))%4) #Hack, will fix later
     system_checker(molecule_object)
     feed_parameters = {}
     # Load MD parameters
@@ -180,9 +184,7 @@ def simple_mlmd_sampling_task(molecule_object,sample_params,model_path):
     
     feed_parameters['meta_dir'] = sample_params['meta_dir']
     
-    module_string = '.'.join(sample_params['ase_calculator'].split('.')[:-1])
-    class_string = sample_params['ase_calculator'].split('.')[-1]
-    calc_class = getattr(import_module(module_string),class_string)
+    calc_class = load_module_from_config(sample_params, 'ase_calculator')
     
     if "use_potential_specific_code" in sample_params:
         if sample_params['use_potential_specific_code'].lower() == 'neurochem':
@@ -203,6 +205,12 @@ def simple_mlmd_sampling_task(molecule_object,sample_params,model_path):
     if 'translate_to_center' in list(sample_params):
         if sample_params['translate_to_center']:
             molecule_object[1].set_positions(molecule_object[1].get_positions()-molecule_object[1].get_center_of_mass())
+    
+    if sample_params.get('trajectory_frequency',None) != None:
+        if np.random.rand() < sample_params['trajectory_frequency']:
+            feed_parameters['trajectory_interval'] = sample_params.get('trajectory_interval',20)
+    else:
+        feed_parameters['trajectory_interval'] = sample_params.get('trajectory_interval',None)
     
     molecule_output = mlmd_sampling(molecule_object, ase_calculator,**feed_parameters)
     system_checker(molecule_output)

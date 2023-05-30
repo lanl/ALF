@@ -20,5 +20,7 @@
 	"parsl_configuration":"custom_modules.config_1node",
 	"parsl_debug_configuration":"custom_modules.config_debug",
 	"gpus_per_node":4,
-	"QM_scratch_dir":"water-test-running/"
+	"QM_scratch_dir":"water-test-running/",
+	"plotting_utility":"alframework.tools.plotting.analysis_plot",
+	"plot_dir":"status_plots/"
 }

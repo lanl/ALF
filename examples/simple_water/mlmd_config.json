@@ -15,5 +15,7 @@
   "meta_path":"sampling/",
   "ase_calculator":"alframework.ml_interfaces.hippynn_interface.HIPNN_ASE_load_ensemble",
   "translate_to_center":true,
-  "MLMD_calculator_options":{"well_params":{"r_start":3.0,"force":0.1}}
+  "MLMD_calculator_options":{"well_params":{"r_start":3.0,"force":0.1}},
+  "trajectory_frequency":0.05,
+  "trajectory_interval":1
 }

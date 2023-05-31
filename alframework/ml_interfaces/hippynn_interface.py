@@ -501,15 +501,15 @@ def train_HIPNN_model_wrapper(arg_dict):
     return(train_HIPNN_model(**arg_dict))
 
 @python_app(executors=['alf_ML_executor'])
-def train_HIPPYNN_ensemble_task(configuration,h5_dir,model_path,model_index,nGPU,remove_existing=False,h5_test_dir=None):
-    p = multiprocessing.Pool(nGPU)
-    general_configuration = configuration.copy()
+def train_HIPPYNN_ensemble_task(ML_config,h5_dir,model_path,current_training_id,gpus_per_node,remove_existing=False,h5_test_dir=None):
+    p = multiprocessing.Pool(gpus_per_node)
+    general_configuration = ML_config.copy()
     n_models = general_configuration.pop('n_models')
     params_list = [general_configuration.copy() for i in range(n_models)]
     for i,cur_dict in enumerate(params_list):
-        cur_dict['model_dir'] = model_path + '/model-{:02d}'.format(i)
+        cur_dict['model_dir'] = model_path.format(current_training_id) + '/model-{:02d}'.format(i)
         cur_dict['h5_train_dir'] = h5_dir
-        cur_dict['from_multiprocessing_nGPU'] = nGPU
+        cur_dict['from_multiprocessing_nGPU'] = gpus_per_node
     out = p.map(train_HIPNN_model_wrapper,params_list)
     completed = []
     HIPNN_complete = re.compile('Training complete')
@@ -521,7 +521,7 @@ def train_HIPPYNN_ensemble_task(configuration,h5_dir,model_path,model_index,nGPU
             completed.append(True)
         else:
             completed.append(False)
-    return(completed, model_index)
+    return(completed, current_training_id)
     
 
 def HIPNN_ASE_calculator(HIPNN_model_directory,energy_key='energy',device="cuda:0"):

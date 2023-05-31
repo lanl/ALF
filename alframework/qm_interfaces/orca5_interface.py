@@ -157,13 +157,15 @@ class orcaGenerator():
 #        return return_dictionary
 
 
-@python_app(executors=['alf_QM_executor','alf_QM_standby_executor'])
-def orca_calculator_task(input_system,configuration,directory,properties=['energy','forces']):
+@python_app(executors=['alf_QM_executor'])
+def orca_calculator_task(molecule_object,QM_config,QM_scratch_dir,properties_list):
     system_checker(input_system)
+    properties = list(properties_list)
+    directory = QM_scratch_dir + '/' + molecule_object[0]['moleculeid']
     molecule_id = input_system[0]['moleculeid']
     atoms = input_system[1]
     
-    orca = orcaGenerator(scratch_path=directory,nproc=configuration['ncpu'],orca_env_file=configuration['orca_env_file'],orca_command=configuration['QM_run_command'],orcainput=configuration['orcasimpleinput'],orcablocks=configuration['orcablocks'])
+    orca = orcaGenerator(scratch_path=directory,nproc=QM_config['ncpu'],orca_env_file=QM_config['orca_env_file'],orca_command=QM_config['QM_run_command'],orcainput=QM_config['orcasimpleinput'],orcablocks=QM_config['orcablocks'])
     
     out_properties = orca.single_point(molecule=atoms,properties=properties)
     
@@ -173,19 +175,21 @@ def orca_calculator_task(input_system,configuration,directory,properties=['energ
     return(return_system)
 
 
-@python_app(executors=['alf_QM_executor','alf_QM_standby_executor'])
-def orca_double_calculator_task(input_system,configuration,directory,properties=['energy','forces']):
+@python_app(executors=['alf_QM_executor'])
+def orca_double_calculator_task(molecule_object,QM_config,QM_scratch_dir,properties_list):
     system_checker(input_system)
+    properties = list(properties_list)
+    directory = QM_scratch_dir + '/' + molecule_object[0]['moleculeid']
     molecule_id = input_system[0]['moleculeid']
     atoms = input_system[1]
     directory1 = directory + '/1/'
     directory2 = directory + '/2/'
     
-    orca1 = orcaGenerator(scratch_path=directory1,nproc=configuration['ncpu'],orca_env_file=configuration['orca_env_file'],orca_command=configuration['QM_run_command'],orcainput=configuration['orcasimpleinput'],orcablocks=configuration['orcablocks'])
+    orca1 = orcaGenerator(scratch_path=directory1,nproc=QM_config['ncpu'],orca_env_file=QM_config['orca_env_file'],orca_command=QM_config['QM_run_command'],orcainput=QM_config['orcasimpleinput'],orcablocks=QM_config['orcablocks'])
     
     properties1 = orca1.single_point(molecule=atoms,properties=properties)
     
-    orca2 = orcaGenerator(scratch_path=directory2,nproc=configuration['ncpu'],orca_env_file=configuration['orca_env_file'],orca_command=configuration['QM_run_command'],orcainput=configuration['orcasimpleinput'],orcablocks=configuration['orcablocks'])
+    orca2 = orcaGenerator(scratch_path=directory2,nproc=QM_config['ncpu'],orca_env_file=QM_config['orca_env_file'],orca_command=QM_config['QM_run_command'],orcainput=QM_config['orcasimpleinput'],orcablocks=QM_config['orcablocks'])
     
     properties2 =  orca2.single_point(molecule=atoms,properties=properties)
     
@@ -196,7 +200,7 @@ def orca_double_calculator_task(input_system,configuration,directory,properties=
     for key in list(properties1):
         properties[key] = np.mean([properties1[key],properties2[key]],axis=0)
     
-    if (maxEdev < configuration['Ediff']) and (maxFdev < configuration['Fdiff']) and properties1['converged'] and properties2['converged']:
+    if (maxEdev < configuration['Ediff']) and (maxFdev < QM_config['Fdiff']) and properties1['converged'] and properties2['converged']:
         properties['converged'] = True
     else:
         properties['converged'] = False

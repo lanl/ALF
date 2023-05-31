@@ -13,6 +13,7 @@ from alframework.tools.tools import annealing_schedule
 from alframework.tools.tools import system_checker
 from alframework.tools.tools import load_module_from_config
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator
+from alframework.tools.tools import build_input_dict
     
 
 #For now I will take a dictionary with all sample parameters.
@@ -131,7 +132,7 @@ def mlmd_sampling(molecule_object, ase_calculator,dt,maxt,Escut,Fscut,Ncheck,Tam
         return [meta_dict, None,{}]
 
 @python_app(executors=['alf_sampler_executor'])
-def simple_mlmd_sampling_task(molecule_object,sample_params,model_path):
+def simple_mlmd_sampling_task(molecule_object,sampler_config,model_path,current_model_id,gpus_per_node):
     """
     A simple implementation of uncertanty based MD sampling
     parameters:
@@ -153,65 +154,56 @@ def simple_mlmd_sampling_task(molecule_object,sample_params,model_path):
     model_path (Set by master): Path to current ML model
     
     """
-    os.environ["CUDA_VISIBLE_DEVICES"] = str(int(os.environ.get('PARSL_WORKER_RANK'))%4) #Hack, will fix later
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(int(os.environ.get('PARSL_WORKER_RANK'))%gpus_per_node)
     system_checker(molecule_object)
     feed_parameters = {}
-    # Load MD parameters
-    feed_parameters['dt'] = sample_params['dt']
-    feed_parameters['maxt'] = sample_params['maxt']
-    feed_parameters['Escut'] = sample_params['Escut']
-    feed_parameters['Fscut'] = sample_params['Fscut']
-    feed_parameters['Ncheck'] = sample_params['Ncheck']
 
     # Setup T
-    feed_parameters['Tamp'] = np.random.uniform(sample_params['amp_temp'][0], sample_params['amp_temp'][1])
-    feed_parameters['Tper'] = np.random.uniform(sample_params['per_temp'][0], sample_params['per_temp'][1])
-    feed_parameters['Tsrt'] = np.random.uniform(sample_params['srt_temp'][0], sample_params['srt_temp'][1])
-    feed_parameters['Tend'] = np.random.uniform(sample_params['end_temp'][0], sample_params['end_temp'][1])
+    feed_parameters['Tamp'] = np.random.uniform(sampler_config['amp_temp'][0], sampler_config['amp_temp'][1])
+    feed_parameters['Tper'] = np.random.uniform(sampler_config['per_temp'][0], sampler_config['per_temp'][1])
+    feed_parameters['Tsrt'] = np.random.uniform(sampler_config['srt_temp'][0], sampler_config['srt_temp'][1])
+    feed_parameters['Tend'] = np.random.uniform(sampler_config['end_temp'][0], sampler_config['end_temp'][1])
     
-    if sample_params['amp_dens'] == None:
+    if sampler_config['amp_dens'] == None:
         feed_parameters['Ramp'] = None
     else: 
-        feed_parameters['Ramp'] = np.random.uniform(sample_params['amp_dens'][0], sample_params['amp_dens'][1])
-    if sample_params['per_dens'] == None:
+        feed_parameters['Ramp'] = np.random.uniform(sampler_config['amp_dens'][0], sampler_config['amp_dens'][1])
+    if sampler_config['per_dens'] == None:
         feed_parameters['Rper'] = None
     else:
-        feed_parameters['Rper'] = np.random.uniform(sample_params['per_dens'][0], sample_params['per_dens'][1])
-    if sample_params['end_dens'] == None:
+        feed_parameters['Rper'] = np.random.uniform(sampler_config['per_dens'][0], sampler_config['per_dens'][1])
+    if sampler_config['end_dens'] == None:
         feed_parameters['Rend'] = None
     else:
-        feed_parameters['Rend'] = np.random.uniform(sample_params['end_dens'][0], sample_params['end_dens'][1])
+        feed_parameters['Rend'] = np.random.uniform(sampler_config['end_dens'][0], sampler_config['end_dens'][1])
+        
+    calc_class = load_module_from_config(sampler_config, 'ase_calculator')
     
-    feed_parameters['meta_dir'] = sample_params['meta_dir']
-    
-    calc_class = load_module_from_config(sample_params, 'ase_calculator')
-    
-    if "use_potential_specific_code" in sample_params:
-        if sample_params['use_potential_specific_code'].lower() == 'neurochem':
-            model_info = {}
-            model_info['model_path'] = model_path + '/'
-            model_info['Nn'] = 8
-            model_info['gpu'] = '0' #os.environ.get('PARSL_WORKER_RANK') now using cuda visible devices
-            ase_calculator = calc_class(model_info)
+    if sampler_config.get("use_potential_specific_code",None) == 'neurochem':
+        model_info = {}
+        model_info['model_path'] = model_path + '/'
+        model_info['Nn'] = 8
+        model_info['gpu'] = '0' #os.environ.get('PARSL_WORKER_RANK') now using cuda visible devices
+        ase_calculator = calc_class(model_info)
             
     else:
         gpu = '0' #os.environ.get('PARSL_WORKER_RANK') now using  cuda visible devices
         calculator_list = calc_class(model_path + '/',device='cuda:'+gpu)
-        ase_calculator = MLMD_calculator(calculator_list,**sample_params['MLMD_calculator_options'])
+        ase_calculator = MLMD_calculator(calculator_list,**sampler_config['MLMD_calculator_options'])
+        
+    if sampler_config.get('translate_to_center',False):
+        molecule_object[1].set_positions(molecule_object[1].get_positions()-molecule_object[1].get_center_of_mass())
     
-    if "use_potential_specific_code" in list(sample_params):
-        feed_parameters['use_potential_specific_code'] = sample_params['use_potential_specific_code']
-    
-    if 'translate_to_center' in list(sample_params):
-        if sample_params['translate_to_center']:
-            molecule_object[1].set_positions(molecule_object[1].get_positions()-molecule_object[1].get_center_of_mass())
-    
-    if sample_params.get('trajectory_frequency',None) != None:
-        if np.random.rand() < sample_params['trajectory_frequency']:
-            feed_parameters['trajectory_interval'] = sample_params.get('trajectory_interval',20)
+    #build_input_dict will check for trajectory_frequency from feed_parameters first.
+    if np.random.rand() < sampler_config.get('trajectory_frquency',0) 
+        feed_parameters['trajectory_interval'] = sampler_config.get('trajectory_interval',20)
     else:
-        feed_parameters['trajectory_interval'] = sample_params.get('trajectory_interval',None)
+        feed_parameters['trajectory_interval'] = sampler_config.get('trajectory_interval',None)     
     
-    molecule_output = mlmd_sampling(molecule_object, ase_calculator,**feed_parameters)
+    feed_parameters['molecule_object'] = molecule_object
+    feed_parameters['ase_calculator'] = ase_calculator
+    function_input = build_input_dict(mlmd_sampling,[feed_parameters,sampler_config])
+    
+    molecule_output = mlmd_sampling(**function_input)
     system_checker(molecule_output)
     return(molecule_output)

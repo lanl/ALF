@@ -26,7 +26,7 @@ from copy import deepcopy
 #    return(atom_list)
     
 @python_app(executors=['alf_sampler_executor'])
-def simple_cfg_loader_task(moleculeid,builder_params):
+def simple_cfg_loader_task(moleculeid,shake=0.05):
     """
     builder_params:
     molecule_library_dir: path to molecule library
@@ -35,7 +35,7 @@ def simple_cfg_loader_task(moleculeid,builder_params):
     cfg_list = glob.glob(builder_params['molecule_library_dir']+'/*.cfg')
     cfg_choice = random.choice(cfg_list)
     atom_object = cfg.read_cfg(cfg_choice)
-    atom_object.set_positions(atom_object.get_positions() + np.random.uniform(-1*builder_params['shake'],builder_params['shake'],size=atom_object.get_positions().shape))
+    atom_object.rattle(shake)
     return([{'moleculeid':moleculeid,'molecule_library_file':cfg_choice},atom_object,{}])
     
 def readMolFiles(molecule_sample_path):
@@ -148,7 +148,7 @@ def condensed_phase_builder(start_system, molecule_library, solute_molecules=[],
     return(start_system)
 
 @python_app(executors=['alf_sampler_executor'])
-def simple_condensed_phase_builder_task(moleculeid,builder_params):
+def simple_condensed_phase_builder_task(moleculeid,builder_config,molecule_library_dir,cell_range,solute_molecule_options,Rrange):
     """
     Elements in  builder parameters
         molecule_library_path: path to library of molecular fragments to read in
@@ -178,13 +178,13 @@ def simple_condensed_phase_builder_task(moleculeid,builder_params):
 #    import random
 #    from copy import deepcopy
     
-    cell_shape = [np.random.uniform(dim[0],dim[1]) for dim in builder_params['cell_range']]
+    cell_shape = [np.random.uniform(dim[0],dim[1]) for dim in cell_range]
     
     empty_system = [{'moleculeid':moleculeid},Atoms(cell=cell_shape),{}]
     
-    molecule_library,mols = readMolFiles(builder_params['molecule_library_dir'])
+    molecule_library,mols = readMolFiles(molecule_library_dir)
     
-    solute_molecules = random.choice(builder_params['solute_molecule_options'])
+    solute_molecules = random.choice(solute_molecule_options)
 
     feed_parameters = {}
     for arg in builder_params:
@@ -192,11 +192,9 @@ def simple_condensed_phase_builder_task(moleculeid,builder_params):
             feed_parameters[arg] = builder_params[arg]
     
     feed_parameters['solute_molecules'] = solute_molecules
-    feed_parameters['density'] = np.random.uniform(builder_params['Rrange'][0],builder_params['Rrange'][1])
+    feed_parameters['density'] = np.random.uniform(Rrange[0],Rrange[1])
     
-    #with open('/users/bnebgen/ml4chem/Programs/parsl-alf2/examples/IL/temp.txt',"w") as outfile:
-    #    outfile.write(json.dumps(feed_parameters))
-       
+    feed_parameters =    
     system = condensed_phase_builder(empty_system,molecule_library,**feed_parameters)
     system_checker(system)
     return(system)

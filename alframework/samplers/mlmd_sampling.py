@@ -195,7 +195,7 @@ def simple_mlmd_sampling_task(molecule_object,sampler_config,model_path,current_
         molecule_object[1].set_positions(molecule_object[1].get_positions()-molecule_object[1].get_center_of_mass())
     
     #build_input_dict will check for trajectory_frequency from feed_parameters first.
-    if np.random.rand() < sampler_config.get('trajectory_frquency',0) 
+    if np.random.rand() < sampler_config.get('trajectory_frquency',0):
         feed_parameters['trajectory_interval'] = sampler_config.get('trajectory_interval',20)
     else:
         feed_parameters['trajectory_interval'] = sampler_config.get('trajectory_interval',None)     

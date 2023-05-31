@@ -200,7 +200,7 @@ def orca_double_calculator_task(molecule_object,QM_config,QM_scratch_dir,propert
     for key in list(properties1):
         properties[key] = np.mean([properties1[key],properties2[key]],axis=0)
     
-    if (maxEdev < configuration['Ediff']) and (maxFdev < QM_config['Fdiff']) and properties1['converged'] and properties2['converged']:
+    if (maxEdev < QM_config['Ediff']) and (maxFdev < QM_config['Fdiff']) and properties1['converged'] and properties2['converged']:
         properties['converged'] = True
     else:
         properties['converged'] = False

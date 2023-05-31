@@ -23,6 +23,8 @@ def train_HIPNN_model(model_dir,
                       first_is_interacting = False,
                       energy_mae_loss_weight = 1e2,
                       energy_rmse_loss_weight = 1e2,
+                      total_energy_mae_loss_weight = 0,
+                      total_energy_rmse_loss_weight = 0,
                       force_mae_loss_weight = 1.0,
                       force_rmse_loss_weight = 1.0,
                       charge_mae_loss_weight = 1.0,
@@ -44,6 +46,7 @@ def train_HIPNN_model(model_dir,
                       controller_options = {"batch_size":64,"eval_batch_size":128,"max_epochs":1000,"termination_patience":55},
                       device_string = '0',
                       from_multiprocessing_nGPU = None,
+                      build_lammps_pickle = False,
                       remove_high_energy_cut = None, 
                       remove_high_energy_std = None,
                       remove_high_forces_cut = None, 
@@ -63,10 +66,12 @@ def train_HIPNN_model(model_dir,
         quadrupole_key': string, molecular-quadrupole key inside th h5 data. Must match db name in 'properties_list'. If None, quadrupoles are not trained to. 
         cell': string, cell key inside h5 dataset. Must match db name in 'properties_list'. Do not define if data is not periodic.
         hipnn_order': string 'scalar','vector','quadradic'
-        energy_mae_loss_weight': MAE energy loss weight.
-        energy_rmse_loss_weight': RMSE energy loss weight.
+        energy_mae_loss_weight': MAE per atom energy loss weight.
+        energy_rmse_loss_weight': RMSE per atomenergy loss weight.
+        total_energy_mae_loss_weight': MAE  total energy loss weight. Typicall only one of energy_mae_loss_weight and total_energy_mae_loss_eight are used (the other is set to 0).
+        total_energy_rmse_loss_weight': MAE  total energy loss weight. Typicall only one of energy_rmse_loss_weight and total_energy_rmse_loss_eight are used (the other is set to 0).
         force_mae_loss_weight': MAE force loss weight
-        force_rmse_loss_weight': 2 element list of scalars. [MAE weight, RMSE weight]
+        force_rmse_loss_weight': RMSE force loss weight
         charge_mae_loss_weight': MAE charge loss weight. 
         charge_rmse_loss_weight': RMSE charge loss weight. 
         dipole_mae_loss_weight': MAE dipole loss weight. 
@@ -81,6 +86,7 @@ def train_HIPNN_model(model_dir,
         h5_directory': 
         external_test_set': None or directory
         plot_every': integer, every plot_every epochs, generate plots. 
+        build_lammps_pickle': boolean, whether or not to build a pickle file fo rthe network enabling loading into lammps MLIAP. Requires building of lammps python interface. 
         remove_high_energy_cut: float, or None: If none, all data is kept. If float, data with energies per atom that many standard deviations or larger are removed. 
         remove_high_energy_std: float, or None: If none, all data is kept. If float, data with energies per atom that many standard deviations or larger are removed. 
         remove_high_forces_cut: float, or None: If none, all data is kept. If float, data with forces that many standard deviations or larger are removed. 
@@ -266,7 +272,9 @@ def train_HIPNN_model(model_dir,
 
             
             loss_energy = energy_mae_loss_weight * mae_energyperatom + \
-                energy_rmse_loss_weight * rmse_energyperatom
+                energy_rmse_loss_weight * rmse_energyperatom + \
+                total_energy_mae_loss_weight * mae_energy + \
+                total_energy_rmse_loss_weight * rmse_energy
             
             loss_regularization = rbar_loss_weight * rbar + \
                 l2_reg_loss_weight * l2_reg
@@ -496,6 +504,8 @@ def train_HIPNN_model(model_dir,
                 database=database,
                 setup_params=experiment_params,
             )
+    
+    if build_lammps_pickle
             
 def train_HIPNN_model_wrapper(arg_dict):
     return(train_HIPNN_model(**arg_dict))

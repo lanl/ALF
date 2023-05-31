@@ -181,14 +181,14 @@ def simple_mlmd_sampling_task(molecule_object,sampler_config,model_path,current_
     
     if sampler_config.get("use_potential_specific_code",None) == 'neurochem':
         model_info = {}
-        model_info['model_path'] = model_path + '/'
+        model_info['model_path'] = model_path.format(current_model_id) + '/'
         model_info['Nn'] = 8
         model_info['gpu'] = '0' #os.environ.get('PARSL_WORKER_RANK') now using cuda visible devices
         ase_calculator = calc_class(model_info)
             
     else:
         gpu = '0' #os.environ.get('PARSL_WORKER_RANK') now using  cuda visible devices
-        calculator_list = calc_class(model_path + '/',device='cuda:'+gpu)
+        calculator_list = calc_class(model_path.format(current_model_id) + '/',device='cuda:'+gpu)
         ase_calculator = MLMD_calculator(calculator_list,**sampler_config['MLMD_calculator_options'])
         
     if sampler_config.get('translate_to_center',False):

@@ -230,13 +230,13 @@ config_debug = Config(
                 'debug',
                 init_blocks = 0,
                 min_blocks = 0,
-                max_blocks = 1,
+                max_blocks = 0,
 
                 nodes_per_block=1,
                 #workers_per_node=1,
 
                 # string to prepend to #SBATCH blocks in the submit
-                scheduler_options='#SBATCH --ntasks-per-node=36 --nodes=1 -A w23_ml4chem --qos debug --reservation debug --qos=standby',
+                scheduler_options='#SBATCH --ntasks-per-node=36 --nodes=1 -A w23_ml4chem --qos debug --reservation debug',
 
                 # Command to be run before starting a worker
                 #worker_init=

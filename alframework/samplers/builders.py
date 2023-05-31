@@ -15,6 +15,7 @@ from ase.io import read, write
 
 from alframework.tools.tools import random_rotation_matrix
 from alframework.tools.tools import system_checker
+from alframework.tools.tools import build_input_dict
 import random
 from copy import deepcopy
 
@@ -194,8 +195,8 @@ def simple_condensed_phase_builder_task(moleculeid,builder_config,molecule_libra
     feed_parameters['solute_molecules'] = solute_molecules
     feed_parameters['density'] = np.random.uniform(Rrange[0],Rrange[1])
     
-    feed_parameters =    
-    system = condensed_phase_builder(empty_system,molecule_library,**feed_parameters)
+    input_parameters = build_input_dict(condensed_phase_builder,[{"start_system":empty_system},feed_parameters,builder_config])
+    system = condensed_phase_builder(**input_parameters)
     system_checker(system)
     return(system)
     

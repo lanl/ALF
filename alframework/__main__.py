@@ -136,7 +136,7 @@ with open(master_config['status_path'], "w") as outfile:
 testing = False
 
 if '--test_builder' in sys.argv[2:] or '--test_sampler' in sys.argv[2:] or '--test_qm' in sys.argv[2:]:
-    task_input = build_input_dict(builder_task,[{"moleculeid":'test_builder',"builder_config":builder_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
+    task_input = build_input_dict(builder_task.func,[{"moleculeid":'test_builder',"builder_config":builder_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
     builder_task_queue.add_task(builder_task(**task_input))
     builder_configuration = builder_task_queue.task_list[0].result()
     queue_output = builder_task_queue.get_task_results()
@@ -152,7 +152,7 @@ if '--test_sampler' in sys.argv[2:]:
     if status['current_model_id']<0:
         raise RuntimeError("Need to train model before testing sampling")
     print(master_config['model_path'].format(status['current_model_id']))
-    task_input = build_input_dict(sampler_task,[{"molecule_object":test_configuration,"sampler_config":sampler_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
+    task_input = build_input_dict(sampler_task.func,[{"molecule_object":test_configuration,"sampler_config":sampler_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
     sampler_task_queue.add_task(sampler_task(**task_input))
     sampled_configuration = sampler_task_queue.task_list[0].result()
     queue_output = sampler_task_queue.get_task_results()
@@ -164,7 +164,7 @@ if '--test_sampler' in sys.argv[2:]:
 
 #def ase_calculator_task(input_system,configuration_list,directory,command,properties=['energy','forces']):
 if '--test_qm' in sys.argv[2:]:
-    task_input = build_input_dict(qm_task,[{"molecule_object":test_configuration,"QM_config":QM_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
+    task_input = build_input_dict(qm_task.func,[{"molecule_object":test_configuration,"QM_config":QM_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
     QM_task_queue.add_task(qm_task(**task_input))
     qm_result = QM_task_queue.task_list[0].result()
     queue_output,failed = QM_task_queue.get_task_results()
@@ -202,7 +202,7 @@ if '--test_qm' in sys.argv[2:]:
 #train_ANI_model_task(configuration,data_directory,model_path,model_index,remove_existing=False):
 if '--test_ml' in sys.argv[2:]:
     #configuration,data_directory,model_path,model_index,remove_existing=False
-    task_input = build_input_dict(ml_task,[{"ML_config":ML_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
+    task_input = build_input_dict(ml_task.func,[{"ML_config":ML_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
     ML_task_queue.add_task(ml_task(**task_input))
     status['current_training_id'] = status['current_training_id'] + 1
     with open(master_config['status_path'], "w") as outfile:
@@ -233,7 +233,7 @@ if status['current_h5_id']==0 and status['current_model_id']<0:
     while QM_task_queue.get_completed_number() < master_config['bootstrap_set']:
         if (QM_task_queue.get_queued_number() < master_config['target_queued_QM']):
             while (builder_task_queue.get_number() < master_config['parallel_samplers']):
-                task_input = build_input_dict(builder_task,[{"moleculeid":'mol-boot-{:010d}'.format(status['current_molecule_id']),"builder_config":builder_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
+                task_input = build_input_dict(builder_task.func,[{"moleculeid":'mol-boot-{:010d}'.format(status['current_molecule_id']),"builder_config":builder_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
                 builder_task_queue.add_task(builder_task(**task_input))
                 status['current_molecule_id'] = status['current_molecule_id'] + 1
         
@@ -241,7 +241,7 @@ if status['current_h5_id']==0 and status['current_model_id']<0:
             builder_results,failed = builder_task_queue.get_task_results()
             status['lifetime_failed_builder_tasks'] = status['lifetime_failed_builder_tasks'] + failed
             for structure in builder_results:
-                task_input = build_input_dict(qm_task,[{"molecule_object":structure,"QM_config":QM_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
+                task_input = build_input_dict(qm_task.func,[{"molecule_object":structure,"QM_config":QM_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
                 QM_task_queue.add_task(qm_task(**task_input))
                 
         print("### Bootstraping Learning Status at: " + time.ctime() + " ###")
@@ -260,7 +260,7 @@ if status['current_h5_id']==0 and status['current_model_id']<0:
     status['lifetime_failed_QM_tasks'] = status['lifetime_failed_QM_tasks'] + failed    
     store_current_data(master_config['h5_path'].format(status['current_h5_id']),results_list,master_config['properties_list'])
     status['current_h5_id'] = status['current_h5_id'] + 1
-    task_input = build_input_dict(ml_task,[{"ML_config":ML_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
+    task_input = build_input_dict(ml_task.func,[{"ML_config":ML_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
     ML_task_queue.add_task(ml_task(**task_input))
     
     status['current_training_id'] = status['current_training_id'] + 1
@@ -312,7 +312,7 @@ while True:
     #Run more builders
     if (QM_task_queue.get_queued_number() < master_config['target_queued_QM']) and (QM_task_queue.get_number() < master_config.get('maximum_completed_QM',1e12)):
         while (sampler_task_queue.get_number()+builder_task_queue.get_number() < master_config['parallel_samplers']):
-            task_input = build_input_dict(builder_task,[{"moleculeid":'mol-{:04d}-{:010d}'.format(status['current_model_id'],status['current_molecule_id']),"builder_config":builder_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
+            task_input = build_input_dict(builder_task.func,[{"moleculeid":'mol-{:04d}-{:010d}'.format(status['current_model_id'],status['current_molecule_id']),"builder_config":builder_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
             builder_task_queue.add_task(builder_task(**task_input))
             status['current_molecule_id'] = status['current_molecule_id'] + 1
             
@@ -321,7 +321,7 @@ while True:
         structure_list,failed = builder_task_queue.get_task_results()
         status['lifetime_failed_builder_tasks'] = status['lifetime_failed_builder_tasks'] + failed
         for structure in structure_list:
-            task_input = build_input_dict(sampler_task,[{"molecule_object":structure,"sampler_config":sampler_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
+            task_input = build_input_dict(sampler_task.func,[{"molecule_object":structure,"sampler_config":sampler_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
             sampler_task_queue.add_task(sampler_task(**task_input))
 
     #Run more QM
@@ -330,7 +330,7 @@ while True:
         status['lifetime_failed_sampler_tasks'] = status['lifetime_failed_sampler_tasks'] + failed
         for structure in sampler_results: #may need [0]
             if not structure[1]==None:
-                task_input = build_input_dict(qm_task,[{"molecule_object":structure,"QM_config":QM_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
+                task_input = build_input_dict(qm_task.func,[{"molecule_object":structure,"QM_config":QM_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
                 QM_task_queue.add_task(qm_task(**task_input))
 
     #Train more models
@@ -345,7 +345,7 @@ while True:
 #        with open('data-bk-{:04d}.pickle'.format(status['current_h5_id']),'wb') as pkbk: 
 #            pickle.dump(results_list,pkbk)
         status['current_h5_id'] = status['current_h5_id'] + 1
-        task_input = build_input_dict(ml_task,[{"ML_config":ML_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
+        task_input = build_input_dict(ml_task.func,[{"ML_config":ML_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
         ML_task_queue.add_task(ml_task(**task_input))
         status['current_training_id'] = status['current_training_id'] + 1
         

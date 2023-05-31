@@ -312,7 +312,7 @@ while True:
     #Run more builders
     if (QM_task_queue.get_queued_number() < master_config['target_queued_QM']) and (QM_task_queue.get_number() < master_config.get('maximum_completed_QM',1e12)):
         while (sampler_task_queue.get_number()+builder_task_queue.get_number() < master_config['parallel_samplers']):
-            task_input = build_input_dict(builder_task,[{"moleculeid":'mol-{:04d}-{:010d}'.format(status['current_model_id'],status['current_molecule_id'],"builder_config":builder_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
+            task_input = build_input_dict(builder_task,[{"moleculeid":'mol-{:04d}-{:010d}'.format(status['current_model_id'],status['current_molecule_id']),"builder_config":builder_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
             builder_task_queue.add_task(builder_task(**task_input))
             status['current_molecule_id'] = status['current_molecule_id'] + 1
             
@@ -322,7 +322,7 @@ while True:
         status['lifetime_failed_builder_tasks'] = status['lifetime_failed_builder_tasks'] + failed
         for structure in structure_list:
             task_input = build_input_dict(sampler_task,[{"molecule_object":structure,"sampler_config":sampler_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
-            sampler_task_queue.add_task(sampler_task(**task_input)))
+            sampler_task_queue.add_task(sampler_task(**task_input))
 
     #Run more QM
     if (sampler_task_queue.get_completed_number()>master_config['minimum_QM']):

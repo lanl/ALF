@@ -159,17 +159,17 @@ class orcaGenerator():
 
 @python_app(executors=['alf_QM_executor'])
 def orca_calculator_task(molecule_object,QM_config,QM_scratch_dir,properties_list):
-    system_checker(input_system)
+    system_checker(molecule_object)
     properties = list(properties_list)
     directory = QM_scratch_dir + '/' + molecule_object[0]['moleculeid']
-    molecule_id = input_system[0]['moleculeid']
-    atoms = input_system[1]
+    molecule_id = molecule_object[0]['moleculeid']
+    atoms = molecule_object[1]
     
     orca = orcaGenerator(scratch_path=directory,nproc=QM_config['ncpu'],orca_env_file=QM_config['orca_env_file'],orca_command=QM_config['QM_run_command'],orcainput=QM_config['orcasimpleinput'],orcablocks=QM_config['orcablocks'])
     
     out_properties = orca.single_point(molecule=atoms,properties=properties)
     
-    return_system = [input_system[0],input_system[1],out_properties]
+    return_system = [molecule_object[0],molecule_object[1],out_properties]
     system_checker(return_system)
     
     return(return_system)
@@ -177,11 +177,11 @@ def orca_calculator_task(molecule_object,QM_config,QM_scratch_dir,properties_lis
 
 @python_app(executors=['alf_QM_executor'])
 def orca_double_calculator_task(molecule_object,QM_config,QM_scratch_dir,properties_list):
-    system_checker(input_system)
+    system_checker(molecule_object)
     properties = list(properties_list)
     directory = QM_scratch_dir + '/' + molecule_object[0]['moleculeid']
-    molecule_id = input_system[0]['moleculeid']
-    atoms = input_system[1]
+    molecule_id = molecule_object[0]['moleculeid']
+    atoms = molecule_object[1]
     directory1 = directory + '/1/'
     directory2 = directory + '/2/'
     
@@ -205,7 +205,7 @@ def orca_double_calculator_task(molecule_object,QM_config,QM_scratch_dir,propert
     else:
         properties['converged'] = False
     
-    return_system = [input_system[0],input_system[1],properties]
+    return_system = [molecule_object[0],molecule_object[1],properties]
     system_checker(return_system)
     
     return(return_system)

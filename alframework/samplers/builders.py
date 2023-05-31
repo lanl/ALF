@@ -149,7 +149,7 @@ def condensed_phase_builder(start_system, molecule_library, solute_molecules=[],
     return(start_system)
 
 @python_app(executors=['alf_sampler_executor'])
-def simple_condensed_p\hase_builder_task(moleculeid,builder_config,molecule_library_dir,cell_range,solute_molecule_options,Rrange):
+def simple_condensed_phase_builder_task(moleculeid,builder_config,molecule_library_dir,cell_range,solute_molecule_options,Rrange):
     """
     Elements in  builder parameters
         molecule_library_path: path to library of molecular fragments to read in

@@ -192,7 +192,7 @@ def simple_condensed_phase_builder_task(moleculeid,builder_config,molecule_libra
     feed_parameters['solute_molecules'] = solute_molecules
     feed_parameters['density'] = np.random.uniform(Rrange[0],Rrange[1])
     
-    input_parameters = build_input_dict(condensed_phase_builder,[{"start_system":empty_system},feed_parameters,builder_config])
+    input_parameters = build_input_dict(condensed_phase_builder,[{"start_system":empty_system,"molecule_library":molecule_library},feed_parameters,builder_config])
     system = condensed_phase_builder(**input_parameters)
     system_checker(system)
     return(system)

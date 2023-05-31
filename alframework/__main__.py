@@ -153,7 +153,7 @@ if '--test_sampler' in sys.argv[2:]:
         raise RuntimeError("Need to train model before testing sampling")
     print(master_config['model_path'].format(status['current_model_id']))
     task_input = build_input_dict(sampler_task,[{"molecule_object":test_configuration,"sampler_config":sampler_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
-    sampler_task_queue.add_task(sampler_task(**task_input)))
+    sampler_task_queue.add_task(sampler_task(**task_input))
     sampled_configuration = sampler_task_queue.task_list[0].result()
     queue_output = sampler_task_queue.get_task_results()
     test_configuration = queue_output[0][0]

@@ -511,7 +511,9 @@ def train_HIPNN_model(model_dir,
                 from hippynn.tools import device_fallback
                 possible_symbols = [chemical_symbols[num] for num in network_params['possible_species']]
                 possible_symbols.remove('X')
-                unified = MLIAPInterface(energy_node, possible_symbols, model_device=device_fallback)
+                unified = MLIAPInterface(henergy, possible_symbols, model_device=device_fallback)
+                torch.save(unifiedk,"lammps_model.pt")
+                
             
 def train_HIPNN_model_wrapper(arg_dict):
     return(train_HIPNN_model(**arg_dict))

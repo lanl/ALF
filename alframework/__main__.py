@@ -83,23 +83,27 @@ for entry in master_config.keys():
 #############################
 #Builder
 builder_task = load_module_from_string(master_config['builder_task'])
-if 'alf_sampler_standby_executor' in executor_list:
-    builder_task.executors.append('alf_sampler_standby_executor')
+for cur_Exec in builder_task.executors:
+    if cur_Exec.replace('_executor','_standby_executor') in executor_list:
+        builder_task.executors.append(cur_Exec.replace('_executor','_standby_executor'))
 
 #Sampler
 sampler_task = load_module_from_string(master_config['sampler_task'])
-if 'alf_sampler_standby_executor' in executor_list:
-    sampler_task.executors.append('alf_sampler_standby_executor')
+for cur_Exec in sampler_task.executors:
+    if cur_Exec.replace('_executor','_standby_executor') in executor_list:
+        sampler_task.executors.append(cur_Exec.replace('_executor','_standby_executor'))
 
 #QM
 qm_task = load_module_from_string(master_config['QM_task'])
-if 'alf_QM_standby_executor' in executor_list:
-    qm_task.executors.append('alf_QM_standby_executor')
+for cur_Exec in qm_task.executors:
+    if cur_Exec.replace('_executor','_standby_executor') in executor_list:
+        qm_task.executors.append(cur_Exec.replace('_executor','_standby_executor'))
 
 #ML
 ml_task = load_module_from_string(master_config['ML_task'])
-if 'alf_ML_standby_executor' in executor_list:
-    ml_task.executors.append('alf_ML_standby_executor')
+for cur_Exec in ml_task.executors:
+    if cur_Exec.replace('_executor','_standby_executor') in executor_list:
+        ml_task.executors.append(cur_Exec.replace('_executor','_standby_executor'))
 
 ##########################################
 ## Step 3: Evaluate restart possibilites #

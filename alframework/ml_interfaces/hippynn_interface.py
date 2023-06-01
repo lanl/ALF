@@ -512,7 +512,7 @@ def train_HIPNN_model(model_dir,
                 possible_symbols = [chemical_symbols[num] for num in network_params['possible_species']]
                 possible_symbols.remove('X')
                 unified = MLIAPInterface(henergy, possible_symbols, model_device=device_fallback)
-                torch.save(unifiedk,"lammps_model.pt")
+                torch.save(unified,"lammps_model.pt")
                 
             
 def train_HIPNN_model_wrapper(arg_dict):

@@ -48,6 +48,7 @@
 "scheduler_options":{"max_batch_size":128,"patience":20,"factor":0.5},
 "controller_options":{"batch_size":32,"eval_batch_size":128,"max_epochs":500,"termination_patience":40},
 "device_string":"from_multiprocessing",
+"build_lammps_pickle":true,
 "remove_high_energy_cut":null, 
 "remove_high_energy_std":null,
 "remove_high_forces_cut":500, 

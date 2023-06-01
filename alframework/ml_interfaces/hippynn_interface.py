@@ -6,6 +6,7 @@ import numpy as np
 import glob
 import os
 from ase import units
+from ase.data import chemical_symbols
 def train_HIPNN_model(model_dir,
                       h5_train_dir,
                       energy_key,
@@ -505,7 +506,12 @@ def train_HIPNN_model(model_dir,
                 setup_params=experiment_params,
             )
     
-    if build_lammps_pickle
+            if build_lammps_pickle:
+                from hippynn.interfaces.lammps_interface import MLIAPInterface
+                from hippynn.tools import device_fallback
+                possible_symbols = [chemical_symbols[num] for num in network_params['possible_species']]
+                possible_symbols.remove('X')
+                unified = MLIAPInterface(energy_node, possible_symbols, model_device=device_fallback)
             
 def train_HIPNN_model_wrapper(arg_dict):
     return(train_HIPNN_model(**arg_dict))

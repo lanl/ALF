@@ -534,7 +534,7 @@ def train_HIPPYNN_ensemble_task(ML_config,h5_dir,model_path,current_training_id,
     
     p.close()
     for i in range(n_models):
-        log = open(model_path + '/model-{:02d}/training_log.txt'.format(i),'r').read()
+        log = open(model_path.format(current_training_id) + '/model-{:02d}/training_log.txt'.format(i),'r').read()
         if len(HIPNN_complete.findall(log))==1:
             completed.append(True)
         else:

@@ -1,0 +1,9 @@
+{
+  "QM_run_command":"/Users/jsgomes/orca/orca",
+  "ncpu":null,
+  "orca_env_file":null,
+  "orcasimpleinput":"engrad wB97X def2-TZVP TightSCF Float Hirshfeld",
+  "orcablocks":"%maxcore 15000\n%scf maxiter 200 end\n%elprop Dipole True end%elprop quadrupole 1 end",
+  "Ediff": 1e-3,
+  "Fdiff":1e-4
+}

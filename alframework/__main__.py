@@ -246,8 +246,14 @@ if status['current_h5_id']==0 and status['current_model_id']<0:
             builder_results,failed = builder_task_queue.get_task_results()
             status['lifetime_failed_builder_tasks'] = status['lifetime_failed_builder_tasks'] + failed
             for structure in builder_results:
-                task_input = build_input_dict(qm_task.func,[{"molecule_object":structure,"QM_config":QM_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
-                QM_task_queue.add_task(qm_task(**task_input))
+                #If builders return a single structure:
+                if system_checker(structure,kill_on_fail=False,print_error=False):
+                    task_input = build_input_dict(qm_task.func,[{"molecule_object":structure,"QM_config":QM_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
+                    QM_task_queue.add_task(qm_task(**task_input))
+                elif isinstance(structure,list):
+                    for substructure in structure:
+                        task_input = build_input_dict(qm_task.func,[{"molecule_object":substructure,"QM_config":QM_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
+                        QM_task_queue.add_task(qm_task(**task_input))
                 
         print("### Bootstraping Learning Status at: " + time.ctime() + " ###")
         print("builder status:")

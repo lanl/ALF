@@ -265,12 +265,14 @@ if status['current_h5_id']==0 and status['current_model_id']<0:
             json.dump(status, outfile, indent=2)
             
         time.sleep(60)
-    
+
     print("Saving Bootstrap and training model")
     results_list,failed = QM_task_queue.get_task_results()
     status['lifetime_failed_QM_tasks'] = status['lifetime_failed_QM_tasks'] + failed    
     store_current_data(master_config['h5_path'].format(status['current_h5_id']),results_list,master_config['properties_list'])
     status['current_h5_id'] = status['current_h5_id'] + 1
+    
+if status['current_model_id']<0:
     task_input = build_input_dict(ml_task.func,[{"ML_config":ML_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
     ML_task_queue.add_task(ml_task(**task_input))
     

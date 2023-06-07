@@ -345,7 +345,7 @@ shared_1node= Config(
                 #workers_per_node=1,
 
                 # string to prepend to #SBATCH blocks in the submit
-                scheduler_options='#SBATCH --ntasks-per-node=36',
+                #scheduler_options='#SBATCH --ntasks-per-node=36',
 
                 # Command to be run before starting a worker
                 #worker_init=

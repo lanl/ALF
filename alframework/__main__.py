@@ -147,6 +147,7 @@ if '--test_builder' in sys.argv[2:] or '--test_sampler' in sys.argv[2:] or '--te
     test_configuration = queue_output[0][0]
     if not system_checker(test_configuration,raise_on_fail=False,print_error=False):
         system_checker(test_configuration[0])
+        test_configuration = test_configuration[0]
     print("Builder testing returned:")
     print(test_configuration)
     testing=True

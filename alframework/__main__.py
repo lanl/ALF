@@ -140,7 +140,7 @@ with open(master_config['status_path'], "w") as outfile:
 testing = False
 
 if '--test_builder' in sys.argv[2:] or '--test_sampler' in sys.argv[2:] or '--test_qm' in sys.argv[2:]:
-    task_input = build_input_dict(builder_task.func,[{"moleculeid":'test_builder',"builder_config":builder_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
+    task_input = build_input_dict(builder_task.func,[{"moleculeid":'test_builder',"moleculeids":['test_builder'],"builder_config":builder_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
     builder_task_queue.add_task(builder_task(**task_input))
     builder_configuration = builder_task_queue.task_list[0].result()
     queue_output = builder_task_queue.get_task_results()
@@ -237,9 +237,10 @@ if status['current_h5_id']==0 and status['current_model_id']<0:
     while QM_task_queue.get_completed_number() < master_config['bootstrap_set']:
         if (QM_task_queue.get_queued_number() < master_config['target_queued_QM']):
             while (builder_task_queue.get_number() < master_config['parallel_samplers']):
-                task_input = build_input_dict(builder_task.func,[{"moleculeid":'mol-boot-{:010d}'.format(status['current_molecule_id']),"builder_config":builder_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
+                moleculeids = ['mol-boot-{:010d}'.format(it_ind) for it_ind in range(status['current_molecule_id'],master_config.get('maximum_builder_structures',1))]
+                task_input = build_input_dict(builder_task.func,[{"moleculeid":'mol-boot-{:010d}'.format(status['current_molecule_id']),"moleculeids":moleculeids,"builder_config":builder_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
                 builder_task_queue.add_task(builder_task(**task_input))
-                status['current_molecule_id'] = status['current_molecule_id'] + 1
+                status['current_molecule_id'] = status['current_molecule_id'] + master_config.get('maximum_builder_structures',1)
         
         if (builder_task_queue.get_completed_number()>master_config['minimum_QM']):
             builder_results,failed = builder_task_queue.get_task_results()
@@ -315,18 +316,27 @@ while True:
 	
     #Run more builders
     if (QM_task_queue.get_queued_number() < master_config['target_queued_QM']) and (QM_task_queue.get_number() < master_config.get('maximum_completed_QM',1e12)):
-        while (sampler_task_queue.get_number()+builder_task_queue.get_number() < master_config['parallel_samplers']):
-            task_input = build_input_dict(builder_task.func,[{"moleculeid":'mol-{:04d}-{:010d}'.format(status['current_model_id'],status['current_molecule_id']),"builder_config":builder_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
+        while (sampler_task_queue.get_number()+builder_task_queue.get_number() * master_config.get('maximum_builder_structures',1) < master_config['parallel_samplers']):
+            moleculeids = ['mol-{:04d}-{:010d}'.format(status['current_model_id'],it_ind) for it_ind in range(status['current_molecule_id'],master_config.get('maximum_builder_structures',1))]
+            task_input = build_input_dict(builder_task.func,[{"moleculeid":'mol-{:04d}-{:010d}'.format(status['current_model_id'],status['current_molecule_id']),"moleculeids":moleculeids,"builder_config":builder_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
             builder_task_queue.add_task(builder_task(**task_input))
-            status['current_molecule_id'] = status['current_molecule_id'] + 1
+            status['current_molecule_id'] = status['current_molecule_id'] + master_config.get('maximum_builder_structures',1)
             
     #Builders go stright into samplers
     if builder_task_queue.get_completed_number() > 0:
         structure_list,failed = builder_task_queue.get_task_results()
         status['lifetime_failed_builder_tasks'] = status['lifetime_failed_builder_tasks'] + failed
+        # Douple loop to facilitate possiblitiy of multiple sctructures returned by builder
         for structure in structure_list:
-            task_input = build_input_dict(sampler_task.func,[{"molecule_object":structure,"sampler_config":sampler_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
-            sampler_task_queue.add_task(sampler_task(**task_input))
+            #If builders return a single structure:
+            if system_checker(structure,kill_on_fail=False,print_error=False):
+                task_input = build_input_dict(sampler_task.func,[{"molecule_object":structure,"sampler_config":sampler_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
+                sampler_task_queue.add_task(sampler_task(**task_input))
+            #If builders return multiple structures
+            elif isinstance(structure,list):
+                for substructure in structure:
+                    task_input = build_input_dict(sampler_task.func,[{"molecule_object":substructure,"sampler_config":sampler_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
+                    sampler_task_queue.add_task(sampler_task(**task_input))
 
     #Run more QM
     if (sampler_task_queue.get_completed_number()>master_config['minimum_QM']):

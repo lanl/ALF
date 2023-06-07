@@ -145,7 +145,8 @@ if '--test_builder' in sys.argv[2:] or '--test_sampler' in sys.argv[2:] or '--te
     builder_configuration = builder_task_queue.task_list[0].result()
     queue_output = builder_task_queue.get_task_results()
     test_configuration = queue_output[0][0]
-    system_checker(test_configuration)
+    if not system_checker(test_configuration,raise_on_fail=False,print_error=False):
+        system_checker(test_configuration[0])
     print("Builder testing returned:")
     print(test_configuration)
     testing=True

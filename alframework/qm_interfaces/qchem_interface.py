@@ -2,6 +2,7 @@ import numpy as np
 import subprocess
 from tempfile import NamedTemporaryFile
 from ase.units import Bohr
+import os
 
 
 class QChemRunner(object):
@@ -108,6 +109,7 @@ def simple_qchem_task(molecule_object,QM_config,QM_scratch_dir,properties_list):
     system_checker(molecule_object)
     properties = list(properties_list)
     directory = QM_scratch_dir + '/' + molecule_object[0]['moleculeid']
+    os.environ['QCSCRATCH'] = directory
     molecule_id = molecule_object[0]['moleculeid']
     atoms = molecule_object[1]
     charge = molecule_object[0].get('charge',0)

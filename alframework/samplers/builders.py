@@ -230,7 +230,7 @@ def simple_multi_condensed_phase_builder_task(moleculeids,builder_config,molecul
         
     molecule_library,mols = readMolFiles(molecule_library_dir)
     system_list = []
-    for moleculeid in moleculeids
+    for moleculeid in moleculeids:
         
         cell_shape = [np.random.uniform(dim[0],dim[1]) for dim in cell_range]
         

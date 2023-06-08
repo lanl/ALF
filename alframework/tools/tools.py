@@ -198,7 +198,7 @@ def find_empty_directory(pattern,limit=9999):
 #element 1: metadata: this is required to include moleculeid,  but may also include sampling and other metadata
 #element 2: an ASE atoms object. 
 #element 3: Evaluated QM properties
-def system_checker(system,kill_on_fail=True):
+def system_checker(system,kill_on_fail=True,print_error=True):
     try: 
         assert isinstance(system,list) or isinstance(system,tuple)
         assert len(system) == 3
@@ -223,7 +223,8 @@ def system_checker(system,kill_on_fail=True):
         return(True)
         
     except Exception as e:
-        print(e)
+        if print_error:
+            print(e)
         if kill_on_fail:
             raise RuntimeError('Atomic system failed to meet requirements.')
         return(False)

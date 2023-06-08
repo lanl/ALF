@@ -197,6 +197,56 @@ def simple_condensed_phase_builder_task(moleculeid,builder_config,molecule_libra
     system_checker(system)
     return(system)
     
+@python_app(executors=['alf_sampler_executor'])
+def simple_multi_condensed_phase_builder_task(moleculeids,builder_config,molecule_library_dir,cell_range,solute_molecule_options,Rrange):
+    """
+    Elements in  builder parameters
+        molecule_library_path: path to library of molecular fragments to read in
+        solute_molecule_options: listof lists detailing sets of solutes
+        solvent_molecules: list or dictionary of solvent molecules. If dictionary, corresponding value is relative weight of solvent
+        cell_range: 3X2 list with x, y, and z ranges for cell size 
+        Rrange: density range
+        min_dist: minimum contact distance between fragments
+        max_patience: How many attempts to  make before giving up on build
+        center_first_molecule: Boolian,  if true first solute is centered in box and not rotated (useful for large molecules)
+        shake: Distance to displace initial configurations
+        print_attempt: Boolian,controls printing (set to False)
+    """
+#    import glob
+#    import random
+#    import os
+#    import numpy as np
+#    import json
+#    
+#    import ase
+#    from ase import Atoms
+#    from ase import neighborlist
+#    from ase.geometry.cell import complete_cell
+#    from ase.io import read, write
+#    
+#    from alframework.tools.tools import random_rotation_matrix
+#    import random
+#    from copy import deepcopy
+        
+    molecule_library,mols = readMolFiles(molecule_library_dir)
+    system_list = []
+    for moleculeid in moleculeids:
+        
+        cell_shape = [np.random.uniform(dim[0],dim[1]) for dim in cell_range]
+        
+        empty_system = [{'moleculeid':moleculeid},Atoms(cell=cell_shape),{}]
+        
+        feed_parameters = {}
+        
+        feed_parameters['solute_molecules'] = random.choice(solute_molecule_options)
+        feed_parameters['density'] = np.random.uniform(Rrange[0],Rrange[1])
+        
+        input_parameters = build_input_dict(condensed_phase_builder,[{"start_system":empty_system,"molecule_library":molecule_library},feed_parameters,builder_config])
+        system = condensed_phase_builder(**input_parameters)
+        system_checker(system)
+        system_list.append(system)
     
+    return(system_list)
+        
    
    

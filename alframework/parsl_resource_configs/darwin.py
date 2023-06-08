@@ -345,7 +345,7 @@ shared_1node= Config(
                 #workers_per_node=1,
 
                 # string to prepend to #SBATCH blocks in the submit
-                scheduler_options='#SBATCH --ntasks-per-node=36 --nodes=1',
+                #scheduler_options='#SBATCH --ntasks-per-node=36',
 
                 # Command to be run before starting a worker
                 #worker_init=
@@ -384,7 +384,8 @@ shared_1node= Config(
 
                 # string to prepend to #SBATCH blocks in the submit
                 #scheduler_options='#SBATCH --qos=debug',
-                #scheduler_options='#SBATCH --nodes=1 -p shared-gpu-ampere',
+
+                #scheduler_options='#SBATCH --nodes=1 ',
 
                 # Command to be run before starting a worker
                 #worker_init=
@@ -421,8 +422,7 @@ shared_1node= Config(
                 #workers_per_node=1,
 
                 # string to prepend to #SBATCH blocks in the submit
-                #scheduler_options='#SBATCH --qos=debug',
-                #scheduler_options='#SBATCH --nodes=1 -p shared-gpu-ampere',
+                #scheduler_options='#SBATCH --nodes=1',
 
                 # Command to be run before starting a worker
                 #worker_init=

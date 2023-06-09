@@ -73,10 +73,11 @@ else:
     analysis_plot = None
 
 #make needed directories
-for entry in master_config.keys():
-    if entry[-3:] == 'dir':
-        tempPath = Path(master_config[entry])
-        tempPath.mkdir(parents=True,exist_ok=True)
+for config in [master_config,builder_config,sampler_config,QM_config,ML_config]:
+    for entry in config.keys():
+        if entry[-3:] == 'dir':
+            tempPath = Path(master_config[entry])
+            tempPath.mkdir(parents=True,exist_ok=True)
 
 #############################
 # Step 2: Define Parsl tasks#

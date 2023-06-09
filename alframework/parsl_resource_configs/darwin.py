@@ -385,7 +385,7 @@ shared_1node= Config(
                 # string to prepend to #SBATCH blocks in the submit
                 #scheduler_options='#SBATCH --qos=debug',
 
-                #scheduler_options='#SBATCH --nodes=1 ',
+                scheduler_options='#SBATCH --qos=long ',
 
                 # Command to be run before starting a worker
                 #worker_init=

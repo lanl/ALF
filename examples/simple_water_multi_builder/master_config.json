@@ -20,7 +20,7 @@
 	"bootstrap_set": 500,
 	"parsl_configuration":"alframework.parsl_resource_configs.darwin.shared_1node",
 	"gpus_per_node":2,
-	"QM_scratch_dir":"water-test-running/",
+	"QM_scratch_dir":"/ram/tmp/",
 	"plotting_utility":"alframework.tools.plotting.analysis_plot",
 	"plot_dir":"status_plots/"
 }

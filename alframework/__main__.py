@@ -76,7 +76,7 @@ else:
 for config in [master_config,builder_config,sampler_config,QM_config,ML_config]:
     for entry in config.keys():
         if entry[-3:] == 'dir':
-            tempPath = Path(master_config[entry])
+            tempPath = Path(config[entry])
             tempPath.mkdir(parents=True,exist_ok=True)
 
 #############################

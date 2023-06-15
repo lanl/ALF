@@ -161,7 +161,7 @@ class orcaGenerator():
 def orca_calculator_task(molecule_object,QM_config,QM_scratch_dir,properties_list):
     system_checker(molecule_object)
     properties = list(properties_list)
-    directory = QM_scratch_dir + '/' + molecule_object[0]['moleculeid']
+    directory = QM_scratch_dir + '/' + molecule_object[0]['moleculeid'] + '/'
     molecule_id = molecule_object[0]['moleculeid']
     atoms = molecule_object[1]
     

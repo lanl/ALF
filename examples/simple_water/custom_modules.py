@@ -78,7 +78,7 @@ config_1node= Config(
                 #workers_per_node=1,
 
                 # string to prepend to #SBATCH blocks in the submit
-                scheduler_options='#SBATCH --ntasks-per-node=36 --nodes=1 -A w23_ml4chem --qos=standby',
+                scheduler_options='#SBATCH --ntasks-per-node=36 --nodes=1 -A w23_ml4chem --qos=standby --time-min=01:00:00',
 
                 # Command to be run before starting a worker
                 #worker_init=
@@ -170,6 +170,44 @@ config_1node= Config(
                 cmd_timeout=30,
             ),
         )
+        HighThroughputExecutor(
+            label='alf_sampler_standby_executor',
+
+            # Optional: the network interface on the login node to
+            # which compute nodes can communicate
+            #address=address_by_interface('bond0.144'),
+            max_workers=4,
+            #cpu_affinity='alternating',
+
+            provider=SlurmProvider(
+                # Partition / QOS
+                #'regular',
+                #'ml4chem',
+                'gpu',
+                init_blocks = 0,
+                min_blocks = 0,
+                max_blocks = 2,
+
+                nodes_per_block=1,
+                #workers_per_node=1,
+
+                # string to prepend to #SBATCH blocks in the submit
+                #scheduler_options='#SBATCH --qos=debug',
+                scheduler_options='#SBATCH --nodes=1 -p gpu -A w23_ml4chem_g --qos=standby ---time-min=00:10:00',
+
+                # Command to be run before starting a worker
+                #worker_init=
+
+                # We request all hyperthreads on a node.
+                #launcher=SrunLauncher(overrides='-c 64'),
+                launcher=SingleNodeLauncher(),
+                walltime='4:00:00',
+
+                # Slurm scheduler on Cori can be slow at times,
+                # increase the command timeouts
+                cmd_timeout=30,
+            ),
+        )
     ]
 )
 
@@ -193,44 +231,6 @@ config_debug = Config(
                 init_blocks = 0,
                 min_blocks = 0,
                 max_blocks = 1,
-
-                nodes_per_block=1,
-                #workers_per_node=1,
-
-                # string to prepend to #SBATCH blocks in the submit
-                scheduler_options='#SBATCH --ntasks-per-node=36 --nodes=1 -A w23_ml4chem --qos debug --reservation debug',
-
-                # Command to be run before starting a worker
-                #worker_init=
-
-                # We request all hyperthreads on a node.
-                #launcher=SrunLauncher(overrides='-c 64'),
-                launcher=SimpleLauncher(),
-                walltime='2:00:00',
-
-                # Slurm scheduler on Cori can be slow at times,
-                # increase the command timeouts
-                cmd_timeout=30,
-            ),
-        ),
-        HighThroughputExecutor(
-            label='alf_QM_standby_executor',
-
-            # Optional: the network interface on the login node to
-            # which compute nodes can communicate
-            #address=address_by_interface('bond0.144'),
-            max_workers=36,
-            #cpu_affinity='alternating',
-
-
-            provider=SlurmProvider(
-                # Partition / QOS
-                #'regular',
-                #'ml4chem',
-                'debug',
-                init_blocks = 0,
-                min_blocks = 0,
-                max_blocks = 0,
 
                 nodes_per_block=1,
                 #workers_per_node=1,

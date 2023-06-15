@@ -121,8 +121,9 @@ def simple_qchem_task(molecule_object,QM_config,QM_scratch_dir,properties_list):
     atoms = molecule_object[1]
     charge = molecule_object[0].get('charge',0)
     mult = molecule_object[0].get('multiplicity',1)
+    idx = molecule_object[0]['moleculeid']
 
-    calc = qchemGenerator(scratch_path=QM_scratch_dir, store_path=None, nproc=QM_config['ncpu'],
+    calc = qchemGenerator(scratch_path=os.path.join(QM_scratch_dir, idx), store_path=None, nproc=QM_config['ncpu'],
                           qchem_env_file=None, qchem_command=QM_config['QM_run_command'], 
                           qcheminput=QM_config['rem'], qchemblocks=QM_config['qchemblocks'])
     out_properties = calc.single_point(molecule=atoms, charge=charge, mult=mult, properties=properties)

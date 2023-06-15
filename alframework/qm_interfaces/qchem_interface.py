@@ -10,9 +10,9 @@ class qchemGenerator():
     QChem 6.0
     """
 
-    def __init__(self,scratch_path="/tmp/", store_path=None, nproc=36,\
+    def __init__(self, scratch_path="/tmp/", store_path=None, nproc=36,\
                  unit={'energy': 'hartree', 'length': 'bohr'},\
-                 qchem_env_file=None, qchem_command="",qcheminput="", qchemblocks=""):
+                 qchem_env_file=None, qchem_command="", qcheminput="", qchemblocks=""):
         """
         unit used for input coordincates: Angstrom
         default units for output: atomic unit
@@ -43,9 +43,9 @@ class qchemGenerator():
         if not os.environ.get('QCSCRATCH'):
             os.environ['QCSCRATCH'] = scratch_path   
  
-    def write_qchem_input(self, ase_atoms, charge, mult, filename="qchem.in"):
-        numbers = ase_atoms.get_atomic_numbers()
-        positions = ase_atoms.get_positions()
+    def write_qchem_input(self, molecule, charge, mult, filename="qchem.in"):
+        numbers = molecule.get_atomic_numbers()
+        positions = molecule.get_positions()
         with open(filename, "w") as f:
             f.write(f"$molecule\n{charge} {mult}\n")
             for ix, ixyz in zip(numbers, positions):
@@ -61,9 +61,9 @@ class qchemGenerator():
         prefix : all the input and output file will start with this prefix, eg. qchem.in, qchem.out
         """
 
-        job_path = self.scratch_path
-        filename = os.path.join(job_path, prefix+".in")
-        os.makedirs(job_path,exist_ok=True)
+        job_path = os.path.join(self.scratch_path, prefix)
+        filename = os.path.join(job_path, f"{prefix}.in")
+        os.makedirs(job_path, exist_ok=True)
         self.write_qchem_input(molecule, charge, mult, filename=filename)
 
         runcmd = [self.qchem_command, '-nt', str(self.nproc), filename]
@@ -71,8 +71,8 @@ class qchemGenerator():
                               stderr=subprocess.PIPE, text=True)
 
         if self.store_path is not None:
-            store_dir = os.path.join(self.store_path, molecule.ids)
-            outfile = os.path.join(store_dir, 'qchem.out')
+            store_dir = os.path.join(self.store_path, prefix)
+            outfile = os.path.join(store_dir, f'{prefix}.out')
             os.makedirs(store_dir, exist_ok=True)
             with open(outfile, 'w') as f:
                 f.write(proc.stdout)
@@ -113,24 +113,22 @@ class qchemGenerator():
 
 
 @python_app(executors=['alf_QM_executor'])
-def simple_qchem_task(molecule_object,QM_config,QM_scratch_dir,properties_list):
+def simple_qchem_task(molecule_object, QM_config, QM_scratch_dir, properties_list):
 
     system_checker(molecule_object)
 
+    molecule = molecule_object[1]
+    charge = molecule_object[0].get('charge', 0)
+    mult = molecule_object[0].get('multiplicity', 1)
+    prefix = molecule_object[0]['moleculeid']
     properties = list(properties_list)
-    atoms = molecule_object[1]
-    charge = molecule_object[0].get('charge',0)
-    mult = molecule_object[0].get('multiplicity',1)
-    idx = molecule_object[0]['moleculeid']
 
-    calc = qchemGenerator(scratch_path=os.path.join(QM_scratch_dir, idx), store_path=None, nproc=QM_config['ncpu'],
+    calc = qchemGenerator(scratch_path=QM_scratch_dir, store_path=QM_config['QM_store_dir'], nproc=QM_config['ncpu'],
                           qchem_env_file=None, qchem_command=QM_config['QM_run_command'], 
                           qcheminput=QM_config['rem'], qchemblocks=QM_config['qchemblocks'])
-    out_properties = calc.single_point(molecule=atoms, charge=charge, mult=mult, properties=properties)
+    out_properties = calc.single_point(molecule=molecule, charge=charge, mult=mult, prefix=prefix, properties=properties)
     return_system = [molecule_object[0],molecule_object[1],out_properties]
 
     system_checker(return_system)
 
     return(return_system)
-
-

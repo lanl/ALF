@@ -84,7 +84,7 @@ class qchemGenerator():
 
         natoms = len(molecule)
         nblocks = natoms // 6
-        if nblocks%6 > 0: nblocks += 1
+        if natoms%6 > 0: nblocks += 1
         grad = None
         out = iter(proc.stdout.split("\n"))
         for line in out:

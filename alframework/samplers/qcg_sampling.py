@@ -13,17 +13,15 @@ def qcg_grow(start_system, molecule_library_dir, solute_molecules=[], solvent_mo
     #ensure system adhears to formating convention
     system_checker(start_system)
     curr_sys = start_system[1]
-    cwd = os.getcwd()
   
     #path to solute/solvent xyz
-    solute_xyz = os.path.join(cwd, molecule_library_dir, solute_molecules[0])
-    solvent_xyz = os.path.join(cwd, molecule_library_dir, solvent_molecules[0])
+    solute_xyz = os.path.join(molecule_library_dir, solute_molecules[0])
+    solvent_xyz = os.path.join(molecule_library_dir, solvent_molecules[0])
     nsolv_start, nsolv_stop = nsolv
     nsolv = random.choice(range(int(nsolv_start), int(nsolv_stop)))
     with tempfile.TemporaryDirectory() as tmpdirname:
 
         os.chdir(tmpdirname)
-
         #run crest
         runcmd = ['crest', solute_xyz, '-qcg', solvent_xyz, '--nsolv', str(nsolv)]
         proc = subprocess.run(runcmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)

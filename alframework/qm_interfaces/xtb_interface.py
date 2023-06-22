@@ -66,7 +66,7 @@ class xtbGenerator():
                 data = f.readlines()
             n_atoms = len(molecule)
             energy = float(data[1].split()[6])
-            grad = np.array([[float(i) for i in l.split()] for l in data[n_atoms+2:-1]]).reshape(-1)
+            grad = np.array([[float(i) for i in l.split()] for l in data[n_atoms+2:-1]])
         except:
             return {"converged": False}
 

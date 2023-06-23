@@ -169,7 +169,6 @@ config_1node= Config(
                 # increase the command timeouts
                 cmd_timeout=30,
             ),
-        )
         HighThroughputExecutor(
             label='alf_sampler_standby_executor',
 

@@ -1,0 +1,26 @@
+{
+	"QM_run_command":"module purge; module load PrgEnv-cray; source /usr/projects/icapt/VASP/vasp.6.3.2-aocc-mkl/setenv_chicoma.sh; /usr/bin/srun /usr/projects/icapt/VASP/vasp.6.3.2-aocc-mkl/bin/vasp_std > vasp_out.txt 2>&1",
+	"input_list":{
+  "encut":600, 
+  "prec":"Accurate",
+  "ibrion":-1, 
+  "ediff":1e-7, 
+  "kpts":[2, 2, 2], 
+  "sigma":0.03,
+  "ismear":0, 
+  "nelm":100, 
+  "ivdw":11, 
+  "isif":2,
+  "istart":0, 
+  "lwave":true,
+  "lcharg":true,
+  "lreal":"AUTO",
+  "isym":0,
+  "ialgo":38,
+  "xc":"pbe",
+  "gga":"pe",
+  "nsw":0,
+  "ncore":8,
+  "kpar":4
+  }
+}

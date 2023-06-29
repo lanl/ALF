@@ -2,6 +2,7 @@ from parsl import python_app, bash_app
 import os
 import numpy as np
 import subprocess
+import tempfile
 from ase.io import read, write
 from alframework.tools.tools import system_checker
 
@@ -47,8 +48,12 @@ class xtbGenerator():
         mol : ase.atoms.Atoms object, will get chemical symbols and positions
         prefix : all the input and output file will start with this prefix, eg. xtb.log, xtb.inp, xtb.engrad
         """
-        os.chdir(self.scratch_path)
-        filename = os.path.join(self.scratch_path, f"{prefix}.xyz")
+
+        rundir = os.path.join(self.scratch_path, prefix)
+        os.makedirs(rundir, exist_ok=True)
+        os.chdir(rundir)
+
+        filename = os.path.join(rundir, f"{prefix}.xyz")
         self.write_xtb_input(molecule, filename)
         runcmd = [self.xtb_command, filename, *self.xtb_input.split()]
         proc = subprocess.run(runcmd, stdout=subprocess.PIPE,
@@ -60,13 +65,18 @@ class xtbGenerator():
             os.makedirs(store_dir, exist_ok=True)
             with open(outfile, 'w') as f:
                 f.write(proc.stdout)
-  
+ 
         try:
             with open('gradient', 'r') as f:
                 data = f.readlines()
+            if self.store_path is not None:
+                gradfile = os.path.join(store_dir, 'gradient')
+                with open(gradfile, 'w') as f:
+                    f.write("".join(data))
             n_atoms = len(molecule)
             energy = float(data[1].split()[6])
             grad = np.array([[float(i) for i in l.split()] for l in data[n_atoms+2:-1]])
+            assert grad.shape[0] == n_atoms
         except:
             return {"converged": False}
 

@@ -1,0 +1,6 @@
+{
+	"molecule_library_dir":"fragment_library/",
+	"solute_molecules": ["water.xyz"],
+	"solvent_molecules":["water.xyz"],
+  "nsolv":[3,10]
+}

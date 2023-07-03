@@ -4,6 +4,20 @@ import numpy as np
 from typing import List, Dict
 
 
+def concatenate_different_arrays(array_list):
+    shapes = np.array([list(a.shape) for a in array_list])
+    min_shape = np.min(shapes, axis=0)
+    max_shape = np.max(shapes, axis=0)
+    if np.all(min_shape == max_shape):
+        return np.stack(array_list)
+    else:
+        result = np.zeros((len(array_list), *max_shape))
+        for n, a in enumerate(array_list):
+            slices = tuple([n] + [slice(dim) for dim in a.shape])
+            result[slices] = a
+        return result
+
+
 class Database:
     def __init__(self, data: List[Dict], directory, allow_overwriting=False):
         store = zarr.DirectoryStore(directory)
@@ -71,24 +85,39 @@ class Database:
         subset_size = int(fraction * database_size)
         initial_subset_indices = np.random.choice(np.arange(database_size), subset_size)
         self.root["reductions"].create_group(name, overwrite=overwrite)
-        self.root[f"reductions/{name}"].create_group("0")
+        self.root[f"reductions/{name}"].create_group("000")
         for group in self.root["data/"]:
-            self.root[f"reductions/{name}/0/"].create_group(group)
-            pointer = self.root[f"reductions/{name}/0/{group}"]
+            self.root[f"reductions/{name}/000/"].create_group(group)
+            pointer = self.root[f"reductions/{name}/000/{group}"]
             pointer.array("indices", self.root[f"data/{group}/indices"])
             indices = pointer["indices"][:]
-            mask = np.zeros_like(indices)
             _, positions, _ = np.intersect1d(indices, initial_subset_indices, return_indices=True)
-            mask[positions] = 1
-            placeholder = zarr.zeros(indices.shape, chunks=(100,), dtype="int")
-            placeholder[:] = mask
-            pointer.array("mask", placeholder)
+            placeholder = zarr.zeros(positions.shape, chunks=(100,), dtype="int")
+            placeholder[:] = positions
+            pointer.array("positions", placeholder)
 
     def update_reduction(self, name):
         pass
 
-    def dump_reductin(self, name, format):
-        pass
+    def get_last_reduction(self, name):
+        g = self.root[f"reductions/{name}"]
+        max_key = max(g.group_keys())
+        return g[max_key]
+
+    def dump_reduction(self, name, output_format):
+        elements = {}
+        last_reduction = self.get_last_reduction(name)
+
+        for group in self.root["data/"]:
+            positions = last_reduction[f"{group}/positions"][:]
+            data_group = self.root[f"data/{group}"]
+            for key in data_group:
+                values = data_group[key][positions]
+                if key not in elements:
+                    elements[key] = []
+                elements[key].append(values)
+        elements = {k: concatenate_different_arrays(v) for (k, v) in elements.items()}
+        return elements
 
 
 if __name__ == "__main__":
@@ -122,4 +151,6 @@ if __name__ == "__main__":
 
     print(np.intersect1d([1, 3, 4, 3], np.array([3, 1, 2, 1]), return_indices=True))
 
-    database.create_reduction("lol", 0.1)
+    database.create_reduction("lol", 0.5)
+
+    database.dump_reduction("lol", "json")

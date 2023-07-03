@@ -12,7 +12,7 @@ def concatenate_different_arrays(array_list):
         return np.concatenate(array_list)
     else:
         number_of_elements = sum([a.shape[0] for a in array_list])
-        result = np.zeros((number_of_elements, *max_shape))
+        result = np.zeros((number_of_elements, *max_shape), dtype=array_list[0].dtype)
         pos = 0
         for n, a in enumerate(array_list):
             slices = tuple([slice(pos, pos + a.shape[0])] + [slice(dim) for dim in a.shape[1:]])
@@ -48,7 +48,7 @@ class Database:
                 placeholder[0] = self.root["database_size"][0]
                 group.array("indices", placeholder)
                 for key, value in item.items():
-                    placeholder = zarr.zeros((1, *item[key].shape), chunks=(100,))
+                    placeholder = zarr.zeros((1, *item[key].shape), chunks=(100,), dtype=value.dtype)
                     placeholder[0] = value
                     group.array(key, placeholder)
             else:
@@ -82,7 +82,8 @@ class Database:
             return self.get_item([selection_index])[0]
         else:
             raise NotImplementedError
-    def _create_reduction(self, name, stage, reduction_indices, overwrite):
+
+    def _create_reduction(self, name, stage, reduction_indices):
         self.root[f"reductions/{name}"].create_group(stage)
         for group in self.root["data/"]:
             self.root[f"reductions/{name}/{stage}/"].create_group(group)
@@ -99,7 +100,7 @@ class Database:
         subset_size = int(fraction * database_size)
         initial_subset_indices = np.random.choice(np.arange(database_size), subset_size)
         self.root["reductions"].create_group(name, overwrite=overwrite)
-        self._create_reduction(name, "000", initial_subset_indices, overwrite)
+        self._create_reduction(name, "000", initial_subset_indices)
 
     def update_reduction(self, name, predicted_data: Dict, property_name, fraction, outlier_percentile):
         # suppose to have dictionary with indices and one of properties (e.g. forces, energies).
@@ -111,8 +112,8 @@ class Database:
         diffs = []
         for group in self.root["data"]:
             pointer = self.root[f"data/{group}"]
-            grooup_indices = pointer["indices"][:]
-            indices, group_positions, data_positions = np.intersect1d(grooup_indices, predicted_data["indices"],
+            group_indices = pointer["indices"][:]
+            indices, group_positions, data_positions = np.intersect1d(group_indices, predicted_data["indices"],
                                                                       return_indices=True)
             database_values = pointer[property_name][group_positions]
             external_values = predicted_data[property_name][data_positions]
@@ -123,7 +124,7 @@ class Database:
         # todo: there should be a selection logic here
         selected_indices = diffs[:, 0]
 
-        self._create_reduction(name, current_stage, selected_indices, overwrite=False)
+        self._create_reduction(name, current_stage, selected_indices)
 
     def get_last_reduction(self, name):
         g = self.root[f"reductions/{name}"]
@@ -150,14 +151,14 @@ if __name__ == "__main__":
     from pprint import pprint
 
     item = {
-        "species": np.array([1, 8, 1]),
+        "species": np.array([1, 8, 1]).astype(int),
         "energy": np.array([1]),
         "forces": np.random.random((3, 3))
 
     }
 
     another_item = {
-        "species": np.array([1, 8, 1, 4, 5]),
+        "species": np.array([1, 8, 1, 4, 5]).astype(int),
         "energy": np.array([5]),
         "forces": np.random.random((5, 3))
 

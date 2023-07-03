@@ -5,16 +5,19 @@ from typing import List, Dict
 
 
 def concatenate_different_arrays(array_list):
-    shapes = np.array([list(a.shape) for a in array_list])
+    shapes = np.array([list(a.shape[1:]) for a in array_list])
     min_shape = np.min(shapes, axis=0)
     max_shape = np.max(shapes, axis=0)
     if np.all(min_shape == max_shape):
-        return np.stack(array_list)
+        return np.concatenate(array_list)
     else:
-        result = np.zeros((len(array_list), *max_shape))
+        number_of_elements = sum([a.shape[0] for a in array_list])
+        result = np.zeros((number_of_elements, *max_shape))
+        pos = 0
         for n, a in enumerate(array_list):
-            slices = tuple([n] + [slice(dim) for dim in a.shape])
+            slices = tuple([slice(pos, pos + a.shape[0])] + [slice(dim) for dim in a.shape[1:]])
             result[slices] = a
+            pos += a.shape[0]
         return result
 
 
@@ -153,4 +156,6 @@ if __name__ == "__main__":
 
     database.create_reduction("lol", 0.5)
 
-    database.dump_reduction("lol", "json")
+    dump = database.dump_reduction("lol", "json")
+
+    pprint(dump["species"][-1])

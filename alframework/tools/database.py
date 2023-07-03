@@ -82,25 +82,48 @@ class Database:
             return self.get_item([selection_index])[0]
         else:
             raise NotImplementedError
-
-    def create_reduction(self, name, fraction, overwrite=False):
-        database_size = self.root["database_size"][0]
-        subset_size = int(fraction * database_size)
-        initial_subset_indices = np.random.choice(np.arange(database_size), subset_size)
-        self.root["reductions"].create_group(name, overwrite=overwrite)
-        self.root[f"reductions/{name}"].create_group("000")
+    def _create_reduction(self, name, stage, reduction_indices, overwrite):
+        self.root[f"reductions/{name}"].create_group(stage)
         for group in self.root["data/"]:
-            self.root[f"reductions/{name}/000/"].create_group(group)
-            pointer = self.root[f"reductions/{name}/000/{group}"]
+            self.root[f"reductions/{name}/{stage}/"].create_group(group)
+            pointer = self.root[f"reductions/{name}/{stage}/{group}"]
             pointer.array("indices", self.root[f"data/{group}/indices"])
             indices = pointer["indices"][:]
-            _, positions, _ = np.intersect1d(indices, initial_subset_indices, return_indices=True)
+            _, positions, _ = np.intersect1d(indices, reduction_indices, return_indices=True)
             placeholder = zarr.zeros(positions.shape, chunks=(100,), dtype="int")
             placeholder[:] = positions
             pointer.array("positions", placeholder)
 
-    def update_reduction(self, name):
-        pass
+    def create_initial_reduction(self, name, fraction, overwrite=False):
+        database_size = self.root["database_size"][0]
+        subset_size = int(fraction * database_size)
+        initial_subset_indices = np.random.choice(np.arange(database_size), subset_size)
+        self.root["reductions"].create_group(name, overwrite=overwrite)
+        self._create_reduction(name, "000", initial_subset_indices, overwrite)
+
+    def update_reduction(self, name, predicted_data: Dict, property_name, fraction, outlier_percentile):
+        # suppose to have dictionary with indices and one of properties (e.g. forces, energies).
+
+        last_reduction = self.get_last_reduction(name)
+        current_stage = str(int(last_reduction.basename) + 1).zfill(3)
+
+        # get all differences
+        diffs = []
+        for group in self.root["data"]:
+            pointer = self.root[f"data/{group}"]
+            grooup_indices = pointer["indices"][:]
+            indices, group_positions, data_positions = np.intersect1d(grooup_indices, predicted_data["indices"],
+                                                                      return_indices=True)
+            database_values = pointer[property_name][group_positions]
+            external_values = predicted_data[property_name][data_positions]
+            diff = np.stack([indices, np.linalg.norm(database_values - external_values, axis=0)], axis=-1)
+            diffs.append(diff)
+        diffs = np.concatenate(diffs)
+
+        # todo: there should be a selection logic here
+        selected_indices = diffs[:, 0]
+
+        self._create_reduction(name, current_stage, selected_indices, overwrite=False)
 
     def get_last_reduction(self, name):
         g = self.root[f"reductions/{name}"]
@@ -152,10 +175,17 @@ if __name__ == "__main__":
     pprint(database.get_item([0, 10, 1001])[0])
     pprint(database.get_item(1001))
 
-    print(np.intersect1d([1, 3, 4, 3], np.array([3, 1, 2, 1]), return_indices=True))
-
-    database.create_reduction("lol", 0.5)
+    database.create_initial_reduction("lol", 0.5)
 
     dump = database.dump_reduction("lol", "json")
 
-    pprint(dump["species"][-1])
+    pprint(dump)
+
+    size = database.root["database_size"][0]
+
+    indices = np.random.choice(np.arange(size), 500, replace=False)
+    energies = np.random.normal(loc=2, size=500)
+
+    predicted_data = {"indices": indices, "energy": energies}
+
+    database.update_reduction("lol", predicted_data, "energy", 0.1, 95)

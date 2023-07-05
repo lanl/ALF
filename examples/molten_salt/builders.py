@@ -268,6 +268,8 @@ def simple_multi_condensed_phase_builder_task(moleculeids, builder_config, molec
 
 
 #####################################################################################################
+from collections import Counter
+from itertools import product
 
 MM_of_Elements = {'H': 1.00794, 'He': 4.002602, 'Li': 6.941, 'Be': 9.012182, 'B': 10.811, 'C': 12.0107,
                   'N': 14.0067, 'O': 15.9994, 'F': 18.9984032, 'Ne': 20.1797, 'Na': 22.98976928, 'Mg': 24.305,

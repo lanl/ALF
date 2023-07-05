@@ -2,9 +2,12 @@ import zarr
 import numpy as np
 
 from typing import List, Dict
+from collections.abc import Iterable
 
 
-def concatenate_different_arrays(array_list):
+def concatenate_different_arrays(array_list, stack=False):
+    if stack:
+        array_list = [a.reshape(1, *a.shape) for a in array_list]
     shapes = np.array([list(a.shape[1:]) for a in array_list])
     min_shape = np.min(shapes, axis=0)
     max_shape = np.max(shapes, axis=0)
@@ -21,65 +24,126 @@ def concatenate_different_arrays(array_list):
         return result
 
 
+def check_dimensions(template, array, n_atoms):
+    shape1 = template.shape
+    shape2 = array.shape
+
+    if len(shape1) != len(shape2):
+        return False
+    n_diff = 0
+    for i, j in zip(shape1, shape2):
+        if i != j:
+            if n_diff == 1:
+                return False
+            if j != n_atoms:
+                return False
+    return True
+
+
 class Database:
-    def __init__(self, data: List[Dict], directory, allow_overwriting=False):
+    def __init__(self, directory, property_names=None, allow_overwriting=False):
         store = zarr.DirectoryStore(directory)
         self.root = zarr.group(store=store, overwrite=allow_overwriting)
+        self.db_size = 0
         if "data" not in self.root:
             self.root.create_group("data")
-            self.root.array("database_size", np.array([0], dtype="int"))
             self.root.create_group("reductions")
-        self.add_instance(data)
+            self.root.create_group("global")
+            if property_names is not None:
+                self.property_names = property_names
+        else:
+            if "leaf_structure" in self.root["global"]:
+                self.property_names = [i for i in self.root["global/leaf_structure"]]
+                self.db_size = len(self.root["global/indices"])
 
     @classmethod
     def load_from_zarr(cls, directory):
-        return cls([], directory, allow_overwriting=False)
+        return cls(directory, allow_overwriting=False)
+
+    def _add_first_element(self, item):
+        n_atoms = len(item["species"])
+        placeholder = zarr.zeros((1, 2), chunks=(100,), dtype="int")
+        placeholder[0, 0] = n_atoms
+        self.root["global"].array("indices", placeholder)
+
+        placeholder = zarr.zeros((1,), chunks=(100,), dtype="float")
+        placeholder[0] = item.get("global_property", 0)
+        self.root["global"].array("global_property", placeholder)
+        self.root["global"].create_group("leaf_structure")
+        self.root["data"].create_group(n_atoms)
+
+        if not hasattr(self, "property_names"):
+            properties = list(item.keys())
+            if "global_property" in properties:
+                properties.remove("global_property")
+            self.property_names = properties
+        properties = self.property_names
+
+        for key in properties:
+            value = item[key]
+            elem_example = zarr.zeros(item[key].shape, chunks=(10000,), dtype=value.dtype)
+            self.root["global/leaf_structure"].array(key, elem_example)
+            placeholder = zarr.zeros((1, *value.shape), chunks=(100,), dtype=value.dtype)
+            placeholder[0] = value
+            self.root[f"data/{n_atoms}"].array(key, placeholder)
+        self.db_size = 1
 
     def add_instance(self, item):
         if isinstance(item, list):
             for i in item:
                 self.add_instance(i)
         elif isinstance(item, dict):
+            if self.db_size == 0:
+                return self._add_first_element(item)
+            self.root["global/global_property"].append([item.get("global_property", 0)])
+
             n_atoms = len(item["species"])
-            data = self.root["data"]
-            if n_atoms not in data:
-                group = data.create_group(n_atoms)
-                placeholder = zarr.zeros((1,), chunks=(100,), dtype="int")
-                placeholder[0] = self.root["database_size"][0]
-                group.array("indices", placeholder)
-                for key, value in item.items():
-                    placeholder = zarr.zeros((1, *item[key].shape), chunks=(100,), dtype=value.dtype)
+            if n_atoms not in self.root["data"]:
+                group = self.root["data"].create_group(n_atoms)
+
+                for key in self.property_names:
+                    template_array = self.root[f"global/leaf_structure/{key}"][:]
+                    value = item[key]
+                    assert check_dimensions(template_array, value, n_atoms)
+                    placeholder = zarr.zeros((1, *value.shape), chunks=(100,), dtype=value.dtype)
                     placeholder[0] = value
                     group.array(key, placeholder)
             else:
-                group = data[n_atoms]
-                group["indices"].append(self.root["database_size"])
-                for key, value in item.items():
-                    group[key].append(value.reshape(1, *value.shape))
-            self.root["database_size"][0] += 1
+                for key in self.property_names:
+                    value = item[key]
+                    self.root[f"data/{n_atoms}/{key}"].append(value.reshape(1, *value.shape))
+            loc_index = len(self.root[f"data/{n_atoms}/{self.property_names[0]}"]) - 1
+            self.db_size += 1
+            self.root["global/indices"].append([[n_atoms, loc_index]])
 
         else:
             raise NotImplementedError
 
-    def get_item(self, selection_index):
-        if isinstance(selection_index, list):
-            selection_index = selection_index
-            results = []
+    def add_property(self, name, item):
+        pass
 
-            data = self.root["data"]
-            for key in data:
-                group_index = data[key]["indices"][:]
-                _, positions, _ = np.intersect1d(group_index, selection_index, return_indices=True)
-                for pos in positions:
-                    data_dict = {}
-                    group = data[key]
-                    for inner_key in group:
-                        data_dict[inner_key] = group[inner_key][pos]
-                results.append(data_dict)
+    def get_item(self, selection_index, pad_arrays=False):
+        if isinstance(selection_index[0], Iterable):
+            results = {}
+            for i, idx in enumerate(selection_index):
+                one_elem = self.get_item(idx, pad_arrays=False)
+                if i == 0:
+                    for key in one_elem:
+                        results[key] = [one_elem[key]]
+                else:
+                    for key in one_elem:
+                        results[key].append(one_elem[key])
+            if pad_arrays:
+                results = {k: concatenate_different_arrays(v, stack=True) for (k, v) in results.items()}
             return results
 
-        elif isinstance(selection_index, int):
-            return self.get_item([selection_index])[0]
+        elif isinstance(selection_index[0], int):
+            # todo: check if index exists
+            result = {}
+
+            for key in self.root[f"data/{selection_index[0]}"]:
+                result[key] = self.root[f"data/{selection_index[0]}/{key}"][selection_index[1]]
+            return result
         else:
             raise NotImplementedError
 
@@ -96,6 +160,7 @@ class Database:
             pointer.array("positions", placeholder)
 
     def create_initial_reduction(self, name, fraction, overwrite=False):
+        # specific variable for test set, preserve points from training on
         database_size = self.root["database_size"][0]
         subset_size = int(fraction * database_size)
         initial_subset_indices = np.random.choice(np.arange(database_size), subset_size)
@@ -144,10 +209,16 @@ class Database:
                     elements[key] = []
                 elements[key].append(values)
         elements = {k: concatenate_different_arrays(v) for (k, v) in elements.items()}
+        # todo: inject to databse
         return elements
 
 
 if __name__ == "__main__":
+    # import os
+    # full_file = os.path.join(d_dir, file)
+    # x = pyanitools.anidataloader(full_file)
+    # for c in x:
+    #     batches.append(c)
     from pprint import pprint
 
     item = {
@@ -164,29 +235,35 @@ if __name__ == "__main__":
 
     }
 
-    database = Database([item], "./example_data", allow_overwriting=True)
+    database = Database("./example_data", allow_overwriting=True)
+    database.add_instance(item)
+    database = Database.load_from_zarr("./example_data")
+    print(database.property_names, database.db_size)
+
+    database.add_instance(item)
+    database.add_instance(another_item)
 
     for i in range(1000):
         database.add_instance(item)
         database.add_instance(another_item)
 
-    database = Database.load_from_zarr("./example_data")
-    pprint(database.root["database_size"][0])
+    pprint(database.root["global/indices"][:10])
 
-    pprint(database.get_item([0, 10, 1001])[0])
-    pprint(database.get_item(1001))
-
-    database.create_initial_reduction("lol", 0.5)
-
-    dump = database.dump_reduction("lol", "json")
-
-    pprint(dump)
-
-    size = database.root["database_size"][0]
-
-    indices = np.random.choice(np.arange(size), 500, replace=False)
-    energies = np.random.normal(loc=2, size=500)
-
-    predicted_data = {"indices": indices, "energy": energies}
-
-    database.update_reduction("lol", predicted_data, "energy", 0.1, 95)
+    pprint(database.get_item([(3, 0), (5, 1)]))
+    pprint(database.get_item([(3, 0), (5, 1)], pad_arrays=True))
+    # pprint(database.get_item(1001))
+    #
+    # database.create_initial_reduction("lol", 0.5)
+    #
+    # dump = database.dump_reduction("lol", "json")
+    #
+    # pprint(dump)
+    #
+    # size = database.root["database_size"][0]
+    #
+    # indices = np.random.choice(np.arange(size), 500, replace=False)
+    # energies = np.random.normal(loc=2, size=500)
+    #
+    # predicted_data = {"indices": indices, "energy": energies}
+    #
+    # database.update_reduction("lol", predicted_data, "energy", 0.1, 95)

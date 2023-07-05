@@ -1,8 +1,8 @@
+import numpy
 import zarr
 import numpy as np
 
 from typing import List, Dict
-from collections.abc import Iterable
 
 
 def concatenate_different_arrays(array_list, stack=False):
@@ -40,6 +40,16 @@ def check_dimensions(template, array, n_atoms):
     return True
 
 
+def exclude_values(array, values=None):
+    if values is None or len(values) == 0:
+        return np.arange(len(array))
+    else:
+        result_mask = array != values[0]
+        for value in values[1:]:
+            result_mask &= (array != value)
+        return np.where(result_mask)[0]
+
+
 class Database:
     def __init__(self, directory, property_names=None, allow_overwriting=False):
         store = zarr.DirectoryStore(directory)
@@ -62,6 +72,7 @@ class Database:
 
     def _add_first_element(self, item):
         n_atoms = len(item["species"])
+        group_name = f"{n_atoms:03}"
         placeholder = zarr.zeros((1, 2), chunks=(100,), dtype="int")
         placeholder[0, 0] = n_atoms
         self.root["global"].array("indices", placeholder)
@@ -70,7 +81,7 @@ class Database:
         placeholder[0] = item.get("global_property", 0)
         self.root["global"].array("global_property", placeholder)
         self.root["global"].create_group("leaf_structure")
-        self.root["data"].create_group(n_atoms)
+        self.root["data"].create_group(group_name)
 
         if not hasattr(self, "property_names"):
             properties = list(item.keys())
@@ -85,7 +96,7 @@ class Database:
             self.root["global/leaf_structure"].array(key, elem_example)
             placeholder = zarr.zeros((1, *value.shape), chunks=(100,), dtype=value.dtype)
             placeholder[0] = value
-            self.root[f"data/{n_atoms}"].array(key, placeholder)
+            self.root[f"data/{group_name}"].array(key, placeholder)
         self.db_size = 1
 
     def add_instance(self, item):
@@ -98,8 +109,9 @@ class Database:
             self.root["global/global_property"].append([item.get("global_property", 0)])
 
             n_atoms = len(item["species"])
-            if n_atoms not in self.root["data"]:
-                group = self.root["data"].create_group(n_atoms)
+            group_name = f"{n_atoms:03}"
+            if group_name not in self.root["data"]:
+                group = self.root["data"].create_group(group_name)
 
                 for key in self.property_names:
                     template_array = self.root[f"global/leaf_structure/{key}"][:]
@@ -111,10 +123,10 @@ class Database:
             else:
                 for key in self.property_names:
                     value = item[key]
-                    self.root[f"data/{n_atoms}/{key}"].append(value.reshape(1, *value.shape))
-            loc_index = len(self.root[f"data/{n_atoms}/{self.property_names[0]}"]) - 1
+                    self.root[f"data/{group_name}/{key}"].append(value.reshape(1, *value.shape))
+            loc_index = len(self.root[f"data/{group_name}/{self.property_names[0]}"]) - 1
             self.db_size += 1
-            self.root["global/indices"].append([[n_atoms, loc_index]])
+            self.root["global/indices"].append([[len(item["species"]), loc_index]])
 
         else:
             raise NotImplementedError
@@ -123,22 +135,26 @@ class Database:
         pass
 
     def get_item(self, selection_index, pad_arrays=False):
-        if isinstance(selection_index[0], Iterable):
+        if isinstance(selection_index[0], numpy.ndarray) or isinstance(selection_index[0], list):
+            selection_index = np.array(selection_index)
             results = {}
-            for i, idx in enumerate(selection_index):
-                one_elem = self.get_item(idx, pad_arrays=False)
-                if i == 0:
-                    for key in one_elem:
-                        results[key] = [one_elem[key]]
+            groups = np.unique(selection_index[:, 0])
+            for n_atom in groups:
+                indices = selection_index[selection_index[:, 0] == n_atom]
+                if len(results) == 0:
+                    for key in self.root[f"data/{n_atom:03}"]:
+                        results[key] = [self.root[f"data/{n_atom:03}/{key}"][indices[:, 1]]]
+                    results["indices"] = [indices]
                 else:
-                    for key in one_elem:
-                        results[key].append(one_elem[key])
+                    for key in self.root[f"data/{n_atom:03}"]:
+                        results[key].append(self.root[f"data/{n_atom:03}/{key}"][indices[:, 1]])
+                    results["indices"].append(indices)
+
             if pad_arrays:
-                results = {k: concatenate_different_arrays(v, stack=True) for (k, v) in results.items()}
+                results = {k: concatenate_different_arrays(v) for (k, v) in results.items()}
             return results
 
         elif isinstance(selection_index[0], int):
-            # todo: check if index exists
             result = {}
 
             for key in self.root[f"data/{selection_index[0]}"]:
@@ -147,70 +163,78 @@ class Database:
         else:
             raise NotImplementedError
 
-    def _create_reduction(self, name, stage, reduction_indices):
-        self.root[f"reductions/{name}"].create_group(stage)
-        for group in self.root["data/"]:
-            self.root[f"reductions/{name}/{stage}/"].create_group(group)
-            pointer = self.root[f"reductions/{name}/{stage}/{group}"]
-            pointer.array("indices", self.root[f"data/{group}/indices"])
-            indices = pointer["indices"][:]
-            _, positions, _ = np.intersect1d(indices, reduction_indices, return_indices=True)
-            placeholder = zarr.zeros(positions.shape, chunks=(100,), dtype="int")
-            placeholder[:] = positions
-            pointer.array("positions", placeholder)
+    def create_initial_reduction(self, name, fraction, overwrite=False, exclude_global=(1,)):
+        global_property = self.root["global/global_property"][:]
+        valid_positions = exclude_values(global_property, exclude_global)
+        selection_size = int(len(valid_positions) * fraction)
+        selected_positions = np.random.choice(valid_positions, selection_size, replace=False)
 
-    def create_initial_reduction(self, name, fraction, overwrite=False):
-        # specific variable for test set, preserve points from training on
-        database_size = self.root["database_size"][0]
-        subset_size = int(fraction * database_size)
-        initial_subset_indices = np.random.choice(np.arange(database_size), subset_size)
+        selected_indices = self.root["global/indices"][selected_positions]
+        # 2 flags that the data point in a reduction
+        self.root["global/global_property"][selected_indices] = 2
         self.root["reductions"].create_group(name, overwrite=overwrite)
-        self._create_reduction(name, "000", initial_subset_indices)
+        self.root[f"reductions/{name}"].array("000", selected_indices)
 
-    def update_reduction(self, name, predicted_data: Dict, property_name, fraction, outlier_percentile):
-        # suppose to have dictionary with indices and one of properties (e.g. forces, energies).
+    # def update_reduction(self, name, predicted_data: Dict, property_name, fraction, outlier_percentile):
+    #     # suppose to have dictionary with indices and one of properties (e.g. forces, energies).
+    #
+    #     last_reduction = self.get_last_reduction(name)
+    #     current_stage = str(int(last_reduction.basename) + 1).zfill(3)
+    #
+    #     # get all differences
+    #     diffs = []
+    #     for group in self.root["data"]:
+    #         pointer = self.root[f"data/{group}"]
+    #         group_indices = pointer["indices"][:]
+    #         indices, group_positions, data_positions = np.intersect1d(group_indices, predicted_data["indices"],
+    #                                                                   return_indices=True)
+    #         database_values = pointer[property_name][group_positions]
+    #         external_values = predicted_data[property_name][data_positions]
+    #         diff = np.stack([indices, np.linalg.norm(database_values - external_values, axis=0)], axis=-1)
+    #         diffs.append(diff)
+    #     diffs = np.concatenate(diffs)
+    #
+    #     # todo: there should be a selection logic here
+    #     selected_indices = diffs[:, 0]
+    #
+    #     self._create_reduction(name, current_stage, selected_indices)
 
-        last_reduction = self.get_last_reduction(name)
-        current_stage = str(int(last_reduction.basename) + 1).zfill(3)
+    def chunk_generator(self, chunk_size, exclude_global=(1., 2.)):
+        global_property = self.root["global/global_property"][:]
+        if exclude_global is not None:
+            result_mask = global_property != exclude_global[0]
+            for value in exclude_global[1:]:
+                result_mask &= (global_property != value)
+            valid_positions = np.where(result_mask)[0]
+        else:
+            valid_positions = np.arange(len(global_property))
 
-        # get all differences
-        diffs = []
-        for group in self.root["data"]:
-            pointer = self.root[f"data/{group}"]
-            group_indices = pointer["indices"][:]
-            indices, group_positions, data_positions = np.intersect1d(group_indices, predicted_data["indices"],
-                                                                      return_indices=True)
-            database_values = pointer[property_name][group_positions]
-            external_values = predicted_data[property_name][data_positions]
-            diff = np.stack([indices, np.linalg.norm(database_values - external_values, axis=0)], axis=-1)
-            diffs.append(diff)
-        diffs = np.concatenate(diffs)
+        valid_indices = self.root["global/indices"][valid_positions]
+        order = np.argsort(valid_indices[:, 0])
+        sorted_indices = valid_indices[order]
+        n_chunks = (len(sorted_indices)) // chunk_size + int(len(sorted_indices) % chunk_size != 0)
+        borders = np.arange(1, n_chunks) * chunk_size
+        chunk_indices = np.split(sorted_indices, borders)
 
-        # todo: there should be a selection logic here
-        selected_indices = diffs[:, 0]
-
-        self._create_reduction(name, current_stage, selected_indices)
+        for chunk_idx in chunk_indices:
+            yield self.get_item(chunk_idx, pad_arrays=True)
 
     def get_last_reduction(self, name):
         g = self.root[f"reductions/{name}"]
-        max_key = max(g.group_keys())
+        max_key = max(g.array_keys())
         return g[max_key]
 
-    def dump_reduction(self, name, output_format):
-        elements = {}
-        last_reduction = self.get_last_reduction(name)
+    def dump_reduction(self, name, output_format, stage=None):
+        if stage is None:
+            reduction = self.get_last_reduction(name)
+        else:
+            if isinstance(stage, int):
+                stage = str(stage).zfill(3)
+            reduction = self.root[f"reductions/{name}/{stage}"]
 
-        for group in self.root["data/"]:
-            positions = last_reduction[f"{group}/positions"][:]
-            data_group = self.root[f"data/{group}"]
-            for key in data_group:
-                values = data_group[key][positions]
-                if key not in elements:
-                    elements[key] = []
-                elements[key].append(values)
-        elements = {k: concatenate_different_arrays(v) for (k, v) in elements.items()}
+        data = self.get_item(reduction[:], pad_arrays=True)
         # todo: inject to databse
-        return elements
+        return data
 
 
 if __name__ == "__main__":
@@ -235,30 +259,30 @@ if __name__ == "__main__":
 
     }
 
-    database = Database("./example_data", allow_overwriting=True)
+    database = Database("./example_data", allow_overwriting=True, property_names=("species", "forces"))
     database.add_instance(item)
     database = Database.load_from_zarr("./example_data")
-    print(database.property_names, database.db_size)
+    print(database.property_names)
 
     database.add_instance(item)
     database.add_instance(another_item)
 
-    for i in range(1000):
+    for i in range(3):
         database.add_instance(item)
         database.add_instance(another_item)
 
     pprint(database.root["global/indices"][:10])
 
-    pprint(database.get_item([(3, 0), (5, 1)]))
-    pprint(database.get_item([(3, 0), (5, 1)], pad_arrays=True))
-    # pprint(database.get_item(1001))
-    #
-    # database.create_initial_reduction("lol", 0.5)
-    #
-    # dump = database.dump_reduction("lol", "json")
-    #
-    # pprint(dump)
-    #
+    pprint(database.get_item([[3, 0], [5, 1]]))
+    pprint(database.get_item([[5, 1], [3, 0]], pad_arrays=True))
+
+    database.create_initial_reduction("lol", 0.5)
+
+    dump = database.dump_reduction("lol", "json")
+
+    for chunk in database.chunk_generator(2, exclude_global=None):
+        pprint(chunk)
+
     # size = database.root["database_size"][0]
     #
     # indices = np.random.choice(np.arange(size), 500, replace=False)

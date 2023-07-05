@@ -1,2 +1,6 @@
-{
+{   
+    "atom_charges":{"F": -1, "Li":1, "Na":1, "K":1, "Cl":-2, "Mg":2, "Be":2 },
+    "target_num_atoms":100,
+    "min_distance":1.5,
+    "box_length_range":[8.5, 13]
 }

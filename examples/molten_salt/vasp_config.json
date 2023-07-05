@@ -6,6 +6,7 @@
   "ibrion":-1, 
   "ediff":1e-7, 
   "kpts":[2, 2, 2], 
+  "gamma":true,
   "sigma":0.03,
   "ismear":0, 
   "nelm":100, 
@@ -17,8 +18,8 @@
   "lreal":"AUTO",
   "isym":0,
   "ialgo":38,
-  "xc":"pbe",
   "gga":"pe",
+  "pp":"PBE",
   "nsw":0,
   "ncore":16,
   "kpar":8

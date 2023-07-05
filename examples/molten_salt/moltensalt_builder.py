@@ -1,4 +1,6 @@
 import random
+
+import ase
 import numpy as np
 from tqdm import tqdm
 from collections import Counter
@@ -118,19 +120,18 @@ def to_mic(r_ij, box_length):
     return r_ij - box_length * np.round(r_ij/box_length)
 
 
-def construct_simulation_box(atom_charges, target_num_atoms, box_length=None, density=None, min_distance=1.5, scale_coords=True,
+def construct_simulation_box(atomic_system, min_distance, box_length=None, density=None, scale_coords=True,
                              max_iter=30, max_tries=25):
     """
     Constructs a simulation box given atomic species, their charges, desired density (g/cm³), and the minimum distance
     between atoms. The atoms in the atomic system are randomly placed in the simulation box.
 
     Args:
-        atom_charges (dict): A dictionary where the keys are the atom types in the system and the corresponding values
-                             the charge of each atom type.
-        box_length (float): Length of the cubic box.
-        target_num_atoms (int): Targeted total number of atoms in the system.
-        density (float): Density of the atomic system in g/cm³.
+        atomic_system (dict): A dictionary where the keys are the atom types and the values the corresponding number
+                              of this atom type to be placed in the box.
         min_distance (float): Minimum absolute distance between any two atoms in Angstroms.
+        box_length (float): Length of the cubic box.
+        density (float): Density of the atomic system in g/cm³.
         scale_coords (bool): Scales distances by the box length such that all coordinates are now between [0,1].
         max_iter (int): Maximum number of tries to place an atom in a specific grid.
         max_tries (int): Maximum number of tries to rerun the algorithm and try to fit the atoms that are missing to
@@ -144,7 +145,6 @@ def construct_simulation_box(atom_charges, target_num_atoms, box_length=None, de
     if box_length is None and density is None:
         raise Exception('Please specify either the box length or the density')
 
-    atomic_system = create_atomic_system(atom_charges, target_num_atoms)
     if box_length is None: # Estimate box length from the desired density
         mass_system = sum([MM_of_Elements[atom_type] * atom_num / 6.022e23 for atom_type, atom_num in atomic_system.items()]) # [g]
         box_volume = (mass_system / density * 1e24) # [Å³]
@@ -152,7 +152,6 @@ def construct_simulation_box(atom_charges, target_num_atoms, box_length=None, de
 
     n_atoms = sum(atomic_system.values())
 
-    ####################################################################################################################
     N = int(box_length // min_distance)
     grid_spacing = box_length / N
     grid = np.arange(0, box_length, grid_spacing)
@@ -204,6 +203,7 @@ def construct_simulation_box(atom_charges, target_num_atoms, box_length=None, de
         neighbors_coords = occupied_mesh_grid[tuple(i_neighbors), tuple(j_neighbors), tuple(k_neighbors)]
         occupied_neighbors_coords = neighbors_coords[np.any(neighbors_coords, axis=1)] # Empty points have coords (0,0,0)
 
+        # Trying to fit an atom at a random position in an available grid position
         for _ in range(max_iter):
             candidate_coord = mesh_grid[idx] + rng.uniform(0, grid_spacing, size=3)
             distances = np.linalg.norm(to_mic(candidate_coord - occupied_neighbors_coords, box_length), axis=1)
@@ -220,6 +220,35 @@ def construct_simulation_box(atom_charges, target_num_atoms, box_length=None, de
         coords /= box_length
 
     return coords
+
+
+def atomic_system_builder(atom_charges, target_num_atoms, min_distance, box_length_range, max_tries=25, scale_coords=False):
+    """
+    Builds the atomic system
+
+    Args:
+        atom_charges (dict): A dictionary where the keys are the atom types in the system and the corresponding values
+                             the charge of each atom type.
+        target_num_atoms (int): Targeted total number of atoms in the system.
+        min_distance (float): Minimum absolute distance between any two atoms in Angstroms.
+        box_length_range (list): A list containing the minimum and maximum simulation box length [L_min, L_max].
+        max_tries (int): Maximum number of cycles in the atom placing algorithm
+        scale_coords (bool): Determines whether to scale the coordinates by the box length or not.
+
+    Returns:
+        (tuple): Tuple containing the number of each element in the box, their coordinates, and box length.
+
+    """
+    rng = np.random.default_rng()
+    box_length = rng.uniform(min(box_length_range), max(box_length_range))
+    atomic_system = create_atomic_system(atom_charges, target_num_atoms)
+    coords = construct_simulation_box(atomic_system, min_distance, box_length, max_tries=max_tries, scale_coords=scale_coords)
+
+    atoms_type_list = []
+    for k, v in atomic_system.items():
+        atoms_type_list.extend([k] * v)
+
+    return ase.Atoms(atoms_type_list, coords, pbc=True, cell=np.diag([box_length]*3))
 
 
 #----------------------------------------------------------------------------------------------------------------------#
@@ -242,7 +271,7 @@ def test_atomic_system(charges, iterations=10000):
         total_charges.append(sum([at_sys[at] * charges[at] for at in charges.keys()]))
 
     total = sum(freq_type.values())
-    prob = {k: round(v/total, 2) for k,v in freq_type.items()}
+    prob = {k: round(v/total, 3) for k,v in freq_type.items()}
 
     if np.all(np.array(total_charges) == 0):
         print('All systems were charge neutral')
@@ -256,25 +285,37 @@ def test_distances(coords, box_length):
     d_ijk = to_mic(coords[:,np.newaxis,:] - coords[np.newaxis,:,:], box_length)
     dists = np.linalg.norm(d_ijk, axis=2)
     min_distances = np.min(dists[dists != 0].reshape(d_ijk.shape[0], d_ijk.shape[0]-1), axis=-1)
-    print(min_distances)
-    print(f'The minimum distance between any two atoms assuming PBC was {min(min_distances):.6f}')
+    print(f'The minimum distance for each atom is {min_distances}')
+    print(f'The minimum distance between any two atoms assuming PBC is {min(min_distances):.6f}')
 
 
 ## Testing the charge neutrality of the system and if the total number of atoms in it is close to what we want.
 # test_atomic_system({'F': -1, 'Li': 1, 'Na': 1, 'K': 1, 'Cl': -2, 'Mg': 2, 'Be': 2})
 # print(create_atomic_system({'F': -1, 'Li': 1, 'Na': 1, 'K': 1, 'Cl': -2, 'Mg': 2, 'Be': 2}))
+# quit()
+
 
 ## Testing the minimum distance between any two atoms considering PBC to check if it respects the 'min_distance'.
 # L = 10
-# coords = construct_simulation_box({'F': -1, 'Li': 1, 'Na': 1, 'K': 1, 'Cl': -2, 'Mg': 2, 'Be': 2}, 100,
-#                                         box_length=L, min_distance=1.5, scale_coords=False, max_tries=20, max_iter=30)
+# coords = construct_simulation_box(create_atomic_system({'F': -1, 'Li': 1, 'Na': 1, 'K': 1, 'Cl': -2, 'Mg': 2, 'Be': 2}), 1.5,
+#                                         box_length=L, scale_coords=False, max_tries=20, max_iter=30)
 # test_distances(coords, L)
+# quit()
+
 
 ## Testing algorithm's stability for very small box sizes
 # L = 8.5
 # for i in tqdm(range(5000)):
-#     coords = construct_simulation_box({'F': -1, 'Li': 1, 'Na': 1, 'K': 1, 'Cl': -2, 'Mg': 2, 'Be': 2}, 100,
-#                                         box_length=L, min_distance=1.5, scale_coords=False, max_tries=20, max_iter=30)
+#     coords = construct_simulation_box(create_atomic_system({'F': -1, 'Li': 1, 'Na': 1, 'K': 1, 'Cl': -2, 'Mg': 2, 'Be': 2}), 1.5,
+#                                         box_length=L, scale_coords=False, max_tries=20, max_iter=30)
+# quit()
 
 
-# Box from L=[8.5, 13], min_dist = 1.5, kpar=4, ncore=8, ediff=1e-7, prec=accurate, 2x2x2, ialgo=38, nelm=100
+## Checking the return from the builder
+# atoms_object = atomic_system_builder({'F': -1, 'Li': 1, 'Na': 1, 'K': 1, 'Cl': -2, 'Mg': 2, 'Be': 2}, 100, 1.5, [8.5,13])
+# print(atoms_object.get_atomic_numbers())
+# print(atoms_object.cell.cellpar())
+# print(atoms_object.get_all_distances()[atoms_object.get_all_distances() != 0].min())
+# quit()
+
+# Vasp box from L=[8.5, 13], min_dist = 1.5, kpar=8, ncore=16, ediff=1e-7, prec=accurate, 2x2x2, ialgo=38, nelm=100

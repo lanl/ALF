@@ -349,9 +349,15 @@ def ase_calculator_task(molecule_object, QM_config, QM_scratch_dir, properties_l
     """
         Args:
             molecule_object (list): List containing the return of the builder task.
-            QM_config: json file containing the parameters for the QM calculation.
-            QM_scratch_dir: Scratch path for the QM calculation.
-            properties_list: The property list defined on master_config.json. 
+            QM_config (dict): json file containing the parameters for the QM calculation.
+            QM_scratch_dir (str): Scratch path for the QM calculation.
+            properties_list: The property list defined on master_config.json. The properties defined here 
+                             will be extracted from the QM calculation and stored in the database for 
+                             training the NN. We can also specify an unit conversion factor. 
+        
+        Returns:
+            (list): A list representing the updated molecule_object received that now stores the QM 
+                    calculation results.
     """
     
     import glob
@@ -362,14 +368,14 @@ def ase_calculator_task(molecule_object, QM_config, QM_scratch_dir, properties_l
     properties = list(properties_list)
     
     command = QM_config['QM_run_command']
-    #Define the calculator
+
+    # Define the calculator with desired pseudopotentials
     calc = calc_class(directory=directory, command=command, **QM_config['input_list'], 
                 setups={'F': '', 'Li': '_sv', 'Na': '_pv', 'K': '_sv', 'Cl': '', 'Mg': '_pv', 'Be': '_sv'})
     
-    #Run the calculation
+    # Run the calculation
     calc.calculate(atoms=molecule_object[1], properties=properties)
 
-    #atoms.calc(properties=properties)
     for curF in glob.glob(directory+'/WAVECAR*'):
         os.remove(curF)
     
@@ -382,5 +388,5 @@ def ase_calculator_task(molecule_object, QM_config, QM_scratch_dir, properties_l
     else:
         molecule_object[2]['converged'] = False
         
-    return(molecule_object)
+    return molecule_object
 

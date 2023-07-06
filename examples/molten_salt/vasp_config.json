@@ -13,7 +13,7 @@
   "ivdw":11, 
   "isif":2,
   "istart":0, 
-  "lwave":true,
+  "lwave":false,
   "lcharg":true,
   "lreal":"AUTO",
   "isym":0,

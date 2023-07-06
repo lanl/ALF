@@ -92,7 +92,7 @@ class Database:
 
         for key in properties:
             value = item[key]
-            elem_example = zarr.zeros(item[key].shape, chunks=(10000,), dtype=value.dtype)
+            elem_example = zarr.zeros(value.shape, chunks=(10000,), dtype=value.dtype)
             self.root["global/leaf_structure"].array(key, elem_example)
             placeholder = zarr.zeros((1, *value.shape), chunks=(100,), dtype=value.dtype)
             placeholder[0] = value
@@ -131,8 +131,18 @@ class Database:
         else:
             raise NotImplementedError
 
-    def add_property(self, name, item):
-        pass
+    def add_instance_and_property(self, name, example, group_dim=None):
+        elem_example = zarr.zeros(example.shape, chunks=(10000,), dtype=example.dtype)
+        self.root["global/leaf_structure"].array(name, elem_example)
+        self.property_names.append(name)
+        for key in self.root["data"]:
+            shape = list(example.shape)
+            if group_dim is not None:
+                shape[group_dim] = int(key)
+
+            filler = zarr.zeros((len(self.root[f"data/{key}/species"]), *shape),
+                                chunks=(100,), dtype=example.dtype)
+            self.root[f"data/{key}"].array(name, filler)
 
     def get_item(self, selection_index, pad_arrays=False):
         if isinstance(selection_index[0], numpy.ndarray) or isinstance(selection_index[0], list):
@@ -238,11 +248,6 @@ class Database:
 
 
 if __name__ == "__main__":
-    # import os
-    # full_file = os.path.join(d_dir, file)
-    # x = pyanitools.anidataloader(full_file)
-    # for c in x:
-    #     batches.append(c)
     from pprint import pprint
 
     item = {
@@ -282,6 +287,22 @@ if __name__ == "__main__":
 
     for chunk in database.chunk_generator(2, exclude_global=None):
         pprint(chunk)
+
+    database.add_instance_and_property("special_forces", item["forces"], group_dim=0)
+
+    other_item = {
+        "species": np.array([1, 8, 1, 4, 5]).astype(int),
+        "energy": np.array([5]),
+        "forces": np.random.random((5, 3)),
+        "special_forces": np.random.random((5, 3))
+    }
+
+    database.add_instance(other_item)
+
+    for chunk in database.chunk_generator(2, exclude_global=None):
+        pprint(chunk)
+
+
 
     # size = database.root["database_size"][0]
     #

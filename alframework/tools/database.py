@@ -66,6 +66,9 @@ class Database:
                 self.property_names = [i for i in self.root["global/leaf_structure"]]
                 self.db_size = len(self.root["global/indices"])
 
+    def __len__(self):
+        return self.db_size
+
     @classmethod
     def load_from_zarr(cls, directory):
         return cls(directory, allow_overwriting=False)
@@ -185,49 +188,32 @@ class Database:
         self.root["reductions"].create_group(name, overwrite=overwrite)
         self.root[f"reductions/{name}"].array("000", selected_indices)
 
-    # def update_reduction(self, name, predicted_data: Dict, property_name, fraction, outlier_percentile):
-    #     # suppose to have dictionary with indices and one of properties (e.g. forces, energies).
-    #
-    #     last_reduction = self.get_last_reduction(name)
-    #     current_stage = str(int(last_reduction.basename) + 1).zfill(3)
-    #
-    #     # get all differences
-    #     diffs = []
-    #     for group in self.root["data"]:
-    #         pointer = self.root[f"data/{group}"]
-    #         group_indices = pointer["indices"][:]
-    #         indices, group_positions, data_positions = np.intersect1d(group_indices, predicted_data["indices"],
-    #                                                                   return_indices=True)
-    #         database_values = pointer[property_name][group_positions]
-    #         external_values = predicted_data[property_name][data_positions]
-    #         diff = np.stack([indices, np.linalg.norm(database_values - external_values, axis=0)], axis=-1)
-    #         diffs.append(diff)
-    #     diffs = np.concatenate(diffs)
-    #
-    #     # todo: there should be a selection logic here
-    #     selected_indices = diffs[:, 0]
-    #
-    #     self._create_reduction(name, current_stage, selected_indices)
+    def update_reduction(self, name, predictor_function, score_function, fraction,
+                         exclude_global=None, chunk_size=None):
+        # suppose to have dictionary with indices and one of properties (e.g. forces, energies).
 
-    def chunk_generator(self, chunk_size, exclude_global=(1., 2.)):
-        global_property = self.root["global/global_property"][:]
-        if exclude_global is not None:
-            result_mask = global_property != exclude_global[0]
-            for value in exclude_global[1:]:
-                result_mask &= (global_property != value)
-            valid_positions = np.where(result_mask)[0]
-        else:
-            valid_positions = np.arange(len(global_property))
+        if chunk_size is None:
+            chunk_size = self.db_size
 
+        if exclude_global is None:
+            exclude_global = []
+
+        exclude_global = list(exclude_global) + [2.]
+        results = {"indices": [], "scores": []}
+        global_property = self.root['global/global_property']
+        for chunk in self.chunk_generator(chunk_size, exclude_global=exclude_global):
+            predicted = predictor_function(chunk)
+            scores = score_function(chunk, predicted)
+
+        last_reduction = self.get_last_reduction(name)
+        current_stage = f"{int(last_reduction.basename) + 1:03}"
+
+    def get_chunk_loader(self, chunk_size, exclude_global=(1., 2.)):
+        valid_positions = exclude_values(self.root['global/global_property'][:])
         valid_indices = self.root["global/indices"][valid_positions]
         order = np.argsort(valid_indices[:, 0])
         sorted_indices = valid_indices[order]
-        n_chunks = (len(sorted_indices)) // chunk_size + int(len(sorted_indices) % chunk_size != 0)
-        borders = np.arange(1, n_chunks) * chunk_size
-        chunk_indices = np.split(sorted_indices, borders)
-
-        for chunk_idx in chunk_indices:
-            yield self.get_item(chunk_idx, pad_arrays=True)
+        return ChunkLoader(self, sorted_indices, chunk_size)
 
     def get_last_reduction(self, name):
         g = self.root[f"reductions/{name}"]
@@ -245,6 +231,21 @@ class Database:
         data = self.get_item(reduction[:], pad_arrays=True)
         # todo: inject to databse
         return data
+
+
+class ChunkLoader:
+    def __init__(self, database, indices, chunk_size):
+        n_chunks = (len(indices)) // chunk_size + int(len(indices) % chunk_size != 0)
+        borders = np.arange(1, n_chunks) * chunk_size
+        self.chunk_indices = np.split(indices, borders)
+        self.database = database
+
+    def __len__(self):
+        return len(self.chunk_indices)
+
+    def __getitem__(self, item):
+        chunk_indices = self.chunk_indices[item]
+        return self.database.get_item(chunk_indices)
 
 
 if __name__ == "__main__":
@@ -285,7 +286,7 @@ if __name__ == "__main__":
 
     dump = database.dump_reduction("lol", "json")
 
-    for chunk in database.chunk_generator(2, exclude_global=None):
+    for chunk in database.get_chunk_loader(2, exclude_global=None):
         pprint(chunk)
 
     database.add_instance_and_property("special_forces", item["forces"], group_dim=0)
@@ -299,16 +300,9 @@ if __name__ == "__main__":
 
     database.add_instance(other_item)
 
-    for chunk in database.chunk_generator(2, exclude_global=None):
+    loader = database.get_chunk_loader(2, exclude_global=None)
+    for chunk in loader:
         pprint(chunk)
 
-
-
-    # size = database.root["database_size"][0]
-    #
-    # indices = np.random.choice(np.arange(size), 500, replace=False)
-    # energies = np.random.normal(loc=2, size=500)
-    #
-    # predicted_data = {"indices": indices, "energy": energies}
-    #
-    # database.update_reduction("lol", predicted_data, "energy", 0.1, 95)
+    print(len(database))
+    print(len(loader))

@@ -5,7 +5,7 @@
 "species_key":"species",
 "network_params":{
             "possible_species":[0,3,4,9,11,12,17,19],
-            "n_features": 20,
+            "n_features": 100,
             "n_sensitivities": 30,
             "dist_soft_min": 0.55,
             "dist_soft_max": 4.0,

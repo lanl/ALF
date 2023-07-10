@@ -12,7 +12,6 @@
 	"ML_task": "alframework.ml_interfaces.hippynn_interface.train_HIPPYNN_ensemble_task",
 	"ML_config_path": "hippynn_config.json",
 	"properties_list": {
-		"energy": ["energyNonDiff", "system", 1.0], 
 		"free_energy": ["energy", "system", 1.0], 
 		"forces": ["forces", "atomic", 1.0]
 	},

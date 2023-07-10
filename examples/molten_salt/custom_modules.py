@@ -370,8 +370,7 @@ def ase_calculator_task(molecule_object, QM_config, QM_scratch_dir, properties_l
     command = QM_config['QM_run_command']
 
     # Define the calculator with desired pseudopotentials
-    calc = calc_class(directory=directory, command=command, **QM_config['input_list'], 
-                setups={'F': '', 'Li': '_sv', 'Na': '_pv', 'K': '_sv', 'Cl': '', 'Mg': '_pv', 'Be': '_sv'})
+    calc = calc_class(directory=directory, command=command, **QM_config['input_list'])
     
     # Run the calculation
     calc.calculate(atoms=molecule_object[1], properties=properties)

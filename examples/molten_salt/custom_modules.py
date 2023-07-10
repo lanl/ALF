@@ -48,7 +48,7 @@ config_running = Config(
                 # We request all hyperthreads on a node.
                 #launcher=SrunLauncher(overrides='-c 64'),
                 launcher=SimpleLauncher(),
-                walltime='6:00:00',
+                walltime='3:00:00',
 
                 # Slurm scheduler on Cori can be slow at times,
                 # increase the command timeouts
@@ -89,7 +89,7 @@ config_running = Config(
                 # We request all hyperthreads on a node.
                 #launcher=SrunLauncher(overrides='-c 64'),
                 launcher=SimpleLauncher(),
-                walltime='12:00:00',
+                walltime='6:00:00',
 
                 # Slurm scheduler on Cori can be slow at times,
                 # increase the command timeouts
@@ -247,7 +247,7 @@ config_debug = Config(
                 # We request all hyperthreads on a node.
                 #launcher=SrunLauncher(overrides='-c 64'),
                 launcher=SimpleLauncher(),
-                walltime='2:00:00',
+                walltime='1:00:00',
 
                 # Slurm scheduler on Cori can be slow at times,
                 # increase the command timeouts

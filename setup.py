@@ -6,6 +6,10 @@ with open("README.md", "r") as fh:
 # Required Dependencies
 install_requirements=[
     "parsl",
+    "numpy",
+    "h5py",
+    "ase @ git+ssh://git@github.com/rosswhitfield/ase.git",
+    "hippynn @ git+ssh://git@github.com/lanl/hippynn.git",
 ]
 
 # Documentation Dependencies
@@ -20,7 +24,7 @@ full_requirements = [
 ]
 
 setuptools.setup(
-    name="alf",
+    name="alframework",
     version="0.0.1",
     author="",
     author_email="",

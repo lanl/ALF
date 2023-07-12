@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "alframework"
+version = "0.0.1"
+authors = [
+]
+description = "Active Learning Framework"
+readme = "README.md"
+requires-python = ">3.9"
+keywords = ["active", "learning", "framework", "mliap", "hippynn"]
+license = {text = "BSD-3-Clause"}
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Topic :: Scientific/Engineering :: Chemistry",
+]
+
+dependencies = [
+    'parsl',
+    'numpy',
+    'h5py',
+    'ase@git+ssh://git@github.com/rosswhitfield/ase.git',
+    'hippynn@git+ssh://git@github.com/lanl/hippynn.git',
+]
+
+[project.optional-dependencies]
+sphinx = [ 'sphinx' ]
+sphinx_rtd_theme = [ 'sphinx_rtd_theme' ]

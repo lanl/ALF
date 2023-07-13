@@ -187,25 +187,28 @@ class Database:
         self.root["reductions"].create_group(name, overwrite=overwrite)
         self.root[f"reductions/{name}"].array("000", selected_indices)
 
-    def update_reduction(self, reduction_name, ase_calculator, score_function, rule_function, fraction,
-                         chunk_size):
-        # suppose to have dictionary with indices and one of properties (e.g. forces, energies).
+    def update_reduction(self, reduction_name, score, fraction, chunk_size, exclude_global=(1,)):
 
-        if chunk_size is None:
-            chunk_size = self.db_size
+        loader = self.get_chunk_loader(reduction_name, chunk_size, exclude_global)
+        train_indices = []
+        bad_indices = []
 
-        if exclude_global is None:
-            exclude_global = []
+        for chunk in loader:
+            tr_idx, bad_idx = score.predict(chunk)
+            train_indices.append(tr_idx)
+            bad_indices.append(bad_idx)
+        train_indices = np.concatenate(train_indices)
+        bad_indices = np.concatenate(bad_indices)
 
-        exclude_global = list(exclude_global) + [2.]
-        results = {"indices": [], "scores": []}
-        global_property = self.root['global/global_property']
-        for chunk in self.chunk_generator(chunk_size, exclude_global=exclude_global):
-            predicted = predictor_function(chunk)
-            scores = score_function(chunk, predicted)
-
-        last_reduction = self.get_last_reduction(name)
-        current_stage = f"{int(last_reduction.basename) + 1:03}"
+        if "#bad_indices" not in self.root[f"reductions/{reduction_name}"]:
+            self.root[f"reductions/{reduction_name}"].array("#bad_indices", bad_indices)
+        else:
+            self.root[f"reductions/{reduction_name}/#bad_indices"].append(bad_indices)
+        stage = int(max(self._get_earlier_stages(reduction_name, None)))
+        positions = np.arange(len(train_indices))
+        selection_size = int(fraction * len(positions))
+        positions = np.random.choice(positions, selection_size)
+        self.root[f"reductions/{reduction_name}"].array(f"{stage + 1:03}", train_indices[positions])
 
     def get_chunk_loader(self, reduction_name, chunk_size, exclude_global=(1.,), stage=None):
         valid_positions = exclude_values(self.root['global/global_property'][:], exclude_global)

@@ -9,8 +9,7 @@ module load cmake
 source activate /usr/projects/ml4chem/envs/p310-alf
 
 #------------------parsl-ALF directory-----------------#
-export PYTHONPATH="/users/vitor/ALF/:$PYTHONPATH"
-export PYTHONPATH="/users/vitor/moltensalt_builder:$PYTHONPATH"
+export PYTHONPATH="/usr/projects/ml4chem/envs/p310-alf-packages/ALF/:$PYTHONPATH"
 export PYTHONPATH="/usr/projects/ml4chem/envs/p310-alf-packages/PythonPath/:$PYTHONPATH"
 
 #-------------------ANI-Tools LIB----------------------#

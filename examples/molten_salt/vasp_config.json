@@ -1,6 +1,6 @@
 {
-	"QM_run_command": "module purge; module load PrgEnv-cray; source /users/vitor/VASP/vasp.6.3.2-aocc-mkl/setenv_chicoma.sh; /usr/bin/srun /users/vitor/VASP/vasp.6.3.2-aocc-mkl/bin/vasp_std > vasp_out.txt 2>&1",
-	"input": {
+ "QM_run_command": "module purge; module load PrgEnv-cray; source /users/vitor/VASP/vasp.6.3.2-aocc-mkl/setenv_chicoma.sh; /usr/bin/srun /users/vitor/VASP/vasp.6.3.2-aocc-mkl/bin/vasp_std > vasp_out.txt 2>&1",
+ "input": {
     "encut": 600, 
     "prec": "Accurate",
     "ibrion": -1, 

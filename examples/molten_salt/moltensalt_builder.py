@@ -1,11 +1,10 @@
 import random
-
-import ase
 import numpy as np
+import ase
 from tqdm import tqdm
 from collections import Counter
 from itertools import product
-from ase import Atoms
+
 
 MM_of_Elements = {'H': 1.00794, 'He': 4.002602, 'Li': 6.941, 'Be': 9.012182, 'B': 10.811, 'C': 12.0107,
                   'N': 14.0067, 'O': 15.9994, 'F': 18.9984032, 'Ne': 20.1797, 'Na': 22.98976928, 'Mg': 24.305,
@@ -99,6 +98,10 @@ def create_atomic_system(atom_charges, target_num_atoms=100):
     # Making sure that atomic system has the same "order" of keys as atom_charges since it matters for VASP
     atomic_system = {k: atomic_system[k] for k in atom_charges.keys()}
 
+    # Sorting according to MM:
+    # atom_types.sort(key=lambda at: MM_of_Elements[at])
+    # atomic_system = {at: atomic_system[at] for at in atom_types}
+
     return atomic_system
 
 
@@ -123,7 +126,7 @@ def to_mic(r_ij, box_length):
 def construct_simulation_box(atomic_system, min_distance, box_length=None, density=None, scale_coords=True,
                              max_iter=30, max_tries=25):
     """
-    Constructs a simulation box given atomic species, their charges, desired density (g/cm³), and the minimum distance
+    Constructs a simulation box given atomic species, their charges, desired density (g/cm^3), and the minimum distance
     between atoms. The atoms in the atomic system are randomly placed in the simulation box.
 
     Args:
@@ -131,12 +134,11 @@ def construct_simulation_box(atomic_system, min_distance, box_length=None, densi
                               of this atom type to be placed in the box.
         min_distance (float): Minimum absolute distance between any two atoms in Angstroms.
         box_length (float): Length of the cubic box.
-        density (float): Density of the atomic system in g/cm³.
+        density (float): Density of the atomic system in g/cm^3.
         scale_coords (bool): Scales distances by the box length such that all coordinates are now between [0,1].
         max_iter (int): Maximum number of tries to place an atom in a specific grid.
         max_tries (int): Maximum number of tries to rerun the algorithm and try to fit the atoms that are missing to
                          reach the desired number of atoms.
-
 
     Returns:
         (np.array): A (N,3) np.array where 'N' is the total number of atoms in the system.
@@ -147,7 +149,7 @@ def construct_simulation_box(atomic_system, min_distance, box_length=None, densi
 
     if box_length is None: # Estimate box length from the desired density
         mass_system = sum([MM_of_Elements[atom_type] * atom_num / 6.022e23 for atom_type, atom_num in atomic_system.items()]) # [g]
-        box_volume = (mass_system / density * 1e24) # [Å³]
+        box_volume = (mass_system / density * 1e24) # [Angstrom^3]
         box_length = box_volume ** (1/3)
 
     n_atoms = sum(atomic_system.values())
@@ -197,8 +199,8 @@ def construct_simulation_box(atomic_system, min_distance, box_length=None, densi
         neighbor_list[neighbor_list == -1] = N-1
         neighbor_list[neighbor_list == N] = 0
 
-        # Getting the only the coordinates of the occupied neighbors from the neighbor list since we only need to check
-        # distances for them because (its redundant to check distances for a empty mesh cell).
+        # Getting only the coordinates of the occupied neighbors from the neighbor list since it suffices to check
+        # distances for them (its redundant to check distances for a empty cells).
         i_neighbors, j_neighbors, k_neighbors = neighbor_list[:, 0], neighbor_list[:, 1], neighbor_list[:, 2]
         neighbors_coords = occupied_mesh_grid[tuple(i_neighbors), tuple(j_neighbors), tuple(k_neighbors)]
         occupied_neighbors_coords = neighbors_coords[np.any(neighbors_coords, axis=1)] # Empty points have coords (0,0,0)
@@ -312,10 +314,43 @@ def test_distances(coords, box_length):
 
 
 ## Checking the return from the builder
-# atoms_object = atomic_system_builder({'F': -1, 'Li': 1, 'Na': 1, 'K': 1, 'Cl': -2, 'Mg': 2, 'Be': 2}, 100, 1.5, [8.5,13])
-# print(atoms_object.get_atomic_numbers())
-# print(atoms_object.cell.cellpar())
-# print(atoms_object.get_all_distances()[atoms_object.get_all_distances() != 0].min())
+# atoms = atomic_system_builder({'F': -1, 'Li': 1, 'Na': 1, 'K': 1, 'Cl': -2, 'Mg': 2, 'Be': 2}, 100, 1.5, [8.5,13])
+# print(atoms.get_atomic_numbers())
+# print(atoms.cell.cellpar())
+# print(atoms.get_all_distances()[atoms.get_all_distances() != 0].min())
+# print(atoms.get_positions().tolist())
+# print(atoms.get_chemical_symbols())
 # quit()
 
-# Vasp box from L=[8.5, 13], min_dist = 1.5, kpar=8, ncore=16, ediff=1e-7, prec=accurate, 2x2x2, ialgo=38, nelm=100
+
+## Testing the number of atoms inside the atomic environment of a given atom and its minimum distance
+# N = 100
+# min_dist = np.empty(N)
+# n_neigh = np.empty(N)
+# L = 12
+# for i in range(N):
+#     coords = construct_simulation_box({'F': 17, 'Li': 14, 'Na': 9, 'K': 12, 'Cl': 28, 'Mg': 9, 'Be': 10}, 1.5, box_length=L, scale_coords=False)
+#     d_1 = np.linalg.norm(to_mic(coords[0] - coords[1:], L), axis=1) # Using the first atom to find the distances
+#     neigh = d_1[d_1 <= 7]
+#     min_dist[i] = neigh.min()
+#     n_neigh[i] = neigh.shape[0]
+#
+# hist_dist = np.histogram(min_dist, np.arange(1.5, 3.1, 0.1))
+# hist_neigh = np.histogram(n_neigh, np.arange(1.5, 3.1, 0.1))
+#
+# print(np.sort(min_dist))
+# print(np.sort(n_neigh))
+# print(min_dist[min_dist>2].size)
+# print(f'Minimum avg distance in the AEV: {np.mean(min_dist):.2f}, avg number of atoms in the AEV: {np.mean(n_neigh):.2f}')
+#
+# import matplotlib.pyplot as plt
+# fig, ax = plt.subplots()
+# ax.hist(min_dist, bins=hist_dist[1], rwidth=0.95, color='navy')
+#
+# for i, rect in enumerate(ax.patches):
+#     height = rect.get_height()
+#     ax.annotate(f'{int(hist_dist[0][i])}', xy=(rect.get_x()+rect.get_width()/2, height),
+#                 xytext=(0, 2), textcoords='offset points', ha='center', va='bottom', fontsize=15, color='orangered')
+# plt.show()
+
+

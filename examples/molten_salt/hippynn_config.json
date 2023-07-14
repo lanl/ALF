@@ -3,7 +3,7 @@
 "energy_key": "energy",
 "coordinates_key": "coordinates",
 "species_key": "species",
-"network_params":{
+"network_params": {
             "possible_species": [0,3,4,9,11,12,17,19],
             "n_features": 100,
             "n_sensitivities": 30,
@@ -27,8 +27,17 @@
 "valid_size": 0.1,
 "test_size": 0.1,
 "learning_rate": 1e-3,
-"scheduler_options":{"max_batch_size":64, "patience":10, "factor":0.5},
-"controller_options":{"batch_size":32, "eval_batch_size":64, "max_epochs":1000, "termination_patience":51},
+"scheduler_options": {
+            "max_batch_size":64, 
+            "patience":10, 
+            "factor":0.5
+            },
+"controller_options": {
+            "batch_size": 32, 
+            "eval_batch_size": 64, 
+            "max_epochs":1000, 
+            "termination_patience": 51
+            },
 "device_string": "from_multiprocessing",
 "remove_high_energy_cut": null, 
 "remove_high_energy_std": null,

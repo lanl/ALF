@@ -171,6 +171,8 @@ if '--test_sampler' in sys.argv[2:]:
 
 #def ase_calculator_task(input_system,configuration_list,directory,command,properties=['energy','forces']):
 if '--test_qm' in sys.argv[2:]:
+    #This is a hack to deal with a slurm bug. Is a second job is submitted to the debug queue before the first finishes, the second job hangs. Would be better to monitor job status
+    time.sleep(180)
     task_input = build_input_dict(qm_task.func,[{"molecule_object":test_configuration,"QM_config":QM_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
     QM_task_queue.add_task(qm_task(**task_input))
     qm_result = QM_task_queue.task_list[0].result()

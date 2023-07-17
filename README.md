@@ -46,7 +46,7 @@ Once each task has been tested, active learning can be started with:
 python -m alframework master.json
 ```
 
-It is generally advised to run the master process on a head node. It will automatically interface with the queueing system and run future jobs on compute nodes. 
+It is generally advised to run the master process on a head node inside a screen. This will allow the ALF master process to continue to run over multiple days, even when the host computer is disconnected. It will automatically interface with the queueing system and run future jobs on compute nodes. 
 
 # Citations
 

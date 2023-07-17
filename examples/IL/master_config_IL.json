@@ -15,7 +15,7 @@
 	"target_queued_QM": 200, 
 	"minimum_QM": 0, 
 	"save_h5_threshold": 500, 
-	"parallel_samplers": 100, 
+	"parallel_samplers": 150, 
 	"bootstrap_set": 500,
 	"parsl_configuration":"custom_modules.config_4node",
 	"parsl_debug_configuration":"custom_modules.config_debug",
@@ -23,5 +23,4 @@
 	"QM_scratch_dir":"/users/bnebgen/scratch4/ALrunning/",
 	"plotting_utility":"alframework.tools.plotting.analysis_plot",
 	"plot_dir":"status_plots/"
-	
 }

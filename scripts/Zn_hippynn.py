@@ -4,9 +4,12 @@ sys.path.append("..")
 
 import ase
 import numpy as np
+import torch
+
+from copy import deepcopy
 
 from alframework.tools.database import Database as ZarrDatabase
-from alframework.ml_interfaces.hippynn_interface import HIPNN_ASE_calculator
+from hippynn.databases import Database
 
 
 def get_ase_atoms(arr_dict):
@@ -68,6 +71,25 @@ class Score:
         return bad_indices, train_indices
 
 
+def get_hippynn_database(zarr_database, reduction):
+    database = Database(reduction, inputs=['species', 'cell', 'coordinates'],
+                        targets=['energyperatom', 'species', 'energy', 'atomenergies', 'forces'],
+                        seed=101,
+                        quiet=False,
+                        allow_unfound=True,
+                        )
+    original_indices = reduction["indices"]
+    torch.set_default_dtype(torch.float32)
+    for k, v in database.arr_dict.items():
+        if v.dtype == np.float64:
+            database.arr_dict[k] = v.astype(np.float32)
+    database.arr_dict["indices"] = np.arange(len(original_indices))
+    database.make_random_split("train", int(0.9 * len(database)))
+    database.split_the_rest("valid")
+    database.splits["test"] = database.splits["valid"]
+    return database
+
+
 if __name__ == "__main__":
     zarr_database = ZarrDatabase.load_from_zarr("./data/Zn_zarr")
     zarr_database.create_initial_reduction("test_reduction", fraction=0.1, overwrite=True)
@@ -76,7 +98,8 @@ if __name__ == "__main__":
 
     for iteration in range(n_iterations):
         reduction = zarr_database.dump_reduction("test_reduction")
-
+        database = get_hippynn_database(zarr_database, deepcopy(reduction))
+        print(database.splits.keys())
         # train model using the reduction
 
         # load pre-trained calculator
@@ -86,3 +109,4 @@ if __name__ == "__main__":
         score.fit(reduction)
 
         zarr_database.update_reduction("test_reduction", score, fraction=0.1, chunk_size=100)
+    exit(0)

@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 import numpy
 import numpy as np
 import zarr
@@ -76,14 +78,15 @@ class Database:
         return cls(directory, allow_overwriting=False)
 
     def _add_first_element(self, item):
-        n_atoms = len(item["species"])
+        n_molecules, n_atoms = item["species"].shape
         group_name = f"{n_atoms:03}"
-        placeholder = zarr.zeros((1, 2), chunks=(100,), dtype="int")
-        placeholder[0, 0] = n_atoms
+        placeholder = zarr.zeros((n_molecules, 2), chunks=(100,), dtype="int")
+        placeholder[:, 0] = n_atoms
+        placeholder[:, 1] = np.arange(n_molecules)
         self.root["global"].array("indices", placeholder)
 
-        placeholder = zarr.zeros((1,), chunks=(100,), dtype="float")
-        placeholder[0] = item.get("global_property", 0)
+        placeholder = zarr.zeros((n_molecules,), chunks=(100,), dtype="float")
+        placeholder[:] = item.get("global_property", np.zeros(n_molecules))
         self.root["global"].array("global_property", placeholder)
         self.root["global"].create_group("leaf_structure")
         self.root["data"].create_group(group_name)
@@ -93,27 +96,32 @@ class Database:
             if "global_property" in properties:
                 properties.remove("global_property")
             self.property_names = properties
-        properties = self.property_names
 
-        for key in properties:
+        for key in self.property_names:
             value = item[key]
-            elem_example = zarr.zeros(value.shape, chunks=10000, dtype=value.dtype)
+            elem_example = zarr.zeros(value[0].shape, chunks=10000, dtype=value.dtype)
             self.root["global/leaf_structure"].array(key, elem_example)
-            placeholder = zarr.zeros((1, *value.shape), chunks=(100,), dtype=value.dtype)
-            placeholder[0] = value
+            placeholder = zarr.zeros(value.shape, chunks=(100,), dtype=value.dtype)
+            placeholder[:] = value
             self.root[f"data/{group_name}"].array(key, placeholder)
-        self.db_size = 1
+        self.db_size = n_molecules
 
     def add_instance(self, item):
+        item = deepcopy(item)
         if isinstance(item, list):
             for i in item:
                 self.add_instance(i)
         elif isinstance(item, dict):
+            if len(item["species"].shape) == 1:
+                for k, v in item.items():
+                    item[k] = v.reshape(1, *v.shape)
+
             if self.db_size == 0:
                 return self._add_first_element(item)
-            self.root["global/global_property"].append([item.get("global_property", 0)])
 
-            n_atoms = len(item["species"])
+            n_molecules, n_atoms = item["species"].shape
+            self.root["global/global_property"].append(item.get("global_property", np.zeros(n_molecules)))
+
             group_name = f"{n_atoms:03}"
             if group_name not in self.root["data"]:
                 group = self.root["data"].create_group(group_name)
@@ -121,17 +129,20 @@ class Database:
                 for key in self.property_names:
                     template_array = self.root[f"global/leaf_structure/{key}"][:]
                     value = item[key]
-                    assert check_dimensions(template_array, value, n_atoms)
-                    placeholder = zarr.zeros((1, *value.shape), chunks=(100,), dtype=value.dtype)
-                    placeholder[0] = value
+                    assert check_dimensions(template_array, value[0], n_atoms)
+                    placeholder = zarr.zeros(value.shape, chunks=(100,), dtype=value.dtype)
+                    placeholder[:] = value
                     group.array(key, placeholder)
             else:
                 for key in self.property_names:
                     value = item[key]
-                    self.root[f"data/{group_name}/{key}"].append(value.reshape(1, *value.shape))
-            loc_index = len(self.root[f"data/{group_name}/{self.property_names[0]}"]) - 1
-            self.db_size += 1
-            self.root["global/indices"].append([[len(item["species"]), loc_index]])
+                    self.root[f"data/{group_name}/{key}"].append(value)
+            indices = np.zeros((n_molecules, 2))
+            indices[:, 0] = n_atoms
+            pos = len(self.root[f"data/{group_name}/{self.property_names[0]}"]) - n_molecules
+            indices[:, 1] = np.arange(pos, pos + n_molecules)
+            self.db_size += n_molecules
+            self.root["global/indices"].append(indices)
 
         else:
             raise NotImplementedError
@@ -144,7 +155,6 @@ class Database:
             shape = list(example.shape)
             if group_dim is not None:
                 shape[group_dim] = int(key)
-
             filler = zarr.zeros((len(self.root[f"data/{key}/species"]), *shape),
                                 chunks=(100,), dtype=example.dtype)
             self.root[f"data/{key}"].array(name, filler)
@@ -283,6 +293,14 @@ if __name__ == "__main__":
         database.add_instance(item)
         database.add_instance(another_item)
 
+    big_item = {
+        "species": np.random.random_integers(1, 155, (10, 3)),
+        "energy": np.random.random(size=(10, 1)),
+        "forces": np.random.random((10, 3, 3))
+    }
+
+    database.add_instance(big_item)
+
     pprint(database.root["global/indices"][:10])
 
     pprint(database.get_item([[3, 0], [5, 1]]))
@@ -312,7 +330,7 @@ if __name__ == "__main__":
 
     print(len(database))
     print(len(loader))
-
+    print(database.root["global/indices"][:])
     reduction = database.dump_reduction("lol")
     print(reduction.keys())
     print(reduction["indices"].shape)

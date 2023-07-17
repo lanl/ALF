@@ -20,7 +20,7 @@ config_1node= Config(
             # Optional: the network interface on the login node to
             # which compute nodes can communicate
             #address=address_by_interface('bond0.144'),
-            max_workers=36,
+            max_workers=128,
             #cpu_affinity='alternating',
 
 
@@ -37,7 +37,7 @@ config_1node= Config(
                 #workers_per_node=1,
 
                 # string to prepend to #SBATCH blocks in the submit
-                scheduler_options='#SBATCH --ntasks-per-node=36 --nodes=1 -A w23_ml4chem',
+                scheduler_options='#SBATCH --ntasks-per-node=128 --nodes=1 -A w23_ml4chem',
 
                 # Command to be run before starting a worker
                 #worker_init=
@@ -61,7 +61,7 @@ config_1node= Config(
             # Optional: the network interface on the login node to
             # which compute nodes can communicate
             #address=address_by_interface('bond0.144'),
-            max_workers=36,
+            max_workers=128,
             #cpu_affinity='alternating',
 
 
@@ -78,7 +78,7 @@ config_1node= Config(
                 #workers_per_node=1,
 
                 # string to prepend to #SBATCH blocks in the submit
-                scheduler_options='#SBATCH --ntasks-per-node=36 --nodes=1 -A w23_ml4chem --qos=standby --time-min=01:00:00',
+                scheduler_options='#SBATCH --ntasks-per-node=128 --nodes=1 -A w23_ml4chem --qos=standby --time-min=01:00:00',
 
                 # Command to be run before starting a worker
                 #worker_init=

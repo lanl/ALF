@@ -1,0 +1,10 @@
+{
+  "QM_run_command":"qchem",
+  "QM_store_dir":"./output",
+  "ncpu":16,
+  "qchem_env_file":null,
+  "rem": "jobtype force\nmethod B97M-V\nbasis def2-TZVP\nscf_convergence 8\nthresh 11\nmax_scf_cycles 250\n",
+  "qchemblocks": "",
+  "Ediff": 1e-3,
+  "Fdiff":1e-4
+}

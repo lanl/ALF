@@ -1,0 +1,13 @@
+{
+  "xtb_command": "xtb",
+  "hmass": "2",
+  "time": "5.",
+  "temp": "400.",
+  "step": "0.5",
+  "shake": "0",
+  "dump": "1000",
+  "save": "100",
+  "kpush": "0.05",
+  "alp": "1.0",
+  "store_dir": "./trj" 
+}

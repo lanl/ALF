@@ -1,0 +1,8 @@
+{
+	"molecule_library_dir":"fragment_library/",
+  "nsolv":[1,10],
+  "crest_command": "crest",
+  "crest_input": "--mrest 1 --norotmd --shake 0 --tstep 0.5 --T 12",
+  "grow_input": "",
+  "store_dir": "./builder"
+}

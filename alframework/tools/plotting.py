@@ -6,6 +6,17 @@ import re
 import os
 
 def analysis_plot(meta_dir, plot_dir, meta_n_cols=50):
+    """Plot analysis plots.
+
+    Args:
+        meta_dir (str): Path of the directory that contains the pickle file storing the data to be plotted.
+        plot_dir (str): Path of the directory to store the plots.
+        meta_n_cols (int): Maximum number of models to represent on a plot.
+
+    Returns:
+        (None)
+
+    """
     num_models = 0
     metadata_pattern = re.compile(r'metadata-mol-(.{4})-\d{10}.p')
 
@@ -21,7 +32,7 @@ def analysis_plot(meta_dir, plot_dir, meta_n_cols=50):
     for pickle_filename in os.listdir(meta_dir):
         match = metadata_pattern.fullmatch(pickle_filename)
         #if match.group(1) != None and match.group(1).isdigit():
-        if (match.group(1).isdigit() if match!=None else False):
+        if match.group(1).isdigit() if match is not None else False:
             model_number = int(match.group(1))
             if model_number > num_models:
                 num_models = model_number

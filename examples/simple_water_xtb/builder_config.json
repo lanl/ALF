@@ -1,6 +1,12 @@
 {
-	"molecule_library_dir":"fragment_library/",
-	"solute_molecules": ["water.xyz"],
-	"solvent_molecules":["water.xyz"],
-  "nsolv":[3,10]
+	"molecule_library_path":"fragment_library/",
+	"solute_molecule_options": [["water.xyz"]],
+	"solvent_molecules":{"water.xyz":1.0},
+	"cell_range":[[6.0,8.0],[6.0,8.0],[6.0,8.0]],
+	"Rrange": [0.9,1.1],
+	"min_dist": 1.25,
+	"max_patience": 500,
+	"center_first_molecule":true,
+	"max_atoms": null,
+	"shake":0.05
 }

@@ -7,7 +7,7 @@ import ase.io
 import shutil
 import re
 
-from alframework.tools.tools import system_checker
+from alframework.tools.molecules_class import MoleculesObject
 
 class orcaGenerator():
     """ ORCA 5.0.1 interface with ALF.
@@ -220,34 +220,31 @@ def orca_calculator_task(molecule_object, QM_config, QM_scratch_dir, properties_
     """ORCA calculator task based on the parameters in qm_config.json.
 
     Args:
-        molecule_object(list): A list [metadata_dict, ase.Atoms, QM_results_dict] that uniquely represents a system.
-                               The first element is a dictionary contaning metadata (one of which must be 'moleculeid'),
-                               the second is an ase.Atoms object, and the third an empty dictionary that will
-                               store the results of the QM calculation.
+        molecule_object (MoleculesObject): An object from the class MoleculesObject.
         QM_config (str): Relative path to QM_config.json file that contains the parameters needed to run ORCA.
         QM_scratch_dir (str): Relative path of the directory that stores the QM calculations.
         properties_list (dict): Dicitonary containing the properties to extract from ORCA output file that later
                                 will be stored in the database.
 
     Returns:
-        (list): A modified molecule_object the results of the QM calculations stored in molecule_object[2].
+        (MoleculesObject): A MoleculesObject containing the results of the QM calculations.
 
     """
-    system_checker(molecule_object)
+    assert isinstance(molecule_object, MoleculesObject), 'molecule_object must be an instance of MoleculesObject'
+
     properties = list(properties_list.keys())
-    directory = QM_scratch_dir + '/' + molecule_object[0]['moleculeid'] + '/'
-    atoms = molecule_object[1]
+    directory = QM_scratch_dir + '/' + molecule_object.get_moleculeid() + '/'
+    atoms = molecule_object.get_atoms()
     
     orca = orcaGenerator(scratch_path=directory, nproc=QM_config['ncpu'], orca_env_file=QM_config['orca_env_file'],
                          orca_command=QM_config['QM_run_command'], orcainput=QM_config['orcasimpleinput'],
                          orcablocks=QM_config['orcablocks'])
     
     out_properties = orca.single_point(molecule=atoms, properties=properties)
+
+    molecule_object.store_results(out_properties)
     
-    return_system = [molecule_object[0], molecule_object[1], out_properties]
-    system_checker(return_system)
-    
-    return return_system
+    return molecule_object
 
 
 @python_app(executors=['alf_QM_executor'])
@@ -255,23 +252,21 @@ def orca_double_calculator_task(molecule_object, QM_config, QM_scratch_dir, prop
     """Double ORCA calculator task based on the parameters in qm_config.json.
 
     Args:
-        molecule_object(list): A list [metadata_dict, ase.Atoms, QM_results_dict] that uniquely represents a system.
-                               The first element is a dictionary contaning metadata (one of which must be 'moleculeid'),
-                               the second is an ase.Atoms object, and the third an empty dictionary that will
-                               store the results of the QM calculation.
+        molecule_object (MoleculesObject): An object from the class MoleculesObject.
         QM_config (str): Relative path to QM_config.json file that contains the parameters needed to run ORCA.
         QM_scratch_dir (str): Relative path of the directory that stores the QM calculations.
         properties_list (dict): Dicitonary containing the properties to extract from ORCA output file and which later
                                 will be stored in the database.
 
     Returns:
-        (list): A modified molecule_object the results of the QM calculations stored in molecule_object[2].
+        (MoleculesObject): A MoleculesObject containing the results of the QM calculations.
 
     """
-    system_checker(molecule_object)
+    assert isinstance(molecule_object, MoleculesObject), 'molecule_object must be an instance of MoleculesObject'
+
     properties = list(properties_list.keys())
-    directory = QM_scratch_dir + '/' + molecule_object[0]['moleculeid']
-    atoms = molecule_object[1]
+    directory = QM_scratch_dir + '/' + molecule_object.get_moleculeid()
+    atoms = molecule_object.get_atoms()
     directory1 = directory + '/1/'
     directory2 = directory + '/2/'
     
@@ -295,12 +290,13 @@ def orca_double_calculator_task(molecule_object, QM_config, QM_scratch_dir, prop
         properties[key] = np.mean([properties1[key], properties2[key]], axis=0)
     
     if (maxEdev < QM_config['Ediff']) and (maxFdev < QM_config['Fdiff']) and properties1['converged'] and properties2['converged']:
-        properties['converged'] = True
+        molecule_object.set_converged_flag(True)
+        properties['converged'] = True # Leaving this line for now, afraid of breaking code.
     else:
-        properties['converged'] = False
-    
-    return_system = [molecule_object[0], molecule_object[1], properties]
-    system_checker(return_system)
-    
-    return return_system
+        molecule_object.set_converged_flag(False)
+        properties['converged'] = False # Leaving this line for now, afraid of breaking code.
+
+    molecule_object.store_results(properties)
+
+    return molecule_object
     

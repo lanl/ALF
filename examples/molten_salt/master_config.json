@@ -2,7 +2,7 @@
 	"master_directory": "pwd",
 	"h5_path": "h5store/data-{:04d}.h5",
 	"model_path": "models/model-{:04d}",
-	"builder_task": "custom_modules.atomic_system_task",
+	"builder_task": "alframework.samplers.builders.atomic_system_task",
 	"builder_config_path": "builder_config.json",
 	"QM_scratch_dir": "vasp_calculations",
 	"QM_task": "alframework.qm_interfaces.ase_calculator_interface.VASP_ase_calculator_task",

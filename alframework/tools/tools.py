@@ -6,6 +6,7 @@ import json
 from ase.geometry import complete_cell
 from ase import Atoms
 from alframework.tools import pyanitools as pyt
+from alframework.tools.molecules_class import MoleculesObject
 import inspect
 
 def annealing_schedule(t, tmax, amp, per, srt, end):
@@ -107,9 +108,7 @@ def store_current_data(h5path, system_data, properties):
 
     Args:
         h5path (str): Path to store the .h5 files.
-        system_data (list): A list of lists where each internal list represents a system. Each system is described
-                            by a dict that stores metadata, an ASE Atoms object, and a dict that stores the result
-                            of the QM calculation on that Atoms object.
+        system_data (list): A list of MoleculesObjects objects.
         properties (dict): Dictionary defined in master.json whose keys are the properties that we want to retrieve
                            from the QM calculations and store in the database.
 
@@ -123,17 +122,17 @@ def store_current_data(h5path, system_data, properties):
     total_number = len(system_data)
     saved_number = 0
     nan_number = 0
-    converged_number = 0
+    unconverged_number = 0
     for system in system_data:
-        # We can append the system data to an existing set of system data
-        cur_moliculeid = system[0]['moleculeid']
-        cur_atoms = system[1]
-        cur_properties = system[2]
+        assert isinstance(system, MoleculesObject), 'system must be an instance of MoleculesObject'
+
+        cur_moliculeid = system.get_moleculeid()
+        cur_atoms = system.get_atoms()
+        cur_properties = system.get_results()
         molkey = compute_empirical_formula(cur_atoms.get_chemical_symbols())
-        # Ensure no nan data before saving
         
         # Ensure system converged before saving
-        if cur_properties['converged'] and system_checker(system, kill_on_fail=False):
+        if system.check_convergence():
             saved_number += 1
             atom_index = np.argsort(cur_atoms.get_atomic_numbers())
             # If there is already a molecule with the same formula, append
@@ -164,16 +163,16 @@ def store_current_data(h5path, system_data, properties):
                         data_dict[molkey][properties[prop][0]] = [np.array(cur_properties[prop])[atom_index] * properties[prop][2]]
                     else:
                         raise RuntimeError('Unknown property format')
-        elif not(system_checker(system, kill_on_fail=False)):
+        elif not isinstance(system, MoleculesObject): # code never enter in this line, but leaving for now to avoid problems
             nan_number += 1
-        elif not(cur_properties['converged']):
-            converged_number = converged_number + 1
+        elif not system.check_convergence():
+            unconverged_number = unconverged_number + 1
         else:
             print("Warning: molecule not saved for unknown reason")
     print("Total Systems: " + str(total_number))
     print("Saved Systems: " + str(saved_number))
     print("NAN Systems: " + str(nan_number))
-    print("Unconverged Systems: " + str(converged_number))
+    print("Unconverged Systems: " + str(unconverged_number))
 
     for isokey in data_dict:
         # print('isokeys:',isokey)

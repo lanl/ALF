@@ -10,10 +10,10 @@ import pickle as pkl
 from parsl import python_app, bash_app
 
 from alframework.tools.tools import annealing_schedule
-from alframework.tools.tools import system_checker
 from alframework.tools.tools import load_module_from_config
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator
 from alframework.tools.tools import build_input_dict
+from alframework.tools.molecules_class import MoleculesObject
     
 
 #For now I will take a dictionary with all sample parameters.
@@ -28,7 +28,7 @@ def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Escut, Fscut, Nchec
     the energy and forces output by all NNs in the ensemble.
 
     Args:
-        molecule_object (list): [metadata_dict, ase.Atoms, property_dict].
+        molecule_object (MoleculesObject): An object from the class MoleculesObject.
         ase_calculator: An ase calculator.
         dt (float): Time step [fs].
         maxt (float): Total simulation time [ps].
@@ -47,14 +47,13 @@ def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Escut, Fscut, Nchec
         trajectory_interval (int): Write the trajectory at every 'trajectory_interval' steps.
 
     Returns:
-        (list): A list where the first element is a dictionary containing metadata of the system, the second is an
-                ASE Atoms object if the MLMD sampling failed (uncertainty above threshold) or 'None' otherwise, and
-                the third is an empty dict that is used to store the desired results from the QM calculation.
-
+        (MoleculesObject): A MoleculesObject containing the results of the QM calculations. If the std deviation of
+                           the energy or forces are above the established threshold, molecule_object.atoms will store
+                           the failed configuration, otherwise it will store None.
     """
+    assert isinstance(molecule_object, MoleculesObject), 'molecule_object must be an instance of MoleculesObject'
 
-    system_checker(molecule_object)
-    ase_atoms = molecule_object[1]
+    ase_atoms = molecule_object.get_atoms()
     T = annealing_schedule(0.0, maxt, Tamp, Tper, Tsrt, Tend)
 
     # Setup Rho
@@ -72,7 +71,7 @@ def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Escut, Fscut, Nchec
     # Define thermostat
     dyn = Langevin(ase_atoms, dt * units.fs, friction=0.02, temperature_K=T, communicator=None)
     if trajectory_interval is not None:
-        trajob = Trajectory(meta_dir + "/metadata-" + molecule_object[0]['moleculeid'] + '.traj', mode='w', atoms=ase_atoms)
+        trajob = Trajectory(meta_dir + "/metadata-" + molecule_object.get_moleculeid() + '.traj', mode='w', atoms=ase_atoms)
         dyn.attach(trajob.write, interval=trajectory_interval)
 
     # Iterate MD
@@ -151,18 +150,22 @@ def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Escut, Fscut, Nchec
                     "cell" : ase_atoms.get_cell()
                 }
 
-    meta_dict.update(molecule_object[0])
+    meta_dict.update(molecule_object.get_metadata())
 
     if meta_dir is not None:
-        pkl.dump(meta_dict, open(meta_dir + "/metadata-" + molecule_object[0]['moleculeid'] + '.p', "wb"))
+        pkl.dump(meta_dict, open(meta_dir + "/metadata-" + molecule_object.get_moleculeid() + '.p', "wb"))
     
     ase_atoms.calc = None  # replace calculator for return
-    
+
+    molecule_object.update_metadata(meta_dict)
+
     if failed:
-        return [meta_dict, ase_atoms, {}]
+        molecule_object.update_atoms(ase_atoms)
+        return molecule_object
     else:
         # print('MD SUCCESS', self.counter)
-        return [meta_dict, None, {}]
+        molecule_object.update_atoms(None)
+        return molecule_object
 
 
 @python_app(executors=['alf_sampler_executor'])
@@ -170,7 +173,7 @@ def simple_mlmd_sampling_task(molecule_object, sampler_config, model_path, curre
     """ A simple implementation of uncertanty based MD sampling.
 
     Args:
-        molecule_object (list): An object that conforms to the standard imposed by 'system_checker'
+        molecule_object (MoleculesObject): An object from the class MoleculesObject.
         sampler_config (dict): A dictionary containing the following quantities specified in sampler_config.json:
                                dt (float): MD time step in [fs]
                                maxt (int): Total MD simulation time in [ps]
@@ -192,13 +195,14 @@ def simple_mlmd_sampling_task(molecule_object, sampler_config, model_path, curre
         gpus_per_node (int): Number of GPUs per node set by the master_config.json file.
 
     Returns:
-        (list): A list where the first element is a dictionary containing metadata of the system, the second is an
-                ASE Atoms object if the MLMD sampling failed (uncertainty above threshold) or 'None' otherwise, and
-                the third is an empty dict that is used to store the desired results from the QM calculation.
+        (MoleculesObject): A MoleculesObject containing the results of the QM calculations. If the std deviation of
+                           the energy or forces are above the established threshold, molecule_object.atoms will store
+                           the failed configuration, otherwise it will store None.
     
     """
+    assert isinstance(molecule_object, MoleculesObject), 'molecule_object must be an instance of MoleculesObject'
+
     os.environ["CUDA_VISIBLE_DEVICES"] = str(int(os.environ.get('PARSL_WORKER_RANK')) % gpus_per_node)
-    system_checker(molecule_object)
     feed_parameters = {}
 
     # Setup T
@@ -238,7 +242,7 @@ def simple_mlmd_sampling_task(molecule_object, sampler_config, model_path, curre
         ase_calculator = MLMD_calculator(calculator_list, **sampler_config['MLMD_calculator_options'])
         
     if sampler_config.get('translate_to_center', False):
-        molecule_object[1].set_positions(molecule_object[1].get_positions() - molecule_object[1].get_center_of_mass())
+        molecule_object.atoms.set_positions(molecule_object.atoms.get_positions() - molecule_object.atoms.get_center_of_mass())
     
     # build_input_dict will check for trajectory_frequency from feed_parameters first.
     if np.random.rand() > sampler_config.get('trajectory_frequency', 0):
@@ -249,6 +253,5 @@ def simple_mlmd_sampling_task(molecule_object, sampler_config, model_path, curre
     function_input = build_input_dict(mlmd_sampling, [feed_parameters, sampler_config])
     
     molecule_output = mlmd_sampling(**function_input)
-    system_checker(molecule_output)
 
     return molecule_output

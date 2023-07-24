@@ -14,8 +14,8 @@ from ase.io import cfg
 from ase.io import read, write
 
 from alframework.tools.tools import random_rotation_matrix
-from alframework.tools.tools import system_checker
 from alframework.tools.tools import build_input_dict
+from alframework.tools.molecules_class import MoleculesObject
 import random
 from copy import deepcopy
 
@@ -37,15 +37,17 @@ def simple_cfg_loader_task(moleculeid, builder_config, shake=0.05):
         shake (float): Amount of random pertubation added to each atom coordinate.
 
     Returns:
-        (list): A list containing, respectively, a dictionary that stores the system's metadata, an ase.Atoms object,
-                and an empty dict that will be used to store the relevant results of the QM calculations.
+        (MoleculesObject): A MoleculesObject representing the system.
     """
     cfg_list = glob.glob(builder_config['molecule_library_dir'] + '/*.cfg')
     cfg_choice = random.choice(cfg_list)
-    atom_object = cfg.read_cfg(cfg_choice)
-    atom_object.rattle(shake)
+    ase_atoms = cfg.read_cfg(cfg_choice)
+    ase_atoms.rattle(shake)
 
-    return [{'moleculeid': moleculeid, 'molecule_library_file': cfg_choice}, atom_object, {}]
+    molecule_object = MoleculesObject(ase_atoms, moleculeid)
+    molecule_object.update_metadata({'molecule_library_file': cfg_choice})
+
+    return molecule_object
 
 
 def readMolFiles(molecule_sample_path):
@@ -79,9 +81,7 @@ def condensed_phase_builder(start_system, molecule_library, solute_molecules=[],
     """Builder for condensed phase systems.
 
         Args:
-            start_system (list): List (metadata_dict, ase.Atoms, {}) that stores, respectively, a dictionary containing
-                                 metadata of the system, an ase.Atoms object representing the starting system, and an
-                                 empty dict to store the results of the QM calculations.
+            start_system (MoleculesObject): An object from the class MoleculesObject.
             molecule_library (dict): Dictionary whose keys are the molecules present in the system and values are
                                      ase.Atoms objects representing that molecule.
             solute_molecules (list): List of the solute molecules.
@@ -96,12 +96,12 @@ def condensed_phase_builder(start_system, molecule_library, solute_molecules=[],
             shake (float): Amount of random perturbation added to each molecule on the x-, y-, z-axes independently.
 
         Returns:
-            (list): Updated start_system with the desired solute and solvent molecules.
+            (MoleculesObject): An updated MoleculesObject representing the system.
 
     """
     # ensure system adhears to formating convention
-    system_checker(start_system)
-    curr_sys = start_system[1]
+    assert isinstance(start_system, MoleculesObject), 'start_system must be an instance of MoleculesObject'
+    curr_sys = start_system.get_atoms()
 
     # Make sure we know what all of the molecules are
     for curN in solute_molecules:
@@ -190,9 +190,8 @@ def condensed_phase_builder(start_system, molecule_library, solute_molecules=[],
             # If the new molecule failed, and we are attempting to add solute (definite molecules) re add to list to try again.
             solute_molecules.append(new_mol_name)
 
-    start_system[0]['target_density'] = density
-    start_system[0]['actual_density'] = actual_dens
-    start_system[1] = curr_sys
+    start_system.update_metadata({'target_density': density, 'actual_density': actual_dens})
+    start_system.update_atoms(curr_sys)
 
     return start_system
 
@@ -211,8 +210,7 @@ def simple_condensed_phase_builder_task(moleculeid, builder_config, molecule_lib
         Rrange (list): Density range [density_min, density_max].
 
     Returns:
-        (list): A list containing, respectively, a dictionary that stores the system's metadata, an ase.Atoms object,
-                and an empty dict that will be used to store the relevant results of the QM calculations.
+        (MoleculesObject): A MoleculesObject representing the system.
     """
     #    import glob
     #    import random
@@ -232,7 +230,7 @@ def simple_condensed_phase_builder_task(moleculeid, builder_config, molecule_lib
 
     cell_shape = [np.random.uniform(dim[0], dim[1]) for dim in cell_range]
 
-    empty_system = [{'moleculeid': moleculeid}, Atoms(cell=cell_shape), {}]
+    empty_system = MoleculesObject(Atoms(cell=cell_shape), moleculeid)
 
     molecule_library, mols = readMolFiles(molecule_library_dir)
 
@@ -247,7 +245,7 @@ def simple_condensed_phase_builder_task(moleculeid, builder_config, molecule_lib
                                         )
 
     system = condensed_phase_builder(**input_parameters)
-    system_checker(system)
+    assert isinstance(system, MoleculesObject), 'system must be an instance of MoleculesObject'
 
     return system
 
@@ -266,8 +264,7 @@ def simple_multi_condensed_phase_builder_task(moleculeids, builder_config, molec
         Rrange (list): Density range [density_min, density_max].
 
     Returns:
-        (list): A list containing, respectively, a dictionary that stores the system's metadata, an ase.Atoms object,
-                and an empty dict that will be used to store the relevant results of the QM calculations.
+        (list): A list of objects from MoleculesObject.
     """
     #    import glob
     #    import random
@@ -291,7 +288,7 @@ def simple_multi_condensed_phase_builder_task(moleculeids, builder_config, molec
     for moleculeid in moleculeids:
         cell_shape = [np.random.uniform(dim[0], dim[1]) for dim in cell_range]
 
-        empty_system = [{'moleculeid': moleculeid}, Atoms(cell=cell_shape), {}]
+        empty_system = MoleculesObject(Atoms(cell=cell_shape), moleculeid)
 
         feed_parameters = {'solute_molecules': random.choice(solute_molecule_options),
                            'density': np.random.uniform(Rrange[0], Rrange[1])}
@@ -301,7 +298,7 @@ def simple_multi_condensed_phase_builder_task(moleculeids, builder_config, molec
                                              feed_parameters, builder_config])
 
         system = condensed_phase_builder(**input_parameters)
-        system_checker(system)
+        assert isinstance(system, MoleculesObject), 'system must be an instance of MoleculesObject'
         system_list.append(system)
 
     return system_list
@@ -502,15 +499,15 @@ def construct_simulation_box(atomic_system, min_distance, box_length=None, densi
     return coords
 
 
-def atomic_system_builder(atom_charges, target_num_atoms, min_distance, box_length_range, max_tries=25, scale_coords=False):
+def atomic_system_builder(atom_charges, target_num_atoms, min_distance, box_length, max_tries=25, scale_coords=False):
     """Builds the atomic system
 
     Args:
         atom_charges (dict): A dictionary where the keys are the atom types in the system and the corresponding values
                              the charge of each atom type.
         target_num_atoms (int): Targeted total number of atoms in the system.
-        min_distance (float): Minimum absolute distance between any two atoms in Angstroms.
-        box_length_range (list): A list containing the minimum and maximum simulation box length [L_min, L_max].
+        min_distance (float): Minimum absolute distance between any two atoms [Angstroms].
+        box_length (float): Length of the box [Angstroms]
         max_tries (int): Maximum number of cycles in the atom placing algorithm
         scale_coords (bool): Determines whether to scale the coordinates by the box length or not.
 
@@ -518,8 +515,6 @@ def atomic_system_builder(atom_charges, target_num_atoms, min_distance, box_leng
         (ase.Atoms): ASE atoms object representing a random configuration of the atomic system.
 
     """
-    rng = np.random.default_rng()
-    box_length = rng.uniform(min(box_length_range), max(box_length_range))
     atomic_system = create_atomic_system(atom_charges, target_num_atoms)
     coords = construct_simulation_box(atomic_system, min_distance, box_length, max_tries=max_tries, scale_coords=scale_coords)
 
@@ -535,19 +530,24 @@ def atomic_system_task(moleculeid, atom_charges, target_num_atoms, min_distance,
     """Atomic system task that will be fed to the sampler.
 
     Args:
+        moleculeid (str): Unique identifier of the atomic system in the database.
         atom_charges (dict): A dictionary where the keys are the atom types in the system and the corresponding 
                              values are the charge of each atom type.
         target_num_atoms (int): Targeted total number of atoms in the system.
-        min_distance (float): Minimum absolute distance between any two atoms in Angstroms.
-        box_length_range (list): A list containing the minimum and maximum simulation box length [L_min, L_max].
-        moleculeid (str): Unique identifier of the atomic system in the database.
+        min_distance (float): Minimum absolute distance between any two atoms [Angstroms].
+        box_length_range (list): A list containing the minimum and maximum simulation box length [Angstroms].
 
     Returns:
-        (list): A list that representing a system/molecule. It contains dict indicating the unique identifier 
-                of the system, an ase.Atoms object, and an empty dict that will be used to stored the results of
-                the QM calculations on that system/molecule.
-    """
-    atom_object = atomic_system_builder(atom_charges, target_num_atoms, min_distance, box_length_range)
+        (MoleculesObject): A MoleculesObject representing the system.
 
-    return [{'moleculeid': moleculeid}, atom_object, {}]
+    """
+    rng = np.random.default_rng()
+    box_length = rng.uniform(min(box_length_range), max(box_length_range))
+
+    ase_atoms = atomic_system_builder(atom_charges, target_num_atoms, min_distance, box_length)
+    molecule_object = MoleculesObject(ase_atoms, moleculeid)
+
+    return molecule_object
+
+
 

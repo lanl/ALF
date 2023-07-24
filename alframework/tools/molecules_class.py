@@ -28,7 +28,8 @@ class MoleculesObject:
     def __str__(self):
         """String method"""
         if self.atoms is not None:
-            return f'System: {self.atoms.get_chemical_formula()}, QM results: {self.qm_results}, Converged: {self.converged}'
+            return f'System: {self.atoms.get_chemical_formula()}, Cell: {self.atoms.get_cell()}, ' \
+                   f'QM results: {self.qm_results}, Converged: {self.converged}'
         else:
             return f'System: None, QM results: {self.qm_results}, Converged: {self.converged}'
 
@@ -166,8 +167,22 @@ class MoleculesObject:
         assert isinstance(convergence_flag, bool), 'The convergence flag must be either True or False'
         self.converged = convergence_flag
 
-    def molecule_signature(self):
-        pass
+    def system_signature(self):
+        """Returns the system signature as a string.
+
+        #TODO: Compute system moments of inertia and rotate the system so that the highest order moment points along
+               the x-axis, midde moment point along y-axis and last moment points along z-axis.
+        """
+        atomic_numbers = self.atoms.get_atomic_numbers()
+        coords = self.atoms.get_positions()
+        atoms_list = self.atoms.get_chemical_symbols()
+        idx_sorted = np.argsort(atomic_numbers)
+
+        signature_cell = "".join([f'{el:.6f}-'for el in self.atoms.get_cell().flatten()])
+        signature_atoms = "".join([atoms_list[i] + f'{coords[i,0]:.6f}{coords[i,1]:.6f}{coords[i,2]:.6f}'
+                                   for i in idx_sorted])
+
+        return signature_cell + signature_atoms
 
 
 def compare_molecule_objects(system1, system2):
@@ -186,3 +201,24 @@ def compare_molecule_objects(system1, system2):
     return np.array_equal(atomic_nums1, atomic_nums2)
 
 
+########################################################################################################################
+atoms1 = Atoms('H20')
+atoms2 = Atoms('F2Li4Na3')
+atoms3 = Atoms('F2Na3Li4')
+
+sys1 = MoleculesObject(atoms1, 'abc')
+sys2 = MoleculesObject(atoms2, 'def')
+sys3 = MoleculesObject(atoms3, 'ghi')
+
+# # When print a molecule object it tell us the molecule id, atoms object, qm results and convergence flag.
+# print(sys2) # Moleculeid: def, Atoms(symbols='F2Li4Na3', pbc=False), QM results: {}, converged: []
+#
+
+# # Length of a molecule object is its number of atoms, allowed because __len__ is implemented.
+# print(len(sys3)) # 9
+#
+# # Two molecule objects are equal when they have exactly they are exactly the same chemical system. They can still
+# # differ by their configurations, but the elements and the number of each element must be the same for them to be
+# # considered the same system.
+# print(sys2 == sys3) # True
+# print(sys1 == sys2) # False

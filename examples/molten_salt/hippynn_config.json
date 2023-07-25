@@ -4,7 +4,7 @@
 "coordinates_key": "coordinates",
 "species_key": "species",
 "force_key": "forces",
-"cell_key": null,
+"cell_key": "cell",
 "network_params": {
             "possible_species": [0,3,4,9,11,12,17,19],
             "n_features": 85,

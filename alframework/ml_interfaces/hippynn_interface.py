@@ -76,7 +76,7 @@ def train_HIPNN_model(model_dir,
         quadrupole_key (str): Molecular-quadrupole key inside th h5 data. Must match db name in 'properties_list'. If
                               None, quadrupoles are not trained to.
         electrostatics_weight (?):
-        hipnn_order (str): Can be 'scalar', 'vector', or 'quadradic'
+        hipnn_order (str): Can be 'scalar', 'vector', or 'quadratic'
         network_params (dict): Dictonary that defines the model. See examples for details.
         aca_params (dict): Dictionary that defines parameters for charge training.
         first_is_interacting (bool):
@@ -158,7 +158,7 @@ def train_HIPNN_model(model_dir,
                     network = networks.Hipnn("HIPNN", (species, positions, cell), module_kwargs=network_params, periodic=True)
                 elif hipnn_order.lower() == 'vector':
                     network = networks.HipnnVec("HIPNN", (species, positions, cell), module_kwargs=network_params, periodic=True)
-                elif hipnn_order.lower() == 'quadradic':
+                elif hipnn_order.lower() == 'quadratic':
                     network = networks.HipnnQuad("HIPNN", (species, positions, cell), module_kwargs=network_params, periodic=True)
                 else:
                     raise RuntimeError('Unrecognized hipnn_order parameter')
@@ -167,18 +167,18 @@ def train_HIPNN_model(model_dir,
                     network = networks.Hipnn("HIPNN", (species, positions), module_kwargs=network_params, periodic=False)
                 elif hipnn_order.lower() == 'vector':
                     network = networks.HipnnVec("HIPNN", (species, positions), module_kwargs=network_params, periodic=False)
-                elif hipnn_order.lower() == 'quadradic':
+                elif hipnn_order.lower() == 'quadratic':
                     network = networks.HipnnQuad("HIPNN", (species, positions), module_kwargs=network_params, periodic=False)
                 else:
                     raise RuntimeError('Unrecognized hipnn_order parameter')
             print(electrostatics_flag)
             if not electrostatics_flag: # Just the energy Nodes, i.e. standard HIPNN.
-                henergy = targets.HEnergyNode("node_HEnergy",network,first_is_interacting)
+                henergy = targets.HEnergyNode("node_HEnergy", network,first_is_interacting)
                 sys_energy = henergy.mol_energy
                 sys_energy.db_name = energy_key
                 
                 en_peratom = physics.PerAtom("node_EperAtom", sys_energy)
-                en_peratom.db_name = energy_key+"peratom"
+                en_peratom.db_name = energy_key + "peratom"
                 
                 hierarchicality = henergy.hierarchicality
                 hierarchicality = physics.PerAtom("RperAtom", hierarchicality)
@@ -203,16 +203,16 @@ def train_HIPNN_model(model_dir,
                 hcharge = targets.HChargeNode("node_HCharge", network)
                 atom_charges = hcharge.atom_charges
             
-                if not(charges_key is None): # Partial charges to train to. 
+                if charges_key is not None: # Partial charges to train to. 
                     atom_charges.db_name = charges_key
             
                 system_charges = physics.AtomToMolSummer("node_sysCharges", atom_charges)
                 q_hierarchicality = hcharge.charge_hierarchality
 
-                if not(dipole_key is None): 
+                if dipole_key is not None: 
                     dipole = physics.DipoleNode("node_dipole", (hcharge, positions), db_name=dipole_key)
                 
-                if not(quadrupole_key is None): 
+                if quadrupole_key is not None: 
                     quadrupole = physics.QuadrupoleNode("node_quadrapole", (hcharge, positions), db_name=quadrupole_key)
         
                 # Manually define indexers for Coulomb energy 
@@ -259,7 +259,7 @@ def train_HIPNN_model(model_dir,
                         network_energy = networks.Hipnn("HIPNN", network.parents, module_kwargs=network_params, periodic=True)
                     elif hipnn_order.lower() == 'vector':
                         network_energy = networks.HipnnVec("HIPNN", network.parents, module_kwargs=network_params, periodic=True)
-                    elif hipnn_order.lower() == 'quadradic':
+                    elif hipnn_order.lower() == 'quadratic':
                         network_energy = networks.HipnnQuad("HIPNN", network.parents, module_kwargs=network_params, periodic=True)
                     else:
                         raise RuntimeError('Unrecognized hipnn_order parameter')
@@ -268,7 +268,7 @@ def train_HIPNN_model(model_dir,
                         network_energy = networks.Hipnn("HIPNN", network.parents, module_kwargs=network_params, periodic=False)
                     elif hipnn_order.lower() == 'vector':
                         network_energy = networks.HipnnVec("HIPNN", network.parents, module_kwargs=network_params, periodic=False)
-                    elif hipnn_order.lower() == 'quadradic':
+                    elif hipnn_order.lower() == 'quadratic':
                         network_energy = networks.HipnnQuad("HIPNN", network.parents, module_kwargs=network_params, periodic=False)
                     else:
                         raise RuntimeError('Unrecognized hipnn_order parameter')
@@ -422,7 +422,7 @@ def train_HIPNN_model(model_dir,
                     del arrays[key]
             
             # Remove High energies and forces. 
-            if force_key != None:
+            if force_key is not None:
                 database.remove_high_property(force_key, True, species_key=species_key, cut=remove_high_forces_cut, std_factor=remove_high_forces_std)
             database.remove_high_property(energy_key, False, species_key=species_key, cut=remove_high_energy_cut, std_factor=remove_high_energy_std)
             
@@ -434,7 +434,7 @@ def train_HIPNN_model(model_dir,
             print(np.min(database.arr_dict[energy_key+"peratom"]))
                         
             database.make_random_split("valid",valid_size)
-            if not(h5_test_dir == None):
+            if h5_test_dir is not None:
                 database_test = PyAniDirectoryDB(directory=h5_test_dir,allow_unfound=True,quiet=False,seed=np.random.randint(1e9),**db_info)
                 #Ensure that species array is int64 for indexing
                 arrays_test = database.arr_dict
@@ -449,7 +449,7 @@ def train_HIPNN_model(model_dir,
                 database.splits['test'] = database_test.splits['test']
                                 
                 # Reshape Quadrupole data. 
-                if not(quadrupole_key == None) and electrostatics_flag:
+                if quadrupole_key is not None and electrostatics_flag:
                     arrays[quadrupole_key] = arrays[quadrupole_key].reshape(-1,9)
             else:
                 database.make_random_split("test",test_size)

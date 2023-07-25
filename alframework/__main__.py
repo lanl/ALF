@@ -29,7 +29,7 @@ from alframework.tools.tools import load_module_from_string
 from alframework.tools.tools import build_input_dict
 from alframework.tools.pyanitools import anidataloader
 from alframework.tools.molecules_class import MoleculesObject
-
+from tools import MoleculesObject
 #import logging
 #logging.basicConfig(level=logging.DEBUG)
 
@@ -149,23 +149,13 @@ testing = False
 if '--test_builder' in sys.argv[2:] or '--test_sampler' in sys.argv[2:] or '--test_qm' in sys.argv[2:]:
     task_input = build_input_dict(builder_task.func,
                                   [{"moleculeid": 'test_builder', "moleculeids": ['test_builder'],
-                                    "builder_config": builder_config}, master_config, status, builder_config,
-                                   sampler_config, QM_config, ML_config],
+                                    "builder_config": builder_config}, *all_configs, status],
                                   raise_on_fail=True)
-
-    # I think this way is easier to read
-    # task_input = build_input_dict(builder_task.func,
-    #                               [{"moleculeid": 'test_builder', "moleculeids": ['test_builder'],
-    #                                 "builder_config": builder_config}, *all_configs, status],
-    #                               raise_on_fail=True)
 
     builder_task_queue.add_task(builder_task(**task_input))
     builder_configuration = builder_task_queue.task_list[0].result()
     queue_output = builder_task_queue.get_task_results()
     test_configuration = queue_output[0][0]
-    # if not system_checker(test_configuration, kill_on_fail=False, print_error=False):
-    #     system_checker(test_configuration[0])
-    #     test_configuration = test_configuration[0]
     if not isinstance(test_configuration, MoleculesObject):
         assert isinstance(test_configuration[0], MoleculesObject), 'test_configuration[0] must be a MoleculesObject instance'
         test_configuration = test_configuration[0]
@@ -181,7 +171,7 @@ if '--test_sampler' in sys.argv[2:]:
     print(master_config['model_path'].format(status['current_model_id']))
     task_input = build_input_dict(sampler_task.func,
                                   [{"molecule_object": test_configuration, "sampler_config": sampler_config},
-                                   master_config, status, builder_config, sampler_config, QM_config, ML_config],
+                                   *all_configs, status],
                                   raise_on_fail=True)
     sampler_task_queue.add_task(sampler_task(**task_input))
     sampled_configuration = sampler_task_queue.task_list[0].result()
@@ -195,8 +185,8 @@ if '--test_sampler' in sys.argv[2:]:
 #def ase_calculator_task(input_system,configuration_list,directory,command,properties=['energy','forces']):
 if '--test_qm' in sys.argv[2:]:
     task_input = build_input_dict(qm_task.func,
-                                  [{"molecule_object": test_configuration, "QM_config": QM_config}, master_config,
-                                   status, builder_config, sampler_config, QM_config, ML_config],
+                                  [{"molecule_object": test_configuration, "QM_config": QM_config},
+                                   *all_configs, status],
                                   raise_on_fail=True)
     QM_task_queue.add_task(qm_task(**task_input))
     qm_result = QM_task_queue.task_list[0].result()
@@ -210,7 +200,7 @@ if '--test_qm' in sys.argv[2:]:
     sys.stdout.write('PBCs: ' + np.array_str(test_configuration[1].get_pbc()) + '\n')
     if any(test_configuration[1].get_pbc()):
         sys.stdout.write('Cell: \n' + np.array_str(test_configuration[1].get_cell(),precision=4) + '\n')
-    for property_key in  list(master_config['properties_list']):
+    for property_key in list(master_config['properties_list']):
         if isinstance(test_configuration[2][property_key], np.ndarray):
             sys.stdout.write(property_key + ':\n' + np.array_str(test_configuration[2][property_key],precision=4) + '\n')
         else:
@@ -236,8 +226,7 @@ if '--test_qm' in sys.argv[2:]:
 if '--test_ml' in sys.argv[2:]:
     #configuration,data_directory,model_path,model_index,remove_existing=False
     task_input = build_input_dict(ml_task.func,
-                                  [{"ML_config": ML_config}, master_config, status, builder_config, sampler_config,
-                                   QM_config, ML_config],
+                                  [{"ML_config": ML_config}, *all_configs, status],
                                   raise_on_fail=True)
     ML_task_queue.add_task(ml_task(**task_input))
     status['current_training_id'] = status['current_training_id'] + 1
@@ -249,7 +238,7 @@ if '--test_ml' in sys.argv[2:]:
     print("ML ensemble training status:")
     print(returned_models)
     for network in returned_models:
-        if all(network[0]) and network[1]>status['current_model_id']:
+        if all(network[0]) and (network[1] > status['current_model_id']):
             print('New Model: {:04d}'.format(network[1]))
             status['current_model_id'] = network[1]
     with open(master_config['status_path'], "w") as outfile:
@@ -275,7 +264,7 @@ if status['current_h5_id'] == 0 and status['current_model_id'] < 0:
                 task_input = build_input_dict(builder_task.func,
                                               [{"moleculeid": 'mol-boot-{:010d}'.format(status['current_molecule_id']),
                                                 "moleculeids": moleculeids, "builder_config": builder_config},
-                                               master_config, status, builder_config, sampler_config, QM_config, ML_config],
+                                               *all_configs, status],
                                               raise_on_fail=True)
                 builder_task_queue.add_task(builder_task(**task_input))
                 status['current_molecule_id'] = status['current_molecule_id'] + master_config.get('maximum_builder_structures',1)
@@ -288,8 +277,7 @@ if status['current_h5_id'] == 0 and status['current_model_id'] < 0:
                 if isinstance(structure, MoleculesObject):
                     task_input = build_input_dict(qm_task.func,
                                                   [{"molecule_object": structure, "QM_config": QM_config},
-                                                   master_config, status, builder_config, sampler_config, QM_config,
-                                                   ML_config],
+                                                   *all_configs, status],
                                                   raise_on_fail=True)
                     QM_task_queue.add_task(qm_task(**task_input))
                 elif isinstance(structure, list):
@@ -297,8 +285,7 @@ if status['current_h5_id'] == 0 and status['current_model_id'] < 0:
                         assert isinstance(substructure, MoleculesObject), 'substructure must be a MoleculesObject instance'
                         task_input = build_input_dict(qm_task.func,
                                                       [{"molecule_object": substructure, "QM_config": QM_config},
-                                                       master_config, status, builder_config, sampler_config,
-                                                       QM_config, ML_config],
+                                                       *all_configs, status],
                                                       raise_on_fail=True)
                         QM_task_queue.add_task(qm_task(**task_input))
                 
@@ -323,8 +310,7 @@ if status['current_h5_id'] == 0 and status['current_model_id'] < 0:
     
 if status['current_model_id'] < 0:
     task_input = build_input_dict(ml_task.func,
-                                  [{"ML_config": ML_config}, master_config, status, builder_config, sampler_config,
-                                   QM_config, ML_config],
+                                  [{"ML_config": ML_config}, *all_configs, status],
                                   raise_on_fail=True)
     ML_task_queue.add_task(ml_task(**task_input))
     
@@ -373,6 +359,7 @@ while True:
         sampler_config = sampler_config_new
         QM_config = QM_config_new
         ML_config = ML_config_new
+        all_configs = [master_config, builder_config, sampler_config, QM_config, ML_config]
 	
     # Run more builders
     if (QM_task_queue.get_queued_number() < master_config['target_queued_QM']) and \
@@ -383,8 +370,8 @@ while True:
                            range(status['current_molecule_id'], status['current_molecule_id']+master_config.get('maximum_builder_structures',1))]
             task_input = build_input_dict(builder_task.func,
                                           [{"moleculeid": 'mol-{:04d}-{:010d}'.format(status['current_model_id'], status['current_molecule_id']),
-                                            "moleculeids": moleculeids, "builder_config": builder_config}, master_config,
-                                           status, builder_config, sampler_config, QM_config, ML_config],
+                                            "moleculeids": moleculeids, "builder_config": builder_config},
+                                           *all_configs, status],
                                           raise_on_fail=True)
             builder_task_queue.add_task(builder_task(**task_input))
             status['current_molecule_id'] = status['current_molecule_id'] + master_config.get('maximum_builder_structures',1)
@@ -399,16 +386,16 @@ while True:
             if isinstance(structure, MoleculesObject):
                 task_input = build_input_dict(sampler_task.func,
                                               [{"molecule_object": structure, "sampler_config": sampler_config},
-                                               master_config, status, builder_config, sampler_config, QM_config, ML_config],
+                                               *all_configs, status],
                                               raise_on_fail=True)
                 sampler_task_queue.add_task(sampler_task(**task_input))
-            #If builders return multiple structures
+            # If builders return multiple structures
             elif isinstance(structure, list):
                 for substructure in structure:
                     assert isinstance(substructure, MoleculesObject), 'substructure must be a MoleculesObject instance'
                     task_input = build_input_dict(sampler_task.func,
                                                   [{"molecule_object": substructure, "sampler_config": sampler_config},
-                                                   master_config, status, builder_config, sampler_config, QM_config, ML_config],
+                                                   *all_configs, status],
                                                   raise_on_fail=True)
                     sampler_task_queue.add_task(sampler_task(**task_input))
 
@@ -421,7 +408,7 @@ while True:
             if structure.get_atoms() is not None:
                 task_input = build_input_dict(qm_task.func,
                                               [{"molecule_object": structure, "QM_config": QM_config}, master_config,
-                                               status, builder_config, sampler_config, QM_config, ML_config],
+                                               *all_configs, status],
                                               raise_on_fail=True)
                 QM_task_queue.add_task(qm_task(**task_input))
 
@@ -438,13 +425,12 @@ while True:
 #            pickle.dump(results_list,pkbk)
         status['current_h5_id'] = status['current_h5_id'] + 1
         task_input = build_input_dict(ml_task.func,
-                                      [{"ML_config": ML_config}, master_config, status, builder_config, sampler_config,
-                                       QM_config, ML_config],
+                                      [{"ML_config": ML_config}, *all_configs, status],
                                       raise_on_fail=True)
         ML_task_queue.add_task(ml_task(**task_input))
         status['current_training_id'] = status['current_training_id'] + 1
         
-    #Update Model
+    # Update Model
     if ML_task_queue.get_completed_number() > 0:
         output, failed = ML_task_queue.get_task_results()
         status['lifetime_failed_ML_tasks'] = status['lifetime_failed_ML_tasks'] + failed

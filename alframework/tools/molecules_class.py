@@ -1,8 +1,6 @@
 from ase import Atoms
 import numpy as np
 import warnings
-# from molecules_class import MoleculesObject
-# assert isinstance(molecule_object, MoleculesObject), 'molecule_object must be an instance of MoleculesObject'
 
 class MoleculesObject:
     """Class to create molecule objects"""
@@ -167,15 +165,18 @@ class MoleculesObject:
         assert isinstance(convergence_flag, bool), 'The convergence flag must be either True or False'
         self.converged = convergence_flag
 
-    def system_signature(self):
+    def get_system_signature(self):
         """Returns the system signature as a string.
+
+        Returns:
+            (str): String representing the system cell and the atoms types and coordinates.
 
         #TODO: Compute system moments of inertia and rotate the system so that the highest order moment points along
                the x-axis, midde moment point along y-axis and last moment points along z-axis.
         """
-        atomic_numbers = self.atoms.get_atomic_numbers()
-        coords = self.atoms.get_positions()
         atoms_list = self.atoms.get_chemical_symbols()
+        coords = self.atoms.get_positions()
+        atomic_numbers = self.atoms.get_atomic_numbers()
         idx_sorted = np.argsort(atomic_numbers)
 
         signature_cell = "".join([f'{el:.6f}-'for el in self.atoms.get_cell().flatten()])
@@ -185,12 +186,15 @@ class MoleculesObject:
         return signature_cell + signature_atoms
 
 
-def compare_molecule_objects(system1, system2):
+def compare_chemical_composition(system1, system2):
     """Check if two MoleculesObject instances have the same chemical composition
 
     Args:
-        system1 (MoleculesObject): First object to be compared
-        system2 (MoleculesObject): Second object to be compared
+        system1 (MoleculesObject): First object to be compared.
+        system2 (MoleculesObject): Second object to be compared.
+
+    Returns:
+        (bool): True if the two systems have the same chemical composition.
     """
     assert isinstance(system1, MoleculesObject) and isinstance(system2, MoleculesObject), \
         'The given objects must be an instance of MoleculesObject'
@@ -199,26 +203,3 @@ def compare_molecule_objects(system1, system2):
     atomic_nums2 = np.sort(system2.atoms.get_atomic_numbers())
 
     return np.array_equal(atomic_nums1, atomic_nums2)
-
-
-########################################################################################################################
-atoms1 = Atoms('H20')
-atoms2 = Atoms('F2Li4Na3')
-atoms3 = Atoms('F2Na3Li4')
-
-sys1 = MoleculesObject(atoms1, 'abc')
-sys2 = MoleculesObject(atoms2, 'def')
-sys3 = MoleculesObject(atoms3, 'ghi')
-
-# # When print a molecule object it tell us the molecule id, atoms object, qm results and convergence flag.
-# print(sys2) # Moleculeid: def, Atoms(symbols='F2Li4Na3', pbc=False), QM results: {}, converged: []
-#
-
-# # Length of a molecule object is its number of atoms, allowed because __len__ is implemented.
-# print(len(sys3)) # 9
-#
-# # Two molecule objects are equal when they have exactly they are exactly the same chemical system. They can still
-# # differ by their configurations, but the elements and the number of each element must be the same for them to be
-# # considered the same system.
-# print(sys2 == sys3) # True
-# print(sys1 == sys2) # False

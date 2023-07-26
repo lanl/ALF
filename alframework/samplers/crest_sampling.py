@@ -82,7 +82,7 @@ def crest_build(start_system, molecule_library_dir, nsolv=[1,2], crest_command="
     return(start_system)
 
 
-def crest_meta(start_system, xtb_command='xtb', hmass=2, time=50., temp=400., step=0.5, shake=0,
+def crest_metad(start_system, ase_calculator, xtb_command='xtb', hmass=2, time=50., temp=400., step=0.5, shake=0,
                 dump=100, save=100, kpush=0.05, alp=1.0, store_dir=None):
 
     #ensure system adhears to formating convention
@@ -124,14 +124,35 @@ def crest_meta(start_system, xtb_command='xtb', hmass=2, time=50., temp=400., st
                 f.write(proc.stdout)
                 f.write(proc.stderr)
 
-        #read final structure of trajectory
+        #read structures from trajectory
         cluster_xyz = os.path.join(tmpdirname, 'xtb.trj') 
-        start_system[1] = read(cluster_xyz, format='xyz', index=-1)
+
         if store_dir is not None:
             outfile = os.path.join(store_dir, f"{prefix}_trj.xyz")
             runcmd = ['cp', cluster_xyz, outfile]
             _ = subprocess.run(runcmd)
 
+        #loop over snapshots and return the snapshot if it meets criteria
+        traj = read(cluster_xyz, format='xyz', index=':')
+        for atoms in traj:
+            atoms.set_calculator(ase_calculator)
+            atoms.calc.calculate(atoms, properties=['energy_stdev','forces_stdev_mean','forces_stdev_max'])
+            Es = ase_atoms.calc.results['energy_stdev']
+            Fs = ase_atoms.calc.results['forces_stdev_mean']
+            Fsmax = ase_atoms.calc.results['forces_stdev_max']
+
+            Ecrit = Es > Escut
+            Fcrit = Fs > Fscut
+            Fmcrit = Fsmax > 3*Fscut
+    
+            if Ecrit or Fcrit or Fmcrit:
+                start_system[1] = atoms
+                start_system[2] = {}
+                return(start_system)
+        
+    #if we get here, no snapshots met the criteria
+    start_system[1] = None
+    start_system[2] = {}
     return(start_system)
 
 @python_app(executors=['alf_sampler_executor'])
@@ -159,9 +180,9 @@ def crest_build_task(moleculeids, builder_config):
 
 
 @python_app(executors=['alf_sampler_executor'])
-def crest_metad_task(molecule_object, sampler_config):
+def crest_metad_task(molecule_object, sampler_config, model_path, current_model_id):
     """
-    Elements in builder params
+    Elements in sampler params
         xtb_command: path to xTB
         hmass: mass of hydrogen atoms (amu)
         time: integration time (ps)
@@ -174,7 +195,10 @@ def crest_metad_task(molecule_object, sampler_config):
         alp: width of gaussian potential used in RMSD CV
         store_dir: optional path to storage directory
     """
-    system = crest_metad(molecule_object, **sampler_config)
+    system_checker(molecule_object)
+    calculator_list = calc_class(model_path.format(current_model_id) + '/',device='cpu')
+    ase_calculator = MLMD_calculator(calculator_list,**sampler_config['MLMD_calculator_options'])
+    system = crest_metad(molecule_object, ase_calculator, **sampler_config)
     system_checker(system)
     return(system)
 

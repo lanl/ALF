@@ -29,7 +29,6 @@ from alframework.tools.tools import load_module_from_string
 from alframework.tools.tools import build_input_dict
 from alframework.tools.pyanitools import anidataloader
 from alframework.tools.molecules_class import MoleculesObject
-from tools import MoleculesObject
 #import logging
 #logging.basicConfig(level=logging.DEBUG)
 

@@ -11,7 +11,7 @@
   "alp": "1.0",
   "Escut": "20.0",
   "Fscut": "0.3",
-  "store_dir": "./trj" 
+  "store_dir": "./trj",
   "ase_calculator":"alframework.ml_interfaces.hippynn_interface.HIPNN_ASE_load_ensemble",
-  "MLMD_calculator_options":{},
+  "MLMD_calculator_options":{}
 }

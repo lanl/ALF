@@ -201,7 +201,7 @@ def crest_metad_task(molecule_object, sampler_config, model_path, current_model_
     """
     system_checker(molecule_object)
     calc_class = load_module_from_config(sampler_config, 'ase_calculator')
-    calculator_list = calc_class(model_path.format(current_model_id) + '/',device='cpu')
+    calculator_list = calc_class(model_path.format(current_model_id) + '/',device='cuda:0')
     ase_calculator = MLMD_calculator(calculator_list,**sampler_config['MLMD_calculator_options'])
     system = crest_metad(molecule_object, ase_calculator, **sampler_config)
     system_checker(system)

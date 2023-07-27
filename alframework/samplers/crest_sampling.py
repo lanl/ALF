@@ -83,7 +83,7 @@ def crest_build(start_system, molecule_library_dir, nsolv=[1,2], crest_command="
 
 
 def crest_metad(start_system, ase_calculator, xtb_command='xtb', hmass=2, time=50., temp=400., step=0.5, shake=0,
-                dump=100, save=100, kpush=0.05, alp=1.0, store_dir=None):
+                dump=100, save=100, kpush=0.05, alp=1.0, Escut=20., Fscut=0.3, store_dir=None):
 
     #ensure system adhears to formating convention
     system_checker(start_system)
@@ -193,6 +193,8 @@ def crest_metad_task(molecule_object, sampler_config, model_path, current_model_
         save: max number of structures for RMSD collective variable
         kpush: scaling factor for Gaussian potential used in RMSD CV
         alp: width of gaussian potential used in RMSD CV
+        Escut: Energy standard deviation threshold for capturing frame
+        Fscut: Force standard deviation threshold for capturing frame
         store_dir: optional path to storage directory
     """
     system_checker(molecule_object)

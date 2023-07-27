@@ -9,5 +9,7 @@
   "save": "100",
   "kpush": "0.05",
   "alp": "1.0",
+  "Escut": "20.0",
+  "Fscut": "0.3",
   "store_dir": "./trj" 
 }

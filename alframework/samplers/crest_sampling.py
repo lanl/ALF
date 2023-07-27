@@ -7,6 +7,8 @@ from ase import Atoms
 from ase.io import read, write
 from parsl import python_app, bash_app
 from alframework.tools.tools import system_checker
+from alframework.tools.tools import load_module_from_config
+from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator
 
 
 def crest_build(start_system, molecule_library_dir, nsolv=[1,2], crest_command="crest", crest_input="", grow_input="", store_dir=None):
@@ -198,6 +200,7 @@ def crest_metad_task(molecule_object, sampler_config, model_path, current_model_
         store_dir: optional path to storage directory
     """
     system_checker(molecule_object)
+    calc_class = load_module_from_config(sampler_config, 'ase_calculator')
     calculator_list = calc_class(model_path.format(current_model_id) + '/',device='cpu')
     ase_calculator = MLMD_calculator(calculator_list,**sampler_config['MLMD_calculator_options'])
     system = crest_metad(molecule_object, ase_calculator, **sampler_config)

@@ -29,7 +29,7 @@ from alframework.tools.tools import load_module_from_string
 from alframework.tools.tools import build_input_dict
 from alframework.tools.pyanitools import anidataloader
 from alframework.tools.molecules_class import MoleculesObject
-from tools import MoleculesObject
+from alframework.tools.database import Database as ZarrDatabase
 #import logging
 #logging.basicConfig(level=logging.DEBUG)
 
@@ -64,6 +64,8 @@ if ('--test_ml' in sys.argv[2:] or '--test_builder' in sys.argv[2:] or '--test_s
     parsl_configuration = load_module_from_string(master_config['parsl_debug_configuration'])
 else: 
     parsl_configuration = load_module_from_string(master_config['parsl_configuration'])
+
+parsl_configuration = load_module_from_string(master_config['parsl_debug_configuration'])
 
 executor_list = []
 # Create List of parsl executors
@@ -121,12 +123,13 @@ if os.path.exists(master_config['status_path']):
 else:
     status = {}
     status['current_training_id'] = find_empty_directory(master_config['model_path'])
-    if status['current_training_id'] > 0:
-        status['current_model_id'] = status['current_training_id'] - 1
+    status['current_model_id'] = status['current_training_id'] - 1
+    if os.path.exists(master_config["zarr_path"]):
+        database = ZarrDatabase.load_from_zarr(master_config["zarr_path"])
+        status['current_zarr_id'] = database.get_max_iteration(master_config["reduction_name"])
     else:
-        status['current_model_id'] = -1
-
-    status['current_h5_id'] = find_empty_directory(master_config['h5_path'])
+        status['current_zarr_id'] = -1
+    # status['current_h5_id'] = find_empty_directory(master_config['h5_path'])
     ##If data exists, start training model
     #if status['current_h5_id'] > 0:
     #     ML_task_queue.add_task(ml_task(ML_config,master_config['h5_path'],master_config['model_path'],status['current_training_id'],remove_existing=False))
@@ -205,7 +208,7 @@ if '--test_qm' in sys.argv[2:]:
             sys.stdout.write(property_key + ':\n' + np.array_str(test_configuration[2][property_key],precision=4) + '\n')
         else:
             sys.stdout.write(property_key + ': ' + str(test_configuration[2][property_key]) + '\n')
-    if os.path.exists(master_config['master_directory'] + '/qm_test.h5'):
+    if os.path.exists(master_config['master_directory'] + '/zarr_test'):
         os.remove(master_config['master_directory'] + '/qm_test.h5')
     store_current_data(master_config['master_directory'] + '/qm_test.h5',queue_output,master_config['properties_list'])
     test_db = anidataloader(master_config['master_directory'] + '/qm_test.h5')
@@ -253,7 +256,7 @@ if testing:
 ########################
     
 #If there is no data and no models, start boostrap jobs
-if status['current_h5_id'] == 0 and status['current_model_id'] < 0:
+if status['current_zarr_id'] == -1 and status['current_model_id'] < 0:
     print("Building Bootstrap Set")
     while QM_task_queue.get_completed_number() < master_config['bootstrap_set']:
         if QM_task_queue.get_queued_number() < master_config['target_queued_QM']:
@@ -302,11 +305,12 @@ if status['current_h5_id'] == 0 and status['current_model_id'] < 0:
 
     print("Saving Bootstrap and training model")
     results_list, failed = QM_task_queue.get_task_results()
-    status['lifetime_failed_QM_tasks'] = status['lifetime_failed_QM_tasks'] + failed    
-    store_current_data(master_config['h5_path'].format(status['current_h5_id']),
+    status['lifetime_failed_QM_tasks'] = status['lifetime_failed_QM_tasks'] + failed
+    print(status)
+    store_current_data(master_config['zarr_path'],
                        results_list,
                        master_config['properties_list'])
-    status['current_h5_id'] = status['current_h5_id'] + 1
+    status['current_zarr_id'] = status['current_zarr_id'] + 1
     
 if status['current_model_id'] < 0:
     task_input = build_input_dict(ml_task.func,

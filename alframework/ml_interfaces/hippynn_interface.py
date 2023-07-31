@@ -9,7 +9,8 @@ from ase import units
 from ase.data import chemical_symbols
 
 def train_HIPNN_model(model_dir,
-                      h5_train_dir,
+                      zarr_path,
+                      reduction_name,
                       energy_key,
                       coordinates_key,
                       species_key,

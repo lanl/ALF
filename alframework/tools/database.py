@@ -243,12 +243,18 @@ class Database:
             stages = [i for i in self.root[f"reductions/{name}/"]]
         return stages
 
+    def get_max_iteration(self, name):
+        return int(max(self._get_earlier_stages(name))) if name in self.root[f"reductions"] else -1
+
     def _merge_reductions(self, name, stages):
         indices = []
         for stage in stages:
             indices.append(self.root[f"reductions/{name}/{stage}"][:])
         indices = np.concatenate(indices)
         return indices
+
+    def reduction_keys(self):
+        return self.root[f"reductions"].keys()
 
 
 class ChunkLoader:

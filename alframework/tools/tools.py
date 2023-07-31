@@ -9,6 +9,8 @@ from alframework.tools import pyanitools as pyt
 from alframework.tools.molecules_class import MoleculesObject
 import inspect
 
+from alframework.tools.database import Database as ZarrDatabase
+
 def annealing_schedule(t, tmax, amp, per, srt, end):
     """Defines the overall temperature profile in the molecular dynamics simulation.
 
@@ -103,6 +105,15 @@ def random_rotation_matrix(deflection=1.0, randnums=None):
     return M
 
 
+def store_zarr_data(zarr_path, system_data, properties):
+    if os.path.exists(zarr_path):
+        zarr_database = ZarrDatabase.load_from_zarr(zarr_path)
+    pass
+
+
+
+
+
 def store_current_data(h5path, system_data, properties):
     """Stores the key results of the QM calculations in the database.
 
@@ -117,6 +128,7 @@ def store_current_data(h5path, system_data, properties):
 
     """
     # system data is a list of [mol-id(string), atoms, properties dictionary]
+    print(system_data)
     data_dict = {}
     print("Saving h5 file: " + h5path)
     total_number = len(system_data)
@@ -173,6 +185,8 @@ def store_current_data(h5path, system_data, properties):
     print("Saved Systems: " + str(saved_number))
     print("NAN Systems: " + str(nan_number))
     print("Unconverged Systems: " + str(unconverged_number))
+
+    print(data_dict)
 
     for isokey in data_dict:
         # print('isokeys:',isokey)

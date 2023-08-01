@@ -13,7 +13,7 @@ config_1node= Config(
     executors=[
         HighThroughputExecutor(
             label='alf_QM_executor',
-            max_workers=80,
+            max_workers=12,
             provider=GridEngineProvider(
                 channel=LocalChannel(userhome=userhome),
                 nodes_per_block=1,
@@ -21,7 +21,7 @@ config_1node= Config(
                 min_blocks=0,
                 max_blocks=1,
                 parallelism=1,
-                walltime="02:00:00",
+                walltime="168:00:00",
                 scheduler_options='#$ -pe smp 80',
                 worker_init='source $HOME/.alfrc',
                 launcher=SingleNodeLauncher(),
@@ -32,16 +32,6 @@ config_1node= Config(
         HighThroughputExecutor(
             label='alf_ML_executor',
             max_workers=1,
-            #provider=LocalProvider(
-            #    channel=LocalChannel(userhome=userhome),
-            #    nodes_per_block=1,
-            #    init_blocks=0,
-            #    min_blocks=0,
-            #    max_blocks=1,
-            #    parallelism=1,
-            #    worker_init='source $HOME/.alfrc',
-            #    cmd_timeout=30,
-            #),
             provider=GridEngineProvider(
                 channel=LocalChannel(userhome=userhome),
                 nodes_per_block=1,
@@ -49,9 +39,9 @@ config_1node= Config(
                 min_blocks=0,
                 max_blocks=1,
                 parallelism=1,
-                walltime="01:00:00",
-                scheduler_options='#$ -pe smp 80\n#$ -l ngpus=4',
-                worker_init='source $HOME/.alfrc',
+                walltime="24:00:00",
+                scheduler_options='#$ -pe smp 80\n#$ -l ngpus=4\n#$ -l gpu_2080ti=true',
+                worker_init='source $HOME/.lammpsrc',
                 launcher=SingleNodeLauncher(),
                 cmd_timeout=30,
                 queue='UI-GPU'
@@ -59,7 +49,7 @@ config_1node= Config(
         ),
         HighThroughputExecutor(
             label='alf_sampler_executor',
-            max_workers=2,
+            max_workers=4,
             provider=GridEngineProvider(
                 channel=LocalChannel(userhome=userhome),
                 nodes_per_block=1,
@@ -67,12 +57,12 @@ config_1node= Config(
                 min_blocks=0,
                 max_blocks=1,
                 parallelism=1,
-                walltime="01:00:00",
-                scheduler_options='#$ -pe smp 80\n#$ -l ngpus=8',
-                worker_init='source $HOME/.alfrc',
+                walltime="168:00:00",
+                scheduler_options='#$ -pe smp 80\n#$ -l ngpus=4\n#$ -l gpu_2080ti=true',
+                worker_init='source $HOME/.lammpsrc',
                 launcher=SingleNodeLauncher(),
                 cmd_timeout=30,
-                queue='JG'
+                queue='UI-GPU'
             ),
         )
     ]

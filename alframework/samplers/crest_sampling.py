@@ -25,8 +25,8 @@ def crest_build(start_system, molecule_library_dir, nsolv=[1,2], crest_command="
     #path to solute/solvent xyz
     solute_xyzs = sorted(glob.glob(os.path.join(molecule_library_dir, 'solute', '*.xyz')))
     solvent_xyzs = sorted(glob.glob(os.path.join(molecule_library_dir, 'solvent', '*.xyz')))
-    solute_xyz = random.choice(solvent_xyzs)
-    solvent_xyz = random.choice(solute_xyzs)
+    solute_xyz = random.choice(solute_xyzs)
+    solvent_xyz = random.choice(solvent_xyzs)
     nsolv_start, nsolv_stop = nsolv
     nsolv = random.choice(range(int(nsolv_start), int(nsolv_stop)))
 
@@ -90,6 +90,7 @@ def crest_metad(start_system, ase_calculator, xtb_command='xtb', hmass=2, time=5
     #ensure system adhears to formating convention
     system_checker(start_system)
     curr_sys = start_system[1]
+    prefix = start_system[0]['moleculeid']
     assert "wall_potential" in start_system[0].keys()  
 
     #read wall_potential to find solute atom indices
@@ -139,21 +140,25 @@ def crest_metad(start_system, ase_calculator, xtb_command='xtb', hmass=2, time=5
         for atoms in traj:
             atoms.set_calculator(ase_calculator)
             atoms.calc.calculate(atoms, properties=['energy_stdev','forces_stdev_mean','forces_stdev_max'])
-            Es = ase_atoms.calc.results['energy_stdev']
-            Fs = ase_atoms.calc.results['forces_stdev_mean']
-            Fsmax = ase_atoms.calc.results['forces_stdev_max']
+            Es = atoms.calc.results['energy_stdev']
+            Fs = atoms.calc.results['forces_stdev_mean']
+            Fsmax = atoms.calc.results['forces_stdev_max']
 
-            Ecrit = Es > Escut
-            Fcrit = Fs > Fscut
-            Fmcrit = Fsmax > 3*Fscut
+            Ecrit = Es > float(Escut)
+            Fcrit = Fs > float(Fscut)
+            Fmcrit = Fsmax > 3*float(Fscut)
+
+            with open('/Users/jsgomes/criteria', 'a') as f:
+                f.write(f"Es: {Es} Fs: {Fs} Fsmax: {Fsmax} Ecrit: {Ecrit} Fcrit: {Fcrit} Fmcrit: {Fmcrit}\n")
     
             if Ecrit or Fcrit or Fmcrit:
-                start_system[1] = atoms
+                start_system[1] = Atoms(atoms.get_chemical_symbols(), positions=atoms.get_positions(wrap=True),
+                                        cell=atoms.get_cell(), pbc=atoms.get_pbc())
                 start_system[2] = {}
                 return(start_system)
         
     #if we get here, no snapshots met the criteria
-    start_system[1] = None
+    start_system[1] = Atoms()
     start_system[2] = {}
     return(start_system)
 
@@ -182,7 +187,7 @@ def crest_build_task(moleculeids, builder_config):
 
 
 @python_app(executors=['alf_sampler_executor'])
-def crest_metad_task(molecule_object, sampler_config, model_path, current_model_id):
+def crest_metad_task(molecule_object, sampler_config, model_path, current_model_id, gpus_per_node):
     """
     Elements in sampler params
         xtb_command: path to xTB
@@ -199,11 +204,15 @@ def crest_metad_task(molecule_object, sampler_config, model_path, current_model_
         Fscut: Force standard deviation threshold for capturing frame
         store_dir: optional path to storage directory
     """
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(int(os.environ.get('PARSL_WORKER_RANK'))%gpus_per_node)
     system_checker(molecule_object)
     calc_class = load_module_from_config(sampler_config, 'ase_calculator')
     calculator_list = calc_class(model_path.format(current_model_id) + '/',device='cuda:0')
-    ase_calculator = MLMD_calculator(calculator_list,**sampler_config['MLMD_calculator_options'])
-    system = crest_metad(molecule_object, ase_calculator, **sampler_config)
+    ase_calculator = MLMD_calculator(calculator_list, **sampler_config['MLMD_calculator_options'])
+    feed_parameters = {**sampler_config}
+    _ = feed_parameters.pop('ase_calculator')
+    _ = feed_parameters.pop('MLMD_calculator_options')
+    system = crest_metad(molecule_object, ase_calculator, **feed_parameters)
     system_checker(system)
     return(system)
 

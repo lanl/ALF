@@ -150,12 +150,6 @@ def train_HIPNN_model(model_dir,
              (None)
     """
 
-    saved_args = locals()
-
-    import pickle
-    with open("args.pkl", "wb") as f:
-        pickle.dump(saved_args, f)
-
     # Import Torch and configure GPU.
     # This must occur after the subprocess fork!!!
     if device_string.lower() == "from_multiprocessing":

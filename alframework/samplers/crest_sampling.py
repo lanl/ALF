@@ -148,9 +148,6 @@ def crest_metad(start_system, ase_calculator, xtb_command='xtb', hmass=2, time=5
             Fcrit = Fs > float(Fscut)
             Fmcrit = Fsmax > 3*float(Fscut)
 
-            with open('/Users/jsgomes/criteria', 'a') as f:
-                f.write(f"Es: {Es} Fs: {Fs} Fsmax: {Fsmax} Ecrit: {Ecrit} Fcrit: {Fcrit} Fmcrit: {Fmcrit}\n")
-    
             if Ecrit or Fcrit or Fmcrit:
                 start_system[1] = Atoms(atoms.get_chemical_symbols(), positions=atoms.get_positions(wrap=True),
                                         cell=atoms.get_cell(), pbc=atoms.get_pbc())

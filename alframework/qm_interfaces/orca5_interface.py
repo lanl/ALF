@@ -243,6 +243,7 @@ def orca_calculator_task(molecule_object, QM_config, QM_scratch_dir, properties_
     out_properties = orca.single_point(molecule=atoms, properties=properties)
 
     molecule_object.store_results(out_properties)
+    molecule_object.set_converged_flag(out_properties['converged'])
     
     return molecule_object
 

@@ -120,74 +120,21 @@ def store_to_zarr(zarr_path, system_data, properties):
         (None)
 
     """
-    # system data is a list of [mol-id(string), atoms, properties dictionary]
-    data_dict = {}
-    print("\n Saving h5 file: " + zarr_path)
-    total_number = len(system_data)
-    saved_number = 0
-    nan_number = 0
-    unconverged_number = 0
-    for system in system_data:
-        assert isinstance(system, MoleculesObject), 'system must be an instance of MoleculesObject'
+    print("Saving zarr database: " + zarr_path)
+    print(f"Total Systems: {len(system_data)}")
 
-        cur_moliculeid = system.get_moleculeid()
-        cur_atoms = system.get_atoms()
-        cur_properties = system.get_results()
-        molkey = compute_empirical_formula(cur_atoms.get_chemical_symbols())
+    data_list = [system.to_dict(qm_keys=properties) for system in system_data if system.check_convergence()]
 
-        # Ensure system converged before saving
-        if system.check_convergence():
-            saved_number += 1
-            atom_index = np.argsort(cur_atoms.get_atomic_numbers())
-            # If there is already a molecule with the same formula, append
-            if molkey in data_dict:
-                data_dict[molkey]["_id"].append(cur_moliculeid)
-                data_dict[molkey]["coordinates"].append(cur_atoms.get_positions()[atom_index])
-                if any(cur_atoms.get_pbc()):
-                    data_dict[molkey]["cell"].append(complete_cell(cur_atoms.get_cell()))
-                for prop in properties:
-                    if properties[prop][1].lower() == "system":
-                        data_dict[molkey][properties[prop][0]].append(cur_properties[prop] * properties[prop][2])
-                    elif properties[prop][1].lower() == "atomic":
-                        data_dict[molkey][properties[prop][0]].append(
-                            np.array(cur_properties[prop])[atom_index] * properties[prop][2])
-                    else:
-                        raise RuntimeError('Unknown property format')
-            # If there is not already a molecule with this empirical formula, make a new one
-            else:
-                data_dict[molkey] = {}
-                data_dict[molkey]["species"] = np.array(cur_atoms.get_chemical_symbols())[atom_index]
-                data_dict[molkey]["_id"] = [cur_moliculeid]
-                data_dict[molkey]["coordinates"] = [cur_atoms.get_positions()[atom_index]]
-                if any(cur_atoms.get_pbc()):
-                    data_dict[molkey]["cell"] = [complete_cell(cur_atoms.get_cell())]
-                for prop in properties.keys():
-                    if properties[prop][1].lower() == "system":
-                        data_dict[molkey][properties[prop][0]] = [cur_properties[prop] * properties[prop][2]]
-                    elif properties[prop][1].lower() == "atomic":
-                        data_dict[molkey][properties[prop][0]] = [
-                            np.array(cur_properties[prop])[atom_index] * properties[prop][2]]
-                    else:
-                        raise RuntimeError('Unknown property format')
-        elif not isinstance(system,
-                            MoleculesObject):  # code never enter in this line, but leaving for now to avoid problems
-            nan_number += 1
-        elif not system.check_convergence():
-            unconverged_number = unconverged_number + 1
-        else:
-            print("Warning: molecule not saved for unknown reason")
-    print("Total Systems: " + str(total_number))
-    print("Saved Systems: " + str(saved_number))
-    print("NAN Systems: " + str(nan_number))
-    print("Unconverged Systems: " + str(unconverged_number))
+    print(f"Saved Systems: {len(data_list)}")
 
-    if len(data_dict) > 0:
-        data_list = [v for k, v in data_dict.items()]
-        if os.path.exists(zarr_path):
-            database = ZarrDatabase.load_from_zarr(zarr_path)
-        else:
-            database = ZarrDatabase(zarr_path)
-        database.add_instance(data_list)
+    print(data_list)
+
+
+    if os.path.exists(zarr_path):
+        database = ZarrDatabase.load_from_zarr(zarr_path)
+    else:
+        database = ZarrDatabase(zarr_path)
+    database.add_instance(data_list)
 
 
 def store_current_data(h5path, system_data, properties):

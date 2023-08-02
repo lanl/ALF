@@ -188,6 +188,25 @@ class MoleculesObject:
 
         return signature_cell + signature_atoms
 
+    def to_dict(self, qm_keys = None):
+        res = dict()
+        res["species"] = self.atoms.get_atomic_numbers()
+        res["coordinates"] = self.atoms.get_positions()
+        res["cell"] = self.atoms.get_cell()
+        res["_id"] = self._moleculeid
+
+        if qm_keys is None:
+            res.update(self.qm_results)
+        else:
+            for key in qm_keys:
+                res[key] = self.qm_results[key]
+
+        for key in res:
+            if isinstance(res[key], float) or isinstance(res[key], str) or isinstance(res[key], int):
+                res[key] = [res[key]]
+            res[key] = np.array(res[key])
+        return res
+
 
 def compare_chemical_composition(system1, system2):
     """Check if two MoleculesObject instances have the same chemical composition

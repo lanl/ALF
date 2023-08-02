@@ -99,8 +99,7 @@ class Database:
 
         for key in self.property_names:
             value = item[key]
-            elem_example = zarr.zeros(value[0].shape, chunks=10000, dtype=value.dtype)
-            self.root["global/leaf_structure"].array(key, elem_example)
+            self.root["global/leaf_structure"].array(key, value[0])
             placeholder = zarr.zeros(value.shape, chunks=(100,), dtype=value.dtype)
             placeholder[:] = value
             self.root[f"data/{group_name}"].array(key, placeholder)
@@ -115,7 +114,6 @@ class Database:
             if len(item["species"].shape) == 1:
                 for k, v in item.items():
                     item[k] = v.reshape(1, *v.shape)
-
             if self.db_size == 0:
                 return self._add_first_element(item)
 

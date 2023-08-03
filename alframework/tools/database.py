@@ -5,6 +5,11 @@ import numpy as np
 import zarr
 
 
+class AllDataScore:
+    def predict(self, chunk):
+        return chunk["indices"], []
+
+
 def concatenate_different_arrays(array_list, stack=False):
     if stack:
         array_list = [a.reshape(1, *a.shape) for a in array_list]
@@ -51,7 +56,10 @@ def exclude_values(array, values=None):
 
 
 def setdiff2d(array_a, array_b):
-    return np.array(list(set(map(tuple, array_a)) - set(map(tuple, array_b))))
+    a = set(map(tuple, array_a))
+    b = set(map(tuple, array_b))
+    res = np.array(list(a - b))
+    return res
 
 
 class Database:
@@ -178,10 +186,11 @@ class Database:
                 assert len(selection_index) == len(results["indices"])
             return results
 
-        elif isinstance(selection_index[0], int):
+        elif (isinstance(selection_index[0], int) or isinstance(selection_index[0], np.int64)
+              or isinstance(selection_index[0], np.int32)):
             result = {}
-            for key in self.root[f"data/{selection_index[0]}"]:
-                result[key] = self.root[f"data/{selection_index[0]}/{key}"][selection_index[1]]
+            for key in self.root[f"data/{selection_index[0]:03}"]:
+                result[key] = self.root[f"data/{selection_index[0]:03}/{key}"][selection_index[1]]
             return result
         else:
             raise NotImplementedError
@@ -197,7 +206,7 @@ class Database:
 
     def update_reduction(self, reduction_name, score, fraction, chunk_size, exclude_global=(1,)):
 
-        loader = self.get_chunk_loader(reduction_name, chunk_size, exclude_global)
+        idx, loader = self.get_chunk_loader(reduction_name, chunk_size, exclude_global)
         train_indices = []
         bad_indices = []
 
@@ -205,18 +214,21 @@ class Database:
             tr_idx, bad_idx = score.predict(chunk)
             train_indices.append(tr_idx)
             bad_indices.append(bad_idx)
-        train_indices = np.concatenate(train_indices)
-        bad_indices = np.concatenate(bad_indices)
+        if bad_indices:
+            bad_indices = np.concatenate(bad_indices)
 
-        if "#bad_indices" not in self.root[f"reductions/{reduction_name}"]:
-            self.root[f"reductions/{reduction_name}"].array("#bad_indices", bad_indices)
-        else:
-            self.root[f"reductions/{reduction_name}/#bad_indices"].append(bad_indices)
-        stage = int(max(self._get_earlier_stages(reduction_name, None)))
-        positions = np.arange(len(train_indices))
-        selection_size = int(fraction * len(positions))
-        positions = np.random.choice(positions, selection_size)
-        self.root[f"reductions/{reduction_name}"].array(f"{stage + 1:03}", train_indices[positions])
+            if "#bad_indices" not in self.root[f"reductions/{reduction_name}"]:
+                self.root[f"reductions/{reduction_name}"].array("#bad_indices", bad_indices)
+            else:
+                self.root[f"reductions/{reduction_name}/#bad_indices"].append(bad_indices)
+
+        if train_indices:
+            train_indices = np.concatenate(train_indices)
+            stage = int(max(self._get_earlier_stages(reduction_name, None)))
+            positions = np.arange(len(train_indices))
+            selection_size = int(fraction * len(positions))
+            positions = np.random.choice(positions, selection_size, replace=False)
+            self.root[f"reductions/{reduction_name}"].array(f"{stage + 1:03}", train_indices[positions])
 
     def get_chunk_loader(self, reduction_name, chunk_size, exclude_global=(1.,), stage=None):
         valid_positions = exclude_values(self.root['global/global_property'][:], exclude_global)
@@ -224,9 +236,13 @@ class Database:
         stages = self._get_earlier_stages(reduction_name, stage)
         reduction_indices = self._merge_reductions(reduction_name, stages)
         valid_indices = setdiff2d(valid_indices, reduction_indices)
-        order = np.argsort(valid_indices[:, 0])
-        sorted_indices = valid_indices[order]
-        return ChunkLoader(self, sorted_indices, chunk_size)
+
+        if len(valid_indices):
+            order = np.argsort(valid_indices[:, 0])
+            sorted_indices = valid_indices[order]
+        else:
+            sorted_indices = valid_indices
+        return sorted_indices, ChunkLoader(self, sorted_indices, chunk_size)
 
     def dump_reduction(self, name, stage=None):
         stages = self._get_earlier_stages(name, stage)
@@ -247,8 +263,11 @@ class Database:
     def _merge_reductions(self, name, stages):
         indices = []
         for stage in stages:
-            indices.append(self.root[f"reductions/{name}/{stage}"][:])
+            idxs = self.root[f"reductions/{name}/{stage}"][:]
+            if len(idxs):
+                indices.append(self.root[f"reductions/{name}/{stage}"][:])
         indices = np.concatenate(indices)
+        assert len(indices) == len(set(map(tuple, indices)))
         return indices
 
     def reduction_keys(self):
@@ -339,3 +358,13 @@ if __name__ == "__main__":
     print(reduction.keys())
     print(reduction["indices"].shape)
     print(reduction["species"].shape)
+
+    score = AllDataScore()
+
+    database.update_reduction("lol", score=score, fraction=1., chunk_size=10000)
+
+    database.dump_reduction("lol")
+
+    print(database.dump_reduction("lol"))
+
+    print(database.root.tree())

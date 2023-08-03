@@ -4,8 +4,8 @@
 
 import json
 import os
-import sys
 import shutil
+import sys
 import time
 from multiprocessing import Process
 from pathlib import Path
@@ -15,23 +15,18 @@ import numpy as np
 np.set_printoptions(threshold=np.inf)
 
 # Load ASE library
-import ase
-from ase import Atoms
 
 import parsl
 # Check to see if parsl is available
-import alframework
-#from alframework.parsl_resource_configs.darwin import config_atdm_ml
+# from alframework.parsl_resource_configs.darwin import config_atdm_ml
 from alframework.tools.tools import parsl_task_queue
-from alframework.tools.tools import store_current_data
 from alframework.tools.tools import load_config_file
 from alframework.tools.tools import find_empty_directory
-from alframework.tools.tools import system_checker
 from alframework.tools.tools import load_module_from_string
 from alframework.tools.tools import build_input_dict
-from alframework.tools.pyanitools import anidataloader
 from alframework.tools.molecules_class import MoleculesObject
-from alframework.tools.database import Database as ZarrDatabase
+from alframework.tools.database import AllDataScore, Database as ZarrDatabase
+from alframework.tools.tools import store_to_zarr
 
 # import logging
 # logging.basicConfig(level=logging.DEBUG)
@@ -68,7 +63,8 @@ if ('--test_ml' in sys.argv[2:] or '--test_builder' in sys.argv[2:] or '--test_s
 else:
     parsl_configuration = load_module_from_string(master_config['parsl_configuration'])
 
-parsl_configuration = load_module_from_string(master_config['parsl_debug_configuration'])
+# # todo: remove this tmp line
+# parsl_configuration = load_module_from_string(master_config['parsl_debug_configuration'])
 
 executor_list = []
 # Create List of parsl executors
@@ -132,11 +128,7 @@ else:
         status['current_zarr_id'] = database.get_max_iteration(master_config["reduction_name"])
     else:
         status['current_zarr_id'] = -1
-    # status['current_h5_id'] = find_empty_directory(master_config['h5_path'])
-    ##If data exists, start training model
-    # if status['current_h5_id'] > 0:
-    #     ML_task_queue.add_task(ml_task(ML_config,master_config['h5_path'],master_config['model_path'],status['current_training_id'],remove_existing=False))
-    #     status['current_training_id'] = status['current_training_id'] + 1
+
     status['current_molecule_id'] = 0
     status['lifetime_failed_builder_tasks'] = 0
     status['lifetime_failed_sampler_tasks'] = 0
@@ -219,16 +211,12 @@ if '--test_qm' in sys.argv[2:]:
         else:
             sys.stdout.write(str(test_configuration))
 
-    if os.path.exists(master_config['master_directory'] + '/zarr_test'):
-        shutil.rmtree(master_config['master_directory'] + '/zarr_test')
-    store_to_zarr(master_config['master_directory'] + '/zarr_test', queue_output, master_config['properties_list'])
+    if os.path.exists(master_config['master_directory'] + '/test_zarr'):
+        shutil.rmtree(master_config['master_directory'] + '/test_zarr')
+    store_to_zarr(master_config['master_directory'] + '/test_zarr', queue_output, master_config['properties_list'])
 
-    test_db = ZarrDatabase.load_from_zarr(master_config['master_directory'] + '/zarr_test')
+    test_db = ZarrDatabase.load_from_zarr(master_config['master_directory'] + '/test_zarr')
     sys.stdout.write(f"{test_db.root.tree()}\n")
-
-    import pickle
-
-    pickle.dump(test_configuration, open("test_conf.pkl", "wb"))
     testing = True
 
 # train_ANI_model_task(configuration,data_directory,model_path,model_index,remove_existing=False):
@@ -262,7 +250,7 @@ if testing:
 ########################
 
 # If there is no data and no models, start boostrap jobs
-if status['current_zarr_id'] == -1 and status['current_model_id'] < 0:
+if status['current_zarr_id'] < 0 and status['current_model_id'] < 0:
     print("Building Bootstrap Set")
     while QM_task_queue.get_completed_number() < master_config['bootstrap_set']:
         if QM_task_queue.get_queued_number() < master_config['target_queued_QM']:
@@ -320,7 +308,9 @@ if status['current_zarr_id'] == -1 and status['current_model_id'] < 0:
     store_to_zarr(master_config['zarr_path'],
                   results_list,
                   master_config['properties_list'])
-    status['current_zarr_id'] = status['current_zarr_id'] + 1
+
+    db = ZarrDatabase(master_config['zarr_path']).create_initial_reduction(master_config["reduction_name"], fraction=1.)
+    status['current_zarr_id'] = db.get_max_iteration(master_config["reduction_name"])
 
 if status['current_model_id'] < 0:
     task_input = build_input_dict(ml_task.func,
@@ -440,6 +430,12 @@ while True:
         # with open('temp-{:04d}.pkl'.format(status['current_h5_id']),'wb') as pickle_file:
         #    pickle.dump(results_list,pickle_file)
         store_to_zarr(master_config['zarr_path'], results_list, master_config['properties_list'])
+        db = ZarrDatabase(master_config["zarr_path"])
+
+        db.update_reduction(master_config['reduction_name'],
+                            score=AllDataScore(),
+                            fraction=1.,
+                            chunk_size=128)
         #        with open('data-bk-{:04d}.pickle'.format(status['current_h5_id']),'wb') as pkbk:
         #            pickle.dump(results_list,pkbk)
         status['current_zarr_id'] = status['current_zarr_id'] + 1

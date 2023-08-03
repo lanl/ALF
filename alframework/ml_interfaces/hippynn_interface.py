@@ -152,6 +152,11 @@ def train_HIPNN_model(model_dir,
 
     # Import Torch and configure GPU.
     # This must occur after the subprocess fork!!!
+
+    args = locals()
+
+    import pickle
+    pickle.dump(args, open("args.pkl", "wb"))
     if device_string.lower() == "from_multiprocessing":
         process = multiprocessing.current_process()
         os.environ["CUDA_VISIBLE_DEVICES"] = str((process._identity[-1] - 1) % from_multiprocessing_nGPU)
@@ -445,7 +450,7 @@ def train_HIPNN_model(model_dir,
                                allow_unfound=True,
                                species_key=species_key
                                )
-            if database.arr_dict[energy_key].shape(-1) == 1:
+            if database.arr_dict[energy_key].shape[-1] == 1:
                 database.arr_dict[energy_key] = database.arr_dict[energy_key][..., 0]
 
             torch.set_default_dtype(torch.float32)
@@ -486,6 +491,7 @@ def train_HIPNN_model(model_dir,
             print(np.max(database.arr_dict[energy_key + "peratom"]))
             print(np.min(database.arr_dict[energy_key + "peratom"]))
 
+            print(valid_size, test_size, len(database))
             database.make_random_split("valid", valid_size)
 
             if zarr_test_path is not None:

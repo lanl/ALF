@@ -61,7 +61,7 @@ if ('--test_ml' in sys.argv[2:] or '--test_builder' in sys.argv[2:] or '--test_s
     '--test_qm' in sys.argv[2:]) and 'parsl_debug_configuration' in master_config:
     parsl_configuration = load_module_from_string(master_config['parsl_debug_configuration'])
 else:
-    parsl_configuration = load_module_from_string(master_config['parsl_configuration'])f
+    parsl_configuration = load_module_from_string(master_config['parsl_configuration'])
 executor_list = []
 # Create List of parsl executors
 for curExec in parsl_configuration.executors:

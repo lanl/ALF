@@ -33,6 +33,21 @@ class PyAniDB(Database, PyAniMethods, Restartable):
         original_indices = reduction["indices"]
         self.arr_dict["indices"] = np.arange(len(original_indices))
 
+def get_hippynn_network(args, hipnn_order, network_params, periodic):
+    from hippynn.graphs import networks
+    if hipnn_order.lower() == 'scalar':
+        network = networks.Hipnn("HIPNN", args, module_kwargs=network_params,
+                                 periodic=periodic)
+    elif hipnn_order.lower() == 'vector':
+        network = networks.HipnnVec("HIPNN", args, module_kwargs=network_params,
+                                    periodic=periodic)
+    elif hipnn_order.lower() == 'quadratic':
+        network = networks.HipnnQuad("HIPNN", args, module_kwargs=network_params,
+                                     periodic=periodic)
+    else:
+        raise RuntimeError('Unrecognized hipnn_order parameter')
+    return network
+
 
 def train_HIPNN_model(model_dir,
                       zarr_path,
@@ -168,7 +183,7 @@ def train_HIPNN_model(model_dir,
 
     import hippynn
     from hippynn import plotting
-    from hippynn.graphs import inputs, networks, targets, physics, loss
+    from hippynn.graphs import inputs, targets, physics, loss
     from hippynn.experiment.assembly import assemble_for_training
     from hippynn.pretraining import set_e0_values
     from hippynn.experiment.controllers import RaiseBatchSizeOnPlateau, PatienceController
@@ -179,35 +194,16 @@ def train_HIPNN_model(model_dir,
         with hippynn.tools.log_terminal("training_log.txt", "wt"):
 
             print("CUDA_VISIBLE_DEVICES: " + os.environ["CUDA_VISIBLE_DEVICES"])
-
             species = inputs.SpeciesNode(db_name=species_key)
             positions = inputs.PositionsNode(db_name=coordinates_key)
-
+            args = (species, positions)
+            periodic = False
             if cell_key is not None:
                 cell = inputs.CellNode(db_name=cell_key)
-                if hipnn_order.lower() == 'scalar':
-                    network = networks.Hipnn("HIPNN", (species, positions, cell), module_kwargs=network_params,
-                                             periodic=True)
-                elif hipnn_order.lower() == 'vector':
-                    network = networks.HipnnVec("HIPNN", (species, positions, cell), module_kwargs=network_params,
-                                                periodic=True)
-                elif hipnn_order.lower() == 'quadratic':
-                    network = networks.HipnnQuad("HIPNN", (species, positions, cell), module_kwargs=network_params,
-                                                 periodic=True)
-                else:
-                    raise RuntimeError('Unrecognized hipnn_order parameter')
-            else:
-                if hipnn_order.lower() == 'scalar':
-                    network = networks.Hipnn("HIPNN", (species, positions), module_kwargs=network_params,
-                                             periodic=False)
-                elif hipnn_order.lower() == 'vector':
-                    network = networks.HipnnVec("HIPNN", (species, positions), module_kwargs=network_params,
-                                                periodic=False)
-                elif hipnn_order.lower() == 'quadratic':
-                    network = networks.HipnnQuad("HIPNN", (species, positions), module_kwargs=network_params,
-                                                 periodic=False)
-                else:
-                    raise RuntimeError('Unrecognized hipnn_order parameter')
+                args = (*args, cell)
+                periodic = True
+            network = get_hippynn_network(args, hipnn_order, network_params, periodic=periodic)
+
             print(electrostatics_flag)
             if not electrostatics_flag:  # Just the energy Nodes, i.e. standard HIPNN.
                 henergy = targets.HEnergyNode("node_HEnergy", network, first_is_interacting)
@@ -289,32 +285,12 @@ def train_HIPNN_model(model_dir,
                     cutoff_distance=coulomb_r_max
                 )
 
-                # Energy network. 
+                # Energy network.
+
+                periodic = False
                 if cell_key is not None:
-                    cell = inputs.CellNode(db_name=cell_key)
-                    if hipnn_order.lower() == 'scalar':
-                        network_energy = networks.Hipnn("HIPNN", network.parents, module_kwargs=network_params,
-                                                        periodic=True)
-                    elif hipnn_order.lower() == 'vector':
-                        network_energy = networks.HipnnVec("HIPNN", network.parents, module_kwargs=network_params,
-                                                           periodic=True)
-                    elif hipnn_order.lower() == 'quadratic':
-                        network_energy = networks.HipnnQuad("HIPNN", network.parents, module_kwargs=network_params,
-                                                            periodic=True)
-                    else:
-                        raise RuntimeError('Unrecognized hipnn_order parameter')
-                else:
-                    if hipnn_order.lower() == 'scalar':
-                        network_energy = networks.Hipnn("HIPNN", network.parents, module_kwargs=network_params,
-                                                        periodic=False)
-                    elif hipnn_order.lower() == 'vector':
-                        network_energy = networks.HipnnVec("HIPNN", network.parents, module_kwargs=network_params,
-                                                           periodic=False)
-                    elif hipnn_order.lower() == 'quadratic':
-                        network_energy = networks.HipnnQuad("HIPNN", network.parents, module_kwargs=network_params,
-                                                            periodic=False)
-                    else:
-                        raise RuntimeError('Unrecognized hipnn_order parameter')
+                    periodic = True
+                network_energy = get_hippynn_network(network.parents, hipnn_order, network_params, periodic=periodic)
 
                 henergy = targets.HEnergyNode("node_HEnergy", network_energy, first_is_interacting)
                 sys_energy = henergy.mol_energy + coulomb_energy
@@ -450,6 +426,7 @@ def train_HIPNN_model(model_dir,
                                allow_unfound=True,
                                species_key=species_key
                                )
+
             if database.arr_dict[energy_key].shape[-1] == 1:
                 database.arr_dict[energy_key] = database.arr_dict[energy_key][..., 0]
 

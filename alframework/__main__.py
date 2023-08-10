@@ -116,7 +116,7 @@ if os.path.exists(master_config['status_path']):
     with open(master_config['status_path'], 'r') as input_file:
         status = json.load(input_file)
 else:
-    status = {}
+    status = dict()
     status['current_training_id'] = find_empty_directory(master_config['model_path'])
     status['current_model_id'] = status['current_training_id'] - 1
     if os.path.exists(master_config["zarr_path"]):
@@ -305,7 +305,8 @@ if status['current_zarr_id'] < 0 and status['current_model_id'] < 0:
                   results_list,
                   master_config['properties_list'])
 
-    db = ZarrDatabase(master_config['zarr_path']).create_initial_reduction(master_config["reduction_name"], fraction=1.)
+    db = ZarrDatabase(master_config['zarr_path'])
+    db.create_initial_reduction(master_config["reduction_name"], fraction=1.)
     status['current_zarr_id'] = db.get_max_iteration(master_config["reduction_name"])
 
 if status['current_model_id'] < 0:
@@ -418,7 +419,7 @@ while True:
                 QM_task_queue.add_task(qm_task(**task_input))
 
     # Train more models
-    if (QM_task_queue.get_completed_number() > master_config['save_h5_threshold']) and (ML_task_queue.get_number() < 1):
+    if (QM_task_queue.get_completed_number() > master_config['save_threshold']) and (ML_task_queue.get_number() < 1):
         # print(QM_task_queue.task_list[0].result())
         # store_current_data(h5path, system_data, properties):
         results_list, failed = QM_task_queue.get_task_results()

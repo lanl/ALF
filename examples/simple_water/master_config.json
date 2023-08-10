@@ -1,6 +1,7 @@
 {
 	"master_directory":"pwd",
-	"h5_path":"h5store/data-{:04d}.h5",
+	"zarr_path":"test_zarr",
+	"reduction_name": "test",
 	"model_path":"models/model-{:04d}",
 	"QM_task":"alframework.qm_interfaces.orca5_interface.orca_calculator_task",
 	"QM_config_path":"orca_config.json",
@@ -14,7 +15,7 @@
 	"status_path":"status.txt",
 	"target_queued_QM": 100,
 	"minimum_QM": 0,
-	"save_h5_threshold": 100,
+	"save_threshold": 100,
 	"parallel_samplers": 100,
 	"bootstrap_set": 500,
 	"parsl_configuration":"custom_modules.config_1node",

@@ -258,7 +258,7 @@ class Database:
         return stages
 
     def get_max_iteration(self, name):
-        return int(max(self._get_earlier_stages(name))) if name in self.root[f"reductions"] else -1
+        return int(max(self._get_earlier_stages(name, None))) if name in self.root[f"reductions"] else -1
 
     def _merge_reductions(self, name, stages):
         indices = []

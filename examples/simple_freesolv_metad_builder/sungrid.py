@@ -12,6 +12,24 @@ userhome = os.path.expanduser("~")
 config_1node= Config(
     executors=[
         HighThroughputExecutor(
+            label='alf_builder_executor',
+            max_workers=12,
+            provider=GridEngineProvider(
+                channel=LocalChannel(userhome=userhome),
+                nodes_per_block=1,
+                init_blocks=0,
+                min_blocks=0,
+                max_blocks=1,
+                parallelism=1,
+                walltime="168:00:00",
+                scheduler_options='#$ -pe smp 80',
+                worker_init='source $HOME/.lammpsrc',
+                launcher=SingleNodeLauncher(),
+                cmd_timeout=30,
+                queue='JG'
+            ),
+        ),
+        HighThroughputExecutor(
             label='alf_QM_executor',
             max_workers=12,
             provider=GridEngineProvider(
@@ -23,7 +41,7 @@ config_1node= Config(
                 parallelism=1,
                 walltime="168:00:00",
                 scheduler_options='#$ -pe smp 80',
-                worker_init='source $HOME/.alfrc',
+                worker_init='source $HOME/.lammpsrc',
                 launcher=SingleNodeLauncher(),
                 cmd_timeout=30,
                 queue='JG'

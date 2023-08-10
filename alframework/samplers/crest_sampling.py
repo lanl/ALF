@@ -108,7 +108,7 @@ def crest_metad(start_system, ase_calculator, xtb_command='xtb', hmass=2, time=5
             f.write(f"$md\n  hmass={hmass}\n  time={time}\n  temp={temp}\n  ")
             f.write(f"step={step}\n  shake={shake}\n  dump={dump}\n  $end\n")
             #metad block
-            f.write("$metadyn\n atoms={solute_idx}\n  save={save}\n  kpush={kpush}\n  alp={alp}\n$end\n")
+            f.write(f"$metadyn\n atoms={solute_idx}\n  save={save}\n  kpush={kpush}\n  alp={alp}\n$end\n")
             #constraint potential
             for line in wall_potential:
                 f.write(line)
@@ -159,7 +159,7 @@ def crest_metad(start_system, ase_calculator, xtb_command='xtb', hmass=2, time=5
     start_system[2] = {}
     return(start_system)
 
-@python_app(executors=['alf_sampler_executor'])
+@python_app(executors=['alf_builder_executor'])
 def crest_build_task(moleculeids, builder_config):
     """
     Elements in builder params

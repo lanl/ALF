@@ -246,8 +246,8 @@ def train_HIPNN_model(model_dir,
                         raise RuntimeError('Unrecognized hipnn_order parameter')
             
                 
-                henergy = targets.HEnergyNode("node_HEnergy", network_energy,first_is_interacting)
-                sys_energy = henergy.mol_energy + coulomb_energy 
+                henergy = targets.HEnergyNode("node_shortHEnergy", network_energy,first_is_interacting)
+                sys_energy = physics.CombineEnergyNode("node_HEnergy", (henergy, coulomb_energy))
                 sys_energy.db_name = energy_key
                 
                 en_peratom = physics.PerAtom("node_EperAtom", sys_energy)

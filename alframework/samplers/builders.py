@@ -27,13 +27,13 @@ from copy import deepcopy
 #    return(atom_list)
     
 @python_app(executors=['alf_sampler_executor'])
-def simple_cfg_loader_task(moleculeid,shake=0.05):
+def simple_cfg_loader_task(moleculeid,molecule_library_dir,shake=0.05):
     """
     builder_params:
     molecule_library_dir: path to molecule library
     shake: amount to displace each atom
     """
-    cfg_list = glob.glob(builder_params['molecule_library_dir']+'/*.cfg')
+    cfg_list = glob.glob(molecule_library_dir+'/*.cfg')
     cfg_choice = random.choice(cfg_list)
     atom_object = cfg.read_cfg(cfg_choice)
     atom_object.rattle(shake)

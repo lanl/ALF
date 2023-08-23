@@ -1,9 +1,12 @@
-from ase import Atoms
-import numpy as np
 import warnings
+
+import numpy as np
+from ase import Atoms
+
 
 class MoleculesObject:
     """Class to create molecule objects"""
+
     def __init__(self, atoms, moleculeid):
         """
         Args:
@@ -15,9 +18,9 @@ class MoleculesObject:
 
         self.atoms = atoms
         self._moleculeid = moleculeid
-        self.converged = None # Tells whether the QM calculation converged
-        self.qm_results = {} # Dict to store the QM calculation results
-        self.metadata = {} # General metadata
+        self.converged = None  # Tells whether the QM calculation converged
+        self.qm_results = {}  # Dict to store the QM calculation results
+        self.metadata = {}  # General metadata
 
     def __len__(self):
         """Length method, returns the number of atoms in the system."""
@@ -179,11 +182,30 @@ class MoleculesObject:
         atomic_numbers = self.atoms.get_atomic_numbers()
         idx_sorted = np.argsort(atomic_numbers)
 
-        signature_cell = "".join([f'{el:.6f}-'for el in self.atoms.get_cell().flatten()])
-        signature_atoms = "".join([atoms_list[i] + f'{coords[i,0]:.6f}{coords[i,1]:.6f}{coords[i,2]:.6f}'
+        signature_cell = "".join([f'{el:.6f}-' for el in self.atoms.get_cell().flatten()])
+        signature_atoms = "".join([atoms_list[i] + f'{coords[i, 0]:.6f}{coords[i, 1]:.6f}{coords[i, 2]:.6f}'
                                    for i in idx_sorted])
 
         return signature_cell + signature_atoms
+
+    def to_dict(self, qm_keys = None):
+        res = dict()
+        res["species"] = self.atoms.get_atomic_numbers()
+        res["coordinates"] = self.atoms.get_positions()
+        res["cell"] = self.atoms.get_cell()
+        res["_id"] = self._moleculeid
+
+        if qm_keys is None:
+            res.update(self.qm_results)
+        else:
+            for key in qm_keys:
+                res[key] = self.qm_results[key]
+
+        for key in res:
+            if isinstance(res[key], float) or isinstance(res[key], str) or isinstance(res[key], int):
+                res[key] = [res[key]]
+            res[key] = np.array(res[key])
+        return res
 
 
 def compare_chemical_composition(system1, system2):

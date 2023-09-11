@@ -7,6 +7,10 @@ import json
 import pickle
 import time
 import sys
+
+sys.path.insert(1, "/home/maxim/Projects/ALF/ALF/")
+
+
 from multiprocessing import Process
 from pathlib import Path
 import numpy as np
@@ -20,6 +24,7 @@ import parsl
 # Check to see if parsl is available
 import alframework
 #from alframework.parsl_resource_configs.darwin import config_atdm_ml
+print('!!!!!')
 from alframework.tools.tools import parsl_task_queue
 from alframework.tools.tools import store_current_data
 from alframework.tools.tools import load_config_file

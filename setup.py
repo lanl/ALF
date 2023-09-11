@@ -38,5 +38,6 @@ setuptools.setup(
     description="Active Learning Framework",
     long_description=long_description,
     packages=setuptools.find_packages(),
+    include_package_data=True,
 )
 

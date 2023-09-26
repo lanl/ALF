@@ -1,0 +1,7 @@
+{
+  "xtb_command":"xtb",
+  "QM_store_dir":"./output",
+  "xtb_input":"--grad --ceasefiles",
+  "Ediff": 1e-3,
+  "Fdiff":1e-4
+}

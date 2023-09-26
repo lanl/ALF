@@ -13,32 +13,36 @@ from ase import Atoms
 from ase.io import vasp as vasp_io
    
 @python_app(executors=['alf_QM_executor','alf_QM_standby_executor'])
-def ase_calculator_task(input_system,configuration_list,directory,properties=['energy','forces']):
+def ase_calculator_task(molecule_object,QM_config,QM_scratch_dir,properties_list):
     
     import glob
     
     from ase.calculators.vasp import Vasp as calc_class
-    command = configuration_list['QM_run_command']
+    
+    directory = QM_scratch_dir + '/' + molecule_object[0]['moleculeid']
+    properties = list(properties_list)
+    
+    command = QM_config['QM_run_command']
     #Define the calculator
-    calc = calc_class(directory=directory, command=command, **configuration_list['input_list'][0])
+    calc = calc_class(directory=directory, command=command, **QM_config['input_list'][0])
     
     #Run the calculation
-    calc.calculate(atoms=input_system[1], properties=properties)
+    calc.calculate(atoms=molecule_object[1], properties=properties)
     #atoms.calc(properties=properties)
     for curF in glob.glob(directory+'/WAVECAR*'):
         os.remove(curF)
     
-    calc2 = calc_class(directory=directory, command=command, **configuration_list['input_list'][1])
+    calc2 = calc_class(directory=directory, command=command, **QM_config['input_list'][1])
     
-    calc2.calculate(atoms=input_system[1], properties=properties)
+    calc2.calculate(atoms=molecule_object[1], properties=properties)
     
-    input_system[2] = calc2.results
+    molecule_object[2] = calc2.results
     
     convergedre = re.compile('aborting loop because EDIFF is reached')
     txt = open(directory + '/OUTCAR','r').read()
     if len(convergedre.findall(txt)) == 1:
-        input_system[2]['converged'] = True
+        molecule_object[2]['converged'] = True
     else:
-        input_system[2]['converged'] = False
+        molecule_object[2]['converged'] = False
         
-    return(input_system)
+    return(molecule_object)

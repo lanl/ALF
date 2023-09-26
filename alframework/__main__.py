@@ -59,6 +59,11 @@ if ('--test_ml' in sys.argv[2:] or '--test_builder' in sys.argv[2:] or '--test_s
 else: 
     parsl_configuration = load_module_from_string(master_config['parsl_configuration'])
 
+executor_list = []
+#Create List of parsl executors
+for curExec in parsl_configuration.executors:
+    executor_list.append(curExec.label)
+
 # Load the Parsl config
 parsl.load(parsl_configuration)
 
@@ -68,25 +73,38 @@ else:
     analysis_plot = None
 
 #make needed directories
-for entry in master_config.keys():
-    if entry[-3:] == 'dir':
-        tempPath = Path(master_config[entry])
-        tempPath.mkdir(parents=True,exist_ok=True)
+for config in [master_config,builder_config,sampler_config,QM_config,ML_config]:
+    for entry in config.keys():
+        if entry[-3:] == 'dir':
+            tempPath = Path(config[entry])
+            tempPath.mkdir(parents=True,exist_ok=True)
 
 #############################
 # Step 2: Define Parsl tasks#
 #############################
 #Builder
 builder_task = load_module_from_string(master_config['builder_task'])
+for cur_Exec in builder_task.executors:
+    if cur_Exec.replace('_executor','_standby_executor') in executor_list:
+        builder_task.executors.append(cur_Exec.replace('_executor','_standby_executor'))
 
 #Sampler
 sampler_task = load_module_from_string(master_config['sampler_task'])
+for cur_Exec in sampler_task.executors:
+    if cur_Exec.replace('_executor','_standby_executor') in executor_list:
+        sampler_task.executors.append(cur_Exec.replace('_executor','_standby_executor'))
 
 #QM
 qm_task = load_module_from_string(master_config['QM_task'])
+for cur_Exec in qm_task.executors:
+    if cur_Exec.replace('_executor','_standby_executor') in executor_list:
+        qm_task.executors.append(cur_Exec.replace('_executor','_standby_executor'))
 
 #ML
 ml_task = load_module_from_string(master_config['ML_task'])
+for cur_Exec in ml_task.executors:
+    if cur_Exec.replace('_executor','_standby_executor') in executor_list:
+        ml_task.executors.append(cur_Exec.replace('_executor','_standby_executor'))
 
 ##########################################
 ## Step 3: Evaluate restart possibilites #
@@ -123,11 +141,14 @@ with open(master_config['status_path'], "w") as outfile:
 testing = False
 
 if '--test_builder' in sys.argv[2:] or '--test_sampler' in sys.argv[2:] or '--test_qm' in sys.argv[2:]:
-    builder_task_queue.add_task(builder_task('test_builder',builder_config))
+    task_input = build_input_dict(builder_task.func,[{"moleculeid":'test_builder',"moleculeids":['test_builder'],"builder_config":builder_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
+    builder_task_queue.add_task(builder_task(**task_input))
     builder_configuration = builder_task_queue.task_list[0].result()
     queue_output = builder_task_queue.get_task_results()
     test_configuration = queue_output[0][0]
-    system_checker(test_configuration)
+    if not system_checker(test_configuration,kill_on_fail=False,print_error=False):
+        system_checker(test_configuration[0])
+        test_configuration = test_configuration[0]
     print("Builder testing returned:")
     print(test_configuration)
     testing=True
@@ -138,7 +159,8 @@ if '--test_sampler' in sys.argv[2:]:
     if status['current_model_id']<0:
         raise RuntimeError("Need to train model before testing sampling")
     print(master_config['model_path'].format(status['current_model_id']))
-    sampler_task_queue.add_task(sampler_task(test_configuration,sampler_config,master_config['model_path'].format(status['current_model_id'])))
+    task_input = build_input_dict(sampler_task.func,[{"molecule_object":test_configuration,"sampler_config":sampler_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
+    sampler_task_queue.add_task(sampler_task(**task_input))
     sampled_configuration = sampler_task_queue.task_list[0].result()
     queue_output = sampler_task_queue.get_task_results()
     test_configuration = queue_output[0][0]
@@ -149,7 +171,8 @@ if '--test_sampler' in sys.argv[2:]:
 
 #def ase_calculator_task(input_system,configuration_list,directory,command,properties=['energy','forces']):
 if '--test_qm' in sys.argv[2:]:
-    QM_task_queue.add_task(qm_task(test_configuration,QM_config,master_config['QM_scratch_dir'] + '/' + test_configuration[0]['moleculeid'] + '/',list(master_config['properties_list'])))
+    task_input = build_input_dict(qm_task.func,[{"molecule_object":test_configuration,"QM_config":QM_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
+    QM_task_queue.add_task(qm_task(**task_input))
     qm_result = QM_task_queue.task_list[0].result()
     queue_output,failed = QM_task_queue.get_task_results()
     sys.stdout.write('Job Failed: {:d}'.format(failed))
@@ -186,7 +209,8 @@ if '--test_qm' in sys.argv[2:]:
 #train_ANI_model_task(configuration,data_directory,model_path,model_index,remove_existing=False):
 if '--test_ml' in sys.argv[2:]:
     #configuration,data_directory,model_path,model_index,remove_existing=False
-    ML_task_queue.add_task(ml_task(ML_config,master_config['h5_dir'],master_config['model_path'].format(status['current_training_id']),status['current_training_id'],master_config['gpus_per_node'],remove_existing=False))
+    task_input = build_input_dict(ml_task.func,[{"ML_config":ML_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
+    ML_task_queue.add_task(ml_task(**task_input))
     status['current_training_id'] = status['current_training_id'] + 1
     with open(master_config['status_path'], "w") as outfile:
         json.dump(status, outfile, indent=2)
@@ -215,15 +239,24 @@ if status['current_h5_id']==0 and status['current_model_id']<0:
     print("Building Bootstrap Set")
     while QM_task_queue.get_completed_number() < master_config['bootstrap_set']:
         if (QM_task_queue.get_queued_number() < master_config['target_queued_QM']):
-            while (builder_task_queue.get_number() < master_config['parallel_samplers']):
-                builder_task_queue.add_task(builder_task('mol-boot-{:010d}'.format(status['current_molecule_id']),builder_config))
-                status['current_molecule_id'] = status['current_molecule_id'] + 1
+            while (builder_task_queue.get_number()*master_config.get('maximum_builder_structures',1) < master_config['parallel_samplers']):
+                moleculeids = ['mol-boot-{:010d}'.format(it_ind) for it_ind in range(status['current_molecule_id'],status['current_molecule_id']+master_config.get('maximum_builder_structures',1))]
+                task_input = build_input_dict(builder_task.func,[{"moleculeid":'mol-boot-{:010d}'.format(status['current_molecule_id']),"moleculeids":moleculeids,"builder_config":builder_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
+                builder_task_queue.add_task(builder_task(**task_input))
+                status['current_molecule_id'] = status['current_molecule_id'] + master_config.get('maximum_builder_structures',1)
         
         if (builder_task_queue.get_completed_number()>master_config['minimum_QM']):
             builder_results,failed = builder_task_queue.get_task_results()
             status['lifetime_failed_builder_tasks'] = status['lifetime_failed_builder_tasks'] + failed
             for structure in builder_results:
-                QM_task_queue.add_task(qm_task(structure,QM_config,master_config['QM_scratch_dir'] + '/' + structure[0]['moleculeid'] + '/',list(master_config['properties_list'])))
+                #If builders return a single structure:
+                if system_checker(structure,kill_on_fail=False,print_error=False):
+                    task_input = build_input_dict(qm_task.func,[{"molecule_object":structure,"QM_config":QM_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
+                    QM_task_queue.add_task(qm_task(**task_input))
+                elif isinstance(structure,list):
+                    for substructure in structure:
+                        task_input = build_input_dict(qm_task.func,[{"molecule_object":substructure,"QM_config":QM_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
+                        QM_task_queue.add_task(qm_task(**task_input))
                 
         print("### Bootstraping Learning Status at: " + time.ctime() + " ###")
         print("builder status:")
@@ -235,13 +268,17 @@ if status['current_h5_id']==0 and status['current_model_id']<0:
             json.dump(status, outfile, indent=2)
             
         time.sleep(60)
-    
+
     print("Saving Bootstrap and training model")
     results_list,failed = QM_task_queue.get_task_results()
     status['lifetime_failed_QM_tasks'] = status['lifetime_failed_QM_tasks'] + failed    
     store_current_data(master_config['h5_path'].format(status['current_h5_id']),results_list,master_config['properties_list'])
     status['current_h5_id'] = status['current_h5_id'] + 1
-    ML_task_queue.add_task(ml_task(ML_config,master_config['h5_dir'],master_config['model_path'].format(status['current_training_id']),status['current_training_id'],master_config['gpus_per_node'],remove_existing=True))
+    
+if status['current_model_id']<0:
+    task_input = build_input_dict(ml_task.func,[{"ML_config":ML_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
+    ML_task_queue.add_task(ml_task(**task_input))
+    
     status['current_training_id'] = status['current_training_id'] + 1
     
     with open(master_config['status_path'], "w") as outfile:
@@ -290,16 +327,27 @@ while True:
 	
     #Run more builders
     if (QM_task_queue.get_queued_number() < master_config['target_queued_QM']) and (QM_task_queue.get_number() < master_config.get('maximum_completed_QM',1e12)):
-        while (sampler_task_queue.get_number()+builder_task_queue.get_number() < master_config['parallel_samplers']):
-            builder_task_queue.add_task(builder_task('mol-{:04d}-{:010d}'.format(status['current_model_id'],status['current_molecule_id']),builder_config))
-            status['current_molecule_id'] = status['current_molecule_id'] + 1
+        while (sampler_task_queue.get_number()+builder_task_queue.get_number() * master_config.get('maximum_builder_structures',1) < master_config['parallel_samplers']):
+            moleculeids = ['mol-{:04d}-{:010d}'.format(status['current_model_id'],it_ind) for it_ind in range(status['current_molecule_id'],status['current_molecule_id']+master_config.get('maximum_builder_structures',1))]
+            task_input = build_input_dict(builder_task.func,[{"moleculeid":'mol-{:04d}-{:010d}'.format(status['current_model_id'],status['current_molecule_id']),"moleculeids":moleculeids,"builder_config":builder_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
+            builder_task_queue.add_task(builder_task(**task_input))
+            status['current_molecule_id'] = status['current_molecule_id'] + master_config.get('maximum_builder_structures',1)
             
     #Builders go stright into samplers
     if builder_task_queue.get_completed_number() > 0:
         structure_list,failed = builder_task_queue.get_task_results()
         status['lifetime_failed_builder_tasks'] = status['lifetime_failed_builder_tasks'] + failed
+        # Douple loop to facilitate possiblitiy of multiple sctructures returned by builder
         for structure in structure_list:
-            sampler_task_queue.add_task(sampler_task(structure,sampler_config,master_config['model_path'].format(status['current_model_id'])))
+            #If builders return a single structure:
+            if system_checker(structure,kill_on_fail=False,print_error=False):
+                task_input = build_input_dict(sampler_task.func,[{"molecule_object":structure,"sampler_config":sampler_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
+                sampler_task_queue.add_task(sampler_task(**task_input))
+            #If builders return multiple structures
+            elif isinstance(structure,list):
+                for substructure in structure:
+                    task_input = build_input_dict(sampler_task.func,[{"molecule_object":substructure,"sampler_config":sampler_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
+                    sampler_task_queue.add_task(sampler_task(**task_input))
 
     #Run more QM
     if (sampler_task_queue.get_completed_number()>master_config['minimum_QM']):
@@ -307,7 +355,8 @@ while True:
         status['lifetime_failed_sampler_tasks'] = status['lifetime_failed_sampler_tasks'] + failed
         for structure in sampler_results: #may need [0]
             if not structure[1]==None:
-                QM_task_queue.add_task(qm_task(structure,QM_config,master_config['QM_scratch_dir'] + '/' + structure[0]['moleculeid'] + '/',list(master_config['properties_list'])))
+                task_input = build_input_dict(qm_task.func,[{"molecule_object":structure,"QM_config":QM_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
+                QM_task_queue.add_task(qm_task(**task_input))
 
     #Train more models
     if (QM_task_queue.get_completed_number() > master_config['save_h5_threshold']) and (ML_task_queue.get_number() < 1):
@@ -321,7 +370,8 @@ while True:
 #        with open('data-bk-{:04d}.pickle'.format(status['current_h5_id']),'wb') as pkbk: 
 #            pickle.dump(results_list,pkbk)
         status['current_h5_id'] = status['current_h5_id'] + 1
-        ML_task_queue.add_task(ml_task(ML_config,master_config['h5_dir'],master_config['model_path'].format(status['current_training_id']),status['current_training_id'],master_config['gpus_per_node'],remove_existing=True))
+        task_input = build_input_dict(ml_task.func,[{"ML_config":ML_config},master_config,status,builder_config,sampler_config,QM_config,ML_config],raise_on_fail=True)
+        ML_task_queue.add_task(ml_task(**task_input))
         status['current_training_id'] = status['current_training_id'] + 1
         
     #Update Model

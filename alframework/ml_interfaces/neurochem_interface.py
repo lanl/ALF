@@ -113,15 +113,15 @@ def NeuroChemCalculator(model_details):
 #Gen
 #configuration,h5_train_dir,ensemble_path,ensemble_index,remove_existing=False,h5_test_dir=None)
 @python_app(executors=['alf_ML_executor'])
-def train_ANI_model_task(configuration,h5_dir,model_path,model_index,nGPU,remove_existing=False,h5_test_dir=None):
+def train_ANI_model_task(ML_config,h5_dir,model_path,current_training_id,gpus_per_node,remove_existing=False,h5_test_dir=None):
     
     #nct = NeuroChemTrainer(ensemble_size, gpuids, force_training=True, periodic=False, rmhighe=False, rmhighf=False, build_test=True)
-    nct_input = build_input_dict(NeuroChemTrainer.__init__,[{"gpuids":list(range(nGPU))},configuration])
-    #nct = NeuroChemTrainer(8,list(range(nGPU)), force_training=True, periodic=True, rmhighe=False, rmhighf=False, build_test=True,remove_existing=remove_existing)
+    nct_input = build_input_dict(NeuroChemTrainer.__init__,[{"gpuids":list(range(gpus_per_node))},configuration])
+    #nct = NeuroChemTrainer(8,list(range(gpus_per_node)), force_training=True, periodic=True, rmhighe=False, rmhighf=False, build_test=True,remove_existing=remove_existing)
     nct = NeuroChemTrainer(**nct_input)
-    
+    configuration = ML_config.copy()
     #this is a little awkward
-    configuration['ensemble_path'] = model_path.format(model_index)
+    configuration['ensemble_path'] = model_path.format(current_training_id)
     configuration['data_store'] = h5_dir
     configuration['seed'] = np.random.randint(1e8) #Change before production to a random number generated on the fly
     
@@ -129,6 +129,6 @@ def train_ANI_model_task(configuration,h5_dir,model_path,model_index,nGPU,remove
     
     #No need to return network parameters
     
-    #return(all_nets, completed, model_index)
+    #return(all_nets, completed, current_training_id)
     return(completed, model_index)
 

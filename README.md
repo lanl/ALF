@@ -1,3 +1,7 @@
+# Install instructions for Argon
+
+[Install instructions](https://gist.github.com/joegomes/059e8ea3a662fcb670019e5522e03c07)
+
 # Active Learning Framework:
 
 This code automates the construction of datasets for machine learned (ML) interatomic potentials through active learning. By automating job execution utilizing the [Parsl](https://parsl-project.org/) framework, the active learning process can run for many iterations without human intervention. It breaks the process down into 4 fundamental tasks:

@@ -86,6 +86,9 @@ class MLMD_calculator(Calculator):
         self.models = models
         self.weights = [1/self.N_models for _ in range(self.N_models)]
         self.calculator_properties = list(set.intersection(*(set(calc.implemented_properties) for calc in self.models)))
+
+        self.use_bias = False
+
         if debug_print:
             print("calculator properties:" + str(self.calculator_properties))
             sys.stdout.flush()
@@ -132,13 +135,25 @@ class MLMD_calculator(Calculator):
         run_properties = list(set.intersection(set(self.calculator_properties), set(add_properties)))
         # Not good practice, all attributes should be initialized inside __init__, even if as None or {}.
         self.atoms = atoms.copy()
-        self.results = self.mixer.get_properties(run_properties, atoms)
 
-        if 'energy_stdev' in properties:
+        self.results = self.mixer.get_properties(run_properties,atoms)
+        if 'energy_stdev' in properties or self.use_bias:
             self.results['energy_stdev'] = np.std(self.results['energy_contributions'][:self.N_models])
 
         if 'forces_stdev_mean' in properties or 'forces_stdev_max' in properties:
             force_stdev = np.std(np.array(self.results['forces_contributions'][:self.N_models]), axis=0)
             self.results['forces_stdev_mean'] = np.mean(np.abs(force_stdev))
             self.results['forces_stdev_max'] = np.max(np.abs(force_stdev))
-        
+
+        if self.use_bias: # uncertainty driven dynamics (UDD) 
+            self.results['E_en_bias']= self.E_en_bias_weight * self.results['energy_stdev']
+
+            energy_stdev_dx = (1/np.sqrt(self.N_models)) * \
+                            np.power( np.sum(np.power( (self.results['potential_energy_contributions'][:self.N_models] - self.results['potential_energy']), 2)), -0.5) * \
+                            np.sum(np.expand_dims(np.expand_dims(self.results['potential_energy_contributions'] - self.results['potential_energy'], axis=1), axis=1 ) * \
+                                                                (self.results['forces_contributions']           - self.results['forces']), axis=0)
+
+            self.results['F_en_bias'] = -self.E_en_bias_weight * energy_stdev_dx
+            self.results['energy'] += self.results['E_en_bias']
+            self.results['forces'] += self.results['F_en_bias']
+

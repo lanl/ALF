@@ -6,7 +6,14 @@ import json
 import os
 import shutil
 import sys
+<<<<<<< HEAD
 import time
+=======
+
+sys.path.insert(1, "/home/maxim/Projects/ALF/ALF/")
+
+
+>>>>>>> 030a90410185228a62fa6365e240754ed89b5077
 from multiprocessing import Process
 from pathlib import Path
 
@@ -18,7 +25,13 @@ np.set_printoptions(threshold=np.inf)
 
 import parsl
 # Check to see if parsl is available
+<<<<<<< HEAD
 # from alframework.parsl_resource_configs.darwin import config_atdm_ml
+=======
+import alframework
+#from alframework.parsl_resource_configs.darwin import config_atdm_ml
+print('!!!!!')
+>>>>>>> 030a90410185228a62fa6365e240754ed89b5077
 from alframework.tools.tools import parsl_task_queue
 from alframework.tools.tools import load_config_file
 from alframework.tools.tools import find_empty_directory

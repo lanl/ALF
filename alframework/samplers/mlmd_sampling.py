@@ -18,7 +18,7 @@ from alframework.tools.tools import build_input_dict
 
 #For now I will take a dictionary with all sample parameters.
 #We may want to make this explicit. Ying Wai, what do you think? 
-def mlmd_sampling(molecule_object, ase_calculator,dt,maxt,Escut,Fscut,Ncheck,Tamp,Tper,Tsrt,Tend,Ramp,Rper,Rend,meta_dir=None,use_potential_specific_code=None,trajectory_interval=None):
+def mlmd_sampling(molecule_object, ase_calculator,dt,maxt,Escut,Fscut,Ncheck,Tamp,Tper,Tsrt,Tend,Ramp,Rper,Rend,meta_dir=None,use_potential_specific_code=None,trajectory_interval=None,Fmmult=3.0):
     system_checker(molecule_object)
     ase_atoms = molecule_object[1]
     T = annealing_schedule(0.0, maxt, Tamp, Tper, Tsrt, Tend)
@@ -69,7 +69,7 @@ def mlmd_sampling(molecule_object, ase_calculator,dt,maxt,Escut,Fscut,Ncheck,Tam
 
         Ecrit = Es > Escut
         Fcrit = Fs > Fscut
-        Fmcrit = Fsmax > 3*Fscut
+        Fmcrit = Fsmax > Fmmult*Fscut
     
         if Ecrit or Fcrit or Fmcrit:
             #print('MD FAIL (',model_id,',',self.counter,',',"{0:.4f}".format(time.time()-self.str_time),') -- Uncertainty:', "{0:.4f}".format(Es), "{0:.4f}".format(Fs), "{0:.4f}".format(Fsmax), (i*Ncheck*dt)/1000)

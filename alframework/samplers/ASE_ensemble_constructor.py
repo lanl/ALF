@@ -47,7 +47,7 @@ class Well_Potential(Calculator):
         depth[depth<0] = 0
         unit_vectors = (relative_positions.T/(1e-4*in_hole+np.linalg.norm(relative_positions,axis=1))).T #Unit vectors not perfectly normalized for atoms in the flat piece of well
         self.results['energy'] = np.sum(mass_vector*depth*self.force)
-        self.results['forces'] = -1*(unit_vectors.T*in_potential*mass_vector).T
+        self.results['forces'] = -1*(unit_vectors.T*in_potential*mass_vector*self.force).T
         for current_property in properties:
             if current_property in self.zero_properties:
                 self.results[current_property] = np.array(0)

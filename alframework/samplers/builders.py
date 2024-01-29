@@ -36,7 +36,7 @@ def simple_cfg_loader_task(moleculeid,molecule_library_dir,shake=0.05):
     cfg_list = glob.glob(molecule_library_dir+'/*.cfg')
     cfg_choice = random.choice(cfg_list)
     atom_object = cfg.read_cfg(cfg_choice)
-    atom_object.rattle(shake)
+    atom_object.rattle(shake,seed=np.random.randint(0,1e8))
     return([{'moleculeid':moleculeid,'molecule_library_file':cfg_choice},atom_object,{}])
     
 def readMolFiles(molecule_sample_path):

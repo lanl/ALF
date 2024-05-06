@@ -169,8 +169,6 @@ def train_ANI_model_task(ML_config, h5_dir, model_path, current_training_id, gpu
     nct_input = build_input_dict(NeuroChemTrainer.__init__,[{"gpuids":list(range(gpus_per_node))}, configuration])
     #nct = NeuroChemTrainer(8,list(range(gpus_per_node)), force_training=True, periodic=True, rmhighe=False, rmhighf=False, build_test=True, remove_existing=remove_existing)
     nct = NeuroChemTrainer(**nct_input)
-
-    # this is a little awkward
     configuration['ensemble_path'] = model_path.format(current_training_id)
     configuration['data_store'] = h5_dir
     configuration['seed'] = np.random.randint(1e8) # Change before production to a random number generated on the fly

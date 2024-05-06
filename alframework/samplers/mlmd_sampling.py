@@ -99,7 +99,7 @@ def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Escut, Fscut, Nchec
 
         Ecrit = Es > Escut
         Fcrit = Fs > Fscut
-        Fmcrit = Fsmax > 3*Fscut
+        Fmcrit = Fsmax > Fmmult*Fscut
     
         if Ecrit or Fcrit or Fmcrit:
             # print('MD FAIL (',model_id,',',self.counter,',',"{0:.4f}".format(time.time()-self.str_time),') -- Uncertainty:', "{0:.4f}".format(Es), "{0:.4f}".format(Fs), "{0:.4f}".format(Fsmax), (i*Ncheck*dt)/1000)

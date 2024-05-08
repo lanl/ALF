@@ -9,7 +9,7 @@ from ase import Atoms
 from ase.geometry import complete_cell
 
 from alframework.tools import pyanitools as pyt
-from alframework.tools.database import Database as ZarrDatabase
+#from alframework.tools.database import Database as ZarrDatabase
 from alframework.tools.molecules_class import MoleculesObject
 
 
@@ -107,34 +107,34 @@ def random_rotation_matrix(deflection=1.0, randnums=None):
     return M
 
 
-def store_to_zarr(zarr_path, system_data, properties):
-    """Stores the key results of the QM calculations in the database.
-
-    Args:
-        zarr_path (str): Path to zarr database.
-        system_data (list): A list of MoleculesObjects objects.
-        properties (dict): Dictionary defined in master.json whose keys are the properties that we want to retrieve
-                           from the QM calculations and store in the database.
-
-    Returns:
-        (None)
-
-    """
-    print("Saving zarr database: " + zarr_path)
-    print(f"Total Systems: {len(system_data)}")
-
-    data_list = [system.to_dict(qm_keys=properties) for system in system_data if system.check_convergence()]
-
-    print(f"Saved Systems: {len(data_list)}")
-
-    print(data_list)
-
-
-    if os.path.exists(zarr_path):
-        database = ZarrDatabase.load_from_zarr(zarr_path)
-    else:
-        database = ZarrDatabase(zarr_path)
-    database.add_instance(data_list)
+#def store_to_zarr(zarr_path, system_data, properties):
+#    """Stores the key results of the QM calculations in the database.
+#
+#    Args:
+#        zarr_path (str): Path to zarr database.
+#        system_data (list): A list of MoleculesObjects objects.
+#        properties (dict): Dictionary defined in master.json whose keys are the properties that we want to retrieve
+#                           from the QM calculations and store in the database.
+#
+#    Returns:
+#        (None)
+#
+#    """
+#    print("Saving zarr database: " + zarr_path)
+#    print(f"Total Systems: {len(system_data)}")
+#
+#    data_list = [system.to_dict(qm_keys=properties) for system in system_data if system.check_convergence()]
+#
+#    print(f"Saved Systems: {len(data_list)}")
+#
+#    print(data_list)
+#
+#
+#    if os.path.exists(zarr_path):
+#        database = ZarrDatabase.load_from_zarr(zarr_path)
+#    else:
+#        database = ZarrDatabase(zarr_path)
+#    database.add_instance(data_list)
 
 
 def store_current_data(h5path, system_data, properties):

@@ -51,7 +51,8 @@ def train_HIPNN_model(model_dir,
                       remove_high_energy_cut = None, 
                       remove_high_energy_std = None,
                       remove_high_forces_cut = None, 
-                      remove_high_forces_std = None
+                      remove_high_forces_std = None, 
+                      remove_close_contacts = None
                       ):
     """
     directory: directory where HIPPYNN model will reside
@@ -92,6 +93,7 @@ def train_HIPNN_model(model_dir,
         remove_high_energy_std: float, or None: If none, all data is kept. If float, data with energies per atom that many standard deviations or larger are removed. 
         remove_high_forces_cut: float, or None: If none, all data is kept. If float, data with forces that many standard deviations or larger are removed. 
         remove_high_forces_std: float, or None: If none, all data is kept. If float, data with forces that many standard deviations or larger are removed. 
+        remove_close_contacts: float, or None: if none, all data is kept. If float, structures with interatomic distances less than this value will be removed. 
     """
     #Import Torch and configure GPU. 
     #This must occur after the subprocess fork!!!
@@ -397,6 +399,9 @@ def train_HIPNN_model(model_dir,
             if force_key != None:
                 database.remove_high_property(force_key, True, species_key=species_key, cut=remove_high_forces_cut, std_factor=remove_high_forces_std)
             database.remove_high_property(energy_key, False, species_key=species_key, cut=remove_high_energy_cut, std_factor=remove_high_energy_std)
+            if isinstance(remove_close_contacts,float):
+                close_contact_index = hippynn.pretraining.calculate_min_dists(database.arr_dict,species_key,coordinates_key,dist_hard_max=network_params["dist_soft_max"],cell_name=cell_key)>remove_close_contacts
+                database.trim_all_arrays(close_contact_index)
             
             print("Array Shapes After Cleaning")
             prettyprint_arrays(database.arr_dict)
@@ -561,3 +566,4 @@ def HIPNN_ASE_load_ensemble(HIPNN_ensemble_directory,device="cuda:0"):
     for cur_dir in glob.glob(HIPNN_ensemble_directory + '/model-*/'):
         model_list.append(HIPNN_ASE_calculator(cur_dir,device=device))
     return(model_list)
+

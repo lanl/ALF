@@ -19,7 +19,7 @@ from alframework.tools.molecules_class import MoleculesObject
 #For now I will take a dictionary with all sample parameters.
 #We may want to make this explicit. Ying Wai, what do you think? 
 def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Escut, Fscut, Ncheck, Tamp, Tper, Tsrt, Tend, Ramp, Rper,
-                  Rend, meta_dir=None, use_potential_specific_code=None, trajectory_interval=None):
+                  Rend, meta_dir=None, use_potential_specific_code=None, trajectory_interval=None, distcut=1.2, min_time=0):
     """Uncertainty based MD sampling.
 
     The idea is that if the MD fails because the NNPs didn't agree on the energies and forces, then this function
@@ -45,6 +45,8 @@ def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Escut, Fscut, Nchec
         meta_dir (str): Path of the directory containing the metadata.
         use_potential_specific_code (str): Determines whether to use a specific interatomic potential code.
         trajectory_interval (int): Write the trajectory at every 'trajectory_interval' steps.
+        distcut (float): Minimum allowed distance between two atoms in [Angstrom]
+        min_time (float): Minimum simulation time before checking for uncertanties in [ps]
 
     Returns:
         (MoleculesObject): A MoleculesObject containing the results of the QM calculations. If the std deviation of
@@ -84,7 +86,7 @@ def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Escut, Fscut, Nchec
     
     dyn.run(1)
 
-    for i in range(int(np.ceil((1000*maxt)/(dt*Ncheck)))):
+    for i in range( int( np.ceil((1000*maxt)/(dt*Ncheck)) ) ):
 
         # Check if MD should be ran
         if use_potential_specific_code is None:
@@ -99,14 +101,17 @@ def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Escut, Fscut, Nchec
 
         Ecrit = Es > Escut
         Fcrit = Fs > Fscut
-        Fmcrit = Fsmax > 3*Fscut
-    
-        if Ecrit or Fcrit or Fmcrit:
-            # print('MD FAIL (',model_id,',',self.counter,',',"{0:.4f}".format(time.time()-self.str_time),') -- Uncertainty:', "{0:.4f}".format(Es), "{0:.4f}".format(Fs), "{0:.4f}".format(Fsmax), (i*Ncheck*dt)/1000)
-            # last_bad = Atoms(ase_atoms.get_chemical_symbols(), positions=ase_atoms.get_positions(wrap=True),
-            #                  cell=ase_atoms.get_cell(), pbc=ase_atoms.get_pbc())
-            failed = True
-            break
+        Fmcrit = Fsmax > 3*Fscut # this is the maximum standard deviation for any force in the system
+        dist_min = ase_atoms.get_all_distances()[ase_atoms.get_all_distances() != 0].min()
+        distcrit = dist_min < distcut
+
+        if (i*Ncheck*dt/1000) >= min_time:
+            if Ecrit or Fcrit or Fmcrit or distcrit:
+                # print('MD FAIL (',model_id,',',self.counter,',',"{0:.4f}".format(time.time()-self.str_time),') -- Uncertainty:', "{0:.4f}".format(Es), "{0:.4f}".format(Fs), "{0:.4f}".format(Fsmax), (i*Ncheck*dt)/1000)
+                # last_bad = Atoms(ase_atoms.get_chemical_symbols(), positions=ase_atoms.get_positions(wrap=True),
+                #                  cell=ase_atoms.get_cell(), pbc=ase_atoms.get_pbc())
+                failed = True
+                break
 
         # Set the temperature
         set_temp = annealing_schedule((i * Ncheck * dt) / 1000, maxt, Tamp, Tper, Tsrt, Tend)
@@ -130,6 +135,7 @@ def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Escut, Fscut, Nchec
                     "Es"    : Es,
                     "Fs"    : Fs,
                     "Fsmax" : Fsmax,
+                    "distmin": dist_min,
                     "simulationtime" : (i * Ncheck * dt)/1000,
                     "temps" : temps,
                     "denss" : denss,
@@ -145,6 +151,7 @@ def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Escut, Fscut, Nchec
                     "Ecrit" : Ecrit,
                     "Fcrit" : Fcrit,
                     "Fmcrit" : Fmcrit,
+                    "distcrit": distcrit,
                     "chemical_symbols" : ase_atoms.get_chemical_symbols(),
                     "positions" : ase_atoms.get_positions(wrap=True),
                     "cell" : ase_atoms.get_cell()
@@ -159,7 +166,7 @@ def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Escut, Fscut, Nchec
 
     molecule_object.update_metadata(meta_dict)
 
-    if failed:
+    if failed and not distcrit:
         molecule_object.update_atoms(ase_atoms)
         return molecule_object
     else:

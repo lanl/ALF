@@ -545,9 +545,34 @@ def atomic_system_task(moleculeid, atom_charges, target_num_atoms, min_distance,
     box_length = rng.uniform(min(box_length_range), max(box_length_range))
 
     ase_atoms = atomic_system_builder(atom_charges, target_num_atoms, min_distance, box_length)
-    molecule_object = MoleculesObject(ase_atoms, moleculeid)
 
-    return molecule_object
-
+    return MoleculesObject(ase_atoms, moleculeid)
 
 
+@python_app(executors=['alf_sampler_executor'])
+def TiAl_builder_task(moleculeid, target_num_atoms, min_distance, box_length_range):
+    """Atomic system task that will be fed to the sampler.
+
+    Args:
+        moleculeid (str): Unique identifier of the atomic system in the database.
+        target_num_atoms (int): Targeted total number of atoms in the system.
+        min_distance (float): Minimum absolute distance between any two atoms [Angstroms].
+        box_length_range (list): A list containing the minimum and maximum simulation box length [Angstroms].
+
+    Returns:
+        (MoleculesObject): A MoleculesObject representing the system.
+
+    """
+    box_length = np.random.uniform(min(box_length_range), max(box_length_range))
+    num_Ti = np.random.randint(0, target_num_atoms+1)
+
+    atomic_system = {'Ti': num_Ti, 'Al': target_num_atoms - num_Ti}
+    coords = construct_simulation_box(atomic_system, min_distance, box_length, max_tries=25, scale_coords=False)
+
+    atoms_type_list = []
+    for k, v in atomic_system.items():
+        atoms_type_list.extend([k] * v)
+
+    ase_atoms = ase.Atoms(atoms_type_list, coords, pbc=True, cell=np.diag([box_length] * 3))
+
+    return MoleculesObject(ase_atoms, moleculeid)

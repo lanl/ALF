@@ -1,0 +1,8 @@
+{
+  "QM_run_command":"/usr/projects/ml4chem/Programs/qchem/bin/qchem",
+  "QM_store_dir":"output",
+  "ncpu":128,
+  "qchem_env_file":"/usr/projects/ml4chem/envs/qchem.sh",
+  "rem": "jobtype force\nmethod hf\nbasis sto-3g\nscf_convergence 8\nthresh 11\nmax_scf_cycles 250\nMEM_TOTAL 125000\nSYM_IGNORE TRUE",
+  "qchemblocks": ""
+}

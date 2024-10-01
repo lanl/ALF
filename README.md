@@ -1,10 +1,5 @@
+### TODO - add logo and bagdes
 
-   _|_|     _|         _|_|_|_|  
- _|    _|   _|         _|        
- _|_|_|_|   _|         _|_|_|    
- _|    _|   _|         _|        
- _|    _|   _|_|_|_|   _|        
-                               
 # Active Learning Framework (ALF)
 
 ## 📄[Read The Docs](https://lanl.github.io/ALF/)
@@ -19,6 +14,8 @@ ALF breaks the process down into 4 fundamental tasks:
 2) sampling (samplers)
 3) ML interatomic potential training
 4) electronic structure calculations
+
+### TODO - add figure
 
 The framework uses a general purpose ensembling calculator that enables the tracking of model uncertainty during the training process.
 

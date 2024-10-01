@@ -55,45 +55,58 @@ def train_HIPNN_model(model_dir,
                       remove_close_contacts = None
                       ):
     """
-    directory: directory where HIPPYNN model will reside
-    h5_directory: directory where h5 files will reside
-        energy: string, energy key inside inside h5 dataset. Must match db name in 'properties_list'.
-        force: string, force key insdie h5 dataset. Must match db name in 'properties_list'. Do not define to remove force training
-        coordinates': string, coordinates key inside h5 dataset. Must match db name in 'properties_list'.
-        species': string, species key inside h5 dataset. Must match db name in 'properties_list'.
-        electrostatics_flag: Boolean, Flag to check if the electrostatic will be trained with the energy and forces. 
-            If electrostatics_flag is True, at least one of `charges_key`, `dipole_key`, or `quadrupole_key` must be True. 
-        charges_key': string, per-atom charges key inside th h5 data. Must match db name in 'properties_list'. If None, partial charges are not trained to. 
-        diople_key': string, molecular dipole key inside th h5 data. Must match db name in 'properties_list'. If None, quadrupoles are not trained to. 
-        quadrupole_key': string, molecular-quadrupole key inside th h5 data. Must match db name in 'properties_list'. If None, quadrupoles are not trained to. 
-        cell': string, cell key inside h5 dataset. Must match db name in 'properties_list'. Do not define if data is not periodic.
-        hipnn_order': string 'scalar','vector','quadradic'
-        energy_mae_loss_weight': MAE per atom energy loss weight.
-        energy_rmse_loss_weight': RMSE per atomenergy loss weight.
-        total_energy_mae_loss_weight': MAE  total energy loss weight. Typicall only one of energy_mae_loss_weight and total_energy_mae_loss_eight are used (the other is set to 0).
-        total_energy_rmse_loss_weight': MAE  total energy loss weight. Typicall only one of energy_rmse_loss_weight and total_energy_rmse_loss_eight are used (the other is set to 0).
-        force_mae_loss_weight': MAE force loss weight
-        force_rmse_loss_weight': RMSE force loss weight
-        charge_mae_loss_weight': MAE charge loss weight. 
-        charge_rmse_loss_weight': RMSE charge loss weight. 
-        dipole_mae_loss_weight': MAE dipole loss weight. 
-        dipole_rmse_loss_weight': RMSE dipole loss weight. 
-        quadrupole_mae_loss_weight': MAE quadrupole loss weight. 
-        quadrupole_rmse_loss_weight': RMSE quadrupole loss weight. 
-        rbar_loss_weight': Weight of rbar in loss
-        l2_reg_loss_weight': Weight of l2_reg in loss. typically 1e-6
-        network_params': Dictonary that defines the model.  See examples for details
-        aca_params': Dictionary that defines parameters for charge training. 
-        pairwise_inference_parameters': Dictionary that defines any p
-        h5_directory': 
-        external_test_set': None or directory
-        plot_every': integer, every plot_every epochs, generate plots. 
-        build_lammps_pickle': boolean, whether or not to build a pickle file fo rthe network enabling loading into lammps MLIAP. Requires building of lammps python interface. 
-        remove_high_energy_cut: float, or None: If none, all data is kept. If float, data with energies per atom that many standard deviations or larger are removed. 
-        remove_high_energy_std: float, or None: If none, all data is kept. If float, data with energies per atom that many standard deviations or larger are removed. 
-        remove_high_forces_cut: float, or None: If none, all data is kept. If float, data with forces that many standard deviations or larger are removed. 
-        remove_high_forces_std: float, or None: If none, all data is kept. If float, data with forces that many standard deviations or larger are removed. 
-        remove_close_contacts: float, or None: if none, all data is kept. If float, structures with interatomic distances less than this value will be removed. 
+    Trains the HIPPYNN ML model.
+    
+    Args:
+        model_dir (str): Directory where HIPPYNN model will reside. Example: '/path/to/model_dir'
+        h5_train_dir (str): Directory where h5 files will reside. Example: '/path/to/h5_train_dir'
+        energy_key (str): Energy key inside h5 dataset. Must match db name in 'properties_list'. Example: 'E'
+        coordinates_key (str): Coordinates key inside h5 dataset. Must match db name in 'properties_list'. Example: 'R'
+        species_key (str): Species key inside h5 dataset. Must match db name in 'properties_list'. Example: 'Z'
+        charges_key (str, optional): Charges key inside h5 dataset. Defaults to None. 
+        dipole_key (str, optional): Dipole key inside h5 dataset. Defaults to None.
+        quadrupole_key (str, optional): Quadrupole key inside h5 dataset. Defaults to None.
+        network_params (dict, optional): Network parameters. Defaults to None.
+        aca_params (dict, optional): ACA parameters. Defaults to None.
+        electrostatics_flag (bool, optional): Flag to check if the electrostatic will be trained with the energy and forces. Defaults to False.
+        cell_key (str, optional): Cell key inside h5 dataset. Defaults to None.
+        force_key (str, optional): Force key inside h5 dataset. Must match db name in 'properties_list'. Do not define to remove force training. Defaults to None.
+        hipnn_order (str, optional): HIPNN order. Defaults to 'scalar'.
+        first_is_interacting (bool, optional): Whether the first is interacting. Defaults to False.
+        energy_mae_loss_weight (float, optional): Energy MAE loss weight. Defaults to 1e2.
+        energy_rmse_loss_weight (float, optional): Energy RMSE loss weight. Defaults to 1e2.
+        total_energy_mae_loss_weight (float, optional): Total energy MAE loss weight. Defaults to 0.
+        total_energy_rmse_loss_weight (float, optional): Total energy RMSE loss weight. Defaults to 0.
+        force_mae_loss_weight (float, optional): Force MAE loss weight. Defaults to 1.0.
+        force_rmse_loss_weight (float, optional): Force RMSE loss weight. Defaults to 1.0.
+        charge_mae_loss_weight (float, optional): Charge MAE loss weight. Defaults to 1.0.
+        charge_rmse_loss_weight (float, optional): Charge RMSE loss weight. Defaults to 1.0.
+        dipole_mae_loss_weight (float, optional): Dipole MAE loss weight. Defaults to 1.0.
+        dipole_rmse_loss_weight (float, optional): Dipole RMSE loss weight. Defaults to 1.0.
+        quadrupole_mae_loss_weight (float, optional): Quadrupole MAE loss weight. Defaults to 1.0.
+        quadrupole_rmse_loss_weight (float, optional): Quadrupole RMSE loss weight. Defaults to 1.0.
+        electrostatics_weight (float, optional): Electrostatics weight. Defaults to 0.
+        rbar_loss_weight (float, optional): Rbar loss weight. Defaults to 1.0.
+        l2_reg_loss_weight (float, optional): L2 regularization loss weight. Defaults to 1e-6.
+        pairwise_inference_parameters (dict, optional): Pairwise inference parameters. Defaults to None.
+        valid_size (float, optional): Validation size. Defaults to 0.1.
+        test_size (float, optional): Test size. Defaults to 0.1.
+        plot_every (int, optional): Frequency of plotting. Defaults to 50 epochs.
+        h5_test_dir (str, optional): Directory for test h5 files. Defaults to None.
+        learning_rate (float, optional): Learning rate. Defaults to 5e-4.
+        scheduler_options (dict, optional): Scheduler options. Defaults to {"max_batch_size":128,"patience":25,"factor":0.5}.
+        controller_options (dict, optional): Controller options. Defaults to {"batch_size":64,"eval_batch_size":128,"max_epochs":1000,"termination_patience":55}.
+        device_string (str, optional): Device string. Defaults to '0'.
+        from_multiprocessing_nGPU (int, optional): Number of GPUs for multiprocessing. Defaults to None.
+        build_lammps_pickle (bool, optional): Whether to build LAMMPS pickle. Defaults to False.
+        remove_high_energy_cut (float, optional): High energy cut-off for removal. Defaults to None.
+        remove_high_energy_std (float, optional): High energy standard deviation for removal. Defaults to None.
+        remove_high_forces_cut (float, optional): High forces cut-off for removal. Defaults to None.
+        remove_high_forces_std (float, optional): High forces standard deviation for removal. Defaults to None.
+        remove_close_contacts (bool, optional): Whether to remove close contacts. Defaults to None.
+
+    Returns:
+        None
     """
     #Import Torch and configure GPU. 
     #This must occur after the subprocess fork!!!

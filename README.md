@@ -2,7 +2,7 @@
 ![Python](https://img.shields.io/badge/Python-3.12%2B-yellow?logo=python&logoColor=white)
 ![Sphinx](https://img.shields.io/badge/Documentation-Sphinx-green?logo=sphinx&logoColor=white)
 
-### TODO - add logo and bagdes
+### TODO - add logo
 
 # Active Learning Framework (ALF)
 
@@ -83,10 +83,10 @@ https://doi.org/10.1038/s41467-021-21376-0
 Nicholas Lubbers, Ying Wai Li, Richard Messerly, Sergei Tretiak, Justin S. Smith, Benjamin Nebgen. "Uncertainty-driven dynamics for active learning of interatomic potentials" Nat. Comp. Sci. 2023, 1968. 
 https://doi.org/10.1038/s43588-023-00406-5 
 
-[3] ALF-trained reactive potential for organics   
+[3] ALF-trained reactive potential for organics    
 Shuhao Zhang, Malgorzata Makos, Ryan Jadrich, Elfi Kraka, Kipton Barros, Benjamin Nebgen, Sergei Tretiak, Olexandr Isayev, Nicholas Lubbers, Richard Messerly, Justin Smith. "Exploring the frontiers of chemistry with a general reactive machine learning potential". 
 https://doi.org/10.26434/chemrxiv-2022-15ct6
 
-[4] Original implementation of ALF and proof of concept study
+[4] Original implementation of ALF and proof of concept study    
 Justin S. Smith, Ben Nebgen, Nicholas Lubbers, Olexandr Isayev, Adrian E. Roitberg. "Less is more: Sampling chemical space with active learning". J. Chem. Phys. 2018, 148, 241733.
 https://pubs.aip.org/aip/jcp/article/148/24/241733/963478/Less-is-more-Sampling-chemical-space-with-active

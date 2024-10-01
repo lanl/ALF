@@ -7,7 +7,8 @@
                                
 # Active Learning Framework (ALF)
 
-[Documentation](https://lanl.github.io/ALF/)
+## 📄[Read The Docs](https://lanl.github.io/ALF/)
+*under development*
 
 ## 🚀 Overview
 
@@ -25,7 +26,7 @@ This package is closely interfaced to the Parsl framework which enables task exe
 
 > [!IMPORTANT]
 > This code is currently a work in progress, and documentation is still sparse.
-> Visit [OFFICIAL ALF DOCS PAGE](https://lanl.github.io/ALF/)
+> Visit [official ALF docs page](https://lanl.github.io/ALF/)
 
 
 

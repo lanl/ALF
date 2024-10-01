@@ -1,3 +1,7 @@
+![ML](https://img.shields.io/badge/Machine%20Learning-ML-blue?logo=pytorch&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.12%2B-yellow?logo=python&logoColor=white)
+![Sphinx](https://img.shields.io/badge/Documentation-Sphinx-green?logo=sphinx&logoColor=white)
+
 ### TODO - add logo and bagdes
 
 # Active Learning Framework (ALF)

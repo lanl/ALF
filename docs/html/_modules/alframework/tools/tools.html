@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>alframework.tools.tools &mdash; ALF 0.0.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=92fd9be5" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=19f00094" />
+
+  
+  <!--[if lt IE 9]>
+    <script src="../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+        <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+        <script src="../../../_static/documentation_options.js?v=d45e8c67"></script>
+        <script src="../../../_static/doctools.js?v=9a2dae69"></script>
+        <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            ALF
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../home.html">Home</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../modules.html">alframework</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">ALF</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">alframework.tools.tools</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for alframework.tools.tools</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">glob</span>
+<span class="kn">from</span> <span class="nn">importlib</span> <span class="kn">import</span> <span class="n">import_module</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">json</span>
+<span class="kn">from</span> <span class="nn">ase.geometry</span> <span class="kn">import</span> <span class="n">complete_cell</span>
+<span class="kn">from</span> <span class="nn">ase</span> <span class="kn">import</span> <span class="n">Atoms</span>
+<span class="kn">from</span> <span class="nn">alframework.tools</span> <span class="kn">import</span> <span class="n">pyanitools</span> <span class="k">as</span> <span class="n">pyt</span>
+<span class="kn">import</span> <span class="nn">inspect</span>
+
+<div class="viewcode-block" id="annealing_schedule">
+<a class="viewcode-back" href="../../../alframework.tools.html#alframework.tools.tools.annealing_schedule">[docs]</a>
+<span class="k">def</span> <span class="nf">annealing_schedule</span><span class="p">(</span><span class="n">t</span><span class="p">,</span> <span class="n">tmax</span><span class="p">,</span> <span class="n">amp</span><span class="p">,</span> <span class="n">per</span><span class="p">,</span> <span class="n">srt</span><span class="p">,</span> <span class="n">end</span><span class="p">):</span>
+    <span class="n">linear</span> <span class="o">=</span> <span class="n">t</span> <span class="o">/</span> <span class="n">tmax</span>
+    <span class="n">linearT</span> <span class="o">=</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">linear</span><span class="p">)</span> <span class="o">*</span> <span class="n">srt</span> <span class="o">+</span> <span class="n">linear</span> <span class="o">*</span> <span class="n">end</span>
+    <span class="k">return</span> <span class="p">(</span><span class="n">amp</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">power</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span> <span class="o">*</span> <span class="n">t</span> <span class="o">/</span> <span class="n">per</span><span class="p">),</span> <span class="mi">2</span><span class="p">)</span> <span class="o">+</span> <span class="n">linearT</span></div>
+
+    
+<span class="c1">#This function takes a directory and configures a dictionary for passing into ase_interface import ensemblemolecule</span>
+<div class="viewcode-block" id="build_ANI_info">
+<a class="viewcode-back" href="../../../alframework.tools.html#alframework.tools.tools.build_ANI_info">[docs]</a>
+<span class="k">def</span> <span class="nf">build_ANI_info</span><span class="p">(</span><span class="n">directory</span><span class="p">):</span>
+    <span class="c1">#TODO: Check that directory is a valid directory</span>
+    <span class="n">ani_dict</span><span class="o">=</span><span class="p">{}</span>
+    <span class="n">cnst_files</span> <span class="o">=</span> <span class="n">glob</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="n">directory</span> <span class="o">+</span> <span class="s1">&#39;/*.params&#39;</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">cnst_files</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">,</span><span class="s2">&quot;Too many or too few params files detected: &quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">cnst_files</span><span class="p">)</span>
+    <span class="n">ani_dict</span><span class="p">[</span><span class="s1">&#39;cnstfile&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">cnst_files</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">ani_dict</span><span class="p">[</span><span class="s1">&#39;saefile&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">directory</span> <span class="o">+</span> <span class="s1">&#39;/sae_linfit.dat&#39;</span>
+    <span class="n">ani_dict</span><span class="p">[</span><span class="s1">&#39;nnfprefix&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">directory</span> <span class="o">+</span> <span class="s1">&#39;/train&#39;</span>
+    <span class="n">model_dirs</span> <span class="o">=</span> <span class="n">glob</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="n">ani_dict</span><span class="p">[</span><span class="s1">&#39;nnfprefix&#39;</span><span class="p">]</span> <span class="o">+</span> <span class="s1">&#39;*&#39;</span><span class="p">)</span>
+    <span class="n">ani_dict</span><span class="p">[</span><span class="s1">&#39;Nnet&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">model_dirs</span><span class="p">)</span>
+    <span class="k">return</span><span class="p">(</span><span class="n">ani_dict</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="compute_empirical_formula">
+<a class="viewcode-back" href="../../../alframework.tools.html#alframework.tools.tools.compute_empirical_formula">[docs]</a>
+<span class="k">def</span> <span class="nf">compute_empirical_formula</span><span class="p">(</span><span class="n">S</span><span class="p">):</span>
+    <span class="n">uniques</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">S</span><span class="p">,</span><span class="n">return_counts</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">arg_sort</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">uniques</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+    <span class="k">return</span> <span class="s2">&quot;_&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="n">i</span><span class="o">+</span><span class="nb">str</span><span class="p">(</span><span class="n">j</span><span class="p">)</span><span class="o">.</span><span class="n">zfill</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span><span class="n">j</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">uniques</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="n">arg_sort</span><span class="p">],</span><span class="n">uniques</span><span class="p">[</span><span class="mi">1</span><span class="p">][</span><span class="n">arg_sort</span><span class="p">])])</span></div>
+
+
+<div class="viewcode-block" id="random_rotation_matrix">
+<a class="viewcode-back" href="../../../alframework.tools.html#alframework.tools.tools.random_rotation_matrix">[docs]</a>
+<span class="k">def</span> <span class="nf">random_rotation_matrix</span><span class="p">(</span><span class="n">deflection</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">randnums</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">randnums</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">randnums</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="mi">3</span><span class="p">,))</span>
+
+    <span class="n">theta</span><span class="p">,</span> <span class="n">phi</span><span class="p">,</span> <span class="n">z</span> <span class="o">=</span> <span class="n">randnums</span>
+
+    <span class="n">theta</span> <span class="o">=</span> <span class="n">theta</span> <span class="o">*</span> <span class="mf">2.0</span> <span class="o">*</span> <span class="n">deflection</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span>  <span class="c1"># Rotation about the pole (Z).</span>
+    <span class="n">phi</span> <span class="o">=</span> <span class="n">phi</span> <span class="o">*</span> <span class="mf">2.0</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span>  <span class="c1"># For direction of pole deflection.</span>
+    <span class="n">z</span> <span class="o">=</span> <span class="n">z</span> <span class="o">*</span> <span class="mf">2.0</span> <span class="o">*</span> <span class="n">deflection</span>  <span class="c1"># For magnitude of pole deflection.</span>
+
+    <span class="n">r</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">z</span><span class="p">)</span>
+    <span class="n">Vx</span><span class="p">,</span> <span class="n">Vy</span><span class="p">,</span> <span class="n">Vz</span> <span class="o">=</span> <span class="n">V</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">phi</span><span class="p">)</span> <span class="o">*</span> <span class="n">r</span><span class="p">,</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">phi</span><span class="p">)</span> <span class="o">*</span> <span class="n">r</span><span class="p">,</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="mf">2.0</span> <span class="o">-</span> <span class="n">z</span><span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="n">st</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sin</span><span class="p">(</span><span class="n">theta</span><span class="p">)</span>
+    <span class="n">ct</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">theta</span><span class="p">)</span>
+
+    <span class="n">R</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(((</span><span class="n">ct</span><span class="p">,</span> <span class="n">st</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="p">(</span><span class="o">-</span><span class="n">st</span><span class="p">,</span> <span class="n">ct</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)))</span>
+
+    <span class="n">M</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">outer</span><span class="p">(</span><span class="n">V</span><span class="p">,</span> <span class="n">V</span><span class="p">)</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="mi">3</span><span class="p">))</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">R</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">M</span></div>
+
+
+<div class="viewcode-block" id="store_current_data">
+<a class="viewcode-back" href="../../../alframework.tools.html#alframework.tools.tools.store_current_data">[docs]</a>
+<span class="k">def</span> <span class="nf">store_current_data</span><span class="p">(</span><span class="n">h5path</span><span class="p">,</span> <span class="n">system_data</span><span class="p">,</span> <span class="n">properties</span><span class="p">):</span>
+<span class="c1">#    system data is a list of [mol-id(string), atoms, properties dictionary]</span>
+    <span class="n">data_dict</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Saving h5 file: &quot;</span> <span class="o">+</span> <span class="n">h5path</span><span class="p">)</span>
+    <span class="n">totalNumber</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">system_data</span><span class="p">)</span>
+    <span class="n">savedNumber</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">nanNumber</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">convergedNumber</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">for</span> <span class="n">system</span> <span class="ow">in</span> <span class="n">system_data</span><span class="p">:</span>
+        <span class="c1"># We can append the system data to an existing set of system data</span>
+        <span class="n">cur_moliculeid</span> <span class="o">=</span> <span class="n">system</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s1">&#39;moleculeid&#39;</span><span class="p">]</span>
+        <span class="n">cur_atoms</span> <span class="o">=</span> <span class="n">system</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">cur_properties</span> <span class="o">=</span> <span class="n">system</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span>
+        <span class="n">molkey</span> <span class="o">=</span> <span class="n">compute_empirical_formula</span><span class="p">(</span><span class="n">cur_atoms</span><span class="o">.</span><span class="n">get_chemical_symbols</span><span class="p">())</span>
+        <span class="c1">#Ensure no nan data before saving</span>
+        
+        <span class="c1">#Ensure system converged before saving </span>
+        <span class="k">if</span> <span class="n">cur_properties</span><span class="p">[</span><span class="s1">&#39;converged&#39;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">system_checker</span><span class="p">(</span><span class="n">system</span><span class="p">,</span><span class="n">kill_on_fail</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+            <span class="n">savedNumber</span> <span class="o">=</span> <span class="n">savedNumber</span> <span class="o">+</span> <span class="mi">1</span>
+            <span class="c1">#The </span>
+            <span class="n">atom_index</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">cur_atoms</span><span class="o">.</span><span class="n">get_atomic_numbers</span><span class="p">())</span>
+            <span class="c1">#If there is already a molecule with the same formula, append</span>
+            <span class="k">if</span> <span class="n">molkey</span> <span class="ow">in</span> <span class="n">data_dict</span><span class="p">:</span>
+                <span class="n">data_dict</span><span class="p">[</span><span class="n">molkey</span><span class="p">][</span><span class="s2">&quot;_id&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">cur_moliculeid</span><span class="p">)</span>
+                <span class="n">data_dict</span><span class="p">[</span><span class="n">molkey</span><span class="p">][</span><span class="s2">&quot;coordinates&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">cur_atoms</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()[</span><span class="n">atom_index</span><span class="p">])</span>
+                <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">cur_atoms</span><span class="o">.</span><span class="n">get_pbc</span><span class="p">()):</span>
+                    <span class="n">data_dict</span><span class="p">[</span><span class="n">molkey</span><span class="p">][</span><span class="s2">&quot;cell&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">complete_cell</span><span class="p">(</span><span class="n">cur_atoms</span><span class="o">.</span><span class="n">get_cell</span><span class="p">()))</span>
+                <span class="k">for</span>  <span class="n">prop</span> <span class="ow">in</span> <span class="n">properties</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">properties</span><span class="p">[</span><span class="n">prop</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s2">&quot;system&quot;</span><span class="p">:</span>
+                        <span class="n">data_dict</span><span class="p">[</span><span class="n">molkey</span><span class="p">][</span><span class="n">properties</span><span class="p">[</span><span class="n">prop</span><span class="p">][</span><span class="mi">0</span><span class="p">]]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">cur_properties</span><span class="p">[</span><span class="n">prop</span><span class="p">]</span><span class="o">*</span><span class="n">properties</span><span class="p">[</span><span class="n">prop</span><span class="p">][</span><span class="mi">2</span><span class="p">])</span>
+                    <span class="k">elif</span> <span class="n">properties</span><span class="p">[</span><span class="n">prop</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s2">&quot;atomic&quot;</span><span class="p">:</span>
+                        <span class="n">data_dict</span><span class="p">[</span><span class="n">molkey</span><span class="p">][</span><span class="n">properties</span><span class="p">[</span><span class="n">prop</span><span class="p">][</span><span class="mi">0</span><span class="p">]]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">cur_properties</span><span class="p">[</span><span class="n">prop</span><span class="p">])[</span><span class="n">atom_index</span><span class="p">]</span><span class="o">*</span><span class="n">properties</span><span class="p">[</span><span class="n">prop</span><span class="p">][</span><span class="mi">2</span><span class="p">])</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s1">&#39;Unknown property format&#39;</span><span class="p">)</span>
+            <span class="c1">#if there is not already a molecule with this empirical formula, make a new one</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">data_dict</span><span class="p">[</span><span class="n">molkey</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+                <span class="n">data_dict</span><span class="p">[</span><span class="n">molkey</span><span class="p">][</span><span class="s2">&quot;species&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">cur_atoms</span><span class="o">.</span><span class="n">get_chemical_symbols</span><span class="p">())[</span><span class="n">atom_index</span><span class="p">]</span>
+                <span class="n">data_dict</span><span class="p">[</span><span class="n">molkey</span><span class="p">][</span><span class="s2">&quot;_id&quot;</span><span class="p">]</span><span class="o">=</span><span class="p">[</span><span class="n">cur_moliculeid</span><span class="p">]</span>
+                <span class="n">data_dict</span><span class="p">[</span><span class="n">molkey</span><span class="p">][</span><span class="s2">&quot;coordinates&quot;</span><span class="p">]</span><span class="o">=</span><span class="p">[</span><span class="n">cur_atoms</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()[</span><span class="n">atom_index</span><span class="p">]]</span>
+                <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">cur_atoms</span><span class="o">.</span><span class="n">get_pbc</span><span class="p">()):</span>
+                    <span class="n">data_dict</span><span class="p">[</span><span class="n">molkey</span><span class="p">][</span><span class="s2">&quot;cell&quot;</span><span class="p">]</span><span class="o">=</span><span class="p">[</span><span class="n">complete_cell</span><span class="p">(</span><span class="n">cur_atoms</span><span class="o">.</span><span class="n">get_cell</span><span class="p">())]</span>
+                <span class="k">for</span>  <span class="n">prop</span> <span class="ow">in</span> <span class="n">properties</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">properties</span><span class="p">[</span><span class="n">prop</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s2">&quot;system&quot;</span><span class="p">:</span>
+                        <span class="n">data_dict</span><span class="p">[</span><span class="n">molkey</span><span class="p">][</span><span class="n">properties</span><span class="p">[</span><span class="n">prop</span><span class="p">][</span><span class="mi">0</span><span class="p">]]</span><span class="o">=</span><span class="p">[</span><span class="n">cur_properties</span><span class="p">[</span><span class="n">prop</span><span class="p">]</span><span class="o">*</span><span class="n">properties</span><span class="p">[</span><span class="n">prop</span><span class="p">][</span><span class="mi">2</span><span class="p">]]</span>
+                    <span class="k">elif</span> <span class="n">properties</span><span class="p">[</span><span class="n">prop</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s2">&quot;atomic&quot;</span><span class="p">:</span>
+                        <span class="n">data_dict</span><span class="p">[</span><span class="n">molkey</span><span class="p">][</span><span class="n">properties</span><span class="p">[</span><span class="n">prop</span><span class="p">][</span><span class="mi">0</span><span class="p">]]</span><span class="o">=</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">cur_properties</span><span class="p">[</span><span class="n">prop</span><span class="p">])[</span><span class="n">atom_index</span><span class="p">]</span><span class="o">*</span><span class="n">properties</span><span class="p">[</span><span class="n">prop</span><span class="p">][</span><span class="mi">2</span><span class="p">]]</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s1">&#39;Unknown property format&#39;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="ow">not</span><span class="p">(</span><span class="n">system_checker</span><span class="p">(</span><span class="n">system</span><span class="p">,</span><span class="n">kill_on_fail</span><span class="o">=</span><span class="kc">False</span><span class="p">)):</span>
+            <span class="n">nanNumber</span> <span class="o">=</span> <span class="n">nanNumber</span> <span class="o">+</span> <span class="mi">1</span>
+        <span class="k">elif</span> <span class="ow">not</span><span class="p">(</span><span class="n">cur_properties</span><span class="p">[</span><span class="s1">&#39;converged&#39;</span><span class="p">]):</span>
+            <span class="n">convergedNumber</span> <span class="o">=</span> <span class="n">convergedNumber</span> <span class="o">+</span> <span class="mi">1</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Warning: molecule not saved for unknown reason&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Total Systems: &quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">totalNumber</span><span class="p">))</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Saved Systems: &quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">savedNumber</span><span class="p">))</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;NAN Systems: &quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">nanNumber</span><span class="p">))</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Unconverged Systems: &quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">convergedNumber</span><span class="p">))</span>
+
+    <span class="k">for</span> <span class="n">isokey</span> <span class="ow">in</span> <span class="n">data_dict</span><span class="p">:</span>
+        <span class="c1">#print(&#39;isokeys:&#39;,isokey)</span>
+        <span class="k">for</span> <span class="n">propkey</span> <span class="ow">in</span> <span class="n">data_dict</span><span class="p">[</span><span class="n">isokey</span><span class="p">]:</span>
+            <span class="k">if</span> <span class="n">propkey</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="ow">in</span> <span class="p">[</span><span class="s1">&#39;species&#39;</span><span class="p">,</span><span class="s1">&#39;_id&#39;</span><span class="p">]:</span>
+                <span class="n">data_dict</span><span class="p">[</span><span class="n">isokey</span><span class="p">][</span><span class="n">propkey</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">el</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s1">&#39;utf-8&#39;</span><span class="p">)</span> <span class="k">for</span> <span class="n">el</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="n">data_dict</span><span class="p">[</span><span class="n">isokey</span><span class="p">][</span><span class="n">propkey</span><span class="p">])]</span>
+                <span class="n">data_dict</span><span class="p">[</span><span class="n">isokey</span><span class="p">][</span><span class="n">propkey</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">data_dict</span><span class="p">[</span><span class="n">isokey</span><span class="p">][</span><span class="n">propkey</span><span class="p">])</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">data_dict</span><span class="p">[</span><span class="n">isokey</span><span class="p">][</span><span class="n">propkey</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">data_dict</span><span class="p">[</span><span class="n">isokey</span><span class="p">][</span><span class="n">propkey</span><span class="p">])</span>
+                <span class="c1">#print(&quot;encoding species&quot;)</span>
+<span class="c1">#                    if type(data_dict[isokey][propkey]) is &#39;numpy.ndarray&#39;:</span>
+<span class="c1">#                        data_dict[isokey][propkey] = np.stack(data_dict[isokey][propkey])</span>
+<span class="c1">#                    else:</span>
+<span class="c1">#                        data_dict[isokey][propkey] = np.array(data_dict[isokey][propkey])</span>
+<span class="c1">#                    print(&#39;propkey:&#39;, propkey,data_dict[isokey][propkey].shape)</span>
+<span class="c1">#</span>
+    <span class="n">dpack</span> <span class="o">=</span> <span class="n">pyt</span><span class="o">.</span><span class="n">datapacker</span><span class="p">(</span><span class="n">h5path</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">data_dict</span><span class="p">:</span>
+        <span class="n">dpack</span><span class="o">.</span><span class="n">store_data</span><span class="p">(</span><span class="n">key</span><span class="p">,</span><span class="o">**</span><span class="n">data_dict</span><span class="p">[</span><span class="n">key</span><span class="p">])</span>
+    <span class="n">dpack</span><span class="o">.</span><span class="n">cleanup</span><span class="p">()</span></div>
+
+
+
+
+<span class="c1">#Recommend creation of parsl queue object</span>
+<div class="viewcode-block" id="parsl_task_queue">
+<a class="viewcode-back" href="../../../alframework.tools.html#alframework.tools.tools.parsl_task_queue">[docs]</a>
+<span class="k">class</span> <span class="nc">parsl_task_queue</span><span class="p">():</span>
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c1">#Create a list </span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">task_list</span> <span class="o">=</span> <span class="p">[]</span>
+    
+<div class="viewcode-block" id="parsl_task_queue.add_task">
+<a class="viewcode-back" href="../../../alframework.tools.html#alframework.tools.tools.parsl_task_queue.add_task">[docs]</a>
+    <span class="k">def</span> <span class="nf">add_task</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span><span class="n">task</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">task_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">task</span><span class="p">)</span></div>
+
+        <span class="c1">#self.task_list[-1].start()</span>
+        
+<div class="viewcode-block" id="parsl_task_queue.get_completed_number">
+<a class="viewcode-back" href="../../../alframework.tools.html#alframework.tools.tools.parsl_task_queue.get_completed_number">[docs]</a>
+    <span class="k">def</span> <span class="nf">get_completed_number</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">task_status</span> <span class="o">=</span> <span class="p">[</span><span class="n">task</span><span class="o">.</span><span class="n">done</span><span class="p">()</span> <span class="k">for</span> <span class="n">task</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">task_list</span><span class="p">]</span>
+        <span class="k">return</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">task_status</span><span class="p">)))</span></div>
+
+        
+<div class="viewcode-block" id="parsl_task_queue.get_running_number">
+<a class="viewcode-back" href="../../../alframework.tools.html#alframework.tools.tools.parsl_task_queue.get_running_number">[docs]</a>
+    <span class="k">def</span> <span class="nf">get_running_number</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">task_status</span> <span class="o">=</span> <span class="p">[</span><span class="n">task</span><span class="o">.</span><span class="n">running</span><span class="p">()</span> <span class="k">for</span> <span class="n">task</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">task_list</span><span class="p">]</span>
+        <span class="k">return</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">task_status</span><span class="p">)))</span></div>
+
+        
+<div class="viewcode-block" id="parsl_task_queue.get_number">
+<a class="viewcode-back" href="../../../alframework.tools.html#alframework.tools.tools.parsl_task_queue.get_number">[docs]</a>
+    <span class="k">def</span> <span class="nf">get_number</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">task_list</span><span class="p">))</span></div>
+
+    
+<div class="viewcode-block" id="parsl_task_queue.get_queued_number">
+<a class="viewcode-back" href="../../../alframework.tools.html#alframework.tools.tools.parsl_task_queue.get_queued_number">[docs]</a>
+    <span class="k">def</span> <span class="nf">get_queued_number</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">get_number</span><span class="p">()</span><span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">get_running_number</span><span class="p">()</span><span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">get_completed_number</span><span class="p">()))</span></div>
+
+            
+<div class="viewcode-block" id="parsl_task_queue.get_task_results">
+<a class="viewcode-back" href="../../../alframework.tools.html#alframework.tools.tools.parsl_task_queue.get_task_results">[docs]</a>
+    <span class="k">def</span> <span class="nf">get_task_results</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">results_list</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">failed_number</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">taski</span><span class="p">,</span><span class="n">task</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">task_list</span><span class="p">):</span>
+            <span class="n">task_status</span> <span class="o">=</span> <span class="n">task</span><span class="o">.</span><span class="n">task_status</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">task_status</span> <span class="o">==</span> <span class="s1">&#39;exec_done&#39;</span> <span class="ow">and</span> <span class="n">task</span><span class="o">.</span><span class="n">done</span><span class="p">:</span>
+                <span class="n">results_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">task</span><span class="o">.</span><span class="n">result</span><span class="p">())</span>
+                <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">task_list</span><span class="p">[</span><span class="n">taski</span><span class="p">]</span>
+            <span class="k">elif</span> <span class="n">task_status</span> <span class="o">==</span> <span class="s1">&#39;failed&#39;</span><span class="p">:</span>
+                <span class="n">failed_number</span><span class="o">=</span><span class="n">failed_number</span><span class="o">+</span><span class="mi">1</span>
+                <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">task_list</span><span class="p">[</span><span class="n">taski</span><span class="p">]</span>
+        <span class="k">return</span><span class="p">(</span><span class="n">results_list</span><span class="p">,</span><span class="n">failed_number</span><span class="p">)</span></div>
+
+    
+<div class="viewcode-block" id="parsl_task_queue.get_task_status">
+<a class="viewcode-back" href="../../../alframework.tools.html#alframework.tools.tools.parsl_task_queue.get_task_status">[docs]</a>
+    <span class="k">def</span> <span class="nf">get_task_status</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">status_list</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">task</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">task_list</span><span class="p">:</span>
+            <span class="n">status_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">task</span><span class="o">.</span><span class="n">task_status</span><span class="p">())</span>
+        <span class="k">return</span><span class="p">(</span><span class="n">status_list</span><span class="p">)</span></div>
+
+        
+<div class="viewcode-block" id="parsl_task_queue.print_status">
+<a class="viewcode-back" href="../../../alframework.tools.html#alframework.tools.tools.parsl_task_queue.print_status">[docs]</a>
+    <span class="k">def</span> <span class="nf">print_status</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+       <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Total Tasks: </span><span class="si">{:d}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">get_number</span><span class="p">()))</span>
+       <span class="c1">#print(&#39;Queued Tasks: {:d}&#39;.format(self.get_queued_number()))</span>
+       <span class="c1">#print(&#39;Running Tasks: {:d}&#39;.format(self.get_running_number()))</span>
+       <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Finished Tasks: </span><span class="si">{:d}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">get_completed_number</span><span class="p">()))</span></div>
+</div>
+
+       
+<span class="c1">#used to find current version of directories to re-start with</span>
+<div class="viewcode-block" id="find_empty_directory">
+<a class="viewcode-back" href="../../../alframework.tools.html#alframework.tools.tools.find_empty_directory">[docs]</a>
+<span class="k">def</span> <span class="nf">find_empty_directory</span><span class="p">(</span><span class="n">pattern</span><span class="p">,</span><span class="n">limit</span><span class="o">=</span><span class="mi">9999</span><span class="p">):</span>
+    <span class="n">curI</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">while</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">pattern</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">curI</span><span class="p">)):</span>
+        <span class="n">curI</span><span class="o">=</span><span class="n">curI</span><span class="o">+</span><span class="mi">1</span>
+    <span class="k">return</span><span class="p">(</span><span class="n">curI</span><span class="p">)</span></div>
+
+    
+<span class="c1">#Throughout this code individual systems are passed around as three element lists</span>
+<span class="c1">#element 1: metadata: this is required to include moleculeid,  but may also include sampling and other metadata</span>
+<span class="c1">#element 2: an ASE atoms object. </span>
+<span class="c1">#element 3: Evaluated QM properties</span>
+<div class="viewcode-block" id="system_checker">
+<a class="viewcode-back" href="../../../alframework.tools.html#alframework.tools.tools.system_checker">[docs]</a>
+<span class="k">def</span> <span class="nf">system_checker</span><span class="p">(</span><span class="n">system</span><span class="p">,</span><span class="n">kill_on_fail</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span><span class="n">print_error</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+    <span class="k">try</span><span class="p">:</span> 
+        <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">system</span><span class="p">,</span><span class="nb">list</span><span class="p">)</span> <span class="ow">or</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">system</span><span class="p">,</span><span class="nb">tuple</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">system</span><span class="p">)</span> <span class="o">==</span> <span class="mi">3</span>
+        <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">system</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span><span class="nb">dict</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">system</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s1">&#39;moleculeid&#39;</span><span class="p">],</span><span class="nb">str</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">system</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span><span class="n">Atoms</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">system</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span><span class="nb">dict</span><span class="p">)</span>
+        
+        <span class="n">no_nan</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">system</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()))</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">no_nan</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="k">if</span> <span class="nb">any</span><span class="p">(</span><span class="n">system</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">get_pbc</span><span class="p">()):</span>
+            <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">system</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">get_cell</span><span class="p">()))</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">no_nan</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="k">for</span> <span class="n">prop</span> <span class="ow">in</span> <span class="n">system</span><span class="p">[</span><span class="mi">2</span><span class="p">]:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">system</span><span class="p">[</span><span class="mi">2</span><span class="p">][</span><span class="n">prop</span><span class="p">],</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">system</span><span class="p">[</span><span class="mi">2</span><span class="p">][</span><span class="n">prop</span><span class="p">]))</span><span class="o">&gt;</span><span class="mi">0</span><span class="p">:</span>
+                    <span class="n">no_nan</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="k">if</span> <span class="ow">not</span><span class="p">(</span><span class="n">no_nan</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s1">&#39;NAN in system&#39;</span><span class="p">)</span>
+        
+        <span class="k">return</span><span class="p">(</span><span class="kc">True</span><span class="p">)</span>
+        
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">print_error</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">kill_on_fail</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s1">&#39;Atomic system failed to meet requirements.&#39;</span><span class="p">)</span>
+        <span class="k">return</span><span class="p">(</span><span class="kc">False</span><span class="p">)</span></div>
+
+	          
+<div class="viewcode-block" id="load_config_file">
+<a class="viewcode-back" href="../../../alframework.tools.html#alframework.tools.tools.load_config_file">[docs]</a>
+<span class="k">def</span> <span class="nf">load_config_file</span><span class="p">(</span><span class="n">path</span><span class="p">,</span><span class="n">master_directory</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">path</span><span class="p">,</span><span class="s1">&#39;r&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">input_file</span><span class="p">:</span>
+        <span class="n">config</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">input_file</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">master_directory</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="s2">&quot;master_directory&quot;</span> <span class="ow">in</span> <span class="n">config</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">config</span><span class="p">[</span><span class="s2">&quot;master_directory&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;pwd&#39;</span><span class="p">:</span>
+            <span class="n">master_directory</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">getcwd</span><span class="p">()</span> <span class="o">+</span> <span class="s1">&#39;/&#39;</span>
+        <span class="k">else</span><span class="p">:</span> 
+            <span class="n">master_directory</span> <span class="o">=</span> <span class="n">config</span><span class="p">[</span><span class="s2">&quot;master_directory&quot;</span><span class="p">]</span> <span class="o">+</span> <span class="s1">&#39;/&#39;</span> 
+        <span class="n">config</span><span class="p">[</span><span class="s2">&quot;master_directory&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">master_directory</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="n">dir_dict</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="n">config</span><span class="p">:</span>
+            <span class="k">if</span> <span class="p">(</span><span class="n">entry</span><span class="p">[</span><span class="o">-</span><span class="mi">3</span><span class="p">:]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">&#39;dir&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="n">config</span><span class="p">[</span><span class="n">entry</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="s1">&#39;/&#39;</span><span class="p">:</span>
+                <span class="n">config</span><span class="p">[</span><span class="n">entry</span><span class="p">]</span> <span class="o">=</span> <span class="n">master_directory</span> <span class="o">+</span> <span class="n">config</span><span class="p">[</span><span class="n">entry</span><span class="p">]</span>
+            <span class="k">elif</span> <span class="p">(</span><span class="n">entry</span><span class="p">[</span><span class="o">-</span><span class="mi">4</span><span class="p">:]</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">&#39;path&#39;</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">config</span><span class="p">[</span><span class="n">entry</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="s1">&#39;/&#39;</span><span class="p">:</span>
+                    <span class="n">config</span><span class="p">[</span><span class="n">entry</span><span class="p">]</span> <span class="o">=</span> <span class="n">master_directory</span> <span class="o">+</span> <span class="n">config</span><span class="p">[</span><span class="n">entry</span><span class="p">]</span>
+                <span class="c1">#For every &#39;path&#39; entry, make a corresponding &#39;dir&#39; entry that holds files in the path</span>
+                <span class="n">dir_dict</span><span class="p">[</span><span class="n">entry</span><span class="p">[:</span><span class="o">-</span><span class="mi">4</span><span class="p">]</span><span class="o">+</span><span class="s1">&#39;dir&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;/&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">config</span><span class="p">[</span><span class="n">entry</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;/&#39;</span><span class="p">)[:</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span> <span class="o">+</span> <span class="s1">&#39;/&#39;</span>
+        <span class="n">config</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">dir_dict</span><span class="p">)</span>
+    <span class="k">return</span><span class="p">(</span><span class="n">config</span><span class="p">)</span></div>
+
+    
+<div class="viewcode-block" id="load_module_from_config">
+<a class="viewcode-back" href="../../../alframework.tools.html#alframework.tools.tools.load_module_from_config">[docs]</a>
+<span class="k">def</span> <span class="nf">load_module_from_config</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">module_field</span><span class="p">):</span>
+    <span class="n">module_string</span> <span class="o">=</span> <span class="s1">&#39;.&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">config</span><span class="p">[</span><span class="n">module_field</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;.&#39;</span><span class="p">)[:</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+    <span class="n">class_string</span> <span class="o">=</span> <span class="n">config</span><span class="p">[</span><span class="n">module_field</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;.&#39;</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+    <span class="k">return</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">import_module</span><span class="p">(</span><span class="n">module_string</span><span class="p">),</span> <span class="n">class_string</span><span class="p">)</span></div>
+
+    
+<div class="viewcode-block" id="load_module_from_string">
+<a class="viewcode-back" href="../../../alframework.tools.html#alframework.tools.tools.load_module_from_string">[docs]</a>
+<span class="k">def</span> <span class="nf">load_module_from_string</span><span class="p">(</span><span class="n">module_field</span><span class="p">):</span>
+    <span class="n">module_string</span> <span class="o">=</span> <span class="s1">&#39;.&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">module_field</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;.&#39;</span><span class="p">)[:</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+    <span class="n">class_string</span> <span class="o">=</span> <span class="n">module_field</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;.&#39;</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+    <span class="k">return</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">import_module</span><span class="p">(</span><span class="n">module_string</span><span class="p">),</span> <span class="n">class_string</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="build_input_dict">
+<a class="viewcode-back" href="../../../alframework.tools.html#alframework.tools.tools.build_input_dict">[docs]</a>
+<span class="k">def</span> <span class="nf">build_input_dict</span><span class="p">(</span><span class="n">function</span><span class="p">,</span> <span class="n">dictionary_list</span><span class="p">,</span> <span class="n">use_local_space</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">raise_on_fail</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    
+    <span class="k">if</span> <span class="n">use_local_space</span><span class="p">:</span>
+        <span class="n">local_space_dict</span> <span class="o">=</span> <span class="nb">locals</span><span class="p">()</span>
+    <span class="n">return_dictionary</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">sig</span> <span class="o">=</span> <span class="n">inspect</span><span class="o">.</span><span class="n">signature</span><span class="p">(</span><span class="n">function</span><span class="p">)</span>
+    <span class="n">input_params</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">sig</span><span class="o">.</span><span class="n">parameters</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">parameter</span> <span class="ow">in</span> <span class="n">input_params</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">cur_dict</span> <span class="ow">in</span> <span class="n">dictionary_list</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">parameter</span> <span class="ow">in</span> <span class="n">cur_dict</span><span class="p">:</span>
+                <span class="n">return_dictionary</span><span class="p">[</span><span class="n">parameter</span><span class="p">]</span> <span class="o">=</span> <span class="n">cur_dict</span><span class="p">[</span><span class="n">parameter</span><span class="p">]</span>
+                <span class="k">break</span>
+        <span class="k">if</span> <span class="ow">not</span><span class="p">(</span> <span class="n">parameter</span> <span class="ow">in</span> <span class="n">return_dictionary</span> <span class="p">):</span> <span class="c1">#Still have not found the variable</span>
+            <span class="k">if</span> <span class="n">use_local_space</span> <span class="ow">and</span> <span class="p">(</span> <span class="n">parameter</span> <span class="ow">in</span> <span class="n">local_space_dict</span> <span class="p">):</span>
+                <span class="n">return_dictionary</span><span class="p">[</span><span class="n">parameter</span><span class="p">]</span> <span class="o">=</span> <span class="n">local_space_dict</span><span class="p">[</span><span class="n">parameter</span><span class="p">]</span>
+            <span class="k">elif</span> <span class="n">sig</span><span class="o">.</span><span class="n">parameters</span><span class="p">[</span><span class="n">parameter</span><span class="p">]</span><span class="o">.</span><span class="n">default</span> <span class="o">!=</span> <span class="n">inspect</span><span class="o">.</span><span class="n">_empty</span><span class="p">:</span>
+                <span class="c1">#There is a defulat value for this entry</span>
+                <span class="k">pass</span>
+            <span class="k">elif</span> <span class="n">parameter</span> <span class="o">==</span> <span class="s1">&#39;self&#39;</span><span class="p">:</span>
+                <span class="k">pass</span>
+            <span class="k">elif</span> <span class="n">raise_on_fail</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Required input parameter </span><span class="si">{:s}</span><span class="s2"> of </span><span class="si">{:s}</span><span class="s2"> not defined in any space.&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">parameter</span><span class="p">,</span><span class="n">function</span><span class="o">.</span><span class="vm">__name__</span><span class="p">))</span>
+    <span class="k">return</span><span class="p">(</span><span class="n">return_dictionary</span><span class="p">)</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, B. Nebgen, V. Grizzi, N. Fedik, N. Lubbers, Y.-W. Li, S. Tretiak.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

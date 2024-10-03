@@ -4,15 +4,15 @@
 
 # Active Learning Framework (ALF)
 
-## 📄[Full documentation](https://lanl.github.io/ALF/) - *under development*
+## 📄[Documentation](https://lanl.github.io/ALF/) - *under development*
 
 
 ## 🚀 Overview
 
 This code automates the construction of datasets for machine learned interatomic potentials (MLIP) through active learning. ALF leverages [Parsl](https://parsl-project.org/) framework to automate the job execution allowing active learnming  to iterate on HPC systems without human intervention and bias.
-Employing [query by commitee]() method, ALF trains ensemble of MLIPs (typically 8 NNs) on a bootstrap dataset, runs molecular dynamics to sample chemical space, and marks structures with high uncertainty to be labeled by ground truth method, i.e. recalculated using electronic structure methods such as DFT. Newly labeled structures are appended to the dataset, and process iterates till user-defined convergence. 
+Employing [query by commitee](https://collaborate.princeton.edu/en/publications/query-by-committee) method, ALF trains ensemble of MLIPs (typically 8 NNs) on a bootstrap dataset, runs molecular dynamics to sample chemical space, and marks structures with high uncertainty to be labeled by ground truth method, i.e. recalculated using electronic structure methods such as DFT. Newly labeled structures are appended to the dataset, and process iterates till user-defined convergence. 
 
-<img src="alf_workflow.png" alt="Alt Text" style="width:70%; height:auto;">
+<img src="alf_workflow.png" alt="Alt Text" style="width:60%; height:auto;">
 
 ALF breaks the process down into 4 fundamental tasks:
 1) system construction (builder)

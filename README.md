@@ -1,3 +1,4 @@
+<center>
 <pre>
     ___    __    ______
    /   |  / /   / ____/
@@ -6,16 +7,15 @@
 /_/  |_/_____/_/       
                        
  </pre>   
+ </center>
 
 ![ML](https://img.shields.io/badge/Machine%20Learning-ML-blue?logo=pytorch&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.12%2B-yellow?logo=python&logoColor=white)
 ![Sphinx](https://img.shields.io/badge/Documentation-Sphinx-green?logo=sphinx&logoColor=white)
 
-### TODO - add logo
-
 # Active Learning Framework (ALF)
 
-## 📄[Read The Docs](https://lanl.github.io/ALF/)
+## 📄[Full documentation](https://lanl.github.io/ALF/)
 *under development*
 
 ## 🚀 Overview

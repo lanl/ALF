@@ -1,3 +1,12 @@
+<pre>
+    ___    __    ______
+   /   |  / /   / ____/
+  / /| | / /   / /_    
+ / ___ |/ /___/ __/    
+/_/  |_/_____/_/       
+                       
+ </pre>   
+
 ![ML](https://img.shields.io/badge/Machine%20Learning-ML-blue?logo=pytorch&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.12%2B-yellow?logo=python&logoColor=white)
 ![Sphinx](https://img.shields.io/badge/Documentation-Sphinx-green?logo=sphinx&logoColor=white)
@@ -11,15 +20,16 @@
 
 ## 🚀 Overview
 
-This code automates the construction of datasets for machine learned interatomic potentials (MLIP) through active learning. ALF leverages [Parsl](https://parsl-project.org/) framework to automate the job execution allowing unsupervised to iterate on HPC systems without human intervention and bias.
+This code automates the construction of datasets for machine learned interatomic potentials (MLIP) through active learning. ALF leverages [Parsl](https://parsl-project.org/) framework to automate the job execution allowing active learnming  to iterate on HPC systems without human intervention and bias.
+Employing [query by commitee]() method, ALF trains ensemble of MLIPs (typically 8 NNs) on a bootstrap dataset, runs molecular dynamics to sample chemical space, and marks structures with high uncertainty to be labeled by ground truth method, i.e. recalculated using electronic structure methods such as DFT. Newly labeled structures are appended to the dataset, and process iterates till user-defined convergence. 
+
+<img src="alf_workflow.png" alt="Alt Text" style="width:70%; height:auto;">
 
 ALF breaks the process down into 4 fundamental tasks:
-1) system construction (building)
-2) sampling (samplers)
-3) ML interatomic potential training
-4) electronic structure calculations
-
-### TODO - add figure
+1) system construction (builder)
+2) ML interatomic potential training (MLIP)
+3) sampling (MD sampler)
+4) electronic structure calculations (QM)
 
 The framework uses a general purpose ensembling calculator that enables the tracking of model uncertainty during the training process.
 
@@ -34,10 +44,11 @@ This package is closely interfaced to the Parsl framework which enables task exe
 ## 📋 Requirements: 
 
 The requirements for this software are evolving, though generally, they will include the following: 
-1) [NumPy](https://numpy.org/)
-2) [ASE](https://wiki.fysik.dtu.dk/ase/)
-3) a QM software package with interface (usually ASE)
-4) a ML interatomic potential model ([HIPPYNN](https://github.com/lanl/hippynn) is open source and an interface is provided) 
+1) [Parsl](https://parsl-project.org/)
+2) [NumPy](https://numpy.org/)
+3) [ASE](https://wiki.fysik.dtu.dk/ase/)
+4) a QM software package with interface (usually ASE)
+5) a ML interatomic potential model - we provide interface to open-source and accurate [HIPPYNN](https://github.com/lanl/hippynn) potential
 
 ## ⚙️ Configuration:
 
@@ -65,7 +76,7 @@ Once each task has been tested, active learning can be started with:
 python -m alframework master.json
 ```
 
-It is generally advised to run the master process on a head node inside a screen. This will allow the ALF master process to continue to run over multiple days, even when the host computer is disconnected. It will automatically interface with the queueing system and run future jobs on compute nodes. 
+It is generally advised to run the master process on a head node inside a terminal multiplexer ([screen](https://www.gnu.org/software/screen/), [tmux](https://github.com/tmux/tmux/wiki), [zellij](https://zellij.dev/about/)) for session persistence. This will allow the ALF master process to continue to run over multiple days/weeks, even after you disconnect. It will automatically interface with the queueing system and run future jobs on compute nodes. 
 
 ## 📃 Citations:
 
@@ -73,20 +84,20 @@ If you use ALF in your research, **citations to the papers 1-3 and this reposito
 Please, also consider citing other examples below.  
 
 [1] Code release paper and molten salts case study   
-*link will appear here*
+*in preparation - link will appear here*
 
-[2] ALF-prduced MLIP for aluminum    
+[2] ALF-prouced MLIP for bulk aluminum    
 Justin S. Smith, Benjamin Nebgen, Nithin Mathew, Jie Chen, Nicholas Lubbers, Leonid Burakovsky, Sergei Tretiak, Hai Ah Nam, Timothy Germann, Saryu Fensin, Kipton Barros. "Automated discovery of a robust interatomic potential for aluminum" Nat. Comm. 2021,  12, 1257. 
 https://doi.org/10.1038/s41467-021-21376-0
 
-[2] Uncertainty-driven dynamics for active learning of interatomic potentials (UDD) sampler     
+[2] Uncertainty-driven dynamics for active learning - UDD sampler     
 Nicholas Lubbers, Ying Wai Li, Richard Messerly, Sergei Tretiak, Justin S. Smith, Benjamin Nebgen. "Uncertainty-driven dynamics for active learning of interatomic potentials" Nat. Comp. Sci. 2023, 1968. 
 https://doi.org/10.1038/s43588-023-00406-5 
 
 [3] ALF-trained reactive potential for organics    
-Shuhao Zhang, Malgorzata Makos, Ryan Jadrich, Elfi Kraka, Kipton Barros, Benjamin Nebgen, Sergei Tretiak, Olexandr Isayev, Nicholas Lubbers, Richard Messerly, Justin Smith. "Exploring the frontiers of chemistry with a general reactive machine learning potential". 
+Shuhao Zhang, Malgorzata Makos, Ryan Jadrich, Elfi Kraka, Kipton Barros, Benjamin Nebgen, Sergei Tretiak, Olexandr Isayev, Nicholas Lubbers, Richard Messerly, Justin Smith. "Exploring the frontiers of chemistry with a general reactive machine learning potential".
 https://doi.org/10.26434/chemrxiv-2022-15ct6
 
 [4] Original implementation of ALF and proof of concept study    
 Justin S. Smith, Ben Nebgen, Nicholas Lubbers, Olexandr Isayev, Adrian E. Roitberg. "Less is more: Sampling chemical space with active learning". J. Chem. Phys. 2018, 148, 241733.
-https://pubs.aip.org/aip/jcp/article/148/24/241733/963478/Less-is-more-Sampling-chemical-space-with-active
+https://doi.org/10.1063/1.5023802

@@ -1,1 +1,1 @@
-# empty | identify as package fpr sphinx
+# empty | identify as package for sphinx

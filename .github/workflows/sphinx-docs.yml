@@ -24,8 +24,9 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install sphinx sphinx_rtd_theme sphinx_autodoc_typehints
-          
+          pip install sphinx sphinx_rtd_theme sphinx_autodoc_typehints 
+          pip install ase numpy h5py
+
       - name: Set Python Path
         run: |
             echo "PYTHONPATH=$(pwd)/alframework" >> $GITHUB_ENV

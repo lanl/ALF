@@ -24,7 +24,7 @@ extensions = [
     'sphinx.ext.viewcode', # Add links to highlighted source code
     'sphinx.ext.autosummary', # Generate summary tables for modules/classes/functions
     'sphinx_autodoc_typehints', # Better type hint formatting
-    'myst_parser',  # Support for .md files
+    # 'myst_parser',  # Support for .md files
             ]           
 
 templates_path = ['_templates']

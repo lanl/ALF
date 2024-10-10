@@ -28,11 +28,11 @@ jobs:
 
       - name: Build Docs
         run: |
-          sphinx-build -b html docs docs/_build/html
+          sphinx-build -b html docs/source docs/_autobuild/html
 
       - name: Deploy to GitHub Pages
         if: github.ref == 'refs/heads/main'  # Only deploy on main branch
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: docs/_build/html
+          publish_dir: docs/_autobuild/html

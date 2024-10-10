@@ -30,6 +30,14 @@ jobs:
         run: |
           sphinx-build -b html docs/source docs/_autobuild/html
 
+      - name: Set Python Path
+        run: |
+            echo "PYTHONPATH=$(pwd)/alframework" >> $GITHUB_ENV
+
+      - name: Install your package
+        run: |
+            pip install .
+
       - name: Deploy to GitHub Pages
         if: github.ref == 'refs/heads/docs'  # Only deploy on docs branch
         uses: peaceiris/actions-gh-pages@v3

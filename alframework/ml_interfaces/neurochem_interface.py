@@ -15,6 +15,7 @@ import time
 
 class NeuroChemTrainer():
     def __init__(self, ensemble_size, gpuids, force_training=True, periodic=False, rmhighe=False, rmhighf=False, build_test=True, remove_existing=False):
+
         self.ensemble_size = ensemble_size
         self.force_training = force_training
         self.periodic = periodic

@@ -55,7 +55,7 @@ def train_HIPNN_model(model_dir,
                       remove_close_contacts = None
                       ):
     """
-    Trains the HIPPYNN ML model.
+    Trains the HIPPYNN ML interatomic potential. 
     
     Args:
         model_dir (str): Directory where HIPPYNN model will reside. Example: '/path/to/model_dir'
@@ -68,11 +68,11 @@ def train_HIPNN_model(model_dir,
         quadrupole_key (str, optional): Quadrupole key inside h5 dataset. Defaults to None.
         network_params (dict, optional): Network parameters. Defaults to None.
         aca_params (dict, optional): ACA parameters. Defaults to None.
-        electrostatics_flag (bool, optional): Flag to check if the electrostatic will be trained with the energy and forces. Defaults to False.
+        electrostatics_flag (bool, optional): Flag to check if the electrostatic will be trained with the energy and forces. Defaults to False. 
         cell_key (str, optional): Cell key inside h5 dataset. Defaults to None.
         force_key (str, optional): Force key inside h5 dataset. Must match db name in 'properties_list'. Do not define to remove force training. Defaults to None.
         hipnn_order (str, optional): HIPNN order. Defaults to 'scalar'.
-        first_is_interacting (bool, optional): Whether the first is interacting. Defaults to False.
+        first_is_interacting (bool, optional): Whether the first is interacting. Defaults to False. 
         energy_mae_loss_weight (float, optional): Energy MAE loss weight. Defaults to 1e2.
         energy_rmse_loss_weight (float, optional): Energy RMSE loss weight. Defaults to 1e2.
         total_energy_mae_loss_weight (float, optional): Total energy MAE loss weight. Defaults to 0.
@@ -538,6 +538,22 @@ def train_HIPNN_model_wrapper(arg_dict):
 
 @python_app(executors=['alf_ML_executor'])
 def train_HIPPYNN_ensemble_task(ML_config,h5_dir,model_path,current_training_id,gpus_per_node,remove_existing=False,h5_test_dir=None):
+    """
+    Trains a HIPPYNN ensemble.
+
+    Parameters:
+        ML_config (dict): HIPPYNN configuration dictionary.
+        h5_dir (str): Directory with h5 file.
+        model_path (str): path to HIPPYNN model. Example: '/path/to/model_dir'.
+        current_training_id (int): Current training id.
+        gpus_per_node (int): Number of GPUs per node.
+        remove_existing (bool, optional): Whether to remove existing models. Defaults to False.
+        h5_test_dir (str, optional): Directory where test h5 files reside. Defaults to None.
+
+    Returns:
+        tuple: Tuple of two elements. The first is a list of booleans indicating whether each model
+          was trained successfully. The second is the current training id.
+    """
     p = multiprocessing.Pool(gpus_per_node)
     general_configuration = ML_config.copy()
     n_models = general_configuration.pop('n_models')
@@ -561,6 +577,17 @@ def train_HIPPYNN_ensemble_task(ML_config,h5_dir,model_path,current_training_id,
     
 
 def HIPNN_ASE_calculator(HIPNN_model_directory,energy_key='energy',device="cuda:0"):
+    """
+    Load a trained HIPNN model and return an ASE calculator to interface with ASE.
+
+    Args:
+        HIPNN_model_directory (str): Directory containing the trained HIPNN model
+        energy_key (str, optional): Key name for energy in the HIPNN model. Defaults to 'energy'
+        device (str, optional): Device to load the model on. Defaults to 'cuda:0'
+
+    Returns:
+        calc (ase.calculators.calculator.Calculator): ASE calculator interface to the trained HIPNN model
+    """
     from hippynn.experiment.serialization import load_checkpoint_from_cwd
     from hippynn.tools import active_directory
     from hippynn.interfaces.ase_interface import HippynnCalculator
@@ -575,6 +602,16 @@ def HIPNN_ASE_calculator(HIPNN_model_directory,energy_key='energy',device="cuda:
     return(calc)
     
 def HIPNN_ASE_load_ensemble(HIPNN_ensemble_directory,device="cuda:0"):
+    """
+    Load a collection of trained HIPNN models from a directory and return a list of ASE calculators.
+
+    Args:
+        HIPNN_ensemble_directory (str): Directory containing the trained HIPNN models
+        device (str, optional): Device to load the models on. Defaults to 'cuda:0'
+
+    Returns:
+        model_list (list): List of ASE calculators, each containing a trained HIPNN model
+    """
     model_list = []
     for cur_dir in glob.glob(HIPNN_ensemble_directory + '/model-*/'):
         model_list.append(HIPNN_ASE_calculator(cur_dir,device=device))

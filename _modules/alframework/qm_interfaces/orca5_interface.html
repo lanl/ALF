@@ -1,0 +1,329 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>alframework.qm_interfaces.orca5_interface &mdash; ALF 0.0.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=d45e8c67"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            ALF
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../home.html">Home</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../modules.html">alframework</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">ALF</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">alframework.qm_interfaces.orca5_interface</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for alframework.qm_interfaces.orca5_interface</h1><div class="highlight"><pre>
+<span></span><span class="kn">from</span> <span class="nn">parsl</span> <span class="kn">import</span> <span class="n">python_app</span><span class="p">,</span> <span class="n">bash_app</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">json</span>
+<span class="kn">from</span> <span class="nn">ase.atoms</span> <span class="kn">import</span> <span class="n">Atoms</span>
+<span class="kn">import</span> <span class="nn">ase.io</span>
+<span class="kn">import</span> <span class="nn">shutil</span>
+<span class="kn">import</span> <span class="nn">re</span>
+
+<span class="kn">from</span> <span class="nn">alframework.tools.tools</span> <span class="kn">import</span> <span class="n">system_checker</span>
+
+<div class="viewcode-block" id="orcaGenerator">
+<a class="viewcode-back" href="../../../alframework.qm_interfaces.html#alframework.qm_interfaces.orca5_interface.orcaGenerator">[docs]</a>
+<span class="k">class</span> <span class="nc">orcaGenerator</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    ORCA 5.0.1</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span><span class="n">scratch_path</span><span class="o">=</span><span class="s2">&quot;/tmp/&quot;</span><span class="p">,</span> <span class="n">store_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">nproc</span><span class="o">=</span><span class="mi">36</span><span class="p">,</span>\
+                 <span class="n">unit</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;energy&#39;</span><span class="p">:</span> <span class="s1">&#39;hartree&#39;</span><span class="p">,</span> <span class="s1">&#39;length&#39;</span><span class="p">:</span> <span class="s1">&#39;bohr&#39;</span><span class="p">},</span>\
+                 <span class="n">orca_env_file</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span><span class="n">orca_command</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span><span class="n">orcainput</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span><span class="n">orcablocks</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        unit used for input coordincates: Angstrom</span>
+<span class="sd">        default units for output: atomic unit</span>
+<span class="sd">        output parsing is for orca 5</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">scratch_path</span> <span class="o">=</span> <span class="n">scratch_path</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">store_path</span> <span class="o">=</span> <span class="n">store_path</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nproc</span> <span class="o">=</span> <span class="n">nproc</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">orca_env_fn</span> <span class="o">=</span> <span class="n">orca_env_file</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">orca_command</span> <span class="o">=</span> <span class="n">orca_command</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">orcainput</span> <span class="o">=</span> <span class="n">orcainput</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">orcablocks</span> <span class="o">=</span> <span class="n">orcablocks</span> <span class="k">if</span> <span class="n">orcablocks</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span> <span class="k">else</span> <span class="n">orcablocks</span><span class="o">+</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">unit</span> <span class="o">=</span> <span class="n">unit</span>
+        <span class="c1">#self.E_unit = 1.0  # default a.u., hartree for energy, bohr for length as used for orca</span>
+        <span class="c1">#self.L_unit = 1.0</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">unit</span><span class="p">[</span><span class="s1">&#39;energy&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;hartree&#39;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">E_unit</span> <span class="o">=</span> <span class="mf">1.0</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">unit</span><span class="p">[</span><span class="s1">&#39;energy&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;ev&#39;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">E_unit</span> <span class="o">=</span> <span class="mf">27.2113834</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="s1">&#39;energy unit not implemented&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">unit</span><span class="p">[</span><span class="s1">&#39;length&#39;</span><span class="p">]</span> <span class="o">==</span><span class="s1">&#39;bohr&#39;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">L_unit</span> <span class="o">=</span> <span class="mf">1.0</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">unit</span><span class="p">[</span><span class="s1">&#39;length&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;angstrom&#39;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">L_unit</span> <span class="o">=</span> <span class="mf">0.5291772083</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="s1">&#39;length unit not implemented&#39;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">datacounter</span> <span class="o">=</span> <span class="mi">0</span>
+    
+<div class="viewcode-block" id="orcaGenerator.write_orca_input">
+<a class="viewcode-back" href="../../../alframework.qm_interfaces.html#alframework.qm_interfaces.orca5_interface.orcaGenerator.write_orca_input">[docs]</a>
+    <span class="k">def</span> <span class="nf">write_orca_input</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ase_atoms</span><span class="p">,</span> <span class="n">charge</span><span class="p">,</span> <span class="n">multiplicity</span><span class="p">,</span> <span class="n">job_path</span><span class="p">,</span> <span class="n">filename</span><span class="o">=</span><span class="s2">&quot;orca.inp&quot;</span><span class="p">):</span>
+
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">job_path</span><span class="o">+</span><span class="n">filename</span><span class="p">,</span><span class="s2">&quot;w&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;! &quot;</span><span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">orcainput</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nproc</span> <span class="o">==</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">and</span> <span class="ow">not</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nproc</span> <span class="o">==</span> <span class="mi">1</span><span class="p">):</span>
+                <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;%pal nproc &quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nproc</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot; end</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">orcablocks</span><span class="p">)</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;* xyzfile </span><span class="si">%d</span><span class="s2"> </span><span class="si">%d</span><span class="s2"> input.xyz</span><span class="se">\n</span><span class="s2">&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="n">charge</span><span class="p">,</span> <span class="n">multiplicity</span><span class="p">))</span>
+        <span class="n">ase</span><span class="o">.</span><span class="n">io</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">job_path</span><span class="o">+</span><span class="s2">&quot;input.xyz&quot;</span><span class="p">,</span> <span class="n">ase_atoms</span><span class="p">,</span><span class="nb">format</span><span class="o">=</span><span class="s1">&#39;xyz&#39;</span><span class="p">)</span></div>
+
+    
+<div class="viewcode-block" id="orcaGenerator.single_point">
+<a class="viewcode-back" href="../../../alframework.qm_interfaces.html#alframework.qm_interfaces.orca5_interface.orcaGenerator.single_point">[docs]</a>
+    <span class="k">def</span> <span class="nf">single_point</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">molecule</span><span class="p">,</span> <span class="n">prefix</span><span class="o">=</span><span class="s2">&quot;orca&quot;</span><span class="p">,</span><span class="n">properties</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;energy&#39;</span><span class="p">,</span><span class="s1">&#39;forces&#39;</span><span class="p">]):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        mol : ase.atoms.Atoms object, will get chemical symbols and positions</span>
+<span class="sd">        prefix : all the input and output file will start with this prefix, eg. orca.log, orca.inp, orca.engrad</span>
+<span class="sd">        unlike other generators, the choice of calculations will be performed is setup in __init__: orcainput</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1">#logF = open(&#39;orca_run.log&#39;,&#39;w&#39;)</span>
+        <span class="c1">#assert molecule.periodic() == False, &#39;ORCA does not support periodic boundary condition&#39;</span>
+        <span class="n">job_path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">scratch_path</span> 
+        <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="n">job_path</span><span class="p">,</span><span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            
+        <span class="c1">#logF.write(&#39;directory made\n&#39;)</span>
+        <span class="c1"># prepare orca input</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">write_orca_input</span><span class="p">(</span><span class="n">molecule</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">job_path</span><span class="p">,</span> <span class="n">filename</span><span class="o">=</span><span class="n">prefix</span><span class="o">+</span><span class="s2">&quot;.inp&quot;</span><span class="p">)</span>
+        
+        <span class="c1">#logF.write(&#39;input printed\n&#39;)</span>
+
+        <span class="c1"># run job</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">orca_env_fn</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1">#logF.write(&quot;cd &quot; + job_path +&quot; ; &quot; + self.orca_command + &quot; &quot; + prefix + &quot;.inp &gt; &quot; + prefix + &quot;.log\n&quot;)</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">system</span><span class="p">(</span><span class="s2">&quot;cd &quot;</span> <span class="o">+</span> <span class="n">job_path</span> <span class="o">+</span><span class="s2">&quot; ; &quot;</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">orca_command</span> <span class="o">+</span> <span class="s2">&quot; &quot;</span> <span class="o">+</span> <span class="n">prefix</span> <span class="o">+</span> <span class="s2">&quot;.inp &gt; &quot;</span> <span class="o">+</span> <span class="n">prefix</span> <span class="o">+</span> <span class="s2">&quot;.log&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1">#logF.write(&quot;source &quot; + self.orca_env_fn + &quot; ; cd &quot; + job_path +&quot; ; &quot; + self.orca_command + &quot; &quot; + prefix + &quot;.inp &gt; &quot; + prefix + &quot;.log\n&quot;)</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">system</span><span class="p">(</span><span class="s2">&quot;source &quot;</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">orca_env_fn</span> <span class="o">+</span> <span class="s2">&quot; ; cd &quot;</span> <span class="o">+</span> <span class="n">job_path</span> <span class="o">+</span><span class="s2">&quot; ; &quot;</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">orca_command</span> <span class="o">+</span> <span class="s2">&quot; &quot;</span> <span class="o">+</span> <span class="n">prefix</span> <span class="o">+</span> <span class="s2">&quot;.inp &gt; &quot;</span> <span class="o">+</span> <span class="n">prefix</span> <span class="o">+</span> <span class="s2">&quot;.log&quot;</span><span class="p">)</span>
+        <span class="c1">#logF.close()</span>
+        <span class="c1"># parse output, force and energy</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">check_normal_termination</span><span class="p">(</span> <span class="n">job_path</span> <span class="o">+</span> <span class="n">prefix</span> <span class="o">+</span> <span class="s2">&quot;.log&quot;</span><span class="p">):</span>
+            <span class="n">n_atom</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">molecule</span><span class="p">)</span>
+            <span class="n">propertiesout</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">parse_output</span><span class="p">(</span><span class="n">job_path</span><span class="p">,</span> <span class="n">prefix</span><span class="p">,</span> <span class="n">n_atom</span><span class="p">,</span><span class="n">properties</span><span class="p">)</span>
+            <span class="n">propertiesout</span><span class="p">[</span><span class="s1">&#39;converged&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">propertiesout</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;converged&quot;</span><span class="p">:</span><span class="kc">False</span><span class="p">}</span>
+            
+        <span class="c1"># save files and clean up</span>
+        <span class="k">if</span> <span class="ow">not</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">store_path</span> <span class="o">==</span> <span class="kc">None</span><span class="p">):</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">system</span><span class="p">(</span><span class="s2">&quot;cd &quot;</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">scratch_path</span> <span class="o">+</span> <span class="s2">&quot; &amp;&amp; tar -cvf &quot;</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">store_path</span> <span class="o">+</span> <span class="s2">&quot;/orca_job_&quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">molecule</span><span class="o">.</span><span class="n">ids</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;.tar orca_job_&quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">molecule</span><span class="o">.</span><span class="n">ids</span><span class="p">))</span>
+            <span class="n">shutil</span><span class="o">.</span><span class="n">rmtree</span><span class="p">(</span><span class="n">job_path</span><span class="p">)</span>
+        
+        <span class="bp">self</span><span class="o">.</span><span class="n">datacounter</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">return</span> <span class="n">propertiesout</span></div>
+
+
+<div class="viewcode-block" id="orcaGenerator.check_normal_termination">
+<a class="viewcode-back" href="../../../alframework.qm_interfaces.html#alframework.qm_interfaces.orca5_interface.orcaGenerator.check_normal_termination">[docs]</a>
+    <span class="k">def</span> <span class="nf">check_normal_termination</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">logfile</span><span class="p">):</span>
+        <span class="n">d</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">logfile</span><span class="p">)</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+        <span class="k">return</span> <span class="s2">&quot;TOTAL RUN TIME: &quot;</span> <span class="ow">in</span> <span class="n">d</span>  <span class="ow">and</span> <span class="s2">&quot;SCF CONVERGED AFTER&quot;</span> <span class="ow">in</span> <span class="n">d</span></div>
+
+    
+<div class="viewcode-block" id="orcaGenerator.parse_output">
+<a class="viewcode-back" href="../../../alframework.qm_interfaces.html#alframework.qm_interfaces.orca5_interface.orcaGenerator.parse_output">[docs]</a>
+    <span class="k">def</span> <span class="nf">parse_output</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span><span class="n">job_path</span><span class="p">,</span> <span class="n">prefix</span><span class="p">,</span> <span class="n">natom</span><span class="p">,</span> <span class="n">properties</span><span class="p">,</span> <span class="n">sign</span><span class="o">=-</span><span class="mi">1</span><span class="p">):</span>
+        <span class="c1"># sign: -1: force, +1, gradient</span>
+        <span class="n">outengrad</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">job_path</span> <span class="o">+</span> <span class="n">prefix</span> <span class="o">+</span> <span class="s1">&#39;.engrad&#39;</span><span class="p">,</span><span class="s1">&#39;r&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+        <span class="n">outlog</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">job_path</span> <span class="o">+</span> <span class="n">prefix</span> <span class="o">+</span> <span class="s1">&#39;.log&#39;</span><span class="p">,</span><span class="s1">&#39;r&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+        <span class="n">outproperty</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">job_path</span> <span class="o">+</span> <span class="n">prefix</span> <span class="o">+</span> <span class="s1">&#39;_property.txt&#39;</span><span class="p">,</span><span class="s1">&#39;r&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+        
+        <span class="n">reTOTALenergy</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s2">&quot;The current total energy in Eh</span><span class="se">\n</span><span class="s2">#</span><span class="se">\n</span><span class="s2">([\s\S]+?)#&quot;</span><span class="p">)</span>
+        <span class="n">reSCFenergy</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s2">&quot;SCF Energy:([\s\S]+?)</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">reCORRenergy</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s2">&quot;Correlation Energy:([\s\S]+?)</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">reEnergy</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s2">&quot;Total[\s\S]+?Energy:([\s\S]+?)</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">reDipole</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s2">&quot;Electric_Properties</span><span class="se">\n</span><span class="s2">[\s\S]+?Total Dipole moment:</span><span class="se">\n</span><span class="s2">([\s\S]+?)---------------------&quot;</span><span class="p">)</span>
+        <span class="n">reQuad</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s2">&quot;Electric_Properties</span><span class="se">\n</span><span class="s2">[\s\S]+?Total quadrupole moment</span><span class="se">\n</span><span class="s2">([\s\S]+?)# --------------&quot;</span><span class="p">)</span>
+        <span class="n">reGrad</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s1">&#39;The current gradient in Eh\/bohr</span><span class="se">\n</span><span class="s1">#</span><span class="se">\n</span><span class="s1">([\s\S]+?)#&#39;</span><span class="p">)</span>
+        <span class="n">reHirshTrue</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s2">&quot;HIRSHFELD ANALYSIS&quot;</span><span class="p">)</span>
+        <span class="n">reHirsh</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s2">&quot;HIRSHFELD ANALYSIS</span><span class="se">\n</span><span class="s2">[\s\S]+?SPIN  </span><span class="se">\n</span><span class="s2">([\s\S]+?)TOTAL&quot;</span><span class="p">)</span>
+        
+        <span class="c1">#Always pull in energies and forces from engrad</span>
+        <span class="n">outproperties</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">if</span> <span class="s1">&#39;forces&#39;</span> <span class="ow">in</span> <span class="n">properties</span><span class="p">:</span>
+            <span class="n">outproperties</span><span class="p">[</span><span class="s1">&#39;forces&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="nb">float</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">reGrad</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="n">outengrad</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)[:</span><span class="n">natom</span><span class="o">*</span><span class="mi">3</span><span class="p">]])</span><span class="o">.</span><span class="n">reshape</span><span class="p">([</span><span class="n">natom</span><span class="p">,</span><span class="mi">3</span><span class="p">])</span> <span class="o">*</span> <span class="n">sign</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">E_unit</span><span class="o">/</span><span class="bp">self</span><span class="o">.</span><span class="n">L_unit</span>
+        <span class="k">if</span> <span class="s1">&#39;energy&#39;</span> <span class="ow">in</span> <span class="n">properties</span><span class="p">:</span>
+            <span class="n">outproperties</span><span class="p">[</span><span class="s1">&#39;energy&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">reTOTALenergy</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="n">outengrad</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">E_unit</span>
+        <span class="k">if</span> <span class="s1">&#39;SCF_energy&#39;</span> <span class="ow">in</span> <span class="n">properties</span><span class="p">:</span>
+            <span class="n">outproperties</span><span class="p">[</span><span class="s1">&#39;SCF_energy&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">reEnergy</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="n">outproperty</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">E_unit</span>
+        <span class="k">if</span> <span class="s1">&#39;CORR_energy&#39;</span> <span class="ow">in</span> <span class="n">properties</span><span class="p">:</span>
+            <span class="n">outproperties</span><span class="p">[</span><span class="s1">&#39;CORR_energy&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">reEnergy</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="n">outproperty</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">E_unit</span>
+        <span class="k">if</span> <span class="s1">&#39;dipole&#39;</span> <span class="ow">in</span> <span class="n">properties</span><span class="p">:</span>
+            <span class="n">outproperties</span><span class="p">[</span><span class="s1">&#39;dipole&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="nb">float</span><span class="p">(</span><span class="n">i</span><span class="o">.</span><span class="n">split</span><span class="p">()[</span><span class="mi">1</span><span class="p">])</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">reDipole</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="n">outproperty</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)[</span><span class="mi">1</span><span class="p">:</span><span class="mi">4</span><span class="p">]])</span>
+        <span class="k">if</span> <span class="s1">&#39;quadrupole&#39;</span> <span class="ow">in</span> <span class="n">properties</span><span class="p">:</span>
+            <span class="n">outproperties</span><span class="p">[</span><span class="s1">&#39;quadrupole&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="nb">float</span><span class="p">(</span><span class="n">j</span><span class="p">)</span> <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="n">i</span><span class="o">.</span><span class="n">split</span><span class="p">()[</span><span class="mi">1</span><span class="p">:</span><span class="mi">4</span><span class="p">]]</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">reQuad</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="n">outproperty</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)[</span><span class="mi">1</span><span class="p">:</span><span class="mi">4</span><span class="p">]])</span>
+        <span class="k">if</span> <span class="s1">&#39;hirshfeld&#39;</span> <span class="ow">in</span> <span class="n">properties</span><span class="p">:</span>
+            <span class="n">outproperties</span><span class="p">[</span><span class="s1">&#39;hirshfeld&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="nb">float</span><span class="p">(</span><span class="n">i</span><span class="o">.</span><span class="n">split</span><span class="p">()[</span><span class="mi">2</span><span class="p">])</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">reHirsh</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="n">outlog</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)[:</span><span class="n">natom</span><span class="p">]])</span>
+        <span class="k">if</span> <span class="s1">&#39;hirshfeld_spin&#39;</span> <span class="ow">in</span> <span class="n">properties</span><span class="p">:</span>
+            <span class="n">outproperties</span><span class="p">[</span><span class="s1">&#39;hirshfeld_spin&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="nb">float</span><span class="p">(</span><span class="n">i</span><span class="o">.</span><span class="n">split</span><span class="p">()[</span><span class="mi">3</span><span class="p">])</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">reHirsh</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="n">outlog</span><span class="p">)[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)[:</span><span class="n">natom</span><span class="p">]])</span>
+        <span class="k">return</span> <span class="n">outproperties</span></div>
+</div>
+
+    
+<span class="c1">#    def parse_output(self, job_path, prefix, natom, sign=-1):</span>
+<span class="c1">#        # sign: -1: force, +1, gradient</span>
+<span class="c1">#        fn = job_path + prefix + &quot;.engrad&quot;</span>
+<span class="c1">#        energy = float(os.popen(&quot;grep energy %s -A 2 | tail -n 1&quot; % fn).read().strip().split()[0])*self.E_unit</span>
+<span class="c1">#        forces = sign*np.asarray([float(x.strip().split()[0]) for x in os.popen(&quot;grep gradient %s -A %d | tail -n %d&quot; \</span>
+<span class="c1">#            % (fn, natom*3+1, natom*3)).read().split(&quot;\n&quot;)[:-1]]).reshape(-1,3)*self.E_unit/self.L_unit</span>
+<span class="c1">#        fn = job_path + prefix + &quot;.log&quot;</span>
+<span class="c1">#        mulliken = np.asarray( [ float(x.strip().split()[-1]) </span>
+<span class="c1">#                       for x in os.popen(&quot;grep &#39;MULLIKEN ATOMIC CHARGES&#39; %s -A %d | tail -n %d&quot; </span>
+<span class="c1">#                       % (fn, natom+1, natom)).read().split(&quot;\n&quot;)[:-1]])</span>
+<span class="c1">#        fn = job_path + prefix + &quot;_property.txt&quot;</span>
+<span class="c1">#        dipole = np.asarray( [ float(x.strip().split()[-1]) for x in \</span>
+<span class="c1">#            os.popen(&quot;grep &#39;Total Dipole moment:&#39; %s -A 4 | tail -n 3&quot; % fn).read().strip().split(&#39;\n&#39;)])*self.L_unit</span>
+<span class="c1">#            </span>
+<span class="c1">#        </span>
+<span class="c1">#            </span>
+<span class="c1">#        return_dictionary = {&quot;energy&quot;:energy,&quot;forces&quot;:forces,&quot;dipole&quot;:dipole,&quot;mulliken&quot;:mulliken}</span>
+<span class="c1">#        return return_dictionary</span>
+
+
+<span class="nd">@python_app</span><span class="p">(</span><span class="n">executors</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;alf_QM_executor&#39;</span><span class="p">])</span>
+<span class="k">def</span> <span class="nf">orca_calculator_task</span><span class="p">(</span><span class="n">molecule_object</span><span class="p">,</span><span class="n">QM_config</span><span class="p">,</span><span class="n">QM_scratch_dir</span><span class="p">,</span><span class="n">properties_list</span><span class="p">):</span>
+    <span class="n">system_checker</span><span class="p">(</span><span class="n">molecule_object</span><span class="p">)</span>
+    <span class="n">properties</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">properties_list</span><span class="p">)</span>
+    <span class="n">directory</span> <span class="o">=</span> <span class="n">QM_scratch_dir</span> <span class="o">+</span> <span class="s1">&#39;/&#39;</span> <span class="o">+</span> <span class="n">molecule_object</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s1">&#39;moleculeid&#39;</span><span class="p">]</span> <span class="o">+</span> <span class="s1">&#39;/&#39;</span>
+    <span class="n">molecule_id</span> <span class="o">=</span> <span class="n">molecule_object</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s1">&#39;moleculeid&#39;</span><span class="p">]</span>
+    <span class="n">atoms</span> <span class="o">=</span> <span class="n">molecule_object</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+    
+    <span class="n">orca</span> <span class="o">=</span> <span class="n">orcaGenerator</span><span class="p">(</span><span class="n">scratch_path</span><span class="o">=</span><span class="n">directory</span><span class="p">,</span><span class="n">nproc</span><span class="o">=</span><span class="n">QM_config</span><span class="p">[</span><span class="s1">&#39;ncpu&#39;</span><span class="p">],</span><span class="n">orca_env_file</span><span class="o">=</span><span class="n">QM_config</span><span class="p">[</span><span class="s1">&#39;orca_env_file&#39;</span><span class="p">],</span><span class="n">orca_command</span><span class="o">=</span><span class="n">QM_config</span><span class="p">[</span><span class="s1">&#39;QM_run_command&#39;</span><span class="p">],</span><span class="n">orcainput</span><span class="o">=</span><span class="n">QM_config</span><span class="p">[</span><span class="s1">&#39;orcasimpleinput&#39;</span><span class="p">],</span><span class="n">orcablocks</span><span class="o">=</span><span class="n">QM_config</span><span class="p">[</span><span class="s1">&#39;orcablocks&#39;</span><span class="p">])</span>
+    
+    <span class="n">out_properties</span> <span class="o">=</span> <span class="n">orca</span><span class="o">.</span><span class="n">single_point</span><span class="p">(</span><span class="n">molecule</span><span class="o">=</span><span class="n">atoms</span><span class="p">,</span><span class="n">properties</span><span class="o">=</span><span class="n">properties</span><span class="p">)</span>
+    
+    <span class="n">return_system</span> <span class="o">=</span> <span class="p">[</span><span class="n">molecule_object</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span><span class="n">molecule_object</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span><span class="n">out_properties</span><span class="p">]</span>
+    <span class="n">system_checker</span><span class="p">(</span><span class="n">return_system</span><span class="p">)</span>
+    
+    <span class="k">return</span><span class="p">(</span><span class="n">return_system</span><span class="p">)</span>
+
+
+<span class="nd">@python_app</span><span class="p">(</span><span class="n">executors</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;alf_QM_executor&#39;</span><span class="p">])</span>
+<span class="k">def</span> <span class="nf">orca_double_calculator_task</span><span class="p">(</span><span class="n">molecule_object</span><span class="p">,</span><span class="n">QM_config</span><span class="p">,</span><span class="n">QM_scratch_dir</span><span class="p">,</span><span class="n">properties_list</span><span class="p">):</span>
+    <span class="n">system_checker</span><span class="p">(</span><span class="n">molecule_object</span><span class="p">)</span>
+    <span class="n">properties</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">properties_list</span><span class="p">)</span>
+    <span class="n">directory</span> <span class="o">=</span> <span class="n">QM_scratch_dir</span> <span class="o">+</span> <span class="s1">&#39;/&#39;</span> <span class="o">+</span> <span class="n">molecule_object</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s1">&#39;moleculeid&#39;</span><span class="p">]</span>
+    <span class="n">molecule_id</span> <span class="o">=</span> <span class="n">molecule_object</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s1">&#39;moleculeid&#39;</span><span class="p">]</span>
+    <span class="n">atoms</span> <span class="o">=</span> <span class="n">molecule_object</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">directory1</span> <span class="o">=</span> <span class="n">directory</span> <span class="o">+</span> <span class="s1">&#39;/1/&#39;</span>
+    <span class="n">directory2</span> <span class="o">=</span> <span class="n">directory</span> <span class="o">+</span> <span class="s1">&#39;/2/&#39;</span>
+    
+    <span class="n">orca1</span> <span class="o">=</span> <span class="n">orcaGenerator</span><span class="p">(</span><span class="n">scratch_path</span><span class="o">=</span><span class="n">directory1</span><span class="p">,</span><span class="n">nproc</span><span class="o">=</span><span class="n">QM_config</span><span class="p">[</span><span class="s1">&#39;ncpu&#39;</span><span class="p">],</span><span class="n">orca_env_file</span><span class="o">=</span><span class="n">QM_config</span><span class="p">[</span><span class="s1">&#39;orca_env_file&#39;</span><span class="p">],</span><span class="n">orca_command</span><span class="o">=</span><span class="n">QM_config</span><span class="p">[</span><span class="s1">&#39;QM_run_command&#39;</span><span class="p">],</span><span class="n">orcainput</span><span class="o">=</span><span class="n">QM_config</span><span class="p">[</span><span class="s1">&#39;orcasimpleinput&#39;</span><span class="p">],</span><span class="n">orcablocks</span><span class="o">=</span><span class="n">QM_config</span><span class="p">[</span><span class="s1">&#39;orcablocks&#39;</span><span class="p">])</span>
+    
+    <span class="n">properties1</span> <span class="o">=</span> <span class="n">orca1</span><span class="o">.</span><span class="n">single_point</span><span class="p">(</span><span class="n">molecule</span><span class="o">=</span><span class="n">atoms</span><span class="p">,</span><span class="n">properties</span><span class="o">=</span><span class="n">properties</span><span class="p">)</span>
+    
+    <span class="n">orca2</span> <span class="o">=</span> <span class="n">orcaGenerator</span><span class="p">(</span><span class="n">scratch_path</span><span class="o">=</span><span class="n">directory2</span><span class="p">,</span><span class="n">nproc</span><span class="o">=</span><span class="n">QM_config</span><span class="p">[</span><span class="s1">&#39;ncpu&#39;</span><span class="p">],</span><span class="n">orca_env_file</span><span class="o">=</span><span class="n">QM_config</span><span class="p">[</span><span class="s1">&#39;orca_env_file&#39;</span><span class="p">],</span><span class="n">orca_command</span><span class="o">=</span><span class="n">QM_config</span><span class="p">[</span><span class="s1">&#39;QM_run_command&#39;</span><span class="p">],</span><span class="n">orcainput</span><span class="o">=</span><span class="n">QM_config</span><span class="p">[</span><span class="s1">&#39;orcasimpleinput&#39;</span><span class="p">],</span><span class="n">orcablocks</span><span class="o">=</span><span class="n">QM_config</span><span class="p">[</span><span class="s1">&#39;orcablocks&#39;</span><span class="p">])</span>
+    
+    <span class="n">properties2</span> <span class="o">=</span>  <span class="n">orca2</span><span class="o">.</span><span class="n">single_point</span><span class="p">(</span><span class="n">molecule</span><span class="o">=</span><span class="n">atoms</span><span class="p">,</span><span class="n">properties</span><span class="o">=</span><span class="n">properties</span><span class="p">)</span>
+    
+    <span class="n">maxEdev</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">properties1</span><span class="p">[</span><span class="s1">&#39;energy&#39;</span><span class="p">]</span> <span class="o">-</span> <span class="n">properties2</span><span class="p">[</span><span class="s1">&#39;energy&#39;</span><span class="p">])</span>
+    <span class="n">maxFdev</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">properties1</span><span class="p">[</span><span class="s1">&#39;forces&#39;</span><span class="p">]</span><span class="o">-</span><span class="n">properties2</span><span class="p">[</span><span class="s1">&#39;forces&#39;</span><span class="p">]))</span>
+    
+    <span class="n">properties</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="n">properties1</span><span class="p">):</span>
+        <span class="n">properties</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">([</span><span class="n">properties1</span><span class="p">[</span><span class="n">key</span><span class="p">],</span><span class="n">properties2</span><span class="p">[</span><span class="n">key</span><span class="p">]],</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    
+    <span class="k">if</span> <span class="p">(</span><span class="n">maxEdev</span> <span class="o">&lt;</span> <span class="n">QM_config</span><span class="p">[</span><span class="s1">&#39;Ediff&#39;</span><span class="p">])</span> <span class="ow">and</span> <span class="p">(</span><span class="n">maxFdev</span> <span class="o">&lt;</span> <span class="n">QM_config</span><span class="p">[</span><span class="s1">&#39;Fdiff&#39;</span><span class="p">])</span> <span class="ow">and</span> <span class="n">properties1</span><span class="p">[</span><span class="s1">&#39;converged&#39;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">properties2</span><span class="p">[</span><span class="s1">&#39;converged&#39;</span><span class="p">]:</span>
+        <span class="n">properties</span><span class="p">[</span><span class="s1">&#39;converged&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">properties</span><span class="p">[</span><span class="s1">&#39;converged&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span>
+    
+    <span class="n">return_system</span> <span class="o">=</span> <span class="p">[</span><span class="n">molecule_object</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span><span class="n">molecule_object</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span><span class="n">properties</span><span class="p">]</span>
+    <span class="n">system_checker</span><span class="p">(</span><span class="n">return_system</span><span class="p">)</span>
+    
+    <span class="k">return</span><span class="p">(</span><span class="n">return_system</span><span class="p">)</span>
+    
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, B. Nebgen, V. Grizzi, N. Fedik, N. Lubbers, Y.-W. Li, S. Tretiak.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

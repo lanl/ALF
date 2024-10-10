@@ -1,0 +1,360 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>alframework.samplers.builders &mdash; ALF 0.0.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=d45e8c67"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            ALF
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../home.html">Home</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../modules.html">alframework</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">ALF</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">alframework.samplers.builders</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for alframework.samplers.builders</h1><div class="highlight"><pre>
+<span></span><span class="c1"># The builder code goes here</span>
+<span class="kn">import</span> <span class="nn">glob</span>
+<span class="kn">import</span> <span class="nn">random</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">from</span> <span class="nn">parsl</span> <span class="kn">import</span> <span class="n">python_app</span><span class="p">,</span> <span class="n">bash_app</span>
+<span class="kn">import</span> <span class="nn">json</span>
+
+<span class="kn">import</span> <span class="nn">ase</span>
+<span class="kn">from</span> <span class="nn">ase</span> <span class="kn">import</span> <span class="n">Atoms</span>
+<span class="kn">from</span> <span class="nn">ase</span> <span class="kn">import</span> <span class="n">neighborlist</span>
+<span class="kn">from</span> <span class="nn">ase.geometry.cell</span> <span class="kn">import</span> <span class="n">complete_cell</span>
+<span class="kn">from</span> <span class="nn">ase.io</span> <span class="kn">import</span> <span class="n">cfg</span>
+<span class="kn">from</span> <span class="nn">ase.io</span> <span class="kn">import</span> <span class="n">read</span><span class="p">,</span> <span class="n">write</span>
+
+<span class="kn">from</span> <span class="nn">alframework.tools.tools</span> <span class="kn">import</span> <span class="n">random_rotation_matrix</span>
+<span class="kn">from</span> <span class="nn">alframework.tools.tools</span> <span class="kn">import</span> <span class="n">system_checker</span>
+<span class="kn">from</span> <span class="nn">alframework.tools.tools</span> <span class="kn">import</span> <span class="n">build_input_dict</span>
+<span class="kn">import</span> <span class="nn">random</span>
+<span class="kn">from</span> <span class="nn">copy</span> <span class="kn">import</span> <span class="n">deepcopy</span>
+
+<span class="c1">#def cfg_loader(model_string,start_molecule_index,cfg_directory,number=1):</span>
+<span class="c1">#    #TODO: add assertion that cfg_directory exists and has cfg files</span>
+<span class="c1">#    #TODO: Add assertion that number is a number</span>
+<span class="c1">#    cfg_list = glob.glob(cfg_directory+&#39;/*.cfg&#39;)</span>
+<span class="c1">#    atom_list = [[&#39;mol-{:s}-{:010d}&#39;.format(model_string,start_molecule_index+i),cfg.read_cfg(random.choice(cfg_list))] for i in range(number)]</span>
+<span class="c1">#    return(atom_list)</span>
+    
+<span class="nd">@python_app</span><span class="p">(</span><span class="n">executors</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;alf_sampler_executor&#39;</span><span class="p">])</span>
+<span class="k">def</span> <span class="nf">simple_cfg_loader_task</span><span class="p">(</span><span class="n">moleculeid</span><span class="p">,</span><span class="n">molecule_library_dir</span><span class="p">,</span><span class="n">shake</span><span class="o">=</span><span class="mf">0.05</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    builder_params:</span>
+<span class="sd">    molecule_library_dir: path to molecule library</span>
+<span class="sd">    shake: amount to displace each atom</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">cfg_list</span> <span class="o">=</span> <span class="n">glob</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="n">molecule_library_dir</span><span class="o">+</span><span class="s1">&#39;/*.cfg&#39;</span><span class="p">)</span>
+    <span class="n">cfg_choice</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">cfg_list</span><span class="p">)</span>
+    <span class="n">atom_object</span> <span class="o">=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">read_cfg</span><span class="p">(</span><span class="n">cfg_choice</span><span class="p">)</span>
+    <span class="n">atom_object</span><span class="o">.</span><span class="n">rattle</span><span class="p">(</span><span class="n">shake</span><span class="p">,</span><span class="n">seed</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mf">1e8</span><span class="p">))</span>
+    <span class="k">return</span><span class="p">([{</span><span class="s1">&#39;moleculeid&#39;</span><span class="p">:</span><span class="n">moleculeid</span><span class="p">,</span><span class="s1">&#39;molecule_library_file&#39;</span><span class="p">:</span><span class="n">cfg_choice</span><span class="p">},</span><span class="n">atom_object</span><span class="p">,{}])</span>
+    
+<div class="viewcode-block" id="readMolFiles">
+<a class="viewcode-back" href="../../../alframework.samplers.html#alframework.samplers.builders.readMolFiles">[docs]</a>
+<span class="k">def</span> <span class="nf">readMolFiles</span><span class="p">(</span><span class="n">molecule_sample_path</span><span class="p">):</span>
+    <span class="n">mol_files</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">listdir</span><span class="p">(</span><span class="n">molecule_sample_path</span><span class="p">)</span>
+    <span class="n">mols</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">moldict</span> <span class="o">=</span> <span class="p">{}</span>
+    
+    <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">mol_files</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">moldict</span><span class="p">[</span><span class="n">f</span><span class="p">]</span> <span class="o">=</span> <span class="n">read</span><span class="p">(</span><span class="n">molecule_sample_path</span> <span class="o">+</span> <span class="n">f</span><span class="p">,</span><span class="n">parallel</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+            <span class="n">mols</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">read</span><span class="p">(</span><span class="n">molecule_sample_path</span> <span class="o">+</span> <span class="n">f</span><span class="p">,</span><span class="n">parallel</span><span class="o">=</span><span class="kc">False</span><span class="p">))</span>
+        <span class="k">except</span><span class="p">:</span> 
+            <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Error loading file:&#39;</span><span class="p">,</span><span class="n">molecule_sample_path</span> <span class="o">+</span> <span class="n">f</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Skipping...&#39;</span><span class="p">)</span>
+            <span class="k">continue</span>
+    <span class="k">return</span><span class="p">(</span><span class="n">moldict</span><span class="p">,</span><span class="n">mols</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="condensed_phase_builder">
+<a class="viewcode-back" href="../../../alframework.samplers.html#alframework.samplers.builders.condensed_phase_builder">[docs]</a>
+<span class="k">def</span> <span class="nf">condensed_phase_builder</span><span class="p">(</span><span class="n">start_system</span><span class="p">,</span> <span class="n">molecule_library</span><span class="p">,</span> <span class="n">solute_molecules</span><span class="o">=</span><span class="p">[],</span> <span class="n">solvent_molecules</span><span class="o">=</span><span class="p">[],</span> <span class="n">density</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">min_dist</span><span class="o">=</span><span class="mf">1.2</span><span class="p">,</span> <span class="n">max_patience</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span> <span class="n">max_atoms</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">center_first_molecule</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">shake</span> <span class="o">=</span> <span class="mf">0.05</span><span class="p">,</span> <span class="n">print_attempt</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+    <span class="c1">#ensure system adhears to formating convention</span>
+    <span class="n">system_checker</span><span class="p">(</span><span class="n">start_system</span><span class="p">)</span>
+    <span class="n">curr_sys</span> <span class="o">=</span> <span class="n">start_system</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+    <span class="c1">#Make sure we know what all of the molecules are</span>
+    <span class="c1">#shake is amount of random perturbation added to each molecule x y and z independantly</span>
+    <span class="c1">#center_first_molecule: First molecule will be placed with no rotation or translation</span>
+    <span class="k">for</span> <span class="n">curN</span> <span class="ow">in</span> <span class="n">solute_molecules</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">curN</span> <span class="ow">not</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="n">molecule_library</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;Solute </span><span class="si">{:s}</span><span class="s2"> not in molecule_library.&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">curN</span><span class="p">))</span>
+    <span class="k">for</span> <span class="n">curN</span> <span class="ow">in</span> <span class="n">solvent_molecules</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">curN</span> <span class="ow">not</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="n">molecule_library</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;Solvent </span><span class="si">{:s}</span><span class="s2"> not in molecule_library.&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">curN</span><span class="p">))</span>
+    
+    <span class="c1">#solvent_molecules can be a dictionary, where the lookup value is a relative probability of selecting that molecule</span>
+    
+    <span class="n">solvent_weights</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">solvent_molecules</span><span class="p">))</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">solvent_molecules</span><span class="p">,</span><span class="nb">dict</span><span class="p">):</span>
+        <span class="n">solvent_list</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">solvent_molecules</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">ind</span><span class="p">,</span><span class="n">solvent</span> <span class="ow">in</span>  <span class="nb">enumerate</span><span class="p">(</span><span class="n">solvent_list</span><span class="p">):</span>
+            <span class="n">solvent_weights</span><span class="p">[</span><span class="n">ind</span><span class="p">]</span> <span class="o">=</span> <span class="n">solvent_molecules</span><span class="p">[</span><span class="n">solvent</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">solvent_list</span> <span class="o">=</span> <span class="n">solvent_molecules</span>
+    
+    <span class="n">actual_dens</span> <span class="o">=</span> <span class="mf">0.0</span>
+    <span class="n">attempts_total</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">attempts_lsucc</span> <span class="o">=</span> <span class="mi">0</span>
+    
+    <span class="k">while</span> <span class="n">actual_dens</span> <span class="o">&lt;</span> <span class="n">density</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">solute_molecules</span><span class="p">)</span><span class="o">&gt;</span><span class="mi">1</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span><span class="p">(</span><span class="n">max_atoms</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">):</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">curr_sys</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">max_atoms</span><span class="p">:</span>
+                <span class="k">break</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">solute_molecules</span><span class="p">)</span><span class="o">&gt;</span><span class="mi">0</span><span class="p">:</span>
+            <span class="n">new_mol_name</span> <span class="o">=</span> <span class="n">solute_molecules</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+            <span class="n">new_mol_solute</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">solvent_list</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">break</span>
+            <span class="n">new_mol_name</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">choices</span><span class="p">(</span><span class="n">solvent_list</span><span class="p">,</span><span class="n">weights</span><span class="o">=</span><span class="n">solvent_weights</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">new_mol_solute</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="n">new_mol</span> <span class="o">=</span> <span class="n">molecule_library</span><span class="p">[</span><span class="n">new_mol_name</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        
+        <span class="k">if</span> <span class="n">center_first_molecule</span><span class="p">:</span>
+            <span class="n">center_first_molecule</span><span class="o">=</span><span class="kc">False</span>
+            <span class="n">new_mol</span><span class="o">.</span><span class="n">set_positions</span><span class="p">(</span><span class="n">new_mol</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()</span><span class="o">-</span><span class="n">new_mol</span><span class="o">.</span><span class="n">get_center_of_mass</span><span class="p">()</span><span class="o">+</span><span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">complete_cell</span><span class="p">(</span><span class="n">curr_sys</span><span class="o">.</span><span class="n">get_cell</span><span class="p">()))[</span><span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">,:]</span><span class="o">/</span><span class="mi">2</span><span class="o">+</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="o">-</span><span class="n">shake</span><span class="p">,</span><span class="n">shake</span><span class="p">,</span><span class="n">size</span><span class="o">=</span><span class="n">new_mol</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()</span><span class="o">.</span><span class="n">shape</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">T</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">complete_cell</span><span class="p">(</span><span class="n">curr_sys</span><span class="o">.</span><span class="n">get_cell</span><span class="p">()),</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mi">3</span><span class="p">))</span>
+            <span class="n">M</span> <span class="o">=</span> <span class="n">random_rotation_matrix</span><span class="p">()</span> <span class="c1"># Rotation</span>
+            <span class="n">new_mol</span><span class="o">.</span><span class="n">set_positions</span><span class="p">(</span><span class="n">new_mol</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()</span><span class="o">-</span><span class="n">new_mol</span><span class="o">.</span><span class="n">get_center_of_mass</span><span class="p">())</span>
+            <span class="n">xyz</span> <span class="o">=</span> <span class="n">new_mol</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()</span><span class="o">+</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="o">-</span><span class="n">shake</span><span class="p">,</span><span class="n">shake</span><span class="p">,</span><span class="n">size</span><span class="o">=</span><span class="n">new_mol</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+            <span class="n">new_mol</span><span class="o">.</span><span class="n">set_positions</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">xyz</span><span class="p">,</span> <span class="n">M</span><span class="o">.</span><span class="n">T</span><span class="p">)</span><span class="o">+</span><span class="n">T</span><span class="p">)</span>
+        
+        <span class="n">prop_sys</span> <span class="o">=</span> <span class="n">Atoms</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">curr_sys</span><span class="o">.</span><span class="n">get_chemical_symbols</span><span class="p">(),</span><span class="n">new_mol</span><span class="o">.</span><span class="n">get_chemical_symbols</span><span class="p">()]),</span>
+                             <span class="n">positions</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">curr_sys</span><span class="o">.</span><span class="n">get_positions</span><span class="p">(),</span><span class="n">new_mol</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()]),</span>
+                             <span class="n">cell</span> <span class="o">=</span> <span class="n">curr_sys</span><span class="o">.</span><span class="n">get_cell</span><span class="p">(),</span>
+                             <span class="n">pbc</span> <span class="o">=</span> <span class="n">curr_sys</span><span class="o">.</span><span class="n">get_pbc</span><span class="p">())</span>
+        
+        <span class="c1">#Neighborlist is set up so that If there are any neighbors, we have close contacts</span>
+        <span class="n">nl</span> <span class="o">=</span> <span class="n">neighborlist</span><span class="o">.</span><span class="n">NeighborList</span><span class="p">(</span><span class="n">min_dist</span><span class="p">,</span> <span class="n">skin</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">self_interaction</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">bothways</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span><span class="n">primitive</span><span class="o">=</span><span class="n">ase</span><span class="o">.</span><span class="n">neighborlist</span><span class="o">.</span><span class="n">NewPrimitiveNeighborList</span><span class="p">)</span>
+        <span class="n">nl</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">prop_sys</span><span class="p">)</span>
+        <span class="n">failed</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="c1">#This should only wrap if pbc is True</span>
+        <span class="c1">#The goal of this code is to determine close contacts, but only between the new frament and existing atoms</span>
+        <span class="n">xyz</span> <span class="o">=</span> <span class="n">prop_sys</span><span class="o">.</span><span class="n">get_positions</span><span class="p">(</span><span class="n">wrap</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">curr_sys</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="n">prop_sys</span><span class="p">)):</span>
+            <span class="n">indices</span><span class="p">,</span> <span class="n">offsets</span> <span class="o">=</span> <span class="n">nl</span><span class="o">.</span><span class="n">get_neighbors</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="n">indices</span><span class="p">[</span><span class="n">indices</span><span class="o">&lt;</span><span class="nb">len</span><span class="p">(</span><span class="n">curr_sys</span><span class="p">)]:</span>
+                <span class="c1">#This is a clumsy way of fixing pbcs and basically auto-wraps</span>
+                <span class="n">dij</span> <span class="o">=</span> <span class="n">prop_sys</span><span class="o">.</span><span class="n">get_distance</span><span class="p">(</span><span class="n">i</span><span class="p">,</span><span class="n">j</span><span class="p">,</span><span class="n">mic</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+                <span class="c1">#dij = np.linalg.norm(xyz[i] - (xyz[j] + np.dot(off, prop_sys.get_cell())))</span>
+                <span class="k">if</span> <span class="n">dij</span> <span class="o">&lt;</span> <span class="n">min_dist</span><span class="p">:</span>
+                    <span class="n">failed</span> <span class="o">=</span> <span class="kc">True</span>
+                    <span class="k">break</span>
+            <span class="k">if</span> <span class="n">failed</span> <span class="ow">is</span> <span class="kc">True</span><span class="p">:</span>
+                <span class="k">break</span>
+        
+        <span class="n">attempts_total</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="n">attempts_lsucc</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">if</span> <span class="n">attempts_lsucc</span> <span class="o">&gt;</span> <span class="n">max_patience</span><span class="p">:</span>
+           <span class="k">break</span>
+        
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">failed</span><span class="p">:</span>
+            <span class="n">attempts_lsucc</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="n">curr_sys</span> <span class="o">=</span> <span class="n">prop_sys</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+            <span class="n">actual_dens</span> <span class="o">=</span> <span class="p">(</span><span class="mf">1.66054e-24</span><span class="p">)</span><span class="o">*</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">curr_sys</span><span class="o">.</span><span class="n">get_masses</span><span class="p">())</span><span class="o">/</span><span class="p">((</span><span class="mf">1.0e-24</span><span class="p">)</span><span class="o">*</span><span class="n">curr_sys</span><span class="o">.</span><span class="n">get_volume</span><span class="p">())</span> <span class="c1"># units of grams per cm^3</span>
+        <span class="k">elif</span> <span class="n">new_mol_solute</span><span class="p">:</span>
+            <span class="c1">#If the new molecule failed, and we are attempting to add solute (definite molecules) re add to list to try again. </span>
+            <span class="n">solute_molecules</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">new_mol_name</span><span class="p">)</span>
+    <span class="n">start_system</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s1">&#39;target_density&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">density</span>
+    <span class="n">start_system</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s1">&#39;actual_density&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">actual_dens</span>
+    <span class="n">start_system</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">curr_sys</span>
+    
+    <span class="k">return</span><span class="p">(</span><span class="n">start_system</span><span class="p">)</span></div>
+
+
+<span class="nd">@python_app</span><span class="p">(</span><span class="n">executors</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;alf_sampler_executor&#39;</span><span class="p">])</span>
+<span class="k">def</span> <span class="nf">simple_condensed_phase_builder_task</span><span class="p">(</span><span class="n">moleculeid</span><span class="p">,</span><span class="n">builder_config</span><span class="p">,</span><span class="n">molecule_library_dir</span><span class="p">,</span><span class="n">cell_range</span><span class="p">,</span><span class="n">solute_molecule_options</span><span class="p">,</span><span class="n">Rrange</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Elements in  builder parameters</span>
+<span class="sd">        molecule_library_path: path to library of molecular fragments to read in</span>
+<span class="sd">        solute_molecule_options: listof lists detailing sets of solutes</span>
+<span class="sd">        solvent_molecules: list or dictionary of solvent molecules. If dictionary, corresponding value is relative weight of solvent</span>
+<span class="sd">        cell_range: 3X2 list with x, y, and z ranges for cell size </span>
+<span class="sd">        Rrange: density range</span>
+<span class="sd">        min_dist: minimum contact distance between fragments</span>
+<span class="sd">        max_patience: How many attempts to  make before giving up on build</span>
+<span class="sd">        center_first_molecule: Boolian,  if true first solute is centered in box and not rotated (useful for large molecules)</span>
+<span class="sd">        shake: Distance to displace initial configurations</span>
+<span class="sd">        print_attempt: Boolian,controls printing (set to False)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+<span class="c1">#    import glob</span>
+<span class="c1">#    import random</span>
+<span class="c1">#    import os</span>
+<span class="c1">#    import numpy as np</span>
+<span class="c1">#    import json</span>
+<span class="c1">#    </span>
+<span class="c1">#    import ase</span>
+<span class="c1">#    from ase import Atoms</span>
+<span class="c1">#    from ase import neighborlist</span>
+<span class="c1">#    from ase.geometry.cell import complete_cell</span>
+<span class="c1">#    from ase.io import read, write</span>
+<span class="c1">#    </span>
+<span class="c1">#    from alframework.tools.tools import random_rotation_matrix</span>
+<span class="c1">#    import random</span>
+<span class="c1">#    from copy import deepcopy</span>
+    
+    <span class="n">cell_shape</span> <span class="o">=</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">dim</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span><span class="n">dim</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="k">for</span> <span class="n">dim</span> <span class="ow">in</span> <span class="n">cell_range</span><span class="p">]</span>
+    
+    <span class="n">empty_system</span> <span class="o">=</span> <span class="p">[{</span><span class="s1">&#39;moleculeid&#39;</span><span class="p">:</span><span class="n">moleculeid</span><span class="p">},</span><span class="n">Atoms</span><span class="p">(</span><span class="n">cell</span><span class="o">=</span><span class="n">cell_shape</span><span class="p">),{}]</span>
+    
+    <span class="n">molecule_library</span><span class="p">,</span><span class="n">mols</span> <span class="o">=</span> <span class="n">readMolFiles</span><span class="p">(</span><span class="n">molecule_library_dir</span><span class="p">)</span>
+    
+    <span class="n">solute_molecules</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">solute_molecule_options</span><span class="p">)</span>
+
+    <span class="n">feed_parameters</span> <span class="o">=</span> <span class="p">{}</span>
+    
+    <span class="n">feed_parameters</span><span class="p">[</span><span class="s1">&#39;solute_molecules&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">solute_molecules</span>
+    <span class="n">feed_parameters</span><span class="p">[</span><span class="s1">&#39;density&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">Rrange</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span><span class="n">Rrange</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+    
+    <span class="n">input_parameters</span> <span class="o">=</span> <span class="n">build_input_dict</span><span class="p">(</span><span class="n">condensed_phase_builder</span><span class="p">,[{</span><span class="s2">&quot;start_system&quot;</span><span class="p">:</span><span class="n">empty_system</span><span class="p">,</span><span class="s2">&quot;molecule_library&quot;</span><span class="p">:</span><span class="n">molecule_library</span><span class="p">},</span><span class="n">feed_parameters</span><span class="p">,</span><span class="n">builder_config</span><span class="p">])</span>
+    <span class="n">system</span> <span class="o">=</span> <span class="n">condensed_phase_builder</span><span class="p">(</span><span class="o">**</span><span class="n">input_parameters</span><span class="p">)</span>
+    <span class="n">system_checker</span><span class="p">(</span><span class="n">system</span><span class="p">)</span>
+    <span class="k">return</span><span class="p">(</span><span class="n">system</span><span class="p">)</span>
+    
+<span class="nd">@python_app</span><span class="p">(</span><span class="n">executors</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;alf_sampler_executor&#39;</span><span class="p">])</span>
+<span class="k">def</span> <span class="nf">simple_multi_condensed_phase_builder_task</span><span class="p">(</span><span class="n">moleculeids</span><span class="p">,</span><span class="n">builder_config</span><span class="p">,</span><span class="n">molecule_library_dir</span><span class="p">,</span><span class="n">cell_range</span><span class="p">,</span><span class="n">solute_molecule_options</span><span class="p">,</span><span class="n">Rrange</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Elements in  builder parameters</span>
+<span class="sd">        molecule_library_path: path to library of molecular fragments to read in</span>
+<span class="sd">        solute_molecule_options: listof lists detailing sets of solutes</span>
+<span class="sd">        solvent_molecules: list or dictionary of solvent molecules. If dictionary, corresponding value is relative weight of solvent</span>
+<span class="sd">        cell_range: 3X2 list with x, y, and z ranges for cell size </span>
+<span class="sd">        Rrange: density range</span>
+<span class="sd">        min_dist: minimum contact distance between fragments</span>
+<span class="sd">        max_patience: How many attempts to  make before giving up on build</span>
+<span class="sd">        center_first_molecule: Boolian,  if true first solute is centered in box and not rotated (useful for large molecules)</span>
+<span class="sd">        shake: Distance to displace initial configurations</span>
+<span class="sd">        print_attempt: Boolian,controls printing (set to False)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+<span class="c1">#    import glob</span>
+<span class="c1">#    import random</span>
+<span class="c1">#    import os</span>
+<span class="c1">#    import numpy as np</span>
+<span class="c1">#    import json</span>
+<span class="c1">#    </span>
+<span class="c1">#    import ase</span>
+<span class="c1">#    from ase import Atoms</span>
+<span class="c1">#    from ase import neighborlist</span>
+<span class="c1">#    from ase.geometry.cell import complete_cell</span>
+<span class="c1">#    from ase.io import read, write</span>
+<span class="c1">#    </span>
+<span class="c1">#    from alframework.tools.tools import random_rotation_matrix</span>
+<span class="c1">#    import random</span>
+<span class="c1">#    from copy import deepcopy</span>
+        
+    <span class="n">molecule_library</span><span class="p">,</span><span class="n">mols</span> <span class="o">=</span> <span class="n">readMolFiles</span><span class="p">(</span><span class="n">molecule_library_dir</span><span class="p">)</span>
+    <span class="n">system_list</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">moleculeid</span> <span class="ow">in</span> <span class="n">moleculeids</span><span class="p">:</span>
+        
+        <span class="n">cell_shape</span> <span class="o">=</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">dim</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span><span class="n">dim</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="k">for</span> <span class="n">dim</span> <span class="ow">in</span> <span class="n">cell_range</span><span class="p">]</span>
+        
+        <span class="n">empty_system</span> <span class="o">=</span> <span class="p">[{</span><span class="s1">&#39;moleculeid&#39;</span><span class="p">:</span><span class="n">moleculeid</span><span class="p">},</span><span class="n">Atoms</span><span class="p">(</span><span class="n">cell</span><span class="o">=</span><span class="n">cell_shape</span><span class="p">),{}]</span>
+        
+        <span class="n">feed_parameters</span> <span class="o">=</span> <span class="p">{}</span>
+        
+        <span class="n">feed_parameters</span><span class="p">[</span><span class="s1">&#39;solute_molecules&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">solute_molecule_options</span><span class="p">)</span>
+        <span class="n">feed_parameters</span><span class="p">[</span><span class="s1">&#39;density&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">Rrange</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span><span class="n">Rrange</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+        
+        <span class="n">input_parameters</span> <span class="o">=</span> <span class="n">build_input_dict</span><span class="p">(</span><span class="n">condensed_phase_builder</span><span class="p">,[{</span><span class="s2">&quot;start_system&quot;</span><span class="p">:</span><span class="n">empty_system</span><span class="p">,</span><span class="s2">&quot;molecule_library&quot;</span><span class="p">:</span><span class="n">molecule_library</span><span class="p">},</span><span class="n">feed_parameters</span><span class="p">,</span><span class="n">builder_config</span><span class="p">])</span>
+        <span class="n">system</span> <span class="o">=</span> <span class="n">condensed_phase_builder</span><span class="p">(</span><span class="o">**</span><span class="n">input_parameters</span><span class="p">)</span>
+        <span class="n">system_checker</span><span class="p">(</span><span class="n">system</span><span class="p">)</span>
+        <span class="n">system_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">system</span><span class="p">)</span>
+    
+    <span class="k">return</span><span class="p">(</span><span class="n">system_list</span><span class="p">)</span>
+        
+   
+   
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, B. Nebgen, V. Grizzi, N. Fedik, N. Lubbers, Y.-W. Li, S. Tretiak.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

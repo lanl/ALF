@@ -95,11 +95,299 @@
 <section id="alframework-tools-plotting-module">
 <h2>alframework.tools.plotting module<a class="headerlink" href="#alframework-tools-plotting-module" title="Link to this heading"></a></h2>
 </section>
-<section id="alframework-tools-pyanitools-module">
-<h2>alframework.tools.pyanitools module<a class="headerlink" href="#alframework-tools-pyanitools-module" title="Link to this heading"></a></h2>
+<section id="module-alframework.tools.pyanitools">
+<span id="alframework-tools-pyanitools-module"></span><h2>alframework.tools.pyanitools module<a class="headerlink" href="#module-alframework.tools.pyanitools" title="Link to this heading"></a></h2>
+<dl class="py data">
+<dt class="sig sig-object py" id="alframework.tools.pyanitools.PY_VERSION">
+<span class="sig-prename descclassname"><span class="pre">alframework.tools.pyanitools.</span></span><span class="sig-name descname"><span class="pre">PY_VERSION</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#alframework.tools.pyanitools.PY_VERSION" title="Link to this definition"></a></dt>
+<dd><p>ANI data packer class
+Class for storing data supplied as a dictionary.</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="alframework.tools.pyanitools.anidataloader">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">alframework.tools.pyanitools.</span></span><span class="sig-name descname"><span class="pre">anidataloader</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">store_file</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/tools/pyanitools.html#anidataloader"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.pyanitools.anidataloader" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Contructor</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.tools.pyanitools.anidataloader.cleanup">
+<span class="sig-name descname"><span class="pre">cleanup</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/tools/pyanitools.html#anidataloader.cleanup"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.pyanitools.anidataloader.cleanup" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.tools.pyanitools.anidataloader.get_data">
+<span class="sig-name descname"><span class="pre">get_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prefix</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/tools/pyanitools.html#anidataloader.get_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.pyanitools.anidataloader.get_data" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.tools.pyanitools.anidataloader.get_group_list">
+<span class="sig-name descname"><span class="pre">get_group_list</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/tools/pyanitools.html#anidataloader.get_group_list"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.pyanitools.anidataloader.get_group_list" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.tools.pyanitools.anidataloader.group_size">
+<span class="sig-name descname"><span class="pre">group_size</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/tools/pyanitools.html#anidataloader.group_size"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.pyanitools.anidataloader.group_size" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.tools.pyanitools.anidataloader.h5py_dataset_iterator">
+<span class="sig-name descname"><span class="pre">h5py_dataset_iterator</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">g</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prefix</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/tools/pyanitools.html#anidataloader.h5py_dataset_iterator"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.pyanitools.anidataloader.h5py_dataset_iterator" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.tools.pyanitools.anidataloader.iter_group">
+<span class="sig-name descname"><span class="pre">iter_group</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">g</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/tools/pyanitools.html#anidataloader.iter_group"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.pyanitools.anidataloader.iter_group" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.tools.pyanitools.anidataloader.size">
+<span class="sig-name descname"><span class="pre">size</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/tools/pyanitools.html#anidataloader.size"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.pyanitools.anidataloader.size" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="alframework.tools.pyanitools.datapacker">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">alframework.tools.pyanitools.</span></span><span class="sig-name descname"><span class="pre">datapacker</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">store_file</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mode</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'w-'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">complib</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'gzip'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">complevel</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">6</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/tools/pyanitools.html#datapacker"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.pyanitools.datapacker" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.tools.pyanitools.datapacker.cleanup">
+<span class="sig-name descname"><span class="pre">cleanup</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/tools/pyanitools.html#datapacker.cleanup"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.pyanitools.datapacker.cleanup" title="Link to this definition"></a></dt>
+<dd><p>Wrapper to close HDF5 file</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.tools.pyanitools.datapacker.store_data">
+<span class="sig-name descname"><span class="pre">store_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">store_loc</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/tools/pyanitools.html#datapacker.store_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.pyanitools.datapacker.store_data" title="Link to this definition"></a></dt>
+<dd><p>Put arrays to store</p>
+</dd></dl>
+
+</dd></dl>
+
 </section>
-<section id="alframework-tools-tools-module">
-<h2>alframework.tools.tools module<a class="headerlink" href="#alframework-tools-tools-module" title="Link to this heading"></a></h2>
+<section id="module-alframework.tools.tools">
+<span id="alframework-tools-tools-module"></span><h2>alframework.tools.tools module<a class="headerlink" href="#module-alframework.tools.tools" title="Link to this heading"></a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.tools.tools.annealing_schedule">
+<span class="sig-prename descclassname"><span class="pre">alframework.tools.tools.</span></span><span class="sig-name descname"><span class="pre">annealing_schedule</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">t</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tmax</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">amp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">per</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">srt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">end</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/tools/tools.html#annealing_schedule"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.annealing_schedule" title="Link to this definition"></a></dt>
+<dd><p>_summary_
+#TODO: fill docstring
+:type t: 
+:param t: _description_
+:type t: _type_
+:type tmax: 
+:param tmax: _description_
+:type tmax: _type_
+:type amp: 
+:param amp: _description_
+:type amp: _type_
+:type per: 
+:param per: _description_
+:type per: _type_
+:type srt: 
+:param srt: _description_
+:type srt: _type_
+:type end: 
+:param end: _description_
+:type end: _type_</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>_description_</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>_type_</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.tools.tools.build_ANI_info">
+<span class="sig-prename descclassname"><span class="pre">alframework.tools.tools.</span></span><span class="sig-name descname"><span class="pre">build_ANI_info</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">directory</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/tools/tools.html#build_ANI_info"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.build_ANI_info" title="Link to this definition"></a></dt>
+<dd><p>_summary_
+#TODO: fill docstring
+:type directory: 
+:param directory: _description_
+:type directory: _type_</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>_description_</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>_type_</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.tools.tools.build_input_dict">
+<span class="sig-prename descclassname"><span class="pre">alframework.tools.tools.</span></span><span class="sig-name descname"><span class="pre">build_input_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">function</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dictionary_list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_local_space</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">raise_on_fail</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/tools/tools.html#build_input_dict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.build_input_dict" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.tools.tools.compute_empirical_formula">
+<span class="sig-prename descclassname"><span class="pre">alframework.tools.tools.</span></span><span class="sig-name descname"><span class="pre">compute_empirical_formula</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">S</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/tools/tools.html#compute_empirical_formula"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.compute_empirical_formula" title="Link to this definition"></a></dt>
+<dd><p>_summary_
+#TODO: fill docstring
+:type S: 
+:param S: _description_
+:type S: _type_</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>_description_</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>_type_</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.tools.tools.find_empty_directory">
+<span class="sig-prename descclassname"><span class="pre">alframework.tools.tools.</span></span><span class="sig-name descname"><span class="pre">find_empty_directory</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pattern</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">limit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">9999</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/tools/tools.html#find_empty_directory"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.find_empty_directory" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.tools.tools.load_config_file">
+<span class="sig-prename descclassname"><span class="pre">alframework.tools.tools.</span></span><span class="sig-name descname"><span class="pre">load_config_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">master_directory</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/tools/tools.html#load_config_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.load_config_file" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.tools.tools.load_module_from_config">
+<span class="sig-prename descclassname"><span class="pre">alframework.tools.tools.</span></span><span class="sig-name descname"><span class="pre">load_module_from_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">module_field</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/tools/tools.html#load_module_from_config"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.load_module_from_config" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.tools.tools.load_module_from_string">
+<span class="sig-prename descclassname"><span class="pre">alframework.tools.tools.</span></span><span class="sig-name descname"><span class="pre">load_module_from_string</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">module_field</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/tools/tools.html#load_module_from_string"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.load_module_from_string" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="alframework.tools.tools.parsl_task_queue">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">alframework.tools.tools.</span></span><span class="sig-name descname"><span class="pre">parsl_task_queue</span></span><a class="reference internal" href="_modules/alframework/tools/tools.html#parsl_task_queue"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.parsl_task_queue" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.tools.tools.parsl_task_queue.add_task">
+<span class="sig-name descname"><span class="pre">add_task</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">task</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/tools/tools.html#parsl_task_queue.add_task"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.parsl_task_queue.add_task" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.tools.tools.parsl_task_queue.get_completed_number">
+<span class="sig-name descname"><span class="pre">get_completed_number</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/tools/tools.html#parsl_task_queue.get_completed_number"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.parsl_task_queue.get_completed_number" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.tools.tools.parsl_task_queue.get_number">
+<span class="sig-name descname"><span class="pre">get_number</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/tools/tools.html#parsl_task_queue.get_number"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.parsl_task_queue.get_number" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.tools.tools.parsl_task_queue.get_queued_number">
+<span class="sig-name descname"><span class="pre">get_queued_number</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/tools/tools.html#parsl_task_queue.get_queued_number"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.parsl_task_queue.get_queued_number" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.tools.tools.parsl_task_queue.get_running_number">
+<span class="sig-name descname"><span class="pre">get_running_number</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/tools/tools.html#parsl_task_queue.get_running_number"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.parsl_task_queue.get_running_number" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.tools.tools.parsl_task_queue.get_task_results">
+<span class="sig-name descname"><span class="pre">get_task_results</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/tools/tools.html#parsl_task_queue.get_task_results"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.parsl_task_queue.get_task_results" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.tools.tools.parsl_task_queue.get_task_status">
+<span class="sig-name descname"><span class="pre">get_task_status</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/tools/tools.html#parsl_task_queue.get_task_status"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.parsl_task_queue.get_task_status" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.tools.tools.parsl_task_queue.print_status">
+<span class="sig-name descname"><span class="pre">print_status</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/tools/tools.html#parsl_task_queue.print_status"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.parsl_task_queue.print_status" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.tools.tools.random_rotation_matrix">
+<span class="sig-prename descclassname"><span class="pre">alframework.tools.tools.</span></span><span class="sig-name descname"><span class="pre">random_rotation_matrix</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">deflection</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">randnums</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/tools/tools.html#random_rotation_matrix"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.random_rotation_matrix" title="Link to this definition"></a></dt>
+<dd><p>_summary_
+#TODO: fill docstring
+:type deflection: 
+:param deflection: _description_. Defaults to 1.0.
+:type deflection: float, optional
+:type randnums: 
+:param randnums: _description_. Defaults to None.
+:type randnums: _type_, optional</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>_description_</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>_type_</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.tools.tools.store_current_data">
+<span class="sig-prename descclassname"><span class="pre">alframework.tools.tools.</span></span><span class="sig-name descname"><span class="pre">store_current_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">h5path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">system_data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">properties</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/tools/tools.html#store_current_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.store_current_data" title="Link to this definition"></a></dt>
+<dd><p>_summary_</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>h5path</strong> (<em>_type_</em>) – _description_</p></li>
+<li><p><strong>system_data</strong> (<em>_type_</em>) – _description_</p></li>
+<li><p><strong>properties</strong> (<em>_type_</em>) – _description_</p></li>
+</ul>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>RuntimeError</strong> – _description_</p></li>
+<li><p><strong>RuntimeError</strong> – _description_</p></li>
+<li><p><strong>RuntimeError</strong> – _description_</p></li>
+<li><p><strong>RuntimeError</strong> – _description_</p></li>
+<li><p><strong>ValueError</strong> – _description_</p></li>
+</ul>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>_description_</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>_type_</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.tools.tools.system_checker">
+<span class="sig-prename descclassname"><span class="pre">alframework.tools.tools.</span></span><span class="sig-name descname"><span class="pre">system_checker</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">system</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">kill_on_fail</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">print_error</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/tools/tools.html#system_checker"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.system_checker" title="Link to this definition"></a></dt>
+<dd><p>Check a chemical system object for the following criteria:</p>
+<ul class="simple">
+<li><p>system is either a list or tuple with length = 3</p></li>
+<li><p>system[0] is a dictronary and has a ‘moleculeid’ key with a string value</p></li>
+<li><p>system[1] is an ASE Atoms object</p></li>
+<li><p>system[2] is a dictionary</p></li>
+<li><p>check that there are no NAN values</p></li>
+</ul>
+<p>If any of these criteria fail, a RuntimeError is raised if kill_on_fail is True.
+Otherwise, False is returned.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>system</strong> (<em>list</em><em> or </em><em>tuple</em>) – The system to check</p></li>
+<li><p><strong>kill_on_fail</strong> (<em>bool</em>) – If True, raise an exception if the check fails.</p></li>
+<li><p><strong>print_error</strong> (<em>bool</em>) – If True, print the error message</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>True if the check passes, False otherwise</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>bool</p>
+</dd>
+</dl>
+</dd></dl>
+
 </section>
 <section id="module-alframework.tools">
 <span id="module-contents"></span><h2>Module contents<a class="headerlink" href="#module-alframework.tools" title="Link to this heading"></a></h2>

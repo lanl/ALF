@@ -93,14 +93,67 @@
 <section id="submodules">
 <h2>Submodules<a class="headerlink" href="#submodules" title="Link to this heading"></a></h2>
 </section>
-<section id="alframework-qm-interfaces-ase-calculator-interface-module">
-<h2>alframework.qm_interfaces.ase_calculator_interface module<a class="headerlink" href="#alframework-qm-interfaces-ase-calculator-interface-module" title="Link to this heading"></a></h2>
+<section id="module-alframework.qm_interfaces.ase_calculator_interface">
+<span id="alframework-qm-interfaces-ase-calculator-interface-module"></span><h2>alframework.qm_interfaces.ase_calculator_interface module<a class="headerlink" href="#module-alframework.qm_interfaces.ase_calculator_interface" title="Link to this heading"></a></h2>
 </section>
-<section id="alframework-qm-interfaces-orca5-interface-module">
-<h2>alframework.qm_interfaces.orca5_interface module<a class="headerlink" href="#alframework-qm-interfaces-orca5-interface-module" title="Link to this heading"></a></h2>
+<section id="module-alframework.qm_interfaces.orca5_interface">
+<span id="alframework-qm-interfaces-orca5-interface-module"></span><h2>alframework.qm_interfaces.orca5_interface module<a class="headerlink" href="#module-alframework.qm_interfaces.orca5_interface" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="alframework.qm_interfaces.orca5_interface.orcaGenerator">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">alframework.qm_interfaces.orca5_interface.</span></span><span class="sig-name descname"><span class="pre">orcaGenerator</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">scratch_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'/tmp/'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">store_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">nproc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">36</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">unit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">{'energy':</span> <span class="pre">'hartree',</span> <span class="pre">'length':</span> <span class="pre">'bohr'}</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">orca_env_file</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">orca_command</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">orcainput</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">orcablocks</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/qm_interfaces/orca5_interface.html#orcaGenerator"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.qm_interfaces.orca5_interface.orcaGenerator" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>ORCA 5.0.1</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.qm_interfaces.orca5_interface.orcaGenerator.check_normal_termination">
+<span class="sig-name descname"><span class="pre">check_normal_termination</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">logfile</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/qm_interfaces/orca5_interface.html#orcaGenerator.check_normal_termination"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.qm_interfaces.orca5_interface.orcaGenerator.check_normal_termination" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.qm_interfaces.orca5_interface.orcaGenerator.parse_output">
+<span class="sig-name descname"><span class="pre">parse_output</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">job_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prefix</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">natom</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">properties</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sign</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-1</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/qm_interfaces/orca5_interface.html#orcaGenerator.parse_output"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.qm_interfaces.orca5_interface.orcaGenerator.parse_output" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.qm_interfaces.orca5_interface.orcaGenerator.single_point">
+<span class="sig-name descname"><span class="pre">single_point</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">molecule</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prefix</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'orca'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">properties</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['energy',</span> <span class="pre">'forces']</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/qm_interfaces/orca5_interface.html#orcaGenerator.single_point"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.qm_interfaces.orca5_interface.orcaGenerator.single_point" title="Link to this definition"></a></dt>
+<dd><p>mol : ase.atoms.Atoms object, will get chemical symbols and positions
+prefix : all the input and output file will start with this prefix, eg. orca.log, orca.inp, orca.engrad
+unlike other generators, the choice of calculations will be performed is setup in __init__: orcainput</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.qm_interfaces.orca5_interface.orcaGenerator.write_orca_input">
+<span class="sig-name descname"><span class="pre">write_orca_input</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ase_atoms</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">charge</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">multiplicity</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">job_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filename</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'orca.inp'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/qm_interfaces/orca5_interface.html#orcaGenerator.write_orca_input"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.qm_interfaces.orca5_interface.orcaGenerator.write_orca_input" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
 </section>
-<section id="alframework-qm-interfaces-vaspase-interface-module">
-<h2>alframework.qm_interfaces.vaspase_interface module<a class="headerlink" href="#alframework-qm-interfaces-vaspase-interface-module" title="Link to this heading"></a></h2>
+<section id="module-alframework.qm_interfaces.vaspase_interface">
+<span id="alframework-qm-interfaces-vaspase-interface-module"></span><h2>alframework.qm_interfaces.vaspase_interface module<a class="headerlink" href="#module-alframework.qm_interfaces.vaspase_interface" title="Link to this heading"></a></h2>
+<p>&#64;author: Ziyan</p>
+<dl class="py exception">
+<dt class="sig sig-object py" id="alframework.qm_interfaces.vaspase_interface.SCFConvergenceFailure">
+<em class="property"><span class="pre">exception</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">alframework.qm_interfaces.vaspase_interface.</span></span><span class="sig-name descname"><span class="pre">SCFConvergenceFailure</span></span><a class="reference internal" href="_modules/alframework/qm_interfaces/vaspase_interface.html#SCFConvergenceFailure"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.qm_interfaces.vaspase_interface.SCFConvergenceFailure" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Exception</span></code></p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="alframework.qm_interfaces.vaspase_interface.VASPGenerator">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">alframework.qm_interfaces.vaspase_interface.</span></span><span class="sig-name descname"><span class="pre">VASPGenerator</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vasp_options</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vasp_command</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scratch</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'./'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_store</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rm_scratch</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/qm_interfaces/vaspase_interface.html#VASPGenerator"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.qm_interfaces.vaspase_interface.VASPGenerator" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.qm_interfaces.vaspase_interface.VASPGenerator.get_magmom">
+<span class="sig-name descname"><span class="pre">get_magmom</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">atomic_no</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/qm_interfaces/vaspase_interface.html#VASPGenerator.get_magmom"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.qm_interfaces.vaspase_interface.VASPGenerator.get_magmom" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.qm_interfaces.vaspase_interface.VASPGenerator.single_point">
+<span class="sig-name descname"><span class="pre">single_point</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">molecule</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_calculation</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_file</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'output.opt'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/qm_interfaces/vaspase_interface.html#VASPGenerator.single_point"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.qm_interfaces.vaspase_interface.VASPGenerator.single_point" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
 </section>
 <section id="module-alframework.qm_interfaces">
 <span id="module-contents"></span><h2>Module contents<a class="headerlink" href="#module-alframework.qm_interfaces" title="Link to this heading"></a></h2>

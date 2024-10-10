@@ -1,0 +1,733 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>alframework.ml_interfaces.hippynn_interface &mdash; ALF 0.0.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=d45e8c67"></script>
+      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            ALF
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../home.html">Home</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../modules.html">alframework</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">ALF</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">alframework.ml_interfaces.hippynn_interface</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for alframework.ml_interfaces.hippynn_interface</h1><div class="highlight"><pre>
+<span></span><span class="kn">from</span> <span class="nn">parsl</span> <span class="kn">import</span> <span class="n">python_app</span><span class="p">,</span> <span class="n">bash_app</span>
+<span class="kn">import</span> <span class="nn">sys</span>
+<span class="kn">import</span> <span class="nn">multiprocessing</span>
+<span class="kn">import</span> <span class="nn">re</span>
+<span class="kn">import</span> <span class="nn">numpy</span> <span class="k">as</span> <span class="nn">np</span>
+<span class="kn">import</span> <span class="nn">glob</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">from</span> <span class="nn">ase</span> <span class="kn">import</span> <span class="n">units</span>
+<span class="kn">from</span> <span class="nn">ase.data</span> <span class="kn">import</span> <span class="n">chemical_symbols</span>
+<div class="viewcode-block" id="train_HIPNN_model">
+<a class="viewcode-back" href="../../../alframework.ml_interfaces.html#alframework.ml_interfaces.hippynn_interface.train_HIPNN_model">[docs]</a>
+<span class="k">def</span> <span class="nf">train_HIPNN_model</span><span class="p">(</span><span class="n">model_dir</span><span class="p">,</span>
+                      <span class="n">h5_train_dir</span><span class="p">,</span>
+                      <span class="n">energy_key</span><span class="p">,</span>
+                      <span class="n">coordinates_key</span><span class="p">,</span>
+                      <span class="n">species_key</span><span class="p">,</span>
+                      <span class="n">charges_key</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                      <span class="n">dipole_key</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                      <span class="n">quadrupole_key</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> 
+                      <span class="n">network_params</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                      <span class="n">aca_params</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                      <span class="n">electrostatics_flag</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                      <span class="n">cell_key</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                      <span class="n">force_key</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                      <span class="n">hipnn_order</span> <span class="o">=</span> <span class="s1">&#39;scalar&#39;</span><span class="p">,</span>
+                      <span class="n">first_is_interacting</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+                      <span class="n">energy_mae_loss_weight</span> <span class="o">=</span> <span class="mf">1e2</span><span class="p">,</span>
+                      <span class="n">energy_rmse_loss_weight</span> <span class="o">=</span> <span class="mf">1e2</span><span class="p">,</span>
+                      <span class="n">total_energy_mae_loss_weight</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+                      <span class="n">total_energy_rmse_loss_weight</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+                      <span class="n">force_mae_loss_weight</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span>
+                      <span class="n">force_rmse_loss_weight</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span>
+                      <span class="n">charge_mae_loss_weight</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span>
+                      <span class="n">charge_rmse_loss_weight</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span>
+                      <span class="n">dipole_mae_loss_weight</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span>
+                      <span class="n">dipole_rmse_loss_weight</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span>
+                      <span class="n">quadrupole_mae_loss_weight</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span>
+                      <span class="n">quadrupole_rmse_loss_weight</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span>
+                      <span class="n">electrostatics_weight</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                      <span class="n">rbar_loss_weight</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span>
+                      <span class="n">l2_reg_loss_weight</span> <span class="o">=</span> <span class="mf">1e-6</span><span class="p">,</span>
+                      <span class="n">pairwise_inference_parameters</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                      <span class="n">valid_size</span> <span class="o">=</span> <span class="mf">.1</span><span class="p">,</span>
+                      <span class="n">test_size</span> <span class="o">=</span> <span class="mf">.1</span><span class="p">,</span>
+                      <span class="n">plot_every</span> <span class="o">=</span> <span class="mi">50</span><span class="p">,</span>
+                      <span class="n">h5_test_dir</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                      <span class="n">learning_rate</span> <span class="o">=</span> <span class="mf">5e-4</span><span class="p">,</span>
+                      <span class="n">scheduler_options</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;max_batch_size&quot;</span><span class="p">:</span><span class="mi">128</span><span class="p">,</span><span class="s2">&quot;patience&quot;</span><span class="p">:</span><span class="mi">25</span><span class="p">,</span><span class="s2">&quot;factor&quot;</span><span class="p">:</span><span class="mf">0.5</span><span class="p">},</span>
+                      <span class="n">controller_options</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;batch_size&quot;</span><span class="p">:</span><span class="mi">64</span><span class="p">,</span><span class="s2">&quot;eval_batch_size&quot;</span><span class="p">:</span><span class="mi">128</span><span class="p">,</span><span class="s2">&quot;max_epochs&quot;</span><span class="p">:</span><span class="mi">1000</span><span class="p">,</span><span class="s2">&quot;termination_patience&quot;</span><span class="p">:</span><span class="mi">55</span><span class="p">},</span>
+                      <span class="n">device_string</span> <span class="o">=</span> <span class="s1">&#39;0&#39;</span><span class="p">,</span>
+                      <span class="n">from_multiprocessing_nGPU</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                      <span class="n">build_lammps_pickle</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+                      <span class="n">remove_high_energy_cut</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> 
+                      <span class="n">remove_high_energy_std</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+                      <span class="n">remove_high_forces_cut</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> 
+                      <span class="n">remove_high_forces_std</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> 
+                      <span class="n">remove_close_contacts</span> <span class="o">=</span> <span class="kc">None</span>
+                      <span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Trains the HIPPYNN ML interatomic potential. </span>
+<span class="sd">    </span>
+<span class="sd">    Args:</span>
+<span class="sd">        model_dir (str): Directory where HIPPYNN model will reside. Example: &#39;/path/to/model_dir&#39;</span>
+<span class="sd">        h5_train_dir (str): Directory where h5 files will reside. Example: &#39;/path/to/h5_train_dir&#39;</span>
+<span class="sd">        energy_key (str): Energy key inside h5 dataset. Must match db name in &#39;properties_list&#39;. Example: &#39;E&#39;</span>
+<span class="sd">        coordinates_key (str): Coordinates key inside h5 dataset. Must match db name in &#39;properties_list&#39;. Example: &#39;R&#39;</span>
+<span class="sd">        species_key (str): Species key inside h5 dataset. Must match db name in &#39;properties_list&#39;. Example: &#39;Z&#39;</span>
+<span class="sd">        charges_key (str, optional): Charges key inside h5 dataset. Defaults to None. </span>
+<span class="sd">        dipole_key (str, optional): Dipole key inside h5 dataset. Defaults to None.</span>
+<span class="sd">        quadrupole_key (str, optional): Quadrupole key inside h5 dataset. Defaults to None.</span>
+<span class="sd">        network_params (dict, optional): Network parameters. Defaults to None.</span>
+<span class="sd">        aca_params (dict, optional): ACA parameters. Defaults to None.</span>
+<span class="sd">        electrostatics_flag (bool, optional): Flag to check if the electrostatic will be trained with the energy and forces. Defaults to False. </span>
+<span class="sd">        cell_key (str, optional): Cell key inside h5 dataset. Defaults to None.</span>
+<span class="sd">        force_key (str, optional): Force key inside h5 dataset. Must match db name in &#39;properties_list&#39;. Do not define to remove force training. Defaults to None.</span>
+<span class="sd">        hipnn_order (str, optional): HIPNN order. Defaults to &#39;scalar&#39;.</span>
+<span class="sd">        first_is_interacting (bool, optional): Whether the first is interacting. Defaults to False. </span>
+<span class="sd">        energy_mae_loss_weight (float, optional): Energy MAE loss weight. Defaults to 1e2.</span>
+<span class="sd">        energy_rmse_loss_weight (float, optional): Energy RMSE loss weight. Defaults to 1e2.</span>
+<span class="sd">        total_energy_mae_loss_weight (float, optional): Total energy MAE loss weight. Defaults to 0.</span>
+<span class="sd">        total_energy_rmse_loss_weight (float, optional): Total energy RMSE loss weight. Defaults to 0.</span>
+<span class="sd">        force_mae_loss_weight (float, optional): Force MAE loss weight. Defaults to 1.0.</span>
+<span class="sd">        force_rmse_loss_weight (float, optional): Force RMSE loss weight. Defaults to 1.0.</span>
+<span class="sd">        charge_mae_loss_weight (float, optional): Charge MAE loss weight. Defaults to 1.0.</span>
+<span class="sd">        charge_rmse_loss_weight (float, optional): Charge RMSE loss weight. Defaults to 1.0.</span>
+<span class="sd">        dipole_mae_loss_weight (float, optional): Dipole MAE loss weight. Defaults to 1.0.</span>
+<span class="sd">        dipole_rmse_loss_weight (float, optional): Dipole RMSE loss weight. Defaults to 1.0.</span>
+<span class="sd">        quadrupole_mae_loss_weight (float, optional): Quadrupole MAE loss weight. Defaults to 1.0.</span>
+<span class="sd">        quadrupole_rmse_loss_weight (float, optional): Quadrupole RMSE loss weight. Defaults to 1.0.</span>
+<span class="sd">        electrostatics_weight (float, optional): Electrostatics weight. Defaults to 0.</span>
+<span class="sd">        rbar_loss_weight (float, optional): Rbar loss weight. Defaults to 1.0.</span>
+<span class="sd">        l2_reg_loss_weight (float, optional): L2 regularization loss weight. Defaults to 1e-6.</span>
+<span class="sd">        pairwise_inference_parameters (dict, optional): Pairwise inference parameters. Defaults to None.</span>
+<span class="sd">        valid_size (float, optional): Validation size. Defaults to 0.1.</span>
+<span class="sd">        test_size (float, optional): Test size. Defaults to 0.1.</span>
+<span class="sd">        plot_every (int, optional): Frequency of plotting. Defaults to 50 epochs.</span>
+<span class="sd">        h5_test_dir (str, optional): Directory for test h5 files. Defaults to None.</span>
+<span class="sd">        learning_rate (float, optional): Learning rate. Defaults to 5e-4.</span>
+<span class="sd">        scheduler_options (dict, optional): Scheduler options. Defaults to {&quot;max_batch_size&quot;:128,&quot;patience&quot;:25,&quot;factor&quot;:0.5}.</span>
+<span class="sd">        controller_options (dict, optional): Controller options. Defaults to {&quot;batch_size&quot;:64,&quot;eval_batch_size&quot;:128,&quot;max_epochs&quot;:1000,&quot;termination_patience&quot;:55}.</span>
+<span class="sd">        device_string (str, optional): Device string. Defaults to &#39;0&#39;.</span>
+<span class="sd">        from_multiprocessing_nGPU (int, optional): Number of GPUs for multiprocessing. Defaults to None.</span>
+<span class="sd">        build_lammps_pickle (bool, optional): Whether to build LAMMPS pickle. Defaults to False.</span>
+<span class="sd">        remove_high_energy_cut (float, optional): High energy cut-off for removal. Defaults to None.</span>
+<span class="sd">        remove_high_energy_std (float, optional): High energy standard deviation for removal. Defaults to None.</span>
+<span class="sd">        remove_high_forces_cut (float, optional): High forces cut-off for removal. Defaults to None.</span>
+<span class="sd">        remove_high_forces_std (float, optional): High forces standard deviation for removal. Defaults to None.</span>
+<span class="sd">        remove_close_contacts (bool, optional): Whether to remove close contacts. Defaults to None.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        None</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1">#Import Torch and configure GPU. </span>
+    <span class="c1">#This must occur after the subprocess fork!!!</span>
+    <span class="kn">import</span> <span class="nn">torch</span>
+    <span class="k">if</span> <span class="n">device_string</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s2">&quot;from_multiprocessing&quot;</span><span class="p">:</span>
+        <span class="n">process</span> <span class="o">=</span> <span class="n">multiprocessing</span><span class="o">.</span><span class="n">current_process</span><span class="p">()</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">&quot;CUDA_VISIBLE_DEVICES&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">((</span><span class="n">process</span><span class="o">.</span><span class="n">_identity</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span><span class="o">%</span><span class="n">from_multiprocessing_nGPU</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">&quot;CUDA_VISIBLE_DEVICES&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">device_string</span>
+    
+    <span class="n">device_cuda</span> <span class="o">=</span> <span class="s1">&#39;cuda:0&#39;</span>
+    <span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">set_device</span><span class="p">(</span><span class="n">device_cuda</span><span class="p">)</span>
+    
+    <span class="kn">import</span> <span class="nn">hippynn</span>
+    <span class="kn">from</span> <span class="nn">hippynn</span> <span class="kn">import</span> <span class="n">plotting</span>
+    <span class="kn">from</span> <span class="nn">hippynn.graphs</span> <span class="kn">import</span> <span class="n">inputs</span><span class="p">,</span> <span class="n">networks</span><span class="p">,</span> <span class="n">targets</span><span class="p">,</span> <span class="n">physics</span><span class="p">,</span> <span class="n">loss</span>
+    <span class="kn">from</span> <span class="nn">hippynn.databases.h5_pyanitools</span> <span class="kn">import</span> <span class="n">PyAniDirectoryDB</span>
+    <span class="kn">from</span> <span class="nn">hippynn.experiment.assembly</span> <span class="kn">import</span> <span class="n">assemble_for_training</span>
+    <span class="kn">from</span> <span class="nn">hippynn.pretraining</span> <span class="kn">import</span> <span class="n">set_e0_values</span>
+    <span class="kn">from</span> <span class="nn">hippynn.experiment.controllers</span> <span class="kn">import</span> <span class="n">RaiseBatchSizeOnPlateau</span><span class="p">,</span> <span class="n">PatienceController</span>
+    <span class="kn">from</span> <span class="nn">hippynn.experiment</span> <span class="kn">import</span> <span class="n">SetupParams</span><span class="p">,</span> <span class="n">setup_and_train</span>
+    <span class="kn">from</span> <span class="nn">hippynn.databases.database</span> <span class="kn">import</span>  <span class="n">prettyprint_arrays</span>
+    
+    
+    <span class="k">with</span> <span class="n">hippynn</span><span class="o">.</span><span class="n">tools</span><span class="o">.</span><span class="n">active_directory</span><span class="p">(</span><span class="n">model_dir</span><span class="p">):</span>
+        <span class="k">with</span> <span class="n">hippynn</span><span class="o">.</span><span class="n">tools</span><span class="o">.</span><span class="n">log_terminal</span><span class="p">(</span><span class="s2">&quot;training_log.txt&quot;</span><span class="p">,</span><span class="s2">&quot;wt&quot;</span><span class="p">):</span>
+            
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;CUDA_VISIBLE_DEVICES: &quot;</span> <span class="o">+</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">&quot;CUDA_VISIBLE_DEVICES&quot;</span><span class="p">])</span>
+            
+            <span class="n">species</span> <span class="o">=</span> <span class="n">inputs</span><span class="o">.</span><span class="n">SpeciesNode</span><span class="p">(</span><span class="n">db_name</span><span class="o">=</span><span class="n">species_key</span><span class="p">)</span>
+            <span class="n">positions</span> <span class="o">=</span> <span class="n">inputs</span><span class="o">.</span><span class="n">PositionsNode</span><span class="p">(</span><span class="n">db_name</span><span class="o">=</span><span class="n">coordinates_key</span><span class="p">)</span>
+            
+            <span class="k">if</span> <span class="ow">not</span><span class="p">(</span><span class="n">cell_key</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">):</span>
+                <span class="n">cell</span> <span class="o">=</span> <span class="n">inputs</span><span class="o">.</span><span class="n">CellNode</span><span class="p">(</span><span class="n">db_name</span><span class="o">=</span><span class="n">cell_key</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">hipnn_order</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">&#39;scalar&#39;</span><span class="p">:</span>
+                    <span class="n">network</span> <span class="o">=</span> <span class="n">networks</span><span class="o">.</span><span class="n">Hipnn</span><span class="p">(</span><span class="s2">&quot;HIPNN&quot;</span><span class="p">,</span> <span class="p">(</span><span class="n">species</span><span class="p">,</span> <span class="n">positions</span><span class="p">,</span> <span class="n">cell</span><span class="p">),</span> <span class="n">module_kwargs</span><span class="o">=</span><span class="n">network_params</span><span class="p">,</span> <span class="n">periodic</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+                <span class="k">elif</span> <span class="n">hipnn_order</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">&#39;vector&#39;</span><span class="p">:</span>
+                    <span class="n">network</span> <span class="o">=</span> <span class="n">networks</span><span class="o">.</span><span class="n">HipnnVec</span><span class="p">(</span><span class="s2">&quot;HIPNN&quot;</span><span class="p">,</span> <span class="p">(</span><span class="n">species</span><span class="p">,</span> <span class="n">positions</span><span class="p">,</span> <span class="n">cell</span><span class="p">),</span> <span class="n">module_kwargs</span><span class="o">=</span><span class="n">network_params</span><span class="p">,</span> <span class="n">periodic</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+                <span class="k">elif</span> <span class="n">hipnn_order</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">&#39;quadradic&#39;</span><span class="p">:</span>
+                    <span class="n">network</span> <span class="o">=</span> <span class="n">networks</span><span class="o">.</span><span class="n">HipnnQuad</span><span class="p">(</span><span class="s2">&quot;HIPNN&quot;</span><span class="p">,</span> <span class="p">(</span><span class="n">species</span><span class="p">,</span> <span class="n">positions</span><span class="p">,</span> <span class="n">cell</span><span class="p">),</span> <span class="n">module_kwargs</span><span class="o">=</span><span class="n">network_params</span><span class="p">,</span> <span class="n">periodic</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s1">&#39;Unrecognized hipnn_order parameter&#39;</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">hipnn_order</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">&#39;scalar&#39;</span><span class="p">:</span>
+                    <span class="n">network</span> <span class="o">=</span> <span class="n">networks</span><span class="o">.</span><span class="n">Hipnn</span><span class="p">(</span><span class="s2">&quot;HIPNN&quot;</span><span class="p">,</span> <span class="p">(</span><span class="n">species</span><span class="p">,</span> <span class="n">positions</span><span class="p">),</span> <span class="n">module_kwargs</span><span class="o">=</span><span class="n">network_params</span><span class="p">,</span> <span class="n">periodic</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+                <span class="k">elif</span> <span class="n">hipnn_order</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">&#39;vector&#39;</span><span class="p">:</span>
+                    <span class="n">network</span> <span class="o">=</span> <span class="n">networks</span><span class="o">.</span><span class="n">HipnnVec</span><span class="p">(</span><span class="s2">&quot;HIPNN&quot;</span><span class="p">,</span> <span class="p">(</span><span class="n">species</span><span class="p">,</span> <span class="n">positions</span><span class="p">),</span> <span class="n">module_kwargs</span><span class="o">=</span><span class="n">network_params</span><span class="p">,</span> <span class="n">periodic</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+                <span class="k">elif</span> <span class="n">hipnn_order</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">&#39;quadradic&#39;</span><span class="p">:</span>
+                    <span class="n">network</span> <span class="o">=</span> <span class="n">networks</span><span class="o">.</span><span class="n">HipnnQuad</span><span class="p">(</span><span class="s2">&quot;HIPNN&quot;</span><span class="p">,</span> <span class="p">(</span><span class="n">species</span><span class="p">,</span> <span class="n">positions</span><span class="p">),</span> <span class="n">module_kwargs</span><span class="o">=</span><span class="n">network_params</span><span class="p">,</span> <span class="n">periodic</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s1">&#39;Unrecognized hipnn_order parameter&#39;</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">electrostatics_flag</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span><span class="p">(</span><span class="n">electrostatics_flag</span><span class="p">):</span> <span class="c1"># Just the energy Nodes, i.e. standard HIPNN. </span>
+                <span class="n">henergy</span> <span class="o">=</span> <span class="n">targets</span><span class="o">.</span><span class="n">HEnergyNode</span><span class="p">(</span><span class="s2">&quot;node_HEnergy&quot;</span><span class="p">,</span><span class="n">network</span><span class="p">,</span><span class="n">first_is_interacting</span><span class="p">)</span>
+                <span class="n">sys_energy</span> <span class="o">=</span> <span class="n">henergy</span><span class="o">.</span><span class="n">mol_energy</span>
+                <span class="n">sys_energy</span><span class="o">.</span><span class="n">db_name</span> <span class="o">=</span> <span class="n">energy_key</span>
+                
+                <span class="n">en_peratom</span> <span class="o">=</span> <span class="n">physics</span><span class="o">.</span><span class="n">PerAtom</span><span class="p">(</span><span class="s2">&quot;node_EperAtom&quot;</span><span class="p">,</span> <span class="n">sys_energy</span><span class="p">)</span>
+                <span class="n">en_peratom</span><span class="o">.</span><span class="n">db_name</span> <span class="o">=</span> <span class="n">energy_key</span><span class="o">+</span><span class="s2">&quot;peratom&quot;</span>
+                
+                <span class="n">hierarchicality</span> <span class="o">=</span> <span class="n">henergy</span><span class="o">.</span><span class="n">hierarchicality</span>
+                <span class="n">hierarchicality</span> <span class="o">=</span> <span class="n">physics</span><span class="o">.</span><span class="n">PerAtom</span><span class="p">(</span><span class="s2">&quot;RperAtom&quot;</span><span class="p">,</span> <span class="n">hierarchicality</span><span class="p">)</span>
+                
+                <span class="k">if</span> <span class="ow">not</span><span class="p">(</span><span class="n">force_key</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">):</span>
+                    <span class="n">force</span> <span class="o">=</span> <span class="n">physics</span><span class="o">.</span><span class="n">GradientNode</span><span class="p">(</span><span class="s2">&quot;node_forces&quot;</span><span class="p">,</span> <span class="p">(</span><span class="n">sys_energy</span><span class="p">,</span> <span class="n">positions</span><span class="p">),</span> <span class="n">sign</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+                    <span class="n">force</span><span class="o">.</span><span class="n">db_name</span> <span class="o">=</span> <span class="n">force_key</span>
+                
+                <span class="c1">### Energy Contribution to the Loss graph </span>
+                <span class="n">mae_energy</span> <span class="o">=</span> <span class="n">loss</span><span class="o">.</span><span class="n">MAELoss</span><span class="o">.</span><span class="n">of_node</span><span class="p">(</span><span class="n">sys_energy</span><span class="p">)</span>
+                <span class="n">rmse_energy</span> <span class="o">=</span> <span class="n">loss</span><span class="o">.</span><span class="n">MSELoss</span><span class="o">.</span><span class="n">of_node</span><span class="p">(</span><span class="n">sys_energy</span><span class="p">)</span> <span class="o">**</span> <span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="mi">2</span><span class="p">)</span>
+                
+                <span class="n">mae_energyperatom</span> <span class="o">=</span> <span class="n">loss</span><span class="o">.</span><span class="n">MAELoss</span><span class="o">.</span><span class="n">of_node</span><span class="p">(</span><span class="n">en_peratom</span><span class="p">)</span>
+                <span class="n">rmse_energyperatom</span> <span class="o">=</span> <span class="n">loss</span><span class="o">.</span><span class="n">MSELoss</span><span class="o">.</span><span class="n">of_node</span><span class="p">(</span><span class="n">en_peratom</span><span class="p">)</span> <span class="o">**</span> <span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="mi">2</span><span class="p">)</span>
+                
+                <span class="n">rbar</span> <span class="o">=</span> <span class="n">loss</span><span class="o">.</span><span class="n">Mean</span><span class="o">.</span><span class="n">of_node</span><span class="p">(</span><span class="n">hierarchicality</span><span class="p">)</span>            
+                <span class="n">l2_reg</span> <span class="o">=</span> <span class="n">loss</span><span class="o">.</span><span class="n">l2reg</span><span class="p">(</span><span class="n">network</span><span class="p">)</span> 
+                <span class="c1">### </span>
+              
+            <span class="k">else</span> <span class="p">:</span> <span class="c1"># For charge &amp; energy training; we use the need 2 networks.  </span>
+                <span class="c1"># The &#39;first&#39; network is responsible for the electrostatic predictions. </span>
+                <span class="n">hcharge</span> <span class="o">=</span> <span class="n">targets</span><span class="o">.</span><span class="n">HChargeNode</span><span class="p">(</span><span class="s2">&quot;node_HCharge&quot;</span><span class="p">,</span> <span class="n">network</span><span class="p">)</span>
+                <span class="n">atom_charges</span> <span class="o">=</span> <span class="n">hcharge</span><span class="o">.</span><span class="n">atom_charges</span>
+            
+                <span class="k">if</span> <span class="ow">not</span><span class="p">(</span><span class="n">charges_key</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">):</span> <span class="c1"># Partial charges to train to. </span>
+                    <span class="n">atom_charges</span><span class="o">.</span><span class="n">db_name</span> <span class="o">=</span> <span class="n">charges_key</span>
+            
+                <span class="n">system_charges</span> <span class="o">=</span> <span class="n">physics</span><span class="o">.</span><span class="n">AtomToMolSummer</span><span class="p">(</span><span class="s2">&quot;node_sysCharges&quot;</span><span class="p">,</span> <span class="n">atom_charges</span><span class="p">)</span>
+                <span class="n">q_hierarchicality</span> <span class="o">=</span> <span class="n">hcharge</span><span class="o">.</span><span class="n">charge_hierarchality</span>
+
+                <span class="k">if</span> <span class="ow">not</span><span class="p">(</span><span class="n">dipole_key</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">):</span> 
+                    <span class="n">dipole</span> <span class="o">=</span> <span class="n">physics</span><span class="o">.</span><span class="n">DipoleNode</span><span class="p">(</span><span class="s2">&quot;node_dipole&quot;</span><span class="p">,</span> <span class="p">(</span><span class="n">hcharge</span><span class="p">,</span> <span class="n">positions</span><span class="p">),</span> <span class="n">db_name</span><span class="o">=</span><span class="n">dipole_key</span><span class="p">)</span>
+                
+                <span class="k">if</span> <span class="ow">not</span><span class="p">(</span><span class="n">quadrupole_key</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">):</span> 
+                    <span class="n">quadrupole</span> <span class="o">=</span> <span class="n">physics</span><span class="o">.</span><span class="n">QuadrupoleNode</span><span class="p">(</span><span class="s2">&quot;node_quadrapole&quot;</span><span class="p">,</span> <span class="p">(</span><span class="n">hcharge</span><span class="p">,</span> <span class="n">positions</span><span class="p">),</span> <span class="n">db_name</span><span class="o">=</span><span class="n">quadrupole_key</span><span class="p">)</span>
+        
+                <span class="c1"># Manually define indexers for Coulomb energy </span>
+                <span class="n">coulomb_r_max</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="n">aca_params</span><span class="p">[</span><span class="s2">&quot;r_coulomb_cut&quot;</span><span class="p">],</span> <span class="n">device</span><span class="o">=</span><span class="n">device_cuda</span><span class="p">)</span> 
+                <span class="kn">from</span> <span class="nn">hippynn.graphs.nodes</span> <span class="kn">import</span> <span class="n">indexers</span><span class="p">,</span> <span class="n">pairs</span>
+                <span class="n">enc</span><span class="p">,</span> <span class="n">padidxer</span> <span class="o">=</span> <span class="n">indexers</span><span class="o">.</span><span class="n">acquire_encoding_padding</span><span class="p">(</span>
+                    <span class="n">species</span><span class="p">,</span> 
+                    <span class="n">species_set</span> <span class="o">=</span> <span class="n">network_params</span><span class="p">[</span><span class="s2">&quot;possible_species&quot;</span><span class="p">]</span>
+                <span class="p">)</span>
+                <span class="n">pairfinder</span> <span class="o">=</span> <span class="n">pairs</span><span class="o">.</span><span class="n">OpenPairIndexer</span><span class="p">(</span>
+                    <span class="s1">&#39;OpenPairFinder&#39;</span><span class="p">,</span> 
+                    <span class="p">(</span><span class="n">positions</span><span class="p">,</span> <span class="n">enc</span><span class="p">,</span> <span class="n">padidxer</span><span class="p">),</span> 
+                    <span class="n">dist_hard_max</span><span class="o">=</span><span class="n">coulomb_r_max</span>
+                <span class="p">)</span>
+
+                <span class="c1"># Coulomb Screening with Combined energy. </span>
+                <span class="kn">from</span> <span class="nn">hippynn.layers.physics</span> <span class="kn">import</span> <span class="n">LocalDampingCosine</span><span class="p">,</span> <span class="n">CombineScreenings</span><span class="p">,</span> <span class="n">WolfScreening</span>
+                <span class="n">energy_conv</span> <span class="o">=</span> <span class="n">aca_params</span><span class="p">[</span><span class="s2">&quot;coulomb_const&quot;</span><span class="p">]</span>
+                
+                <span class="c1"># Handle different types of screnings</span>
+                <span class="k">if</span> <span class="n">aca_params</span><span class="p">[</span><span class="s2">&quot;screening_type&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;Wolf&quot;</span><span class="p">:</span>
+                    <span class="n">charge_screening</span> <span class="o">=</span> <span class="n">CombineScreenings</span><span class="p">(</span>
+                        <span class="p">(</span><span class="n">LocalDampingCosine</span><span class="p">(</span><span class="n">alpha</span><span class="o">=</span><span class="n">network_params</span><span class="p">[</span><span class="s2">&quot;dist_soft_max&quot;</span><span class="p">]),</span> <span class="n">WolfScreening</span><span class="p">(</span><span class="n">alpha</span><span class="o">=</span><span class="mf">0.05</span><span class="p">))</span>
+                    <span class="p">)</span>
+                <span class="k">elif</span> <span class="n">aca_params</span><span class="p">[</span><span class="s2">&quot;screening_type&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">charge_screening</span> <span class="o">=</span> <span class="p">(</span><span class="n">LocalDampingCosine</span><span class="p">(</span><span class="n">alpha</span><span class="o">=</span><span class="n">network_params</span><span class="p">[</span><span class="s2">&quot;dist_soft_max&quot;</span><span class="p">]))</span>
+                <span class="k">else</span><span class="p">:</span> 
+                    <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="s2">&quot;Only &#39;Wolf&#39; or &#39;null&#39; supported screening types.&quot;</span><span class="p">)</span>
+                    
+                <span class="n">coulomb_energy</span> <span class="o">=</span> <span class="n">physics</span><span class="o">.</span><span class="n">ScreenedCoulombEnergyNode</span><span class="p">(</span>
+                    <span class="s2">&quot;node_cEnergy&quot;</span><span class="p">,</span>
+                    <span class="p">(</span><span class="n">atom_charges</span><span class="p">,</span>
+                        <span class="n">pairfinder</span><span class="o">.</span><span class="n">pair_dist</span><span class="p">,</span> <span class="n">pairfinder</span><span class="o">.</span><span class="n">pair_first</span><span class="p">,</span> <span class="n">pairfinder</span><span class="o">.</span><span class="n">pair_second</span><span class="p">,</span>
+                        <span class="n">padidxer</span><span class="o">.</span><span class="n">mol_index</span><span class="p">,</span> <span class="n">padidxer</span><span class="o">.</span><span class="n">n_molecules</span><span class="p">),</span>
+                    <span class="n">energy_conversion</span><span class="o">=</span><span class="n">energy_conv</span><span class="p">,</span> 
+                    <span class="n">screening</span><span class="o">=</span><span class="n">charge_screening</span><span class="p">,</span> 
+                    <span class="n">cutoff_distance</span><span class="o">=</span><span class="n">coulomb_r_max</span>
+                <span class="p">)</span>
+                
+                <span class="c1"># Energy network. </span>
+                <span class="k">if</span> <span class="ow">not</span><span class="p">(</span><span class="n">cell_key</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">):</span>
+                    <span class="n">cell</span> <span class="o">=</span> <span class="n">inputs</span><span class="o">.</span><span class="n">CellNode</span><span class="p">(</span><span class="n">db_name</span><span class="o">=</span><span class="n">cell_key</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">hipnn_order</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">&#39;scalar&#39;</span><span class="p">:</span>
+                        <span class="n">network_energy</span> <span class="o">=</span> <span class="n">networks</span><span class="o">.</span><span class="n">Hipnn</span><span class="p">(</span><span class="s2">&quot;HIPNN&quot;</span><span class="p">,</span> <span class="n">network</span><span class="o">.</span><span class="n">parents</span><span class="p">,</span> <span class="n">module_kwargs</span><span class="o">=</span><span class="n">network_params</span><span class="p">,</span> <span class="n">periodic</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+                    <span class="k">elif</span> <span class="n">hipnn_order</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">&#39;vector&#39;</span><span class="p">:</span>
+                        <span class="n">network_energy</span> <span class="o">=</span> <span class="n">networks</span><span class="o">.</span><span class="n">HipnnVec</span><span class="p">(</span><span class="s2">&quot;HIPNN&quot;</span><span class="p">,</span> <span class="n">network</span><span class="o">.</span><span class="n">parents</span><span class="p">,</span> <span class="n">module_kwargs</span><span class="o">=</span><span class="n">network_params</span><span class="p">,</span> <span class="n">periodic</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+                    <span class="k">elif</span> <span class="n">hipnn_order</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">&#39;quadradic&#39;</span><span class="p">:</span>
+                        <span class="n">network_energy</span> <span class="o">=</span> <span class="n">networks</span><span class="o">.</span><span class="n">HipnnQuad</span><span class="p">(</span><span class="s2">&quot;HIPNN&quot;</span><span class="p">,</span> <span class="n">network</span><span class="o">.</span><span class="n">parents</span><span class="p">,</span> <span class="n">module_kwargs</span><span class="o">=</span><span class="n">network_params</span><span class="p">,</span> <span class="n">periodic</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s1">&#39;Unrecognized hipnn_order parameter&#39;</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">hipnn_order</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">&#39;scalar&#39;</span><span class="p">:</span>
+                        <span class="n">network_energy</span> <span class="o">=</span> <span class="n">networks</span><span class="o">.</span><span class="n">Hipnn</span><span class="p">(</span><span class="s2">&quot;HIPNN&quot;</span><span class="p">,</span> <span class="n">network</span><span class="o">.</span><span class="n">parents</span><span class="p">,</span> <span class="n">module_kwargs</span><span class="o">=</span><span class="n">network_params</span><span class="p">,</span> <span class="n">periodic</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+                    <span class="k">elif</span> <span class="n">hipnn_order</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">&#39;vector&#39;</span><span class="p">:</span>
+                        <span class="n">network_energy</span> <span class="o">=</span> <span class="n">networks</span><span class="o">.</span><span class="n">HipnnVec</span><span class="p">(</span><span class="s2">&quot;HIPNN&quot;</span><span class="p">,</span> <span class="n">network</span><span class="o">.</span><span class="n">parents</span><span class="p">,</span> <span class="n">module_kwargs</span><span class="o">=</span><span class="n">network_params</span><span class="p">,</span> <span class="n">periodic</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+                    <span class="k">elif</span> <span class="n">hipnn_order</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">&#39;quadradic&#39;</span><span class="p">:</span>
+                        <span class="n">network_energy</span> <span class="o">=</span> <span class="n">networks</span><span class="o">.</span><span class="n">HipnnQuad</span><span class="p">(</span><span class="s2">&quot;HIPNN&quot;</span><span class="p">,</span> <span class="n">network</span><span class="o">.</span><span class="n">parents</span><span class="p">,</span> <span class="n">module_kwargs</span><span class="o">=</span><span class="n">network_params</span><span class="p">,</span> <span class="n">periodic</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s1">&#39;Unrecognized hipnn_order parameter&#39;</span><span class="p">)</span>
+            
+                
+                <span class="n">henergy</span> <span class="o">=</span> <span class="n">targets</span><span class="o">.</span><span class="n">HEnergyNode</span><span class="p">(</span><span class="s2">&quot;node_HEnergy&quot;</span><span class="p">,</span> <span class="n">network_energy</span><span class="p">,</span><span class="n">first_is_interacting</span><span class="p">)</span>
+                <span class="n">sys_energy</span> <span class="o">=</span> <span class="n">henergy</span><span class="o">.</span><span class="n">mol_energy</span> <span class="o">+</span> <span class="n">coulomb_energy</span> 
+                <span class="n">sys_energy</span><span class="o">.</span><span class="n">db_name</span> <span class="o">=</span> <span class="n">energy_key</span>
+                
+                <span class="n">en_peratom</span> <span class="o">=</span> <span class="n">physics</span><span class="o">.</span><span class="n">PerAtom</span><span class="p">(</span><span class="s2">&quot;node_EperAtom&quot;</span><span class="p">,</span> <span class="n">sys_energy</span><span class="p">)</span>
+                <span class="n">en_peratom</span><span class="o">.</span><span class="n">db_name</span> <span class="o">=</span> <span class="n">energy_key</span><span class="o">+</span><span class="s2">&quot;peratom&quot;</span>
+                
+                <span class="n">hierarchicality</span> <span class="o">=</span> <span class="n">henergy</span><span class="o">.</span><span class="n">hierarchicality</span> 
+                <span class="n">hierarchicality</span> <span class="o">=</span> <span class="n">physics</span><span class="o">.</span><span class="n">PerAtom</span><span class="p">(</span><span class="s2">&quot;RperAtom&quot;</span><span class="p">,</span> <span class="n">hierarchicality</span><span class="p">)</span>
+                
+                <span class="k">if</span> <span class="ow">not</span><span class="p">(</span><span class="n">force_key</span> <span class="o">==</span> <span class="kc">None</span><span class="p">):</span>
+                    <span class="n">force</span> <span class="o">=</span> <span class="n">physics</span><span class="o">.</span><span class="n">GradientNode</span><span class="p">(</span><span class="s2">&quot;node_forces&quot;</span><span class="p">,</span> <span class="p">(</span><span class="n">sys_energy</span><span class="p">,</span> <span class="n">positions</span><span class="p">),</span> <span class="n">sign</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+                    <span class="n">force</span><span class="o">.</span><span class="n">db_name</span> <span class="o">=</span> <span class="n">force_key</span>
+                
+                <span class="c1">### Contribution to the loss graph </span>
+                <span class="n">mae_energy</span> <span class="o">=</span> <span class="n">loss</span><span class="o">.</span><span class="n">MAELoss</span><span class="o">.</span><span class="n">of_node</span><span class="p">(</span><span class="n">sys_energy</span><span class="p">)</span>
+                <span class="n">rmse_energy</span> <span class="o">=</span> <span class="n">loss</span><span class="o">.</span><span class="n">MSELoss</span><span class="o">.</span><span class="n">of_node</span><span class="p">(</span><span class="n">sys_energy</span><span class="p">)</span> <span class="o">**</span> <span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="mi">2</span><span class="p">)</span>
+                
+                <span class="n">mae_energyperatom</span> <span class="o">=</span> <span class="n">loss</span><span class="o">.</span><span class="n">MAELoss</span><span class="o">.</span><span class="n">of_node</span><span class="p">(</span><span class="n">en_peratom</span><span class="p">)</span>
+                <span class="n">rmse_energyperatom</span> <span class="o">=</span> <span class="n">loss</span><span class="o">.</span><span class="n">MSELoss</span><span class="o">.</span><span class="n">of_node</span><span class="p">(</span><span class="n">en_peratom</span><span class="p">)</span> <span class="o">**</span> <span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="mi">2</span><span class="p">)</span>
+                
+                <span class="n">rbar</span> <span class="o">=</span> <span class="n">loss</span><span class="o">.</span><span class="n">Mean</span><span class="o">.</span><span class="n">of_node</span><span class="p">(</span><span class="n">hierarchicality</span><span class="p">)</span>            
+                <span class="n">l2_reg</span> <span class="o">=</span> <span class="n">loss</span><span class="o">.</span><span class="n">l2reg</span><span class="p">(</span><span class="n">network</span><span class="p">)</span> <span class="o">+</span> <span class="n">loss</span><span class="o">.</span><span class="n">l2reg</span><span class="p">(</span><span class="n">network_energy</span><span class="p">)</span> 
+                <span class="c1">###</span>
+
+            
+            <span class="n">loss_energy</span> <span class="o">=</span> <span class="n">energy_mae_loss_weight</span> <span class="o">*</span> <span class="n">mae_energyperatom</span> <span class="o">+</span> \
+                <span class="n">energy_rmse_loss_weight</span> <span class="o">*</span> <span class="n">rmse_energyperatom</span> <span class="o">+</span> \
+                <span class="n">total_energy_mae_loss_weight</span> <span class="o">*</span> <span class="n">mae_energy</span> <span class="o">+</span> \
+                <span class="n">total_energy_rmse_loss_weight</span> <span class="o">*</span> <span class="n">rmse_energy</span>
+            
+            <span class="n">loss_regularization</span> <span class="o">=</span> <span class="n">rbar_loss_weight</span> <span class="o">*</span> <span class="n">rbar</span> <span class="o">+</span> \
+                <span class="n">l2_reg_loss_weight</span> <span class="o">*</span> <span class="n">l2_reg</span>
+                
+            <span class="n">loss_error</span> <span class="o">=</span> <span class="n">loss_energy</span>
+            <span class="n">validation_losses</span> <span class="o">=</span> <span class="p">{</span>
+                    <span class="s2">&quot;T-MAE&quot;</span><span class="p">:</span> <span class="n">mae_energy</span><span class="p">,</span>
+                    <span class="s2">&quot;T-RMSE&quot;</span><span class="p">:</span> <span class="n">rmse_energy</span><span class="p">,</span>
+                    <span class="s2">&quot;TperAtom-MAE&quot;</span><span class="p">:</span> <span class="n">mae_energyperatom</span><span class="p">,</span>
+                    <span class="s2">&quot;TperAtom-RMSE&quot;</span><span class="p">:</span> <span class="n">rmse_energyperatom</span><span class="p">,</span>
+                    <span class="s2">&quot;T-Hier&quot;</span><span class="p">:</span> <span class="n">rbar</span><span class="p">,</span>
+                    <span class="s2">&quot;L2Reg&quot;</span><span class="p">:</span> <span class="n">l2_reg</span><span class="p">,</span>
+                    <span class="s2">&quot;Loss-Regularization&quot;</span><span class="p">:</span> <span class="n">loss_regularization</span><span class="p">,</span>
+                 <span class="p">}</span>
+            <span class="n">plots_to_make</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">plotting</span><span class="o">.</span><span class="n">Hist2D</span><span class="o">.</span><span class="n">compare</span><span class="p">(</span><span class="n">sys_energy</span><span class="p">,</span> <span class="n">saved</span><span class="o">=</span><span class="kc">True</span><span class="p">),</span>
+                <span class="n">plotting</span><span class="o">.</span><span class="n">Hist2D</span><span class="o">.</span><span class="n">compare</span><span class="p">(</span><span class="n">en_peratom</span><span class="p">,</span> <span class="n">saved</span><span class="o">=</span><span class="kc">True</span><span class="p">),</span>
+            <span class="p">)</span>
+                        
+            <span class="k">if</span> <span class="ow">not</span><span class="p">(</span><span class="n">force_key</span> <span class="o">==</span> <span class="kc">None</span><span class="p">):</span>
+                <span class="n">mae_force</span> <span class="o">=</span> <span class="n">loss</span><span class="o">.</span><span class="n">MAELoss</span><span class="o">.</span><span class="n">of_node</span><span class="p">(</span><span class="n">force</span><span class="p">)</span>
+                <span class="n">rmse_force</span> <span class="o">=</span> <span class="n">loss</span><span class="o">.</span><span class="n">MSELoss</span><span class="o">.</span><span class="n">of_node</span><span class="p">(</span><span class="n">force</span><span class="p">)</span> <span class="o">**</span> <span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="mi">2</span><span class="p">)</span>
+                <span class="n">loss_force</span> <span class="o">=</span> <span class="n">force_mae_loss_weight</span> <span class="o">*</span> <span class="n">mae_force</span> <span class="o">+</span> \
+                    <span class="n">force_rmse_loss_weight</span> <span class="o">*</span> <span class="n">rmse_force</span>    
+                <span class="n">loss_error</span> <span class="o">=</span> <span class="n">loss_error</span> <span class="o">+</span> <span class="n">loss_force</span> 
+                <span class="n">validation_losses</span><span class="o">.</span><span class="n">update</span><span class="p">({</span>
+                    <span class="s2">&quot;ForceMAE&quot;</span><span class="p">:</span> <span class="n">mae_force</span><span class="p">,</span>
+                    <span class="s2">&quot;ForceRMSE&quot;</span><span class="p">:</span> <span class="n">rmse_force</span><span class="p">,</span>
+                <span class="p">})</span>
+                <span class="n">plots_to_make</span> <span class="o">=</span> <span class="n">plots_to_make</span> <span class="o">+</span> \
+                    <span class="p">(</span><span class="n">plotting</span><span class="o">.</span><span class="n">Hist2D</span><span class="o">.</span><span class="n">compare</span><span class="p">(</span><span class="n">force</span><span class="p">,</span> <span class="n">saved</span><span class="o">=</span><span class="kc">True</span><span class="p">),)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">electrostatics_flag</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">electrostatics_flag</span><span class="p">:</span>
+                <span class="k">if</span> <span class="ow">not</span><span class="p">(</span><span class="n">charges_key</span> <span class="o">==</span> <span class="kc">None</span><span class="p">):</span>
+                    <span class="n">rmse_charge</span> <span class="o">=</span>  <span class="n">loss</span><span class="o">.</span><span class="n">MSELoss</span><span class="o">.</span><span class="n">of_node</span><span class="p">(</span><span class="n">atom_charges</span><span class="p">)</span> <span class="o">**</span> <span class="p">(</span><span class="mi">1</span><span class="o">/</span><span class="mi">2</span><span class="p">)</span>
+                    <span class="n">mae_charge</span> <span class="o">=</span>  <span class="n">loss</span><span class="o">.</span><span class="n">MAELoss</span><span class="o">.</span><span class="n">of_node</span><span class="p">(</span><span class="n">atom_charges</span><span class="p">)</span>
+                    <span class="n">loss_charge</span> <span class="o">=</span> <span class="n">charge_rmse_loss_weight</span><span class="o">*</span><span class="n">rmse_charge</span> <span class="o">+</span> <span class="n">charge_mae_loss_weight</span><span class="o">*</span><span class="n">mae_charge</span>
+                    <span class="n">loss_error</span> <span class="o">=</span> <span class="n">loss_error</span> <span class="o">+</span> <span class="n">loss_charge</span>
+                    <span class="n">validation_losses</span><span class="o">.</span><span class="n">update</span><span class="p">({</span>
+                        <span class="s2">&quot;ChargeRMSE&quot;</span><span class="p">:</span> <span class="n">rmse_charge</span><span class="p">,</span>
+                        <span class="s2">&quot;ChargeMAE&quot;</span><span class="p">:</span> <span class="n">mae_charge</span><span class="p">,</span>
+                    <span class="p">})</span>
+                    <span class="n">plots_to_make</span> <span class="o">=</span> <span class="n">plots_to_make</span> <span class="o">+</span> <span class="p">(</span><span class="n">plotting</span><span class="o">.</span><span class="n">Hist2D</span><span class="o">.</span><span class="n">compare</span><span class="p">(</span><span class="n">atom_charges</span><span class="p">,</span> <span class="n">saved</span><span class="o">=</span><span class="kc">True</span><span class="p">),)</span>
+                    
+                <span class="k">if</span> <span class="ow">not</span><span class="p">(</span><span class="n">dipole_key</span> <span class="o">==</span> <span class="kc">None</span><span class="p">):</span>
+                    <span class="n">rmse_dipole</span> <span class="o">=</span>  <span class="n">loss</span><span class="o">.</span><span class="n">MSELoss</span><span class="o">.</span><span class="n">of_node</span><span class="p">(</span><span class="n">dipole</span><span class="p">)</span> <span class="o">**</span> <span class="p">(</span><span class="mi">1</span><span class="o">/</span><span class="mi">2</span><span class="p">)</span>
+                    <span class="n">mae_dipole</span> <span class="o">=</span> <span class="n">loss</span><span class="o">.</span><span class="n">MAELoss</span><span class="o">.</span><span class="n">of_node</span><span class="p">(</span><span class="n">dipole</span><span class="p">)</span>
+                    <span class="n">loss_dipole</span> <span class="o">=</span> <span class="n">dipole_rmse_loss_weight</span><span class="o">*</span><span class="n">rmse_dipole</span> <span class="o">+</span> <span class="n">dipole_mae_loss_weight</span><span class="o">*</span><span class="n">mae_dipole</span>
+                    <span class="n">loss_error</span> <span class="o">=</span> <span class="n">loss_error</span> <span class="o">+</span> <span class="n">loss_dipole</span>
+                    <span class="n">validation_losses</span><span class="o">.</span><span class="n">update</span><span class="p">({</span>
+                        <span class="s2">&quot;DipoleRMSE&quot;</span><span class="p">:</span> <span class="n">rmse_dipole</span><span class="p">,</span>
+                        <span class="s2">&quot;DipoleMAE&quot;</span><span class="p">:</span> <span class="n">mae_dipole</span><span class="p">,</span>
+                    <span class="p">})</span>
+                    <span class="n">plots_to_make</span> <span class="o">=</span> <span class="n">plots_to_make</span> <span class="o">+</span> <span class="p">(</span><span class="n">plotting</span><span class="o">.</span><span class="n">Hist2D</span><span class="o">.</span><span class="n">compare</span><span class="p">(</span><span class="n">dipole</span><span class="p">,</span> <span class="n">saved</span><span class="o">=</span><span class="kc">True</span><span class="p">),)</span>
+                    
+                <span class="k">if</span> <span class="ow">not</span><span class="p">(</span><span class="n">quadrupole_key</span> <span class="o">==</span> <span class="kc">None</span><span class="p">):</span>
+                    <span class="n">rmse_quadrupole</span> <span class="o">=</span>  <span class="n">loss</span><span class="o">.</span><span class="n">MSELoss</span><span class="o">.</span><span class="n">of_node</span><span class="p">(</span><span class="n">quadrupole</span><span class="p">)</span> <span class="o">**</span> <span class="p">(</span><span class="mi">1</span><span class="o">/</span><span class="mi">2</span><span class="p">)</span>
+                    <span class="n">mae_quadrapole</span> <span class="o">=</span> <span class="n">loss</span><span class="o">.</span><span class="n">MAELoss</span><span class="o">.</span><span class="n">of_node</span><span class="p">(</span><span class="n">quadrupole</span><span class="p">)</span>
+                    <span class="n">loss_quadrapole</span> <span class="o">=</span> <span class="n">quadrupole_rmse_loss_weight</span><span class="o">*</span><span class="n">rmse_quadrupole</span> <span class="o">+</span> <span class="n">quadrupole_mae_loss_weight</span><span class="o">*</span><span class="n">mae_quadrapole</span>
+                    <span class="n">loss_error</span> <span class="o">=</span> <span class="n">loss_error</span> <span class="o">+</span> <span class="n">loss_quadrapole</span>
+                    <span class="n">validation_losses</span><span class="o">.</span><span class="n">update</span><span class="p">({</span>
+                        <span class="s2">&quot;QuadrupoleRMSE&quot;</span><span class="p">:</span> <span class="n">rmse_quadrupole</span><span class="p">,</span>
+                        <span class="s2">&quot;QuadrupoleMAE&quot;</span><span class="p">:</span> <span class="n">rmse_quadrupole</span><span class="p">,</span>
+                    <span class="p">})</span>
+                    <span class="n">plots_to_make</span> <span class="o">=</span> <span class="n">plots_to_make</span> <span class="o">+</span> <span class="p">(</span><span class="n">plotting</span><span class="o">.</span><span class="n">Hist2D</span><span class="o">.</span><span class="n">compare</span><span class="p">(</span><span class="n">quadrupole</span><span class="p">,</span> <span class="n">saved</span><span class="o">=</span><span class="kc">True</span><span class="p">),)</span>
+                
+            <span class="c1"># Final parts of the loss graph. </span>
+            <span class="n">loss_train</span> <span class="o">=</span> <span class="n">loss_error</span> <span class="o">+</span> <span class="n">loss_regularization</span>
+            <span class="n">validation_losses</span><span class="o">.</span><span class="n">update</span><span class="p">({</span>
+                <span class="s2">&quot;Loss-Error&quot;</span><span class="p">:</span> <span class="n">loss_error</span><span class="p">,</span>
+                <span class="s2">&quot;Loss&quot;</span><span class="p">:</span> <span class="n">loss_train</span><span class="p">,</span>
+            <span class="p">})</span>
+    
+            <span class="n">early_stopping_key</span> <span class="o">=</span> <span class="s2">&quot;Loss-Error&quot;</span>
+
+            <span class="c1"># Set up Plot maker </span>
+            <span class="n">plots_to_make</span> <span class="o">=</span> <span class="n">plots_to_make</span> <span class="o">+</span> <span class="p">(</span><span class="n">plotting</span><span class="o">.</span><span class="n">SensitivityPlot</span><span class="p">(</span><span class="n">network</span><span class="o">.</span><span class="n">torch_module</span><span class="o">.</span><span class="n">sensitivity_layers</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">saved</span><span class="o">=</span><span class="s2">&quot;sense_0.pdf&quot;</span><span class="p">),)</span>
+            <span class="k">for</span> <span class="n">n_int</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span><span class="n">network_params</span><span class="p">[</span><span class="s2">&quot;n_interaction_layers&quot;</span><span class="p">]):</span>
+                <span class="n">plots_to_make</span> <span class="o">=</span> <span class="n">plots_to_make</span> <span class="o">+</span>  <span class="p">(</span><span class="n">plotting</span><span class="o">.</span><span class="n">SensitivityPlot</span><span class="p">(</span><span class="n">network</span><span class="o">.</span><span class="n">torch_module</span><span class="o">.</span><span class="n">sensitivity_layers</span><span class="p">[</span><span class="n">n_int</span><span class="p">],</span> <span class="n">saved</span><span class="o">=</span><span class="s2">&quot;sense_</span><span class="si">%i</span><span class="s2">.pdf&quot;</span><span class="o">%</span><span class="n">n_int</span><span class="p">),)</span>                
+            
+            <span class="k">if</span> <span class="n">electrostatics_flag</span><span class="p">:</span> 
+                <span class="k">for</span> <span class="n">n_int</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="n">network_params</span><span class="p">[</span><span class="s2">&quot;n_interaction_layers&quot;</span><span class="p">]):</span> <span class="c1"># Add sensitivity layers for the &#39;second&#39; network. </span>
+                    <span class="n">plots_to_make</span> <span class="o">=</span> <span class="n">plots_to_make</span> <span class="o">+</span>  <span class="p">(</span><span class="n">plotting</span><span class="o">.</span><span class="n">SensitivityPlot</span><span class="p">(</span><span class="n">network_energy</span><span class="o">.</span><span class="n">torch_module</span><span class="o">.</span><span class="n">sensitivity_layers</span><span class="p">[</span><span class="n">n_int</span><span class="p">],</span> <span class="n">saved</span><span class="o">=</span><span class="s2">&quot;sense_energy_</span><span class="si">%i</span><span class="s2">.pdf&quot;</span><span class="o">%</span><span class="n">n_int</span><span class="p">),)</span>                
+        
+            <span class="n">plot_maker</span> <span class="o">=</span> <span class="n">plotting</span><span class="o">.</span><span class="n">PlotMaker</span><span class="p">(</span>
+                <span class="o">*</span><span class="n">plots_to_make</span><span class="p">,</span>
+                <span class="n">plot_every</span><span class="o">=</span><span class="n">plot_every</span>
+            <span class="p">)</span>
+            
+            <span class="n">training_modules</span><span class="p">,</span> <span class="n">db_info</span> <span class="o">=</span> <span class="n">assemble_for_training</span><span class="p">(</span><span class="n">loss_train</span><span class="p">,</span> <span class="n">validation_losses</span><span class="p">,</span> <span class="n">plot_maker</span><span class="o">=</span><span class="n">plot_maker</span><span class="p">)</span>
+            <span class="n">model</span><span class="p">,</span> <span class="n">loss_module</span><span class="p">,</span> <span class="n">model_evaluator</span><span class="o">=</span> <span class="n">training_modules</span>
+        
+            <span class="n">database</span> <span class="o">=</span> <span class="n">PyAniDirectoryDB</span><span class="p">(</span><span class="n">directory</span><span class="o">=</span><span class="n">h5_train_dir</span><span class="p">,</span><span class="n">allow_unfound</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span><span class="n">quiet</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span><span class="n">seed</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mf">1e9</span><span class="p">),</span><span class="n">inputs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span><span class="n">targets</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+            
+            <span class="c1">#Ensure that species array is int64 for indexing</span>
+            <span class="n">arrays</span> <span class="o">=</span> <span class="n">database</span><span class="o">.</span><span class="n">arr_dict</span>
+            <span class="n">arrays</span><span class="p">[</span><span class="n">species_key</span><span class="p">]</span> <span class="o">=</span> <span class="n">arrays</span><span class="p">[</span><span class="n">species_key</span><span class="p">]</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="s1">&#39;int64&#39;</span><span class="p">)</span>
+            <span class="n">n_atoms</span> <span class="o">=</span> <span class="n">arrays</span><span class="p">[</span><span class="n">species_key</span><span class="p">]</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">bool</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span><span class="p">(</span> <span class="n">energy_key</span><span class="o">+</span><span class="s2">&quot;peratom&quot;</span> <span class="ow">in</span> <span class="n">arrays</span><span class="p">):</span>
+                <span class="n">arrays</span><span class="p">[</span><span class="n">energy_key</span><span class="o">+</span><span class="s2">&quot;peratom&quot;</span><span class="p">]</span> <span class="o">=</span>  <span class="n">arrays</span><span class="p">[</span><span class="n">energy_key</span><span class="p">]</span> <span class="o">/</span> <span class="n">n_atoms</span>
+            
+            <span class="c1">#Ensure that float arrays are float32</span>
+            <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">arrays</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="k">if</span> <span class="n">v</span><span class="o">.</span><span class="n">dtype</span> <span class="o">==</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">(</span><span class="s1">&#39;float64&#39;</span><span class="p">):</span>
+                    <span class="n">arrays</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">v</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+            
+            <span class="n">database</span><span class="o">.</span><span class="n">inputs</span> <span class="o">=</span> <span class="n">db_info</span><span class="p">[</span><span class="s2">&quot;inputs&quot;</span><span class="p">]</span>
+            <span class="n">database</span><span class="o">.</span><span class="n">targets</span> <span class="o">=</span> <span class="n">db_info</span><span class="p">[</span><span class="s2">&quot;targets&quot;</span><span class="p">]</span>
+
+            <span class="c1"># Flatten Quadrupole data to match hippynn&#39;s internal representation. </span>
+            <span class="k">if</span> <span class="ow">not</span><span class="p">(</span><span class="n">quadrupole_key</span> <span class="o">==</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">and</span> <span class="n">electrostatics_flag</span><span class="p">:</span>
+                <span class="n">arrays</span><span class="p">[</span><span class="n">quadrupole_key</span><span class="p">]</span> <span class="o">=</span> <span class="n">arrays</span><span class="p">[</span><span class="n">quadrupole_key</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mi">9</span><span class="p">)</span>
+    
+            <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="n">arrays</span><span class="p">):</span>
+                <span class="k">if</span> <span class="ow">not</span><span class="p">(</span><span class="n">key</span> <span class="ow">in</span> <span class="n">db_info</span><span class="p">[</span><span class="s1">&#39;inputs&#39;</span><span class="p">])</span> <span class="ow">and</span> <span class="ow">not</span><span class="p">(</span><span class="n">key</span> <span class="ow">in</span> <span class="n">db_info</span><span class="p">[</span><span class="s1">&#39;targets&#39;</span><span class="p">])</span> <span class="ow">and</span> <span class="ow">not</span><span class="p">(</span><span class="n">key</span><span class="o">==</span><span class="s1">&#39;indices&#39;</span><span class="p">):</span>
+                    <span class="k">del</span> <span class="n">arrays</span><span class="p">[</span><span class="n">key</span><span class="p">]</span>
+            
+            <span class="c1"># Remove High energies and forces. </span>
+            <span class="k">if</span> <span class="n">force_key</span> <span class="o">!=</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">database</span><span class="o">.</span><span class="n">remove_high_property</span><span class="p">(</span><span class="n">force_key</span><span class="p">,</span> <span class="kc">True</span><span class="p">,</span> <span class="n">species_key</span><span class="o">=</span><span class="n">species_key</span><span class="p">,</span> <span class="n">cut</span><span class="o">=</span><span class="n">remove_high_forces_cut</span><span class="p">,</span> <span class="n">std_factor</span><span class="o">=</span><span class="n">remove_high_forces_std</span><span class="p">)</span>
+            <span class="n">database</span><span class="o">.</span><span class="n">remove_high_property</span><span class="p">(</span><span class="n">energy_key</span><span class="p">,</span> <span class="kc">False</span><span class="p">,</span> <span class="n">species_key</span><span class="o">=</span><span class="n">species_key</span><span class="p">,</span> <span class="n">cut</span><span class="o">=</span><span class="n">remove_high_energy_cut</span><span class="p">,</span> <span class="n">std_factor</span><span class="o">=</span><span class="n">remove_high_energy_std</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">remove_close_contacts</span><span class="p">,</span><span class="nb">float</span><span class="p">):</span>
+                <span class="n">close_contact_index</span> <span class="o">=</span> <span class="n">hippynn</span><span class="o">.</span><span class="n">pretraining</span><span class="o">.</span><span class="n">calculate_min_dists</span><span class="p">(</span><span class="n">database</span><span class="o">.</span><span class="n">arr_dict</span><span class="p">,</span><span class="n">species_key</span><span class="p">,</span><span class="n">coordinates_key</span><span class="p">,</span><span class="n">dist_hard_max</span><span class="o">=</span><span class="n">network_params</span><span class="p">[</span><span class="s2">&quot;dist_soft_max&quot;</span><span class="p">],</span><span class="n">cell_name</span><span class="o">=</span><span class="n">cell_key</span><span class="p">)</span><span class="o">&gt;</span><span class="n">remove_close_contacts</span>
+                <span class="n">database</span><span class="o">.</span><span class="n">trim_all_arrays</span><span class="p">(</span><span class="n">close_contact_index</span><span class="p">)</span>
+            
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Array Shapes After Cleaning&quot;</span><span class="p">)</span>
+            <span class="n">prettyprint_arrays</span><span class="p">(</span><span class="n">database</span><span class="o">.</span><span class="n">arr_dict</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">database</span><span class="o">.</span><span class="n">arr_dict</span><span class="p">[</span><span class="n">force_key</span><span class="p">]))</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">database</span><span class="o">.</span><span class="n">arr_dict</span><span class="p">[</span><span class="n">force_key</span><span class="p">]))</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">database</span><span class="o">.</span><span class="n">arr_dict</span><span class="p">[</span><span class="n">energy_key</span><span class="o">+</span><span class="s2">&quot;peratom&quot;</span><span class="p">]))</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">database</span><span class="o">.</span><span class="n">arr_dict</span><span class="p">[</span><span class="n">energy_key</span><span class="o">+</span><span class="s2">&quot;peratom&quot;</span><span class="p">]))</span>
+                        
+            <span class="n">database</span><span class="o">.</span><span class="n">make_random_split</span><span class="p">(</span><span class="s2">&quot;valid&quot;</span><span class="p">,</span><span class="n">valid_size</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span><span class="p">(</span><span class="n">h5_test_dir</span> <span class="o">==</span> <span class="kc">None</span><span class="p">):</span>
+                <span class="n">database_test</span> <span class="o">=</span> <span class="n">PyAniDirectoryDB</span><span class="p">(</span><span class="n">directory</span><span class="o">=</span><span class="n">h5_test_dir</span><span class="p">,</span><span class="n">allow_unfound</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span><span class="n">quiet</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span><span class="n">seed</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mf">1e9</span><span class="p">),</span><span class="o">**</span><span class="n">db_info</span><span class="p">)</span>
+                <span class="c1">#Ensure that species array is int64 for indexing</span>
+                <span class="n">arrays_test</span> <span class="o">=</span> <span class="n">database</span><span class="o">.</span><span class="n">arr_dict</span>
+                <span class="n">arrays_test</span><span class="p">[</span><span class="n">species_key</span><span class="p">]</span> <span class="o">=</span> <span class="n">arrays_test</span><span class="p">[</span><span class="n">species_key</span><span class="p">]</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="s1">&#39;int64&#39;</span><span class="p">)</span>
+            
+                <span class="c1">#Ensure that float arrays are float32</span>
+                <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">arrays_test</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                    <span class="k">if</span> <span class="n">v</span><span class="o">.</span><span class="n">dtype</span> <span class="o">==</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">(</span><span class="s1">&#39;float64&#39;</span><span class="p">):</span>
+                        <span class="n">arrays</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">v</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+                <span class="n">database_test</span><span class="o">.</span><span class="n">split_the_rest</span><span class="p">(</span><span class="s2">&quot;test&quot;</span><span class="p">)</span>
+                <span class="n">database</span><span class="o">.</span><span class="n">split_the_rest</span><span class="p">(</span><span class="s2">&quot;train&quot;</span><span class="p">)</span>
+                <span class="n">database</span><span class="o">.</span><span class="n">splits</span><span class="p">[</span><span class="s1">&#39;test&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">database_test</span><span class="o">.</span><span class="n">splits</span><span class="p">[</span><span class="s1">&#39;test&#39;</span><span class="p">]</span>
+                                
+                <span class="c1"># Reshape Quadrupole data. </span>
+                <span class="k">if</span> <span class="ow">not</span><span class="p">(</span><span class="n">quadrupole_key</span> <span class="o">==</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">and</span> <span class="n">electrostatics_flag</span><span class="p">:</span>
+                    <span class="n">arrays</span><span class="p">[</span><span class="n">quadrupole_key</span><span class="p">]</span> <span class="o">=</span> <span class="n">arrays</span><span class="p">[</span><span class="n">quadrupole_key</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mi">9</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">database</span><span class="o">.</span><span class="n">make_random_split</span><span class="p">(</span><span class="s2">&quot;test&quot;</span><span class="p">,</span><span class="n">test_size</span><span class="p">)</span>
+                <span class="n">database</span><span class="o">.</span><span class="n">split_the_rest</span><span class="p">(</span><span class="s2">&quot;train&quot;</span><span class="p">)</span>
+            
+            <span class="c1">#Compute E0 values based on linear regression and remove from system energies</span>
+            <span class="k">if</span> <span class="n">henergy</span><span class="o">.</span><span class="n">module_kwargs</span><span class="p">[</span><span class="s2">&quot;first_is_interacting&quot;</span><span class="p">]:</span>
+                <span class="kn">from</span> <span class="nn">hippynn.networks.hipnn</span> <span class="kn">import</span> <span class="n">compute_hipnn_e0</span>
+                <span class="kn">from</span> <span class="nn">hippynn.graphs.nodes.tags</span> <span class="kn">import</span> <span class="n">Encoder</span>
+                <span class="kn">from</span> <span class="nn">hippynn.graphs</span> <span class="kn">import</span> <span class="n">find_unique_relative</span>
+                <span class="kn">from</span> <span class="nn">hippynn.graphs.nodes.base</span> <span class="kn">import</span> <span class="n">_BaseNode</span>
+                <span class="n">encoder</span> <span class="o">=</span> <span class="kc">None</span>
+                <span class="n">species_name</span> <span class="o">=</span> <span class="kc">None</span>
+                <span class="n">energy_name</span> <span class="o">=</span> <span class="kc">None</span>
+                <span class="n">energy_module</span> <span class="o">=</span> <span class="n">henergy</span>
+                <span class="k">if</span> <span class="n">encoder</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">encoder</span> <span class="o">=</span> <span class="n">find_unique_relative</span><span class="p">(</span><span class="n">energy_module</span><span class="p">,</span> <span class="n">Encoder</span><span class="p">,</span> <span class="s2">&quot;Constructing E0 Values&quot;</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">species_name</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">species_name</span> <span class="o">=</span> <span class="n">find_unique_relative</span><span class="p">(</span><span class="n">energy_module</span><span class="p">,</span> <span class="n">inputs</span><span class="o">.</span><span class="n">SpeciesNode</span><span class="p">,</span> <span class="s2">&quot;Constructing E0 Values&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">db_name</span>
+                <span class="k">if</span> <span class="n">energy_name</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">energy_name</span> <span class="o">=</span> <span class="n">energy_module</span><span class="o">.</span><span class="n">main_output</span><span class="o">.</span><span class="n">db_name</span>
+                <span class="n">energy_module</span> <span class="o">=</span> <span class="n">energy_module</span><span class="o">.</span><span class="n">torch_module</span>
+
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">encoder</span><span class="p">,</span> <span class="n">_BaseNode</span><span class="p">):</span>
+                     <span class="n">encoder</span> <span class="o">=</span> <span class="n">encoder</span><span class="o">.</span><span class="n">torch_module</span>
+                <span class="n">train_data</span> <span class="o">=</span> <span class="n">database</span><span class="o">.</span><span class="n">splits</span><span class="p">[</span><span class="s2">&quot;train&quot;</span><span class="p">]</span>
+                <span class="n">z_vals</span> <span class="o">=</span> <span class="n">train_data</span><span class="p">[</span><span class="n">species_key</span><span class="p">]</span>
+                <span class="n">t_vals</span> <span class="o">=</span> <span class="n">train_data</span><span class="p">[</span><span class="n">energy_key</span><span class="p">]</span>
+
+                <span class="n">eovals</span> <span class="o">=</span> <span class="n">compute_hipnn_e0</span><span class="p">(</span><span class="n">encoder</span><span class="p">,</span> <span class="n">z_vals</span><span class="p">,</span> <span class="n">t_vals</span><span class="p">)</span><span class="o">.</span><span class="n">detach</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+                <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Computed E0 energies from when first is interacting:&quot;</span><span class="p">,</span> <span class="n">eovals</span><span class="p">)</span>
+                <span class="n">SELF_ENERGY_APPROX</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">network_params</span><span class="p">[</span><span class="s2">&quot;possible_species&quot;</span><span class="p">][</span><span class="mi">1</span><span class="p">:],</span> <span class="n">eovals</span><span class="p">)}</span>
+                <span class="n">SELF_ENERGY_APPROX</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+                <span class="k">for</span> <span class="n">data_split</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;train&quot;</span><span class="p">,</span><span class="s2">&quot;valid&quot;</span><span class="p">,</span><span class="s2">&quot;test&quot;</span><span class="p">]:</span> 
+                    <span class="n">self_energy</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vectorize</span><span class="p">(</span><span class="n">SELF_ENERGY_APPROX</span><span class="o">.</span><span class="fm">__getitem__</span><span class="p">)(</span><span class="n">database</span><span class="o">.</span><span class="n">splits</span><span class="p">[</span><span class="n">data_split</span><span class="p">][</span><span class="n">species_key</span><span class="p">])</span>
+                    <span class="n">self_energySum</span> <span class="o">=</span> <span class="n">self_energy</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>  <span class="c1"># Add up over atoms in system.</span>
+                    <span class="n">database</span><span class="o">.</span><span class="n">splits</span><span class="p">[</span><span class="n">data_split</span><span class="p">][</span><span class="n">energy_key</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">database</span><span class="o">.</span><span class="n">splits</span><span class="p">[</span><span class="n">data_split</span><span class="p">][</span><span class="n">energy_key</span><span class="p">]</span> <span class="o">-</span> <span class="n">self_energySum</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+                    <span class="n">database</span><span class="o">.</span><span class="n">splits</span><span class="p">[</span><span class="n">data_split</span><span class="p">][</span><span class="s2">&quot;energyperatom&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">database</span><span class="o">.</span><span class="n">splits</span><span class="p">[</span><span class="n">data_split</span><span class="p">][</span><span class="s2">&quot;energyperatom&quot;</span><span class="p">]</span> <span class="o">-</span> <span class="n">self_energySum</span><span class="o">/</span><span class="n">torch</span><span class="o">.</span><span class="n">count_nonzero</span><span class="p">(</span><span class="n">database</span><span class="o">.</span><span class="n">splits</span><span class="p">[</span><span class="n">data_split</span><span class="p">][</span><span class="n">species_key</span><span class="p">],</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+                    <span class="c1">#Ensure that float arrays are float32</span>
+                    <span class="n">database</span><span class="o">.</span><span class="n">splits</span><span class="p">[</span><span class="n">data_split</span><span class="p">][</span><span class="n">coordinates_key</span><span class="p">]</span> <span class="o">=</span> <span class="n">database</span><span class="o">.</span><span class="n">splits</span><span class="p">[</span><span class="n">data_split</span><span class="p">][</span><span class="n">coordinates_key</span><span class="p">]</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="ow">not</span><span class="p">(</span><span class="n">force_key</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">):</span>
+                        <span class="n">database</span><span class="o">.</span><span class="n">splits</span><span class="p">[</span><span class="n">data_split</span><span class="p">][</span><span class="n">force_key</span><span class="p">]</span> <span class="o">=</span> <span class="n">database</span><span class="o">.</span><span class="n">splits</span><span class="p">[</span><span class="n">data_split</span><span class="p">][</span><span class="n">force_key</span><span class="p">]</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+                <span class="n">training_modules</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">database</span><span class="o">.</span><span class="n">splits</span><span class="p">[</span><span class="s1">&#39;train&#39;</span><span class="p">][</span><span class="n">sys_energy</span><span class="o">.</span><span class="n">db_name</span><span class="p">]</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1">#Ensure that float arrays are float32</span>
+                <span class="k">for</span> <span class="n">data_split</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;train&quot;</span><span class="p">,</span><span class="s2">&quot;valid&quot;</span><span class="p">,</span><span class="s2">&quot;test&quot;</span><span class="p">]:</span>
+                    <span class="n">database</span><span class="o">.</span><span class="n">splits</span><span class="p">[</span><span class="n">data_split</span><span class="p">][</span><span class="n">energy_key</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">database</span><span class="o">.</span><span class="n">splits</span><span class="p">[</span><span class="n">data_split</span><span class="p">][</span><span class="n">energy_key</span><span class="p">])</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+                    <span class="n">database</span><span class="o">.</span><span class="n">splits</span><span class="p">[</span><span class="n">data_split</span><span class="p">][</span><span class="s2">&quot;energyperatom&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">database</span><span class="o">.</span><span class="n">splits</span><span class="p">[</span><span class="n">data_split</span><span class="p">][</span><span class="s2">&quot;energyperatom&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+                    <span class="n">database</span><span class="o">.</span><span class="n">splits</span><span class="p">[</span><span class="n">data_split</span><span class="p">][</span><span class="n">coordinates_key</span><span class="p">]</span> <span class="o">=</span> <span class="n">database</span><span class="o">.</span><span class="n">splits</span><span class="p">[</span><span class="n">data_split</span><span class="p">][</span><span class="n">coordinates_key</span><span class="p">]</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="ow">not</span><span class="p">(</span><span class="n">force_key</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">):</span>
+                        <span class="n">database</span><span class="o">.</span><span class="n">splits</span><span class="p">[</span><span class="n">data_split</span><span class="p">][</span><span class="n">force_key</span><span class="p">]</span> <span class="o">=</span> <span class="n">database</span><span class="o">.</span><span class="n">splits</span><span class="p">[</span><span class="n">data_split</span><span class="p">][</span><span class="n">force_key</span><span class="p">]</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+
+                <span class="n">training_modules</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">database</span><span class="o">.</span><span class="n">splits</span><span class="p">[</span><span class="s1">&#39;train&#39;</span><span class="p">][</span><span class="n">sys_energy</span><span class="o">.</span><span class="n">db_name</span><span class="p">]</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+                <span class="n">set_e0_values</span><span class="p">(</span><span class="n">henergy</span><span class="p">,</span> <span class="n">database</span><span class="p">,</span> <span class="n">peratom</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">energy_name</span><span class="o">=</span><span class="n">energy_key</span><span class="p">,</span> <span class="n">decay_factor</span><span class="o">=</span><span class="mf">1e-2</span><span class="p">)</span>
+            
+            <span class="n">optimizer</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">optim</span><span class="o">.</span><span class="n">Adam</span><span class="p">(</span><span class="n">training_modules</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">parameters</span><span class="p">(),</span> <span class="n">lr</span><span class="o">=</span><span class="n">learning_rate</span><span class="p">)</span>
+            
+            <span class="n">scheduler</span> <span class="o">=</span> <span class="n">RaiseBatchSizeOnPlateau</span><span class="p">(</span>
+                <span class="n">optimizer</span><span class="o">=</span><span class="n">optimizer</span><span class="p">,</span>
+                <span class="o">**</span><span class="n">scheduler_options</span>
+                <span class="p">)</span>
+
+            <span class="n">controller</span> <span class="o">=</span> <span class="n">PatienceController</span><span class="p">(</span>
+                <span class="n">optimizer</span><span class="o">=</span><span class="n">optimizer</span><span class="p">,</span>
+                <span class="n">scheduler</span><span class="o">=</span><span class="n">scheduler</span><span class="p">,</span>
+                <span class="n">stopping_key</span><span class="o">=</span><span class="n">early_stopping_key</span><span class="p">,</span>
+                <span class="o">**</span><span class="n">controller_options</span>
+                <span class="p">)</span>
+            <span class="n">experiment_params</span> <span class="o">=</span> <span class="n">SetupParams</span><span class="p">(</span><span class="n">controller</span><span class="o">=</span><span class="n">controller</span><span class="p">)</span>
+
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Controller Options:&quot;</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">controller_options</span><span class="p">,</span> <span class="s2">&quot;</span><span class="se">\n\n</span><span class="s2">&quot;</span><span class="p">)</span>
+
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Experiment Params:&quot;</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="n">experiment_params</span><span class="p">)</span>
+
+            <span class="c1"># Parameters describing the training procedure.</span>
+            <span class="n">setup_and_train</span><span class="p">(</span>
+                <span class="n">training_modules</span><span class="o">=</span><span class="n">training_modules</span><span class="p">,</span>
+                <span class="n">database</span><span class="o">=</span><span class="n">database</span><span class="p">,</span>
+                <span class="n">setup_params</span><span class="o">=</span><span class="n">experiment_params</span><span class="p">,</span>
+            <span class="p">)</span>
+    
+            <span class="k">if</span> <span class="n">build_lammps_pickle</span><span class="p">:</span>
+                <span class="kn">from</span> <span class="nn">hippynn.interfaces.lammps_interface</span> <span class="kn">import</span> <span class="n">MLIAPInterface</span>
+                <span class="kn">from</span> <span class="nn">hippynn.tools</span> <span class="kn">import</span> <span class="n">device_fallback</span>
+                <span class="n">possible_symbols</span> <span class="o">=</span> <span class="p">[</span><span class="n">chemical_symbols</span><span class="p">[</span><span class="n">num</span><span class="p">]</span> <span class="k">for</span> <span class="n">num</span> <span class="ow">in</span> <span class="n">network_params</span><span class="p">[</span><span class="s1">&#39;possible_species&#39;</span><span class="p">]]</span>
+                <span class="n">possible_symbols</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s1">&#39;X&#39;</span><span class="p">)</span>
+                <span class="n">unified</span> <span class="o">=</span> <span class="n">MLIAPInterface</span><span class="p">(</span><span class="n">henergy</span><span class="p">,</span> <span class="n">possible_symbols</span><span class="p">,</span> <span class="n">model_device</span><span class="o">=</span><span class="n">device_fallback</span><span class="p">)</span>
+                <span class="n">torch</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">unified</span><span class="p">,</span><span class="s2">&quot;lammps_model.pt&quot;</span><span class="p">)</span></div>
+
+                
+            
+<div class="viewcode-block" id="train_HIPNN_model_wrapper">
+<a class="viewcode-back" href="../../../alframework.ml_interfaces.html#alframework.ml_interfaces.hippynn_interface.train_HIPNN_model_wrapper">[docs]</a>
+<span class="k">def</span> <span class="nf">train_HIPNN_model_wrapper</span><span class="p">(</span><span class="n">arg_dict</span><span class="p">):</span>
+    <span class="k">return</span><span class="p">(</span><span class="n">train_HIPNN_model</span><span class="p">(</span><span class="o">**</span><span class="n">arg_dict</span><span class="p">))</span></div>
+
+
+<span class="nd">@python_app</span><span class="p">(</span><span class="n">executors</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;alf_ML_executor&#39;</span><span class="p">])</span>
+<span class="k">def</span> <span class="nf">train_HIPPYNN_ensemble_task</span><span class="p">(</span><span class="n">ML_config</span><span class="p">,</span><span class="n">h5_dir</span><span class="p">,</span><span class="n">model_path</span><span class="p">,</span><span class="n">current_training_id</span><span class="p">,</span><span class="n">gpus_per_node</span><span class="p">,</span><span class="n">remove_existing</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span><span class="n">h5_test_dir</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Trains a HIPPYNN ensemble.</span>
+
+<span class="sd">    Parameters:</span>
+<span class="sd">        ML_config (dict): HIPPYNN configuration dictionary.</span>
+<span class="sd">        h5_dir (str): Directory with h5 file.</span>
+<span class="sd">        model_path (str): path to HIPPYNN model. Example: &#39;/path/to/model_dir&#39;.</span>
+<span class="sd">        current_training_id (int): Current training id.</span>
+<span class="sd">        gpus_per_node (int): Number of GPUs per node.</span>
+<span class="sd">        remove_existing (bool, optional): Whether to remove existing models. Defaults to False.</span>
+<span class="sd">        h5_test_dir (str, optional): Directory where test h5 files reside. Defaults to None.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        tuple: Tuple of two elements. The first is a list of booleans indicating whether each model</span>
+<span class="sd">          was trained successfully. The second is the current training id.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">p</span> <span class="o">=</span> <span class="n">multiprocessing</span><span class="o">.</span><span class="n">Pool</span><span class="p">(</span><span class="n">gpus_per_node</span><span class="p">)</span>
+    <span class="n">general_configuration</span> <span class="o">=</span> <span class="n">ML_config</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="n">n_models</span> <span class="o">=</span> <span class="n">general_configuration</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s1">&#39;n_models&#39;</span><span class="p">)</span>
+    <span class="n">params_list</span> <span class="o">=</span> <span class="p">[</span><span class="n">general_configuration</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_models</span><span class="p">)]</span>
+    <span class="k">for</span> <span class="n">i</span><span class="p">,</span><span class="n">cur_dict</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">params_list</span><span class="p">):</span>
+        <span class="n">cur_dict</span><span class="p">[</span><span class="s1">&#39;model_dir&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">model_path</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">current_training_id</span><span class="p">)</span> <span class="o">+</span> <span class="s1">&#39;/model-</span><span class="si">{:02d}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+        <span class="n">cur_dict</span><span class="p">[</span><span class="s1">&#39;h5_train_dir&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">h5_dir</span>
+        <span class="n">cur_dict</span><span class="p">[</span><span class="s1">&#39;from_multiprocessing_nGPU&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">gpus_per_node</span>
+    <span class="n">out</span> <span class="o">=</span> <span class="n">p</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="n">train_HIPNN_model_wrapper</span><span class="p">,</span><span class="n">params_list</span><span class="p">)</span>
+    <span class="n">completed</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">HIPNN_complete</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span><span class="s1">&#39;Training complete&#39;</span><span class="p">)</span>
+    
+    <span class="n">p</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_models</span><span class="p">):</span>
+        <span class="n">log</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="n">model_path</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">current_training_id</span><span class="p">)</span> <span class="o">+</span> <span class="s1">&#39;/model-</span><span class="si">{:02d}</span><span class="s1">/training_log.txt&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">i</span><span class="p">),</span><span class="s1">&#39;r&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">HIPNN_complete</span><span class="o">.</span><span class="n">findall</span><span class="p">(</span><span class="n">log</span><span class="p">))</span><span class="o">==</span><span class="mi">1</span><span class="p">:</span>
+            <span class="n">completed</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">completed</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="kc">False</span><span class="p">)</span>
+    <span class="k">return</span><span class="p">(</span><span class="n">completed</span><span class="p">,</span> <span class="n">current_training_id</span><span class="p">)</span>
+    
+
+<div class="viewcode-block" id="HIPNN_ASE_calculator">
+<a class="viewcode-back" href="../../../alframework.ml_interfaces.html#alframework.ml_interfaces.hippynn_interface.HIPNN_ASE_calculator">[docs]</a>
+<span class="k">def</span> <span class="nf">HIPNN_ASE_calculator</span><span class="p">(</span><span class="n">HIPNN_model_directory</span><span class="p">,</span><span class="n">energy_key</span><span class="o">=</span><span class="s1">&#39;energy&#39;</span><span class="p">,</span><span class="n">device</span><span class="o">=</span><span class="s2">&quot;cuda:0&quot;</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Load a trained HIPNN model and return an ASE calculator to interface with ASE.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        HIPNN_model_directory (str): Directory containing the trained HIPNN model</span>
+<span class="sd">        energy_key (str, optional): Key name for energy in the HIPNN model. Defaults to &#39;energy&#39;</span>
+<span class="sd">        device (str, optional): Device to load the model on. Defaults to &#39;cuda:0&#39;</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        calc (ase.calculators.calculator.Calculator): ASE calculator interface to the trained HIPNN model</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span> <span class="nn">hippynn.experiment.serialization</span> <span class="kn">import</span> <span class="n">load_checkpoint_from_cwd</span>
+    <span class="kn">from</span> <span class="nn">hippynn.tools</span> <span class="kn">import</span> <span class="n">active_directory</span>
+    <span class="kn">from</span> <span class="nn">hippynn.interfaces.ase_interface</span> <span class="kn">import</span> <span class="n">HippynnCalculator</span>
+    <span class="kn">import</span> <span class="nn">torch</span>
+    <span class="k">with</span> <span class="n">active_directory</span><span class="p">(</span><span class="n">HIPNN_model_directory</span><span class="p">):</span>
+        <span class="n">bundle</span> <span class="o">=</span> <span class="n">load_checkpoint_from_cwd</span><span class="p">(</span><span class="n">map_location</span><span class="o">=</span><span class="s2">&quot;cpu&quot;</span><span class="p">,</span> <span class="n">restore_db</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="n">model</span> <span class="o">=</span> <span class="n">bundle</span><span class="p">[</span><span class="s2">&quot;training_modules&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">model</span>
+    <span class="n">energy_node</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">node_from_name</span><span class="p">(</span><span class="n">energy_key</span><span class="p">)</span>
+    <span class="n">calc</span> <span class="o">=</span> <span class="n">HippynnCalculator</span><span class="p">(</span><span class="n">energy_node</span><span class="p">,</span> <span class="n">en_unit</span><span class="o">=</span><span class="n">units</span><span class="o">.</span><span class="n">eV</span><span class="p">)</span>
+    <span class="n">calc</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+    <span class="n">calc</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">device</span><span class="p">(</span><span class="n">device</span><span class="p">))</span>
+    <span class="k">return</span><span class="p">(</span><span class="n">calc</span><span class="p">)</span></div>
+
+    
+<div class="viewcode-block" id="HIPNN_ASE_load_ensemble">
+<a class="viewcode-back" href="../../../alframework.ml_interfaces.html#alframework.ml_interfaces.hippynn_interface.HIPNN_ASE_load_ensemble">[docs]</a>
+<span class="k">def</span> <span class="nf">HIPNN_ASE_load_ensemble</span><span class="p">(</span><span class="n">HIPNN_ensemble_directory</span><span class="p">,</span><span class="n">device</span><span class="o">=</span><span class="s2">&quot;cuda:0&quot;</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Load a collection of trained HIPNN models from a directory and return a list of ASE calculators.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        HIPNN_ensemble_directory (str): Directory containing the trained HIPNN models</span>
+<span class="sd">        device (str, optional): Device to load the models on. Defaults to &#39;cuda:0&#39;</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        model_list (list): List of ASE calculators, each containing a trained HIPNN model</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">model_list</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">cur_dir</span> <span class="ow">in</span> <span class="n">glob</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="n">HIPNN_ensemble_directory</span> <span class="o">+</span> <span class="s1">&#39;/model-*/&#39;</span><span class="p">):</span>
+        <span class="n">model_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">HIPNN_ASE_calculator</span><span class="p">(</span><span class="n">cur_dir</span><span class="p">,</span><span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">))</span>
+    <span class="k">return</span><span class="p">(</span><span class="n">model_list</span><span class="p">)</span></div>
+
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, B. Nebgen, V. Grizzi, N. Fedik, N. Lubbers, Y.-W. Li, S. Tretiak.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

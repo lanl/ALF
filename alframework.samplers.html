@@ -93,17 +93,125 @@
 <section id="submodules">
 <h2>Submodules<a class="headerlink" href="#submodules" title="Link to this heading"></a></h2>
 </section>
-<section id="alframework-samplers-ase-ensemble-constructor-module">
-<h2>alframework.samplers.ASE_ensemble_constructor module<a class="headerlink" href="#alframework-samplers-ase-ensemble-constructor-module" title="Link to this heading"></a></h2>
+<section id="module-alframework.samplers.ASE_ensemble_constructor">
+<span id="alframework-samplers-ase-ensemble-constructor-module"></span><h2>alframework.samplers.ASE_ensemble_constructor module<a class="headerlink" href="#module-alframework.samplers.ASE_ensemble_constructor" title="Link to this heading"></a></h2>
+<dl class="py class">
+<dt class="sig sig-object py" id="alframework.samplers.ASE_ensemble_constructor.MLMD_calculator">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">alframework.samplers.ASE_ensemble_constructor.</span></span><span class="sig-name descname"><span class="pre">MLMD_calculator</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">models</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">well_params</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">debug_print</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/samplers/ASE_ensemble_constructor.html#MLMD_calculator"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.samplers.ASE_ensemble_constructor.MLMD_calculator" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Calculator</span></code></p>
+<p>This is a calculator that enables MLMD sampling with an ensemble of ML potentials
+models: a list of ASE calculators that are joined to perform MD.
+well_params: Inputs for the well potential above, which enables constrained MD simulations</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.samplers.ASE_ensemble_constructor.MLMD_calculator.calculate">
+<span class="sig-name descname"><span class="pre">calculate</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">atoms</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">properties</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">system_changes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['positions',</span> <span class="pre">'numbers',</span> <span class="pre">'cell',</span> <span class="pre">'pbc',</span> <span class="pre">'initial_charges',</span> <span class="pre">'initial_magmoms']</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/samplers/ASE_ensemble_constructor.html#MLMD_calculator.calculate"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.samplers.ASE_ensemble_constructor.MLMD_calculator.calculate" title="Link to this definition"></a></dt>
+<dd><p>Do the calculation.</p>
+<dl class="simple">
+<dt>properties: list of str</dt><dd><p>List of what needs to be calculated.  Can be any combination
+of ‘energy’, ‘forces’, ‘stress’, ‘dipole’, ‘charges’, ‘magmom’
+and ‘magmoms’.</p>
+</dd>
+<dt>system_changes: list of str</dt><dd><p>List of what has changed since last calculation.  Can be
+any combination of these six: ‘positions’, ‘numbers’, ‘cell’,
+‘pbc’, ‘initial_charges’ and ‘initial_magmoms’.</p>
+</dd>
+</dl>
+<p>Subclasses need to implement this, but can ignore properties
+and system_changes if they want.  Calculated properties should
+be inserted into results dictionary like shown in this dummy
+example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="bp">self</span><span class="o">.</span><span class="n">results</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;energy&#39;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>
+                <span class="s1">&#39;forces&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="n">atoms</span><span class="p">),</span> <span class="mi">3</span><span class="p">)),</span>
+                <span class="s1">&#39;stress&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">6</span><span class="p">),</span>
+                <span class="s1">&#39;dipole&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">3</span><span class="p">),</span>
+                <span class="s1">&#39;charges&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">atoms</span><span class="p">)),</span>
+                <span class="s1">&#39;magmom&#39;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>
+                <span class="s1">&#39;magmoms&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">atoms</span><span class="p">))}</span>
+</pre></div>
+</div>
+<p>The subclass implementation should first call this
+implementation to set the atoms attribute and create any missing
+directories.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="alframework.samplers.ASE_ensemble_constructor.Well_Potential">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">alframework.samplers.ASE_ensemble_constructor.</span></span><span class="sig-name descname"><span class="pre">Well_Potential</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">r_start</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">origin</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[0,</span> <span class="pre">0,</span> <span class="pre">0]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">zero_properties</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mass_weighted</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/samplers/ASE_ensemble_constructor.html#Well_Potential"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.samplers.ASE_ensemble_constructor.Well_Potential" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Calculator</span></code></p>
+<p>This calculator applies a restoring force to constrain a series of
+This is useful for cluster simulations
+r_start: distance from origin where potential starts, in Angstrom
+force: magnitudue of resotring force in eV/Angstrom
+origin: The center point of the spherical well potential
+zero_properties: In order to mix this calculator with other calculators, it must have the same implemented  properties list. this calculator will spoof those properties and return np.array(0) which should not change other propertys mixed with the mixer.
+mass_weighted: Flag to configure if forces applied to atoms should be mass weighted. Default is true to make each atom experience the same acceleration (keeping molecules together)
+#Todo: Add cos()**2 switching function.
+#TODO: Add drag term when in the potential to prevent orbits.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.samplers.ASE_ensemble_constructor.Well_Potential.calculate">
+<span class="sig-name descname"><span class="pre">calculate</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">atoms</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">properties</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['energy']</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">system_changes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['positions',</span> <span class="pre">'numbers',</span> <span class="pre">'cell',</span> <span class="pre">'pbc',</span> <span class="pre">'initial_charges',</span> <span class="pre">'initial_magmoms']</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/samplers/ASE_ensemble_constructor.html#Well_Potential.calculate"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.samplers.ASE_ensemble_constructor.Well_Potential.calculate" title="Link to this definition"></a></dt>
+<dd><p>Do the calculation.</p>
+<dl class="simple">
+<dt>properties: list of str</dt><dd><p>List of what needs to be calculated.  Can be any combination
+of ‘energy’, ‘forces’, ‘stress’, ‘dipole’, ‘charges’, ‘magmom’
+and ‘magmoms’.</p>
+</dd>
+<dt>system_changes: list of str</dt><dd><p>List of what has changed since last calculation.  Can be
+any combination of these six: ‘positions’, ‘numbers’, ‘cell’,
+‘pbc’, ‘initial_charges’ and ‘initial_magmoms’.</p>
+</dd>
+</dl>
+<p>Subclasses need to implement this, but can ignore properties
+and system_changes if they want.  Calculated properties should
+be inserted into results dictionary like shown in this dummy
+example:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="bp">self</span><span class="o">.</span><span class="n">results</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;energy&#39;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>
+                <span class="s1">&#39;forces&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="n">atoms</span><span class="p">),</span> <span class="mi">3</span><span class="p">)),</span>
+                <span class="s1">&#39;stress&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">6</span><span class="p">),</span>
+                <span class="s1">&#39;dipole&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">3</span><span class="p">),</span>
+                <span class="s1">&#39;charges&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">atoms</span><span class="p">)),</span>
+                <span class="s1">&#39;magmom&#39;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>
+                <span class="s1">&#39;magmoms&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">atoms</span><span class="p">))}</span>
+</pre></div>
+</div>
+<p>The subclass implementation should first call this
+implementation to set the atoms attribute and create any missing
+directories.</p>
+</dd></dl>
+
+</dd></dl>
+
 </section>
-<section id="alframework-samplers-builders-module">
-<h2>alframework.samplers.builders module<a class="headerlink" href="#alframework-samplers-builders-module" title="Link to this heading"></a></h2>
+<section id="module-alframework.samplers.builders">
+<span id="alframework-samplers-builders-module"></span><h2>alframework.samplers.builders module<a class="headerlink" href="#module-alframework.samplers.builders" title="Link to this heading"></a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.samplers.builders.condensed_phase_builder">
+<span class="sig-prename descclassname"><span class="pre">alframework.samplers.builders.</span></span><span class="sig-name descname"><span class="pre">condensed_phase_builder</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">start_system</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">molecule_library</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">solute_molecules</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">solvent_molecules</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">density</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_dist</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_patience</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">200</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_atoms</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">center_first_molecule</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">shake</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">print_attempt</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/samplers/builders.html#condensed_phase_builder"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.samplers.builders.condensed_phase_builder" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.samplers.builders.readMolFiles">
+<span class="sig-prename descclassname"><span class="pre">alframework.samplers.builders.</span></span><span class="sig-name descname"><span class="pre">readMolFiles</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">molecule_sample_path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/samplers/builders.html#readMolFiles"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.samplers.builders.readMolFiles" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
 </section>
-<section id="alframework-samplers-ml-driven-md-sampling-module">
-<h2>alframework.samplers.ml_driven_md_sampling module<a class="headerlink" href="#alframework-samplers-ml-driven-md-sampling-module" title="Link to this heading"></a></h2>
+<section id="module-alframework.samplers.ml_driven_md_sampling">
+<span id="alframework-samplers-ml-driven-md-sampling-module"></span><h2>alframework.samplers.ml_driven_md_sampling module<a class="headerlink" href="#module-alframework.samplers.ml_driven_md_sampling" title="Link to this heading"></a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.samplers.ml_driven_md_sampling.moldyn_sampler">
+<span class="sig-prename descclassname"><span class="pre">alframework.samplers.ml_driven_md_sampling.</span></span><span class="sig-name descname"><span class="pre">moldyn_sampler</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ase_atoms</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ase_calculator</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model_details</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_params</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/samplers/ml_driven_md_sampling.html#moldyn_sampler"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.samplers.ml_driven_md_sampling.moldyn_sampler" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
 </section>
-<section id="alframework-samplers-mlmd-sampling-module">
-<h2>alframework.samplers.mlmd_sampling module<a class="headerlink" href="#alframework-samplers-mlmd-sampling-module" title="Link to this heading"></a></h2>
+<section id="module-alframework.samplers.mlmd_sampling">
+<span id="alframework-samplers-mlmd-sampling-module"></span><h2>alframework.samplers.mlmd_sampling module<a class="headerlink" href="#module-alframework.samplers.mlmd_sampling" title="Link to this heading"></a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.samplers.mlmd_sampling.mlmd_sampling">
+<span class="sig-prename descclassname"><span class="pre">alframework.samplers.mlmd_sampling.</span></span><span class="sig-name descname"><span class="pre">mlmd_sampling</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">molecule_object</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ase_calculator</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">maxt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Escut</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Fscut</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Ncheck</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Tamp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Tper</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Tsrt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Tend</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Ramp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Rper</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Rend</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">meta_dir</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_potential_specific_code</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trajectory_interval</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Fmmult</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">3.0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/alframework/samplers/mlmd_sampling.html#mlmd_sampling"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.samplers.mlmd_sampling.mlmd_sampling" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
 </section>
 <section id="module-alframework.samplers">
 <span id="module-contents"></span><h2>Module contents<a class="headerlink" href="#module-alframework.samplers" title="Link to this heading"></a></h2>

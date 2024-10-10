@@ -9,12 +9,33 @@ from alframework.tools import pyanitools as pyt
 import inspect
 
 def annealing_schedule(t, tmax, amp, per, srt, end):
+    """_summary_ 
+    #TODO: fill docstring
+    Args:
+        t (_type_): _description_
+        tmax (_type_): _description_
+        amp (_type_): _description_
+        per (_type_): _description_
+        srt (_type_): _description_
+        end (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
     linear = t / tmax
     linearT = (1 - linear) * srt + linear * end
     return (amp) * np.power(np.sin(np.pi * t / per), 2) + linearT
     
 #This function takes a directory and configures a dictionary for passing into ase_interface import ensemblemolecule
 def build_ANI_info(directory):
+    """_summary_
+    #TODO: fill docstring
+    Args:
+        directory (_type_): _description_
+        
+    Returns:
+        _type_: _description_    
+    """
     #TODO: Check that directory is a valid directory
     ani_dict={}
     cnst_files = glob.glob(directory + '/*.params')
@@ -27,11 +48,29 @@ def build_ANI_info(directory):
     return(ani_dict)
 
 def compute_empirical_formula(S):
+    
+    """_summary_
+    #TODO: fill docstring
+    Args:
+        S (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
     uniques = np.unique(S,return_counts=True)
     arg_sort = np.argsort(uniques[0])
     return "_".join([i+str(j).zfill(2) for i,j in zip(uniques[0][arg_sort],uniques[1][arg_sort])])
 
 def random_rotation_matrix(deflection=1.0, randnums=None):
+    """_summary_
+    #TODO: fill docstring
+    Args:
+        deflection (float, optional): _description_. Defaults to 1.0.
+        randnums (_type_, optional): _description_. Defaults to None.
+
+    Returns:
+        _type_: _description_
+    """
     if randnums is None:
         randnums = np.random.uniform(size=(3,))
 
@@ -57,6 +96,24 @@ def random_rotation_matrix(deflection=1.0, randnums=None):
     return M
 
 def store_current_data(h5path, system_data, properties):
+    """_summary_
+
+    Args:
+        h5path (_type_): _description_
+        system_data (_type_): _description_
+        properties (_type_): _description_
+
+    Raises:
+        RuntimeError: _description_
+        RuntimeError: _description_
+        RuntimeError: _description_
+        RuntimeError: _description_
+        ValueError: _description_
+
+    Returns:
+        _type_: _description_
+    """
+    #TODO: fill docstring
 #    system data is a list of [mol-id(string), atoms, properties dictionary]
     data_dict = {}
     print("Saving h5 file: " + h5path)
@@ -199,6 +256,24 @@ def find_empty_directory(pattern,limit=9999):
 #element 2: an ASE atoms object. 
 #element 3: Evaluated QM properties
 def system_checker(system,kill_on_fail=True,print_error=True):
+    """Check a chemical system object for the following criteria:
+    
+    - system is either a list or tuple with length = 3
+    - system[0] is a dictronary and has a 'moleculeid' key with a string value
+    - system[1] is an ASE Atoms object
+    - system[2] is a dictionary
+    - check that there are no NAN values
+    
+    If any of these criteria fail, a RuntimeError is raised if kill_on_fail is True.
+    Otherwise, False is returned.
+    
+    Parameters:
+        system (list or tuple): The system to check
+        kill_on_fail (bool): If True, raise an exception if the check fails.
+        print_error (bool): If True, print the error message
+    Returns:
+        bool: True if the check passes, False otherwise
+    """
     try: 
         assert isinstance(system,list) or isinstance(system,tuple)
         assert len(system) == 3
@@ -207,6 +282,7 @@ def system_checker(system,kill_on_fail=True,print_error=True):
         assert isinstance(system[1],Atoms)
         assert isinstance(system[2],dict)
         
+        # check for any ASE Atoms object for NAN
         no_nan = True
         if np.sum(np.isnan(system[1].get_positions())) > 0:
             no_nan = False

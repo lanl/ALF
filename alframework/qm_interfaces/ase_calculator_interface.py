@@ -14,7 +14,19 @@ from alframework.tools.tools import system_checker
 from alframework.tools.tools import load_module_from_config
 
 @python_app(executors=['alf_QM_executor'])
-def ase_calculator_task(molecule_object,QM_config,QM_scratch_dir,properties_list):
+def ase_calculator_task(molecule_object, QM_config, QM_scratch_dir, properties_list):
+    """
+    Run an ASE calculation on a molecule object.
+
+    Parameters:
+    molecule_object (list): A list of length three containing a dictionary with the molecule id, an ASE Atoms object, and a dictionary of results from previous calculations.
+    QM_config (dict): A dictionary of configuration options for the ASE calculator.
+    QM_scratch_dir (str): The directory where ASE should write its scratch files.
+    properties_list (list): A list of the properties to be calculated.
+
+    Returns:
+    A list of length three containing a dictionary with the molecule id, an ASE Atoms object, and a dictionary of results from the ASE calculation.
+    """
     system_checker(molecule_object)
     directory = QM_scratch_dir + '/' + molecule_object[0]['moleculeid']
     properties = list(properties_list)

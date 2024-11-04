@@ -553,7 +553,7 @@ def HIPNN_ASE_calculator(HIPNN_model_directory,energy_key='energy',device="cuda:
     from hippynn.interfaces.ase_interface import HippynnCalculator
     import torch
     with active_directory(HIPNN_model_directory):
-        bundle = load_checkpoint_from_cwd(map_location="cpu", restore_db=False)
+        bundle = load_checkpoint_from_cwd(map_location="cpu")#, restore_db=False)
     model = bundle["training_modules"].model
     energy_node = model.node_from_name(energy_key)
     calc = HippynnCalculator(energy_node, en_unit=units.eV)

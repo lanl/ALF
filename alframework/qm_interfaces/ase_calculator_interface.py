@@ -32,7 +32,7 @@ def ase_calculator_task(molecule_object,QM_config,QM_scratch_dir,properties_list
     
     
     #Define the calculator
-    calc = calc_class(atoms=atoms, directory=directory, command=command, **QM_config)
+    calc = calc_class(atoms=atoms, directory=directory, **QM_config)
     
     #Run the calculation
     calc.calculate(atoms=atoms, properties=properties)

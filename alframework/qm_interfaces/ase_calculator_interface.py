@@ -37,8 +37,10 @@ def ase_calculator_task(molecule_object,QM_config,QM_scratch_dir,properties_list
     #Run the calculation
     calc.calculate(atoms=atoms, properties=properties)
     
-    return_results = calc.results
+    return_results = calc.results.copy()
     return_results['converged'] = calc.converged
+    try:
+        del(atoms.calc)
     
     return_system = [molecule_object[0],molecule_object[1],return_results]
     system_checker(return_system)

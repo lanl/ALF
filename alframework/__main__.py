@@ -237,7 +237,7 @@ if testing:
 #If there is no data and no models, start boostrap jobs
 if status['current_h5_id']==0 and status['current_model_id']<0:
     print("Building Bootstrap Set")
-    while QM_task_queue.get_completed_number() < master_config['bootstrap_set']:
+    while QM_task_queue.get_exec_done_number() < master_config['bootstrap_set']:
         if (QM_task_queue.get_queued_number() < master_config['target_queued_QM']):
             while (builder_task_queue.get_number()*master_config.get('maximum_builder_structures',1) < master_config['parallel_samplers']):
                 moleculeids = ['mol-boot-{:010d}'.format(it_ind) for it_ind in range(status['current_molecule_id'],status['current_molecule_id']+master_config.get('maximum_builder_structures',1))]
@@ -245,7 +245,7 @@ if status['current_h5_id']==0 and status['current_model_id']<0:
                 builder_task_queue.add_task(builder_task(**task_input))
                 status['current_molecule_id'] = status['current_molecule_id'] + master_config.get('maximum_builder_structures',1)
         
-        if (builder_task_queue.get_completed_number()>master_config['minimum_QM']):
+        if (builder_task_queue.get_exec_done_number()>master_config['minimum_QM']):
             builder_results,failed = builder_task_queue.get_task_results()
             status['lifetime_failed_builder_tasks'] = status['lifetime_failed_builder_tasks'] + failed
             for structure in builder_results:
@@ -359,7 +359,7 @@ while True:
                 QM_task_queue.add_task(qm_task(**task_input))
 
     #Train more models
-    if (QM_task_queue.get_completed_number() > master_config['save_h5_threshold']) and (ML_task_queue.get_number() < 1):
+    if (QM_task_queue.get_exec_done_number() > master_config['save_h5_threshold']) and (ML_task_queue.get_number() < 1):
         #print(QM_task_queue.task_list[0].result())
     	  #store_current_data(h5path, system_data, properties):
         results_list,failed = QM_task_queue.get_task_results()

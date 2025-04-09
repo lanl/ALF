@@ -165,7 +165,7 @@ class parsl_task_queue():
     def get_task_results(self):
         results_list = []
         failed_number = 0
-        for taski,task in enumerate(self.task_list):
+        for taski,task in reversed(list(enumerate(self.task_list))):
             task_status = task.task_status()
             if task_status == 'exec_done' and task.done:
                 results_list.append(task.result())

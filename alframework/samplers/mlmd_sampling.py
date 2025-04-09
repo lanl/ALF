@@ -155,6 +155,7 @@ def simple_mlmd_sampling_task(molecule_object,sampler_config,model_path,current_
     
     """
     os.environ["CUDA_VISIBLE_DEVICES"] = str(int(os.environ.get('PARSL_WORKER_RANK'))%gpus_per_node)
+    os.environ["ROCR_VISIBLE_DEVICES"] = str(int(os.environ.get('PARSL_WORKER_RANK'))%gpus_per_node)
     system_checker(molecule_object)
     feed_parameters = {}
 

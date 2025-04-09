@@ -101,8 +101,10 @@ def train_HIPNN_model(model_dir,
     if device_string.lower() == "from_multiprocessing":
         process = multiprocessing.current_process()
         os.environ["CUDA_VISIBLE_DEVICES"] = str((process._identity[-1]-1)%from_multiprocessing_nGPU)
+        os.environ["ROCR_VISIBLE_DEVICES"] = str((process._identity[-1]-1)%from_multiprocessing_nGPU)
     else:
         os.environ["CUDA_VISIBLE_DEVICES"] = device_string
+        os.environ["ROCR_VISIBLE_DEVICES"] = device_string
     
     device_cuda = 'cuda:0'
     torch.cuda.set_device(device_cuda)

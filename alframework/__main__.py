@@ -254,7 +254,7 @@ if testing:
 #If there is no data and no models, start boostrap jobs
 if status['current_h5_id'] == 0 and status['current_model_id'] < 0:
     print("Building Bootstrap Set")
-    while QM_task_queue.get_completed_number() < master_config['bootstrap_set']:
+    while QM_task_queue.get_exec_done_number() < master_config['bootstrap_set']:
         if QM_task_queue.get_queued_number() < master_config['target_queued_QM']:
             while builder_task_queue.get_number() * master_config.get('maximum_builder_structures', 1) < master_config['parallel_samplers']:
                 moleculeids = ['mol-boot-{:010d}'.format(it_ind) for it_ind in
@@ -268,7 +268,7 @@ if status['current_h5_id'] == 0 and status['current_model_id'] < 0:
                 builder_task_queue.add_task(builder_task(**task_input))
                 status['current_molecule_id'] = status['current_molecule_id'] + master_config.get('maximum_builder_structures',1)
         
-        if builder_task_queue.get_completed_number() > master_config['minimum_QM']:
+        if builder_task_queue.get_exec_done_number() > master_config['minimum_QM']:
             builder_results, failed = builder_task_queue.get_task_results()
             status['lifetime_failed_builder_tasks'] = status['lifetime_failed_builder_tasks'] + failed
             for structure in builder_results:
@@ -376,7 +376,7 @@ while True:
             status['current_molecule_id'] = status['current_molecule_id'] + master_config.get('maximum_builder_structures',1)
             
     # Builders go stright into samplers
-    if builder_task_queue.get_completed_number() > 0:
+    if builder_task_queue.get_exec_done_number() > 0:
         structure_list, failed = builder_task_queue.get_task_results()
         status['lifetime_failed_builder_tasks'] = status['lifetime_failed_builder_tasks'] + failed
         # Douple loop to facilitate possiblitiy of multiple sctructures returned by builder

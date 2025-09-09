@@ -228,6 +228,22 @@ class parsl_task_queue():
         """Get the number of queued tasks.
         """
         return int(self.get_number() - self.get_running_number() - self.get_completed_number())
+        
+    def get_exec_done_number(self):
+        successful_number = 0
+        for taski,task in enumerate(self.task_list):
+            task_status = task.task_status()
+            if task_status == 'exec_done' and task.done:
+                successful_number=successful_number+1
+        return(successful_number)
+
+    def get_failed_number(self):
+        failed_number = 0
+        for taski,task in enumerate(self.task_list):
+            task_status = task.task_status()
+            if task_status == 'failed':
+                failed_number=failed_number+1
+        return(failed_number)
             
     def get_task_results(self):
         """Get the reults of the tasks
@@ -238,7 +254,7 @@ class parsl_task_queue():
         """
         results_list = []
         failed_number = 0
-        for taski, task in enumerate(self.task_list):
+        for taski,task in reversed(list(enumerate(self.task_list))):
             task_status = task.task_status()
             if task_status == 'exec_done' and task.done:
                 results_list.append(task.result())
@@ -268,6 +284,8 @@ class parsl_task_queue():
         # print('Queued Tasks: {:d}'.format(self.get_queued_number()))
         # print('Running Tasks: {:d}'.format(self.get_running_number()))
         print('Finished Tasks: {:d}'.format(self.get_completed_number()))
+        print('Finished Successfully Tasks: {:d}'.format(self.get_exec_done_number()))
+        print('Finished Failed Tasks: {:d}'.format(self.get_failed_number()))
 
 
 # Used to find current version of directories to re-start with

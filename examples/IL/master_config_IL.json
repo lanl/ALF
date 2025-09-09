@@ -6,7 +6,7 @@
 	"QM_config_path":"orca_config.json",
 	"ML_task":"alframework.ml_interfaces.hippynn_interface.train_HIPPYNN_ensemble_task",
 	"ML_config_path":"hippynn_config.json",
-	"builder_task":"alframework.samplers.builders.simple_condensed_phase_builder_task",
+	"builder_task":"alframework.builders.builders.simple_condensed_phase_builder_task",
 	"builder_config_path":"builder_config.json",
 	"sampler_task":"alframework.samplers.mlmd_sampling.simple_mlmd_sampling_task",
 	"sampler_config_path":"mlmd_config.json",

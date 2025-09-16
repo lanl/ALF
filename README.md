@@ -31,10 +31,10 @@ With the json files completed, the `PYTHONPATH` environment variable must be set
 Once the environment is constructed with the required packages, it is important to test individual operations done by the active learning framework for erorrs. This is done to ensure all processes complete successufuly when run in active learning. Testing each of of the four sub processes is enabled in the following way:
 
 ```
-python -m alframework master.json --test_builder #Test structure building
-python -m alframework master.json --test_sampler #Test mlmd sampling
-python -m alframework master.json --test_ml 
-python -m alframework master.json --test_qm
+python -m alframework --master master.json --test_builder #Test structure building
+python -m alframework --master master.json --test_sampler #Test mlmd sampling
+python -m alframework --master master.json --test_ml 
+python -m alframework --master master.json --test_qm
 ```
 
 These functions will execute in such a way as to pass errors back to the front end to enable easier debugging. Errors encountered in the active learning phase.
@@ -43,7 +43,7 @@ These functions will execute in such a way as to pass errors back to the front e
 
 Once each task has been tested, active learning can be started with:
 ```
-python -m alframework master.json
+python -m alframework --master master.json
 ```
 
 It is generally advised to run the master process on a head node. It will automatically interface with the queueing system and run future jobs on compute nodes. 

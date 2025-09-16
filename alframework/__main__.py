@@ -10,6 +10,7 @@ import sys
 from multiprocessing import Process
 from pathlib import Path
 import numpy as np
+import argparse
 np.set_printoptions(threshold=np.inf)
 
 # Load ASE library
@@ -32,8 +33,16 @@ from alframework.tools.molecules_class import MoleculesObject
 #import logging
 #logging.basicConfig(level=logging.DEBUG)
 
+parser = argparse.ArgumentParser()
+parser.add_argument('--master',required=True)
+parser.add_argument('--test_builder',action='store_true',default=False)
+parser.add_argument('--test_qm',action='store_true',default=False)
+parser.add_argument('--test_sampler',action='store_true',default=False)
+parser.add_argument('--test_ml',action='store_true',default=False)
+args = parser.parse_args()
+
 # Load the master configuration:
-master_config = load_config_file(sys.argv[1])
+master_config = load_config_file(args.master)
 if 'master_directory' not in master_config:
     master_config['master_directory'] = None
 
@@ -58,8 +67,7 @@ ML_task_queue = parsl_task_queue()
 builder_task_queue = parsl_task_queue()
 sampler_task_queue = parsl_task_queue()
 
-if ('--test_ml' in sys.argv[2:] or '--test_builder' in sys.argv[2:] or '--test_sampler' in sys.argv[2:] or
-    '--test_qm' in sys.argv[2:]) and 'parsl_debug_configuration' in master_config:
+if (args.test_builder or args.test_qm or args.test_sampler or args.test_ml) and 'parsl_debug_configuration' in master_config:
     parsl_configuration = load_module_from_string(master_config['parsl_debug_configuration'])
 else: 
     parsl_configuration = load_module_from_string(master_config['parsl_configuration'])
@@ -145,7 +153,7 @@ with open(master_config['status_path'], "w") as outfile:
 
 testing = False
 
-if '--test_builder' in sys.argv[2:] or '--test_sampler' in sys.argv[2:] or '--test_qm' in sys.argv[2:]:
+if args.test_builder or args.test_sampler or args.test_qm:
     task_input = build_input_dict(builder_task.func,
                                   [{"moleculeid": 'test_builder', "moleculeids": ['test_builder'],
                                     "builder_config": builder_config}, *all_configs, status],
@@ -162,7 +170,7 @@ if '--test_builder' in sys.argv[2:] or '--test_sampler' in sys.argv[2:] or '--te
     print(test_configuration)
     testing = True
     
-if '--test_sampler' in sys.argv[2:]:
+if args.test_sampler:
     #Check that there is a model available
     next_model = find_empty_directory(master_config['model_path'])
     if status['current_model_id'] < 0:
@@ -182,7 +190,7 @@ if '--test_sampler' in sys.argv[2:]:
     testing = True
 
 #def ase_calculator_task(input_system,configuration_list,directory,command,properties=['energy','forces']):
-if '--test_qm' in sys.argv[2:]:
+if args.test_qm:
     task_input = build_input_dict(qm_task.func,
                                   [{"molecule_object": test_configuration, "QM_config": QM_config},
                                    *all_configs, status],
@@ -222,7 +230,7 @@ if '--test_qm' in sys.argv[2:]:
     testing = True
     
 #train_ANI_model_task(configuration,data_directory,model_path,model_index,remove_existing=False):
-if '--test_ml' in sys.argv[2:]:
+if args.test_ml:
     #configuration,data_directory,model_path,model_index,remove_existing=False
     task_input = build_input_dict(ml_task.func,
                                   [{"ML_config": ML_config}, *all_configs, status],

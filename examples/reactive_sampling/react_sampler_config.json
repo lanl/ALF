@@ -1,0 +1,9 @@
+{
+    "ase_calculator":"alframework.ml_interfaces.hippynn_interface.HIPNN_ASE_load_ensemble",
+    "reactive_sampling_method":"NEB_DIMER",
+    "N_neb":20,
+    "max_iter":20,
+    "neb_steps":50,
+    "Escut":20,
+    "Fscut":0.3
+}

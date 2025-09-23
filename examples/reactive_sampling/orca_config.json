@@ -1,0 +1,9 @@
+{
+  "QM_run_command":"/usr/projects/ml4chem/Programs/orca_5.0.4/orca",
+  "ncpu":null,
+  "orca_env_file":null,
+  "orcasimpleinput":"engrad wB97X def2-SVP Float Hirshfeld",
+  "orcablocks":"%maxcore 15000\n%scf maxiter 200 end\n%elprop Dipole True end%elprop quadrupole 1 end",
+  "Ediff": 1e-3,
+  "Fdiff":1e-4
+}

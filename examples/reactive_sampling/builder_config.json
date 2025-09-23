@@ -1,0 +1,7 @@
+{
+    "molecule_library_dir":"fragment_library/",
+    "r_files":"r.xyz",
+    "ts_files":"ts.xyz",
+    "p_files":"p.xyz",
+    "N_reactions": "4"
+}

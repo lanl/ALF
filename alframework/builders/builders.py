@@ -187,8 +187,8 @@ def condensed_phase_builder(start_system, molecule_library, solute_molecules=[],
             attempts_lsucc = 0
             curr_sys = prop_sys.copy()
             actual_dens = 1.66054e-24 * np.sum(curr_sys.get_masses()) / (1.0e-24 * curr_sys.get_volume()) # [g/cm^3]
-                if early_stop_probability > random.random():
-                    break
+            if early_stop_probability > random.random():
+                break
         elif new_mol_solute:
             # If the new molecule failed, and we are attempting to add solute (definite molecules) re add to list to try again.
             solute_molecules.append(new_mol_name)

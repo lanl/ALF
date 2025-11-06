@@ -342,7 +342,7 @@ while True:
     #Re-load configurations, but watch for stupid errors
     try:
         # Load the master configuration:
-        master_config_new = load_config_file(sys.argv[1])
+        master_config_new = load_config_file(args.master)
         if 'master_directory' not in master_config:
             master_config_new['master_directory'] = None
 

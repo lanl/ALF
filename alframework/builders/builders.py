@@ -77,7 +77,7 @@ def readMolFiles(molecule_sample_path):
 
 
 def condensed_phase_builder(start_system, molecule_library, solute_molecules=[], solvent_molecules=[], density=1.0,
-                            min_dist=1.2, max_patience=200, max_atoms=None, center_first_molecule=False, shake=0.05):
+                            min_dist=1.2, max_patience=200, max_atoms=None, center_first_molecule=False, shake=0.05, early_stop_probability=0.0):
     """Builder for condensed phase systems.
 
         Args:
@@ -94,6 +94,7 @@ def condensed_phase_builder(start_system, molecule_library, solute_molecules=[],
             max_atoms (int): Maximum number of atoms allowed.
             center_first_molecule (bool): If True the first molecules will be placed with no rotation nor translation.
             shake (float): Amount of random perturbation added to each molecule on the x-, y-, z-axes independently.
+            early_stop_probability (float): After successfully adding a molecule, prabability of stopping. For generating more smaller systems.
 
         Returns:
             (MoleculesObject): An updated MoleculesObject representing the system.
@@ -186,6 +187,8 @@ def condensed_phase_builder(start_system, molecule_library, solute_molecules=[],
             attempts_lsucc = 0
             curr_sys = prop_sys.copy()
             actual_dens = 1.66054e-24 * np.sum(curr_sys.get_masses()) / (1.0e-24 * curr_sys.get_volume()) # [g/cm^3]
+            if early_stop_probability > random.random():
+                break
         elif new_mol_solute:
             # If the new molecule failed, and we are attempting to add solute (definite molecules) re add to list to try again.
             solute_molecules.append(new_mol_name)
@@ -302,7 +305,6 @@ def simple_multi_condensed_phase_builder_task(moleculeids, builder_config, molec
         system_list.append(system)
 
     return system_list
-
 
 #####################################################################################################
 from collections import Counter

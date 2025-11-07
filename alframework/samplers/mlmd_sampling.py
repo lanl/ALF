@@ -71,7 +71,7 @@ def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Escut, Fscut, Nchec
     # ase_atoms.calc.get_potential_energy()
 
     # Define thermostat
-    dyn = Langevin(ase_atoms, dt * units.fs, friction=0.02, temperature_K=T, communicator=None)
+    dyn = Langevin(ase_atoms, dt * units.fs, friction=0.02, temperature_K=T)
     if trajectory_interval is not None:
         trajob = Trajectory(meta_dir + "/metadata-" + molecule_object.get_moleculeid() + '.traj', mode='w', atoms=ase_atoms)
         dyn.attach(trajob.write, interval=trajectory_interval)

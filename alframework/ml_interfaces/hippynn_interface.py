@@ -381,6 +381,12 @@ def train_HIPNN_model(model_dir,
               .to(torch.int32)             # or .int() / .to(torch.int64) as you prefer
               .sum(dim=1)                  # sum along atom axis
              )
+            
+            
+            min_dists = hippynn.pretraining.calculate_min_dists(database.arr_dict,species_key,coordinates_key,6.0,cell_name=cell_key,batch_size=256)
+            min_dists_flag = min_dists>network_params["dist_soft_min"]
+            for curK in database.arr_dict.keys():
+                database.arr_dict[curK] = database.arr_dict[curK][min_dists_flag]
 
             if not( energy_key+"peratom" in arrays):
                 arrays[energy_key+"peratom"] =  arrays[energy_key] / n_atoms

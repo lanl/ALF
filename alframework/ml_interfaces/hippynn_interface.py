@@ -388,7 +388,7 @@ def train_HIPNN_model(model_dir,
             for curK in database.arr_dict.keys():
                 database.arr_dict[curK] = database.arr_dict[curK][min_dists_flag]
 
-            if not( energy_key+"peratom" in arrays):
+            if not( energy_key+"peratom" in list(arrays.keys())):
                 arrays[energy_key+"peratom"] =  arrays[energy_key] / n_atoms
 
             for k, v in arrays.items():

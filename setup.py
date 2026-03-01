@@ -6,6 +6,11 @@ with open("README.md", "r") as fh:
 # Required Dependencies
 install_requirements=[
     "parsl",
+    "ase",
+    "matplotlib",
+    "h5py",
+    "pandas",
+    "numpy",
 ]
 
 # Documentation Dependencies

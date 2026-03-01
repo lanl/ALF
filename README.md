@@ -33,8 +33,8 @@ Once the environment is constructed with the required packages, it is important 
 ```
 python -m alframework --master master.json --test_builder #Test structure building
 python -m alframework --master master.json --test_sampler #Test mlmd sampling
-python -m alframework --master master.json --test_ml 
-python -m alframework --master master.json --test_qm
+python -m alframework --master master.json --test_ml #Test training ML model
+python -m alframework --master master.json --test_qm #Test running QM calculation
 ```
 
 These functions will execute in such a way as to pass errors back to the front end to enable easier debugging. Errors encountered in the active learning phase.

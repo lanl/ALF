@@ -21,7 +21,8 @@ doc_requirements = [
 
 # Extra dependencies
 full_requirements = [
-
+    "pyscf",
+    "hippynn",
 ]
 
 setuptools.setup(

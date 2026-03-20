@@ -42,7 +42,7 @@ jobs:
 
 
       - name: Deploy to GitHub Pages
-        if: github.ref == 'refs/heads/docs'  # Only deploy on docs branch
+        if: github.ref == 'refs/heads/main'  #  deploy on main branch
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}

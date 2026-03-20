@@ -1,0 +1,391 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>alframework.tools.tools module &mdash; ALF 0.0.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=5c79bd3c"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="License" href="../license.html" />
+    <link rel="prev" title="alframework.tools.pyanitools module" href="alframework.tools.pyanitools.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            ALF
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="alframework.html">API documentation</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="alframework.html#subpackages">Subpackages</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="alframework.builders.html">alframework.builders namespace</a></li>
+<li class="toctree-l3"><a class="reference internal" href="alframework.ml_interfaces.html">alframework.ml_interfaces namespace</a></li>
+<li class="toctree-l3"><a class="reference internal" href="alframework.parsl_resource_configs.html">alframework.parsl_resource_configs namespace</a></li>
+<li class="toctree-l3"><a class="reference internal" href="alframework.qm_interfaces.html">alframework.qm_interfaces namespace</a></li>
+<li class="toctree-l3"><a class="reference internal" href="alframework.samplers.html">alframework.samplers namespace</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="alframework.tools.html">alframework.tools namespace</a><ul class="current">
+<li class="toctree-l4 current"><a class="reference internal" href="alframework.tools.html#submodules">Submodules</a><ul class="current">
+<li class="toctree-l5"><a class="reference internal" href="alframework.tools.molecules_class.html">alframework.tools.molecules_class module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="alframework.tools.plotting.html">alframework.tools.plotting module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="alframework.tools.pyanitools.html">alframework.tools.pyanitools module</a></li>
+<li class="toctree-l5 current"><a class="current reference internal" href="#">alframework.tools.tools module</a><ul>
+<li class="toctree-l6"><a class="reference internal" href="#alframework.tools.tools.annealing_schedule"><code class="docutils literal notranslate"><span class="pre">annealing_schedule()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#alframework.tools.tools.build_ANI_info"><code class="docutils literal notranslate"><span class="pre">build_ANI_info()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#alframework.tools.tools.build_input_dict"><code class="docutils literal notranslate"><span class="pre">build_input_dict()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#alframework.tools.tools.compute_empirical_formula"><code class="docutils literal notranslate"><span class="pre">compute_empirical_formula()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#alframework.tools.tools.find_empty_directory"><code class="docutils literal notranslate"><span class="pre">find_empty_directory()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#alframework.tools.tools.load_config_file"><code class="docutils literal notranslate"><span class="pre">load_config_file()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#alframework.tools.tools.load_module_from_config"><code class="docutils literal notranslate"><span class="pre">load_module_from_config()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#alframework.tools.tools.load_module_from_string"><code class="docutils literal notranslate"><span class="pre">load_module_from_string()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#alframework.tools.tools.parsl_task_queue"><code class="docutils literal notranslate"><span class="pre">parsl_task_queue</span></code></a><ul>
+<li class="toctree-l7"><a class="reference internal" href="#alframework.tools.tools.parsl_task_queue.add_task"><code class="docutils literal notranslate"><span class="pre">parsl_task_queue.add_task()</span></code></a></li>
+<li class="toctree-l7"><a class="reference internal" href="#alframework.tools.tools.parsl_task_queue.get_completed_number"><code class="docutils literal notranslate"><span class="pre">parsl_task_queue.get_completed_number()</span></code></a></li>
+<li class="toctree-l7"><a class="reference internal" href="#alframework.tools.tools.parsl_task_queue.get_exec_done_number"><code class="docutils literal notranslate"><span class="pre">parsl_task_queue.get_exec_done_number()</span></code></a></li>
+<li class="toctree-l7"><a class="reference internal" href="#alframework.tools.tools.parsl_task_queue.get_failed_number"><code class="docutils literal notranslate"><span class="pre">parsl_task_queue.get_failed_number()</span></code></a></li>
+<li class="toctree-l7"><a class="reference internal" href="#alframework.tools.tools.parsl_task_queue.get_number"><code class="docutils literal notranslate"><span class="pre">parsl_task_queue.get_number()</span></code></a></li>
+<li class="toctree-l7"><a class="reference internal" href="#alframework.tools.tools.parsl_task_queue.get_queued_number"><code class="docutils literal notranslate"><span class="pre">parsl_task_queue.get_queued_number()</span></code></a></li>
+<li class="toctree-l7"><a class="reference internal" href="#alframework.tools.tools.parsl_task_queue.get_running_number"><code class="docutils literal notranslate"><span class="pre">parsl_task_queue.get_running_number()</span></code></a></li>
+<li class="toctree-l7"><a class="reference internal" href="#alframework.tools.tools.parsl_task_queue.get_task_results"><code class="docutils literal notranslate"><span class="pre">parsl_task_queue.get_task_results()</span></code></a></li>
+<li class="toctree-l7"><a class="reference internal" href="#alframework.tools.tools.parsl_task_queue.get_task_status"><code class="docutils literal notranslate"><span class="pre">parsl_task_queue.get_task_status()</span></code></a></li>
+<li class="toctree-l7"><a class="reference internal" href="#alframework.tools.tools.parsl_task_queue.print_status"><code class="docutils literal notranslate"><span class="pre">parsl_task_queue.print_status()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l6"><a class="reference internal" href="#alframework.tools.tools.random_rotation_matrix"><code class="docutils literal notranslate"><span class="pre">random_rotation_matrix()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#alframework.tools.tools.store_current_data"><code class="docutils literal notranslate"><span class="pre">store_current_data()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#alframework.tools.tools.system_checker"><code class="docutils literal notranslate"><span class="pre">system_checker()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../license.html">License</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">ALF</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="alframework.html">alframework package</a></li>
+          <li class="breadcrumb-item"><a href="alframework.tools.html">alframework.tools namespace</a></li>
+      <li class="breadcrumb-item active">alframework.tools.tools module</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/api_documentation/alframework.tools.tools.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul><div class="rst-breadcrumbs-buttons" role="navigation" aria-label="Sequential page navigation">
+        <a href="alframework.tools.pyanitools.html" class="btn btn-neutral float-left" title="alframework.tools.pyanitools module" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../license.html" class="btn btn-neutral float-right" title="License" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+  </div>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="module-alframework.tools.tools">
+<span id="alframework-tools-tools-module"></span><h1>alframework.tools.tools module<a class="headerlink" href="#module-alframework.tools.tools" title="Link to this heading"></a></h1>
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.tools.tools.annealing_schedule">
+<span class="sig-name descname"><span class="pre">annealing_schedule</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">t</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tmax</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">amp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">per</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">srt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">end</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/tools/tools.html#annealing_schedule"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.annealing_schedule" title="Link to this definition"></a></dt>
+<dd><p>Defines the overall temperature profile in the molecular dynamics simulation.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>t (float): Current simulation time.
+tmax (float): Total simulation time.
+amp (float): Amplitude of the temperature oscillation.
+per (float): Period of the temperature oscillation.
+srt (float): Initial temperature.
+end (float): Final temperature.</p>
+</dd>
+<dt>Returns:</dt><dd><p>(float): Temperature at step ‘t’ given the specified annealing schedule.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.tools.tools.build_ANI_info">
+<span class="sig-name descname"><span class="pre">build_ANI_info</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">directory</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/tools/tools.html#build_ANI_info"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.build_ANI_info" title="Link to this definition"></a></dt>
+<dd><p>Scrapes directory and create a dictionary containing the information that can be passed to ‘ensemblemolecule’.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>directory (str): Directory to look for the information needed to fill the dict.</p>
+</dd>
+<dt>Returns:</dt><dd><p>(dict): Dictionary that can be passed into ‘ensemblemolecule’ in ase_interface module.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.tools.tools.build_input_dict">
+<span class="sig-name descname"><span class="pre">build_input_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">function</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dictionary_list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_local_space</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">raise_on_fail</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/tools/tools.html#build_input_dict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.build_input_dict" title="Link to this definition"></a></dt>
+<dd><p>Builds an input dict by matching the parameters of a function with the keys of dictionaries in a list.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>function (function): Callable object whose parameters going to be extracted.
+dictionary_list (list): List of dictionaries to search.
+use_local_space (bool): If True also looks for the parameters in the local symbol table.
+raise_on_fail (bool): If True raises a value error if this function fails.</p>
+</dd>
+<dt>Returns:</dt><dd><p>(dict): Dictionary containing whose keys are the parameters of ‘function’.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.tools.tools.compute_empirical_formula">
+<span class="sig-name descname"><span class="pre">compute_empirical_formula</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">S</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/tools/tools.html#compute_empirical_formula"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.compute_empirical_formula" title="Link to this definition"></a></dt>
+<dd><p>Computes an empirical formula to describe a chemical system.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>S (list): List of strings where each strings represents an atom in the system.</p>
+</dd>
+<dt>Returns:</dt><dd><p>(str): An empircal formula representing the system.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.tools.tools.find_empty_directory">
+<span class="sig-name descname"><span class="pre">find_empty_directory</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">pattern</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/tools/tools.html#find_empty_directory"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.find_empty_directory" title="Link to this definition"></a></dt>
+<dd><p>Find an empty directory to restart.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>(str): Common prefix of the directories to check.</p>
+</dd>
+<dt>Returns:</dt><dd><p>(int): Number of the empty directory.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.tools.tools.load_config_file">
+<span class="sig-name descname"><span class="pre">load_config_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">master_directory</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/tools/tools.html#load_config_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.load_config_file" title="Link to this definition"></a></dt>
+<dd><p>Extracts the main parameters to run ALF from the master json file.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>path (str): Path of the master json file.
+master_directory (str): Master directory to run ALF.</p>
+</dd>
+<dt>Returns:</dt><dd><p>(dict): Dictionary containing the main parameters needed to configure ALF.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.tools.tools.load_module_from_config">
+<span class="sig-name descname"><span class="pre">load_module_from_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">module_field</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/tools/tools.html#load_module_from_config"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.load_module_from_config" title="Link to this definition"></a></dt>
+<dd><p>Loads a module from a config json file.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>config (dict): Dictionary representing the config json file.
+module_field (str): Module to load.</p>
+</dd>
+<dt>Returns:</dt><dd><p>(type): Type of the class that was loaded from the config file.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.tools.tools.load_module_from_string">
+<span class="sig-name descname"><span class="pre">load_module_from_string</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">module_field</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/tools/tools.html#load_module_from_string"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.load_module_from_string" title="Link to this definition"></a></dt>
+<dd><p>Loads a python module from a string.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>module_field (str): Strings that contains the modules to be loaded.</p>
+</dd>
+<dt>Returns:</dt><dd><p>(type): Type of the class that was loaded from module_field.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="alframework.tools.tools.parsl_task_queue">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">parsl_task_queue</span></span><a class="reference internal" href="../_modules/alframework/tools/tools.html#parsl_task_queue"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.parsl_task_queue" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.tools.tools.parsl_task_queue.add_task">
+<span class="sig-name descname"><span class="pre">add_task</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">task</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/tools/tools.html#parsl_task_queue.add_task"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.parsl_task_queue.add_task" title="Link to this definition"></a></dt>
+<dd><p>Add a task to the task list</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.tools.tools.parsl_task_queue.get_completed_number">
+<span class="sig-name descname"><span class="pre">get_completed_number</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/tools/tools.html#parsl_task_queue.get_completed_number"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.parsl_task_queue.get_completed_number" title="Link to this definition"></a></dt>
+<dd><p>Get the number of completed tasks.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.tools.tools.parsl_task_queue.get_exec_done_number">
+<span class="sig-name descname"><span class="pre">get_exec_done_number</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/tools/tools.html#parsl_task_queue.get_exec_done_number"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.parsl_task_queue.get_exec_done_number" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.tools.tools.parsl_task_queue.get_failed_number">
+<span class="sig-name descname"><span class="pre">get_failed_number</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/tools/tools.html#parsl_task_queue.get_failed_number"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.parsl_task_queue.get_failed_number" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.tools.tools.parsl_task_queue.get_number">
+<span class="sig-name descname"><span class="pre">get_number</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/tools/tools.html#parsl_task_queue.get_number"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.parsl_task_queue.get_number" title="Link to this definition"></a></dt>
+<dd><p>Get the the number of tasks in the task list.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.tools.tools.parsl_task_queue.get_queued_number">
+<span class="sig-name descname"><span class="pre">get_queued_number</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/tools/tools.html#parsl_task_queue.get_queued_number"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.parsl_task_queue.get_queued_number" title="Link to this definition"></a></dt>
+<dd><p>Get the number of queued tasks.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.tools.tools.parsl_task_queue.get_running_number">
+<span class="sig-name descname"><span class="pre">get_running_number</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/tools/tools.html#parsl_task_queue.get_running_number"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.parsl_task_queue.get_running_number" title="Link to this definition"></a></dt>
+<dd><p>Get the number of running tasks.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.tools.tools.parsl_task_queue.get_task_results">
+<span class="sig-name descname"><span class="pre">get_task_results</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/tools/tools.html#parsl_task_queue.get_task_results"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.parsl_task_queue.get_task_results" title="Link to this definition"></a></dt>
+<dd><p>Get the reults of the tasks</p>
+<dl class="simple">
+<dt>Returns:</dt><dd><dl class="simple">
+<dt>(tuple): A tuple containing, respectively, a list that stores the task results and an int that tells</dt><dd><p>the number of failed tasks.</p>
+</dd>
+</dl>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.tools.tools.parsl_task_queue.get_task_status">
+<span class="sig-name descname"><span class="pre">get_task_status</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/tools/tools.html#parsl_task_queue.get_task_status"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.parsl_task_queue.get_task_status" title="Link to this definition"></a></dt>
+<dd><p>Get the status of the tasks.</p>
+<dl class="simple">
+<dt>Returns:</dt><dd><p>(list): List containing the status of the tasks.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.tools.tools.parsl_task_queue.print_status">
+<span class="sig-name descname"><span class="pre">print_status</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/tools/tools.html#parsl_task_queue.print_status"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.parsl_task_queue.print_status" title="Link to this definition"></a></dt>
+<dd><p>Prints the status of the tasks.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.tools.tools.random_rotation_matrix">
+<span class="sig-name descname"><span class="pre">random_rotation_matrix</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">deflection</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">randnums</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/tools/tools.html#random_rotation_matrix"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.random_rotation_matrix" title="Link to this definition"></a></dt>
+<dd><p>Returns a random rotation matrix</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>deflection (float): Pole deflection.
+randnums (ndarray): A (3,) numpy array containing the parameters theta, phi, and z.</p>
+</dd>
+<dt>Returns:</dt><dd><p>(ndarray): Random 3x3 rotation matrix.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.tools.tools.store_current_data">
+<span class="sig-name descname"><span class="pre">store_current_data</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">h5path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">system_data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">properties</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/tools/tools.html#store_current_data"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.store_current_data" title="Link to this definition"></a></dt>
+<dd><p>Stores the key results of the QM calculations in the database.</p>
+<dl>
+<dt>Args:</dt><dd><p>h5path (str): Path to store the .h5 files.
+system_data (list): A list of MoleculesObjects objects.
+properties (dict): Dictionary defined in master.json whose keys are the properties that we want to retrieve</p>
+<blockquote>
+<div><p>from the QM calculations and store in the database.</p>
+</div></blockquote>
+</dd>
+<dt>Returns:</dt><dd><p>(None)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.tools.tools.system_checker">
+<span class="sig-name descname"><span class="pre">system_checker</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">system</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">kill_on_fail</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">print_error</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/tools/tools.html#system_checker"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.system_checker" title="Link to this definition"></a></dt>
+<dd><p>Checks if the system returned by the builder meets all requeriments.</p>
+<dl>
+<dt>Args:</dt><dd><dl class="simple">
+<dt>system (list): A list containing three elements. The first is a dict containing metadata of the system,</dt><dd><p>and one of its keys must be ‘moleculeid’ whose value is a unique identifier of the system.
+The second element is an ASE Atoms object. The third element is a dict that stores the
+desired properties from the QM calculation (e.g. forces and energies).</p>
+</dd>
+</dl>
+<p>kill_on_fail (bool): Kills the process if something goes wrong.
+print_error (bool): If True prints the error message if something goes wrong.</p>
+</dd>
+<dt>Returns:</dt><dd><p>(bool): True if ‘system’ meets all requirements and False otherwise.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="alframework.tools.pyanitools.html" class="btn btn-neutral float-left" title="alframework.tools.pyanitools module" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../license.html" class="btn btn-neutral float-right" title="License" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023, ALF Team.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

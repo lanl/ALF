@@ -1,0 +1,211 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>alframework.qm_interfaces.orca5_interface module &mdash; ALF 0.0.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=5c79bd3c"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="alframework.qm_interfaces.vaspase_interface module" href="alframework.qm_interfaces.vaspase_interface.html" />
+    <link rel="prev" title="alframework.qm_interfaces.ase_calculator_interface module" href="alframework.qm_interfaces.ase_calculator_interface.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            ALF
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="alframework.html">API documentation</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="alframework.html#subpackages">Subpackages</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="alframework.builders.html">alframework.builders namespace</a></li>
+<li class="toctree-l3"><a class="reference internal" href="alframework.ml_interfaces.html">alframework.ml_interfaces namespace</a></li>
+<li class="toctree-l3"><a class="reference internal" href="alframework.parsl_resource_configs.html">alframework.parsl_resource_configs namespace</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="alframework.qm_interfaces.html">alframework.qm_interfaces namespace</a><ul class="current">
+<li class="toctree-l4 current"><a class="reference internal" href="alframework.qm_interfaces.html#submodules">Submodules</a><ul class="current">
+<li class="toctree-l5"><a class="reference internal" href="alframework.qm_interfaces.ase_calculator_interface.html">alframework.qm_interfaces.ase_calculator_interface module</a></li>
+<li class="toctree-l5 current"><a class="current reference internal" href="#">alframework.qm_interfaces.orca5_interface module</a><ul>
+<li class="toctree-l6"><a class="reference internal" href="#alframework.qm_interfaces.orca5_interface.orcaGenerator"><code class="docutils literal notranslate"><span class="pre">orcaGenerator</span></code></a><ul>
+<li class="toctree-l7"><a class="reference internal" href="#alframework.qm_interfaces.orca5_interface.orcaGenerator.check_normal_termination"><code class="docutils literal notranslate"><span class="pre">orcaGenerator.check_normal_termination()</span></code></a></li>
+<li class="toctree-l7"><a class="reference internal" href="#alframework.qm_interfaces.orca5_interface.orcaGenerator.parse_output"><code class="docutils literal notranslate"><span class="pre">orcaGenerator.parse_output()</span></code></a></li>
+<li class="toctree-l7"><a class="reference internal" href="#alframework.qm_interfaces.orca5_interface.orcaGenerator.single_point"><code class="docutils literal notranslate"><span class="pre">orcaGenerator.single_point()</span></code></a></li>
+<li class="toctree-l7"><a class="reference internal" href="#alframework.qm_interfaces.orca5_interface.orcaGenerator.write_orca_input"><code class="docutils literal notranslate"><span class="pre">orcaGenerator.write_orca_input()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l5"><a class="reference internal" href="alframework.qm_interfaces.vaspase_interface.html">alframework.qm_interfaces.vaspase_interface module</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="alframework.samplers.html">alframework.samplers namespace</a></li>
+<li class="toctree-l3"><a class="reference internal" href="alframework.tools.html">alframework.tools namespace</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../license.html">License</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">ALF</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="alframework.html">alframework package</a></li>
+          <li class="breadcrumb-item"><a href="alframework.qm_interfaces.html">alframework.qm_interfaces namespace</a></li>
+      <li class="breadcrumb-item active">alframework.qm_interfaces.orca5_interface module</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/api_documentation/alframework.qm_interfaces.orca5_interface.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul><div class="rst-breadcrumbs-buttons" role="navigation" aria-label="Sequential page navigation">
+        <a href="alframework.qm_interfaces.ase_calculator_interface.html" class="btn btn-neutral float-left" title="alframework.qm_interfaces.ase_calculator_interface module" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="alframework.qm_interfaces.vaspase_interface.html" class="btn btn-neutral float-right" title="alframework.qm_interfaces.vaspase_interface module" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+  </div>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="module-alframework.qm_interfaces.orca5_interface">
+<span id="alframework-qm-interfaces-orca5-interface-module"></span><h1>alframework.qm_interfaces.orca5_interface module<a class="headerlink" href="#module-alframework.qm_interfaces.orca5_interface" title="Link to this heading"></a></h1>
+<dl class="py class">
+<dt class="sig sig-object py" id="alframework.qm_interfaces.orca5_interface.orcaGenerator">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">orcaGenerator</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">scratch_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'/tmp/'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">store_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">nproc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">36</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">unit</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">{'energy':</span> <span class="pre">'hartree',</span> <span class="pre">'length':</span> <span class="pre">'bohr'}</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">orca_env_file</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">orca_command</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">orcainput</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">orcablocks</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/qm_interfaces/orca5_interface.html#orcaGenerator"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.qm_interfaces.orca5_interface.orcaGenerator" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>ORCA 5.0.1 interface with ALF.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.qm_interfaces.orca5_interface.orcaGenerator.check_normal_termination">
+<span class="sig-name descname"><span class="pre">check_normal_termination</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">logfile</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/qm_interfaces/orca5_interface.html#orcaGenerator.check_normal_termination"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.qm_interfaces.orca5_interface.orcaGenerator.check_normal_termination" title="Link to this definition"></a></dt>
+<dd><p>Check if the QM calculation converged.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>logfile (str): Path to ORCA output log file.</p>
+</dd>
+<dt>Returns:</dt><dd><p>(bool): True if converged and False otherwise.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.qm_interfaces.orca5_interface.orcaGenerator.parse_output">
+<span class="sig-name descname"><span class="pre">parse_output</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">job_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prefix</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">natom</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">properties</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sign</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-1</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/qm_interfaces/orca5_interface.html#orcaGenerator.parse_output"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.qm_interfaces.orca5_interface.orcaGenerator.parse_output" title="Link to this definition"></a></dt>
+<dd><p>Parse ORCA output file and extract the properties of interest.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>job_path (str): Path of the directory that stores the output file.
+prefix (str): Name of the output file.
+natom (int): Number of atoms in the QM simulation.
+properties (list): List of properties to be extracted.
+sign (int): Specifies whether we want the forces (-1) or the gradient of the potential (1).</p>
+</dd>
+<dt>Returns:</dt><dd><p>(dict): Dictionary containing the extracted properties.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.qm_interfaces.orca5_interface.orcaGenerator.single_point">
+<span class="sig-name descname"><span class="pre">single_point</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">molecule</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prefix</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'orca'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">properties</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['energy',</span> <span class="pre">'forces']</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/qm_interfaces/orca5_interface.html#orcaGenerator.single_point"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.qm_interfaces.orca5_interface.orcaGenerator.single_point" title="Link to this definition"></a></dt>
+<dd><p>Runs a single point calculation using ORCA.</p>
+<blockquote>
+<div><p>Unlike other generators, the choice of calculations will be performed is setup in __init__: orcainput</p>
+</div></blockquote>
+<dl class="simple">
+<dt>Args:</dt><dd><p>molecule (ase.Atoms): ase.Atoms object that describes the system.
+prefix (str): Prefix common to all input and output files.
+properties (list): List containing the properties to extract from ORCA’s output file.</p>
+</dd>
+<dt>Returns:</dt><dd><p>(dict): Dictionary that stores the desired properties of the single point calculation.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.qm_interfaces.orca5_interface.orcaGenerator.write_orca_input">
+<span class="sig-name descname"><span class="pre">write_orca_input</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ase_atoms</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">charge</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">multiplicity</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">job_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">filename</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'orca.inp'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/qm_interfaces/orca5_interface.html#orcaGenerator.write_orca_input"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.qm_interfaces.orca5_interface.orcaGenerator.write_orca_input" title="Link to this definition"></a></dt>
+<dd><p>Write ORCA’s input file.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>ase_atoms (ase.Atoms): ase.Atoms object describing the system of interest.
+charge (int): Charge of the system.
+multiplicity (int): Multiplicity of the system 2S+1.
+job_path (str): Path of the directory to store the input file.
+filename (str): Input file name.</p>
+</dd>
+<dt>Returns</dt><dd><p>(None)</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="alframework.qm_interfaces.ase_calculator_interface.html" class="btn btn-neutral float-left" title="alframework.qm_interfaces.ase_calculator_interface module" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="alframework.qm_interfaces.vaspase_interface.html" class="btn btn-neutral float-right" title="alframework.qm_interfaces.vaspase_interface module" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023, ALF Team.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

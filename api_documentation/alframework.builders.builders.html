@@ -1,0 +1,262 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>alframework.builders.builders module &mdash; ALF 0.0.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=5c79bd3c"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="alframework.builders.moltensalt_builder module" href="alframework.builders.moltensalt_builder.html" />
+    <link rel="prev" title="alframework.builders namespace" href="alframework.builders.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            ALF
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="alframework.html">API documentation</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="alframework.html#subpackages">Subpackages</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="alframework.builders.html">alframework.builders namespace</a><ul class="current">
+<li class="toctree-l4 current"><a class="reference internal" href="alframework.builders.html#submodules">Submodules</a><ul class="current">
+<li class="toctree-l5 current"><a class="current reference internal" href="#">alframework.builders.builders module</a><ul>
+<li class="toctree-l6"><a class="reference internal" href="#alframework.builders.builders.atomic_system_builder"><code class="docutils literal notranslate"><span class="pre">atomic_system_builder()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#alframework.builders.builders.condensed_phase_builder"><code class="docutils literal notranslate"><span class="pre">condensed_phase_builder()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#alframework.builders.builders.construct_simulation_box"><code class="docutils literal notranslate"><span class="pre">construct_simulation_box()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#alframework.builders.builders.create_atomic_system"><code class="docutils literal notranslate"><span class="pre">create_atomic_system()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#alframework.builders.builders.readMolFiles"><code class="docutils literal notranslate"><span class="pre">readMolFiles()</span></code></a></li>
+<li class="toctree-l6"><a class="reference internal" href="#alframework.builders.builders.to_mic"><code class="docutils literal notranslate"><span class="pre">to_mic()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l5"><a class="reference internal" href="alframework.builders.moltensalt_builder.html">alframework.builders.moltensalt_builder module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="alframework.builders.reactive_builder.html">alframework.builders.reactive_builder module</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="alframework.ml_interfaces.html">alframework.ml_interfaces namespace</a></li>
+<li class="toctree-l3"><a class="reference internal" href="alframework.parsl_resource_configs.html">alframework.parsl_resource_configs namespace</a></li>
+<li class="toctree-l3"><a class="reference internal" href="alframework.qm_interfaces.html">alframework.qm_interfaces namespace</a></li>
+<li class="toctree-l3"><a class="reference internal" href="alframework.samplers.html">alframework.samplers namespace</a></li>
+<li class="toctree-l3"><a class="reference internal" href="alframework.tools.html">alframework.tools namespace</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../license.html">License</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">ALF</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="alframework.html">alframework package</a></li>
+          <li class="breadcrumb-item"><a href="alframework.builders.html">alframework.builders namespace</a></li>
+      <li class="breadcrumb-item active">alframework.builders.builders module</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/api_documentation/alframework.builders.builders.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul><div class="rst-breadcrumbs-buttons" role="navigation" aria-label="Sequential page navigation">
+        <a href="alframework.builders.html" class="btn btn-neutral float-left" title="alframework.builders namespace" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="alframework.builders.moltensalt_builder.html" class="btn btn-neutral float-right" title="alframework.builders.moltensalt_builder module" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+  </div>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="module-alframework.builders.builders">
+<span id="alframework-builders-builders-module"></span><h1>alframework.builders.builders module<a class="headerlink" href="#module-alframework.builders.builders" title="Link to this heading"></a></h1>
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.builders.builders.atomic_system_builder">
+<span class="sig-name descname"><span class="pre">atomic_system_builder</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">atom_charges</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_num_atoms</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_distance</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">box_length</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_tries</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">25</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale_coords</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/builders/builders.html#atomic_system_builder"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.builders.builders.atomic_system_builder" title="Link to this definition"></a></dt>
+<dd><p>Builds the atomic system</p>
+<dl>
+<dt>Args:</dt><dd><dl class="simple">
+<dt>atom_charges (dict): A dictionary where the keys are the atom types in the system and the corresponding values</dt><dd><p>the charge of each atom type.</p>
+</dd>
+</dl>
+<p>target_num_atoms (int): Targeted total number of atoms in the system.
+min_distance (float): Minimum absolute distance between any two atoms [Angstroms].
+box_length (float): Length of the box [Angstroms]
+max_tries (int): Maximum number of cycles in the atom placing algorithm
+scale_coords (bool): Determines whether to scale the coordinates by the box length or not.</p>
+</dd>
+<dt>Returns:</dt><dd><p>(ase.Atoms): ASE atoms object representing a random configuration of the atomic system.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.builders.builders.condensed_phase_builder">
+<span class="sig-name descname"><span class="pre">condensed_phase_builder</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">start_system</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">molecule_library</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">solute_molecules</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">solvent_molecules</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">density</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_dist</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_patience</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">200</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_atoms</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">center_first_molecule</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">shake</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">early_stop_probability</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/builders/builders.html#condensed_phase_builder"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.builders.builders.condensed_phase_builder" title="Link to this definition"></a></dt>
+<dd><p>Builder for condensed phase systems.</p>
+<dl>
+<dt>Args:</dt><dd><p>start_system (MoleculesObject): An object from the class MoleculesObject.
+molecule_library (dict): Dictionary whose keys are the molecules present in the system and values are</p>
+<blockquote>
+<div><p>ase.Atoms objects representing that molecule.</p>
+</div></blockquote>
+<p>solute_molecules (list): List of the solute molecules.
+solvent_molecules (list or dict): List of dict storing the solvent molecules. If it is a dict, then the</p>
+<blockquote>
+<div><p>keys are the molecules and the vales the relative probability of
+selecting that molecule.</p>
+</div></blockquote>
+<p>density (float): Density of the system.
+min_dist (float): Minimum distance between atoms.
+max_patience (int): Number of max tries before giving up on a given system.
+max_atoms (int): Maximum number of atoms allowed.
+center_first_molecule (bool): If True the first molecules will be placed with no rotation nor translation.
+shake (float): Amount of random perturbation added to each molecule on the x-, y-, z-axes independently.
+early_stop_probability (float): After successfully adding a molecule, prabability of stopping. For generating more smaller systems.</p>
+</dd>
+<dt>Returns:</dt><dd><p>(MoleculesObject): An updated MoleculesObject representing the system.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.builders.builders.construct_simulation_box">
+<span class="sig-name descname"><span class="pre">construct_simulation_box</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">atomic_system</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_distance</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">box_length</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">density</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale_coords</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_iter</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">30</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_tries</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">25</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/builders/builders.html#construct_simulation_box"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.builders.builders.construct_simulation_box" title="Link to this definition"></a></dt>
+<dd><p>Constructs a initial configuration for the given atomic system respecting the imposed constraints.</p>
+<p>Given a dictionary containing the atomic species and their charges, a random configuration of the system is
+constructed respecting the constraints (desired density (g/cm^3), box length, minimum distance between atoms).
+The atoms are randomly placed in the simulation box.</p>
+<dl>
+<dt>Args:</dt><dd><dl class="simple">
+<dt>atomic_system (dict): A dictionary where the keys are the atom types and the values the corresponding number</dt><dd><p>of this atom type to be placed in the box.</p>
+</dd>
+</dl>
+<p>min_distance (float): Minimum absolute distance between any two atoms in Angstroms.
+box_length (float): Length of the cubic box.
+density (float): Density of the atomic system in g/cm^3.
+scale_coords (bool): Scales distances by the box length such that all coordinates are now between [0,1].
+max_iter (int): Maximum number of tries to place an atom in a specific grid.
+max_tries (int): Maximum number of tries to rerun the algorithm and try to fit the atoms that are missing to</p>
+<blockquote>
+<div><p>reach the desired number of atoms.</p>
+</div></blockquote>
+</dd>
+<dt>Returns:</dt><dd><p>(ndarray): A (N,3) array where ‘N’ is the total number of atoms in the system.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.builders.builders.create_atomic_system">
+<span class="sig-name descname"><span class="pre">create_atomic_system</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">atom_charges</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_num_atoms</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/builders/builders.html#create_atomic_system"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.builders.builders.create_atomic_system" title="Link to this definition"></a></dt>
+<dd><p>Create a neutral atomic system.</p>
+<p>Sometimes it will be impossible to have the exact number ‘taget_num_atoms’ in the system due to the random
+way in which the atoms were chosen. This isn’t a problem because the box volume can be adjusted to yield the
+desired density.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>atom_charges (dict): Contains the atom type as key and its valence as values.
+target_num_atoms (int): Targeted number of atoms to have in the system.</p>
+</dd>
+<dt>Returns:</dt><dd><dl class="simple">
+<dt>(dict): A dictionary where the keys are the atom types in the system and the corresponding values the number of</dt><dd><p>each atom type in the system.</p>
+</dd>
+</dl>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.builders.builders.readMolFiles">
+<span class="sig-name descname"><span class="pre">readMolFiles</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">molecule_sample_path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/builders/builders.html#readMolFiles"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.builders.builders.readMolFiles" title="Link to this definition"></a></dt>
+<dd><p>Reads MOL files.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>molecule_sample_path (str): Path of the directory that stores the MOL files to be read.</p>
+</dd>
+<dt>Returns:</dt><dd><p>(tuple): Tuple (moldict, mols) where the first element stores the MOL files as a dict and the second as a list.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.builders.builders.to_mic">
+<span class="sig-name descname"><span class="pre">to_mic</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">r_ij</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">box_length</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/builders/builders.html#to_mic"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.builders.builders.to_mic" title="Link to this definition"></a></dt>
+<dd><p>Impose minimum image convention (MIC) on the array containing the distances between atoms.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>r_ij (ndarray): A (n_atoms, 3) matrix r_ij = r_i - r, or a (n_atoms, n_atoms, 3) array containing all r_i - r.
+box_length (float): Length of cubic cell.</p>
+</dd>
+<dt>Returns:</dt><dd><p>(ndarray): Distances under MIC.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="alframework.builders.html" class="btn btn-neutral float-left" title="alframework.builders namespace" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="alframework.builders.moltensalt_builder.html" class="btn btn-neutral float-right" title="alframework.builders.moltensalt_builder module" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023, ALF Team.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

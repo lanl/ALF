@@ -1,0 +1,7 @@
+alframework.tools.molecules\_class module
+=========================================
+
+.. automodule:: alframework.tools.molecules_class
+   :members:
+   :show-inheritance:
+   :undoc-members:

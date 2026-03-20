@@ -1,0 +1,13 @@
+alframework.parsl\_resource\_configs namespace
+==============================================
+
+.. py:module:: alframework.parsl_resource_configs
+
+Submodules
+----------
+
+.. toctree::
+   :maxdepth: 5
+
+   alframework.parsl_resource_configs.chicoma
+   alframework.parsl_resource_configs.darwin

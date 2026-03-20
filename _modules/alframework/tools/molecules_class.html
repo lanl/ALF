@@ -1,0 +1,349 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>alframework.tools.molecules_class &mdash; ALF 0.0.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=5c79bd3c"></script>
+      <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            ALF
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../api_documentation/alframework.html">API documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../license.html">License</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">ALF</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">alframework.tools.molecules_class</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for alframework.tools.molecules_class</h1><div class="highlight"><pre>
+<span></span><span class="kn">from</span><span class="w"> </span><span class="nn">ase</span><span class="w"> </span><span class="kn">import</span> <span class="n">Atoms</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
+
+<div class="viewcode-block" id="MoleculesObject">
+<a class="viewcode-back" href="../../../api_documentation/alframework.tools.molecules_class.html#alframework.tools.molecules_class.MoleculesObject">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">MoleculesObject</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Class to create molecule objects&quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="p">,</span> <span class="n">moleculeid</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Args:</span>
+<span class="sd">            atoms (ase.Atoms): ase Atoms object defining the chemical system of interest.</span>
+<span class="sd">            moleculeid (str): Unique identifier of the system in the database.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">atoms</span><span class="p">,</span> <span class="n">Atoms</span><span class="p">),</span> <span class="s1">&#39;The parameter atoms must be an ase.Atoms object&#39;</span>
+        <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">moleculeid</span><span class="p">,</span> <span class="nb">str</span><span class="p">),</span> <span class="s1">&#39;The molecule id key must be a string.&#39;</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span> <span class="o">=</span> <span class="n">atoms</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_moleculeid</span> <span class="o">=</span> <span class="n">moleculeid</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">converged</span> <span class="o">=</span> <span class="kc">None</span> <span class="c1"># Tells whether the QM calculation converged</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">qm_results</span> <span class="o">=</span> <span class="p">{}</span> <span class="c1"># Dict to store the QM calculation results</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">metadata</span> <span class="o">=</span> <span class="p">{}</span> <span class="c1"># General metadata</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Length method, returns the number of atoms in the system.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;String method&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="sa">f</span><span class="s1">&#39;System: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_chemical_formula</span><span class="p">()</span><span class="si">}</span><span class="s1">, Cell: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_cell</span><span class="p">()</span><span class="si">}</span><span class="s1">, &#39;</span> \
+                   <span class="sa">f</span><span class="s1">&#39;QM results: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">qm_results</span><span class="si">}</span><span class="s1">, Converged: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">converged</span><span class="si">}</span><span class="s1">&#39;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="sa">f</span><span class="s1">&#39;System: None, QM results: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">qm_results</span><span class="si">}</span><span class="s1">, Converged: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">converged</span><span class="si">}</span><span class="s1">&#39;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Representation method&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_moleculeid</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__eq__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Equality method, objects are equal if they have the same atoms and coordinates&quot;&quot;&quot;</span>
+        <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="n">MoleculesObject</span><span class="p">),</span> <span class="s1">&#39;The given object must be an instance of MoleculesObject&#39;</span>
+
+        <span class="c1"># Checking if the two systems have the same chemical composition</span>
+        <span class="n">atomic_nums1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_atomic_numbers</span><span class="p">())</span>
+        <span class="n">atomic_nums2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">other</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_atomic_numbers</span><span class="p">())</span>
+        <span class="n">same_atoms</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array_equal</span><span class="p">(</span><span class="n">atomic_nums1</span><span class="p">,</span> <span class="n">atomic_nums2</span><span class="p">)</span>
+
+        <span class="c1"># Checking if the atoms have equivalent coordinates</span>
+        <span class="n">coords1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()</span>
+        <span class="n">coords2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()</span>
+        <span class="n">same_coords</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">allclose</span><span class="p">(</span><span class="n">coords1</span><span class="p">,</span> <span class="n">coords2</span><span class="p">,</span> <span class="n">atol</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">rtol</span><span class="o">=</span><span class="mf">1e-6</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">same_atoms</span> <span class="ow">and</span> <span class="n">same_coords</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">True</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span>
+
+    <span class="c1"># def __hash__(self):</span>
+    <span class="c1">#     &quot;&quot;&quot;Hash method&quot;&quot;&quot;</span>
+    <span class="c1">#     return hash(self._moleculeid)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">item</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Get item method, allows indexing of the molecule object to resemble the old implementation&quot;&quot;&quot;</span>
+        <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="s1">&#39;Warning: molecule object indexing is being deprecated. Replace with get methods.&#39;</span><span class="p">,</span>
+                      <span class="ne">DeprecationWarning</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">item</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_moleculeid</span>
+        <span class="k">elif</span> <span class="n">item</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span>
+        <span class="k">elif</span> <span class="n">item</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">qm_results</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">IndexError</span><span class="p">(</span><span class="s1">&#39;Index must be either 0, 1, or 2.&#39;</span><span class="p">)</span>
+
+<div class="viewcode-block" id="MoleculesObject.get_moleculeid">
+<a class="viewcode-back" href="../../../api_documentation/alframework.tools.molecules_class.html#alframework.tools.molecules_class.MoleculesObject.get_moleculeid">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_moleculeid</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Get the moleculeid of the system&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_moleculeid</span></div>
+
+
+<div class="viewcode-block" id="MoleculesObject.get_atoms">
+<a class="viewcode-back" href="../../../api_documentation/alframework.tools.molecules_class.html#alframework.tools.molecules_class.MoleculesObject.get_atoms">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_atoms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Get the ase.Atoms object&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span></div>
+
+
+<div class="viewcode-block" id="MoleculesObject.update_atoms">
+<a class="viewcode-back" href="../../../api_documentation/alframework.tools.molecules_class.html#alframework.tools.molecules_class.MoleculesObject.update_atoms">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">update_atoms</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">new_atoms</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Update the atoms attribute</span>
+
+<span class="sd">        This is necessary because when running MLMD we may find a new configuration of the system that the NNs</span>
+<span class="sd">        disagree. Thus, we want to store this configuration to run QM. When we update to None it means that</span>
+<span class="sd">        there was no configuration during the MLMD in which the ensemble of NNs disagreed.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">              new_atoms (ase.Atoms): Atoms object representing the new configuration or system.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">new_atoms</span><span class="p">,</span> <span class="n">Atoms</span><span class="p">)</span> <span class="ow">or</span> <span class="n">new_atoms</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">,</span> \
+            <span class="s1">&#39;Parameter must be either an ase Atoms object or None&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span> <span class="o">=</span> <span class="n">new_atoms</span></div>
+
+
+<div class="viewcode-block" id="MoleculesObject.append_atoms">
+<a class="viewcode-back" href="../../../api_documentation/alframework.tools.molecules_class.html#alframework.tools.molecules_class.MoleculesObject.append_atoms">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">append_atoms</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">new_atoms</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Append atoms to the existing atomic system.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            new_atoms (ase.Atoms): ase.Atoms object to append to the current system.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">new_atoms</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="MoleculesObject.get_results">
+<a class="viewcode-back" href="../../../api_documentation/alframework.tools.molecules_class.html#alframework.tools.molecules_class.MoleculesObject.get_results">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_results</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Get the QM results&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">qm_results</span></div>
+
+
+<div class="viewcode-block" id="MoleculesObject.store_results">
+<a class="viewcode-back" href="../../../api_documentation/alframework.tools.molecules_class.html#alframework.tools.molecules_class.MoleculesObject.store_results">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">store_results</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">results</span><span class="p">,</span> <span class="n">replace</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Stores the QM results</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            results (dict): Dictionary containing the results of the QM calculations that we wish to store</span>
+<span class="sd">            replace (bool): If True completely update self.qm_results including values of common keys, but if False only</span>
+<span class="sd">                            the keys in &#39;results&#39; that doesn&#39;t exist in self.qm_results are added.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="nb">dict</span><span class="p">),</span> <span class="s1">&#39;The results must be stored as a dictionary&#39;</span>
+
+        <span class="k">if</span> <span class="n">replace</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">qm_results</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">new_keys</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">results</span><span class="p">)</span><span class="o">.</span><span class="n">difference</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">qm_results</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">qm_results</span><span class="o">.</span><span class="n">update</span><span class="p">({</span><span class="n">k</span><span class="p">:</span> <span class="n">results</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">new_keys</span><span class="p">})</span></div>
+
+
+<div class="viewcode-block" id="MoleculesObject.check_stored_results">
+<a class="viewcode-back" href="../../../api_documentation/alframework.tools.molecules_class.html#alframework.tools.molecules_class.MoleculesObject.check_stored_results">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check_stored_results</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Checks if there is any QM result stored&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">qm_results</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">True</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">False</span></div>
+
+
+<div class="viewcode-block" id="MoleculesObject.get_metadata">
+<a class="viewcode-back" href="../../../api_documentation/alframework.tools.molecules_class.html#alframework.tools.molecules_class.MoleculesObject.get_metadata">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_metadata</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Get metadata&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">metadata</span></div>
+
+
+<div class="viewcode-block" id="MoleculesObject.update_metadata">
+<a class="viewcode-back" href="../../../api_documentation/alframework.tools.molecules_class.html#alframework.tools.molecules_class.MoleculesObject.update_metadata">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">update_metadata</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">new_metadata</span><span class="p">,</span> <span class="n">replace</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Updates the object metadata</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            new_metadata (dict): New metadata to be added.</span>
+<span class="sd">            replace (bool): If True completely update self.metadata including values of common keys, but if False only</span>
+<span class="sd">                            the keys in &#39;new_metadata&#39; that doesn&#39;t exist in self.metadata are added.</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">new_metadata</span><span class="p">,</span> <span class="nb">dict</span><span class="p">),</span> <span class="s1">&#39;The new metadata must be a dict&#39;</span>
+
+        <span class="k">if</span> <span class="n">replace</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">new_metadata</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">new_keys</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">new_metadata</span><span class="p">)</span><span class="o">.</span><span class="n">difference</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">metadata</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">update</span><span class="p">({</span><span class="n">k</span><span class="p">:</span> <span class="n">new_metadata</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">new_keys</span><span class="p">})</span></div>
+
+
+<div class="viewcode-block" id="MoleculesObject.check_convergence">
+<a class="viewcode-back" href="../../../api_documentation/alframework.tools.molecules_class.html#alframework.tools.molecules_class.MoleculesObject.check_convergence">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">check_convergence</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;True if converged, False otherwise, and None if no QM calculation was performed yet&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">converged</span></div>
+
+
+<div class="viewcode-block" id="MoleculesObject.set_converged_flag">
+<a class="viewcode-back" href="../../../api_documentation/alframework.tools.molecules_class.html#alframework.tools.molecules_class.MoleculesObject.set_converged_flag">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">set_converged_flag</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">convergence_flag</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Set the convergence flag.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            convergence_flag (bool): Bool indicating whether the calculation converged or not.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">convergence_flag</span><span class="p">,</span> <span class="nb">bool</span><span class="p">),</span> <span class="s1">&#39;The convergence flag must be either True or False&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">converged</span> <span class="o">=</span> <span class="n">convergence_flag</span></div>
+
+
+<div class="viewcode-block" id="MoleculesObject.get_system_signature">
+<a class="viewcode-back" href="../../../api_documentation/alframework.tools.molecules_class.html#alframework.tools.molecules_class.MoleculesObject.get_system_signature">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_system_signature</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Returns the system signature as a string.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            (str): String representing the system cell and the atoms types and coordinates.</span>
+
+<span class="sd">        #TODO: Compute system moments of inertia and rotate the system so that the highest order moment points along</span>
+<span class="sd">               the x-axis, midde moment point along y-axis and last moment points along z-axis.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">atoms_list</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_chemical_symbols</span><span class="p">()</span>
+        <span class="n">coords</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()</span>
+        <span class="n">atomic_numbers</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_atomic_numbers</span><span class="p">()</span>
+        <span class="n">idx_sorted</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">atomic_numbers</span><span class="p">)</span>
+
+        <span class="n">signature_cell</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">el</span><span class="si">:</span><span class="s1">.6f</span><span class="si">}</span><span class="s1">-&#39;</span><span class="k">for</span> <span class="n">el</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_cell</span><span class="p">()</span><span class="o">.</span><span class="n">flatten</span><span class="p">()])</span>
+        <span class="n">signature_atoms</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="n">atoms_list</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">coords</span><span class="p">[</span><span class="n">i</span><span class="p">,</span><span class="mi">0</span><span class="p">]</span><span class="si">:</span><span class="s1">.6f</span><span class="si">}{</span><span class="n">coords</span><span class="p">[</span><span class="n">i</span><span class="p">,</span><span class="mi">1</span><span class="p">]</span><span class="si">:</span><span class="s1">.6f</span><span class="si">}{</span><span class="n">coords</span><span class="p">[</span><span class="n">i</span><span class="p">,</span><span class="mi">2</span><span class="p">]</span><span class="si">:</span><span class="s1">.6f</span><span class="si">}</span><span class="s1">&#39;</span>
+                                   <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">idx_sorted</span><span class="p">])</span>
+
+        <span class="k">return</span> <span class="n">signature_cell</span> <span class="o">+</span> <span class="n">signature_atoms</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="compare_chemical_composition">
+<a class="viewcode-back" href="../../../api_documentation/alframework.tools.molecules_class.html#alframework.tools.molecules_class.compare_chemical_composition">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">compare_chemical_composition</span><span class="p">(</span><span class="n">system1</span><span class="p">,</span> <span class="n">system2</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Check if two MoleculesObject instances have the same chemical composition</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        system1 (MoleculesObject): First object to be compared.</span>
+<span class="sd">        system2 (MoleculesObject): Second object to be compared.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        (bool): True if the two systems have the same chemical composition.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">system1</span><span class="p">,</span> <span class="n">MoleculesObject</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">system2</span><span class="p">,</span> <span class="n">MoleculesObject</span><span class="p">),</span> \
+        <span class="s1">&#39;The given objects must be an instance of MoleculesObject&#39;</span>
+
+    <span class="n">atomic_nums1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">system1</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_atomic_numbers</span><span class="p">())</span>
+    <span class="n">atomic_nums2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">system2</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_atomic_numbers</span><span class="p">())</span>
+
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array_equal</span><span class="p">(</span><span class="n">atomic_nums1</span><span class="p">,</span> <span class="n">atomic_nums2</span><span class="p">)</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023, ALF Team.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

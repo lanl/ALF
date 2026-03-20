@@ -1,0 +1,700 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>alframework.builders.builders &mdash; ALF 0.0.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=5c79bd3c"></script>
+      <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            ALF
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../api_documentation/alframework.html">API documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../license.html">License</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">ALF</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">alframework.builders.builders</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for alframework.builders.builders</h1><div class="highlight"><pre>
+<span></span><span class="c1"># The builder code goes here</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">glob</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">random</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">parsl</span><span class="w"> </span><span class="kn">import</span> <span class="n">python_app</span><span class="p">,</span> <span class="n">bash_app</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">ase</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ase</span><span class="w"> </span><span class="kn">import</span> <span class="n">Atoms</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ase</span><span class="w"> </span><span class="kn">import</span> <span class="n">neighborlist</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ase.geometry.cell</span><span class="w"> </span><span class="kn">import</span> <span class="n">complete_cell</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ase.io</span><span class="w"> </span><span class="kn">import</span> <span class="n">cfg</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ase.io</span><span class="w"> </span><span class="kn">import</span> <span class="n">read</span><span class="p">,</span> <span class="n">write</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">alframework.tools.tools</span><span class="w"> </span><span class="kn">import</span> <span class="n">random_rotation_matrix</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">alframework.tools.tools</span><span class="w"> </span><span class="kn">import</span> <span class="n">build_input_dict</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">alframework.tools.molecules_class</span><span class="w"> </span><span class="kn">import</span> <span class="n">MoleculesObject</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">random</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">copy</span><span class="w"> </span><span class="kn">import</span> <span class="n">deepcopy</span>
+
+
+<span class="c1"># def cfg_loader(model_string,start_molecule_index,cfg_directory,number=1):</span>
+<span class="c1">#    #TODO: add assertion that cfg_directory exists and has cfg files</span>
+<span class="c1">#    #TODO: Add assertion that number is a number</span>
+<span class="c1">#    cfg_list = glob.glob(cfg_directory+&#39;/*.cfg&#39;)</span>
+<span class="c1">#    atom_list = [[&#39;mol-{:s}-{:010d}&#39;.format(model_string,start_molecule_index+i),cfg.read_cfg(random.choice(cfg_list))] for i in range(number)]</span>
+<span class="c1">#    return(atom_list)</span>
+
+<span class="nd">@python_app</span><span class="p">(</span><span class="n">executors</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;alf_sampler_executor&#39;</span><span class="p">])</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">simple_cfg_loader_task</span><span class="p">(</span><span class="n">moleculeid</span><span class="p">,</span> <span class="n">builder_config</span><span class="p">,</span> <span class="n">shake</span><span class="o">=</span><span class="mf">0.05</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Loads an atomic configuration from cfg file to be used by the sampler.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        moleculeid (str): System unique identifier in the database.</span>
+<span class="sd">        builder_config (dict): Dictionary containing the builder parameters.</span>
+<span class="sd">        shake (float): Amount of random pertubation added to each atom coordinate.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        (MoleculesObject): A MoleculesObject representing the system.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">cfg_list</span> <span class="o">=</span> <span class="n">glob</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="n">builder_config</span><span class="p">[</span><span class="s1">&#39;molecule_library_dir&#39;</span><span class="p">]</span> <span class="o">+</span> <span class="s1">&#39;/*.cfg&#39;</span><span class="p">)</span>
+    <span class="n">cfg_choice</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">cfg_list</span><span class="p">)</span>
+    <span class="n">ase_atoms</span> <span class="o">=</span> <span class="n">cfg</span><span class="o">.</span><span class="n">read_cfg</span><span class="p">(</span><span class="n">cfg_choice</span><span class="p">)</span>
+    <span class="n">ase_atoms</span><span class="o">.</span><span class="n">rattle</span><span class="p">(</span><span class="n">shake</span><span class="p">)</span>
+
+    <span class="n">molecule_object</span> <span class="o">=</span> <span class="n">MoleculesObject</span><span class="p">(</span><span class="n">ase_atoms</span><span class="p">,</span> <span class="n">moleculeid</span><span class="p">)</span>
+    <span class="n">molecule_object</span><span class="o">.</span><span class="n">update_metadata</span><span class="p">({</span><span class="s1">&#39;molecule_library_file&#39;</span><span class="p">:</span> <span class="n">cfg_choice</span><span class="p">})</span>
+
+    <span class="k">return</span> <span class="n">molecule_object</span>
+
+
+<div class="viewcode-block" id="readMolFiles">
+<a class="viewcode-back" href="../../../api_documentation/alframework.builders.builders.html#alframework.builders.builders.readMolFiles">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">readMolFiles</span><span class="p">(</span><span class="n">molecule_sample_path</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Reads MOL files.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        molecule_sample_path (str): Path of the directory that stores the MOL files to be read.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        (tuple): Tuple (moldict, mols) where the first element stores the MOL files as a dict and the second as a list.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">mol_files</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">listdir</span><span class="p">(</span><span class="n">molecule_sample_path</span><span class="p">)</span>
+    <span class="n">mols</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">moldict</span> <span class="o">=</span> <span class="p">{}</span>
+
+    <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">mol_files</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">moldict</span><span class="p">[</span><span class="n">f</span><span class="p">]</span> <span class="o">=</span> <span class="n">read</span><span class="p">(</span><span class="n">molecule_sample_path</span> <span class="o">+</span> <span class="n">f</span><span class="p">,</span> <span class="n">parallel</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+            <span class="n">mols</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">read</span><span class="p">(</span><span class="n">molecule_sample_path</span> <span class="o">+</span> <span class="n">f</span><span class="p">,</span> <span class="n">parallel</span><span class="o">=</span><span class="kc">False</span><span class="p">))</span>
+        <span class="k">except</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Error loading file:&#39;</span><span class="p">,</span> <span class="n">molecule_sample_path</span> <span class="o">+</span> <span class="n">f</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Skipping...&#39;</span><span class="p">)</span>
+            <span class="k">continue</span>
+
+    <span class="k">return</span> <span class="n">moldict</span><span class="p">,</span> <span class="n">mols</span></div>
+
+
+
+<div class="viewcode-block" id="condensed_phase_builder">
+<a class="viewcode-back" href="../../../api_documentation/alframework.builders.builders.html#alframework.builders.builders.condensed_phase_builder">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">condensed_phase_builder</span><span class="p">(</span><span class="n">start_system</span><span class="p">,</span> <span class="n">molecule_library</span><span class="p">,</span> <span class="n">solute_molecules</span><span class="o">=</span><span class="p">[],</span> <span class="n">solvent_molecules</span><span class="o">=</span><span class="p">[],</span> <span class="n">density</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
+                            <span class="n">min_dist</span><span class="o">=</span><span class="mf">1.2</span><span class="p">,</span> <span class="n">max_patience</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span> <span class="n">max_atoms</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">center_first_molecule</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">shake</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span> <span class="n">early_stop_probability</span><span class="o">=</span><span class="mf">0.0</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Builder for condensed phase systems.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            start_system (MoleculesObject): An object from the class MoleculesObject.</span>
+<span class="sd">            molecule_library (dict): Dictionary whose keys are the molecules present in the system and values are</span>
+<span class="sd">                                     ase.Atoms objects representing that molecule.</span>
+<span class="sd">            solute_molecules (list): List of the solute molecules.</span>
+<span class="sd">            solvent_molecules (list or dict): List of dict storing the solvent molecules. If it is a dict, then the</span>
+<span class="sd">                                              keys are the molecules and the vales the relative probability of</span>
+<span class="sd">                                              selecting that molecule.</span>
+<span class="sd">            density (float): Density of the system.</span>
+<span class="sd">            min_dist (float): Minimum distance between atoms.</span>
+<span class="sd">            max_patience (int): Number of max tries before giving up on a given system.</span>
+<span class="sd">            max_atoms (int): Maximum number of atoms allowed.</span>
+<span class="sd">            center_first_molecule (bool): If True the first molecules will be placed with no rotation nor translation.</span>
+<span class="sd">            shake (float): Amount of random perturbation added to each molecule on the x-, y-, z-axes independently.</span>
+<span class="sd">            early_stop_probability (float): After successfully adding a molecule, prabability of stopping. For generating more smaller systems.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            (MoleculesObject): An updated MoleculesObject representing the system.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># ensure system adhears to formating convention</span>
+    <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">start_system</span><span class="p">,</span> <span class="n">MoleculesObject</span><span class="p">),</span> <span class="s1">&#39;start_system must be an instance of MoleculesObject&#39;</span>
+    <span class="n">curr_sys</span> <span class="o">=</span> <span class="n">start_system</span><span class="o">.</span><span class="n">get_atoms</span><span class="p">()</span>
+
+    <span class="c1"># Make sure we know what all of the molecules are</span>
+    <span class="k">for</span> <span class="n">curN</span> <span class="ow">in</span> <span class="n">solute_molecules</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">curN</span> <span class="ow">not</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="n">molecule_library</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;Solute </span><span class="si">{:s}</span><span class="s2"> not in molecule_library.&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">curN</span><span class="p">))</span>
+    <span class="k">for</span> <span class="n">curN</span> <span class="ow">in</span> <span class="n">solvent_molecules</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">curN</span> <span class="ow">not</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="n">molecule_library</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;Solvent </span><span class="si">{:s}</span><span class="s2"> not in molecule_library.&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">curN</span><span class="p">))</span>
+
+    <span class="c1"># solvent_molecules can be a dictionary, where the lookup value is a relative probability of selecting that molecule</span>
+    <span class="n">solvent_weights</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">solvent_molecules</span><span class="p">))</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">solvent_molecules</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="c1"># solvent_list, solvent_weights = map(list, zip(*solvent_molecules.items())) # faster and easier way to do the code below</span>
+        <span class="n">solvent_list</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">solvent_molecules</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+        <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">solvent</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">solvent_list</span><span class="p">):</span>
+            <span class="n">solvent_weights</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">solvent_molecules</span><span class="p">[</span><span class="n">solvent</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">solvent_list</span> <span class="o">=</span> <span class="n">solvent_molecules</span>
+
+    <span class="n">actual_dens</span> <span class="o">=</span> <span class="mf">0.0</span>
+    <span class="n">attempts_total</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">attempts_lsucc</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="k">while</span> <span class="n">actual_dens</span> <span class="o">&lt;</span> <span class="n">density</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">solute_molecules</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">max_atoms</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">curr_sys</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">max_atoms</span><span class="p">:</span>
+                <span class="k">break</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">solute_molecules</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">new_mol_name</span> <span class="o">=</span> <span class="n">solute_molecules</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+            <span class="n">new_mol_solute</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">solvent_list</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">break</span>
+            <span class="n">new_mol_name</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">choices</span><span class="p">(</span><span class="n">solvent_list</span><span class="p">,</span> <span class="n">weights</span><span class="o">=</span><span class="n">solvent_weights</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">new_mol_solute</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="n">new_mol</span> <span class="o">=</span> <span class="n">molecule_library</span><span class="p">[</span><span class="n">new_mol_name</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="n">center_first_molecule</span><span class="p">:</span>
+            <span class="n">center_first_molecule</span> <span class="o">=</span> <span class="kc">False</span>
+            <span class="n">new_mol</span><span class="o">.</span><span class="n">set_positions</span><span class="p">(</span><span class="n">new_mol</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()</span> <span class="o">-</span> <span class="n">new_mol</span><span class="o">.</span><span class="n">get_center_of_mass</span><span class="p">()</span> <span class="o">+</span>
+                                  <span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">complete_cell</span><span class="p">(</span><span class="n">curr_sys</span><span class="o">.</span><span class="n">get_cell</span><span class="p">()))[</span><span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">,</span> <span class="p">:]</span> <span class="o">/</span> <span class="mi">2</span> <span class="o">+</span>
+                                  <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="o">-</span><span class="n">shake</span><span class="p">,</span> <span class="n">shake</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="n">new_mol</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+                                  <span class="p">)</span>
+
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">T</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">complete_cell</span><span class="p">(</span><span class="n">curr_sys</span><span class="o">.</span><span class="n">get_cell</span><span class="p">()),</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mi">3</span><span class="p">))</span>
+            <span class="n">M</span> <span class="o">=</span> <span class="n">random_rotation_matrix</span><span class="p">()</span>
+            <span class="n">new_mol</span><span class="o">.</span><span class="n">set_positions</span><span class="p">(</span><span class="n">new_mol</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()</span> <span class="o">-</span> <span class="n">new_mol</span><span class="o">.</span><span class="n">get_center_of_mass</span><span class="p">())</span>
+            <span class="n">xyz</span> <span class="o">=</span> <span class="n">new_mol</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="o">-</span><span class="n">shake</span><span class="p">,</span> <span class="n">shake</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="n">new_mol</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+            <span class="n">new_mol</span><span class="o">.</span><span class="n">set_positions</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">xyz</span><span class="p">,</span> <span class="n">M</span><span class="o">.</span><span class="n">T</span><span class="p">)</span> <span class="o">+</span> <span class="n">T</span><span class="p">)</span>
+
+        <span class="n">prop_sys</span> <span class="o">=</span> <span class="n">Atoms</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">curr_sys</span><span class="o">.</span><span class="n">get_chemical_symbols</span><span class="p">(),</span> <span class="n">new_mol</span><span class="o">.</span><span class="n">get_chemical_symbols</span><span class="p">()]),</span>
+                         <span class="n">positions</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">curr_sys</span><span class="o">.</span><span class="n">get_positions</span><span class="p">(),</span> <span class="n">new_mol</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()]),</span>
+                         <span class="n">cell</span><span class="o">=</span><span class="n">curr_sys</span><span class="o">.</span><span class="n">get_cell</span><span class="p">(),</span>
+                         <span class="n">pbc</span><span class="o">=</span><span class="n">curr_sys</span><span class="o">.</span><span class="n">get_pbc</span><span class="p">())</span>
+
+        <span class="c1"># Neighborlist is set up so that If there are any neighbors, we have close contacts</span>
+        <span class="n">nl</span> <span class="o">=</span> <span class="n">neighborlist</span><span class="o">.</span><span class="n">NeighborList</span><span class="p">(</span><span class="n">min_dist</span><span class="p">,</span> <span class="n">skin</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">self_interaction</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">bothways</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                                       <span class="n">primitive</span><span class="o">=</span><span class="n">ase</span><span class="o">.</span><span class="n">neighborlist</span><span class="o">.</span><span class="n">NewPrimitiveNeighborList</span><span class="p">)</span>
+        <span class="n">nl</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">prop_sys</span><span class="p">)</span>
+        <span class="n">failed</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="c1"># This should only wrap if pbc is True</span>
+        <span class="c1"># The goal of this code is to determine close contacts, but only between the new frament and existing atoms</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">curr_sys</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="n">prop_sys</span><span class="p">)):</span>
+            <span class="n">indices</span><span class="p">,</span> <span class="n">offsets</span> <span class="o">=</span> <span class="n">nl</span><span class="o">.</span><span class="n">get_neighbors</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="n">indices</span><span class="p">[</span><span class="n">indices</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">curr_sys</span><span class="p">)]:</span>
+                <span class="c1"># This is a clumsy way of fixing pbcs and basically auto-wraps</span>
+                <span class="n">dij</span> <span class="o">=</span> <span class="n">prop_sys</span><span class="o">.</span><span class="n">get_distance</span><span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">,</span> <span class="n">mic</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+                <span class="c1"># dij = np.linalg.norm(xyz[i] - (xyz[j] + np.dot(off, prop_sys.get_cell())))</span>
+                <span class="k">if</span> <span class="n">dij</span> <span class="o">&lt;</span> <span class="n">min_dist</span><span class="p">:</span>
+                    <span class="n">failed</span> <span class="o">=</span> <span class="kc">True</span>
+                    <span class="k">break</span>
+            <span class="k">if</span> <span class="n">failed</span> <span class="ow">is</span> <span class="kc">True</span><span class="p">:</span>
+                <span class="k">break</span>
+
+        <span class="n">attempts_total</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="n">attempts_lsucc</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">if</span> <span class="n">attempts_lsucc</span> <span class="o">&gt;</span> <span class="n">max_patience</span><span class="p">:</span>
+            <span class="k">break</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">failed</span><span class="p">:</span>
+            <span class="n">attempts_lsucc</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="n">curr_sys</span> <span class="o">=</span> <span class="n">prop_sys</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+            <span class="n">actual_dens</span> <span class="o">=</span> <span class="mf">1.66054e-24</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">curr_sys</span><span class="o">.</span><span class="n">get_masses</span><span class="p">())</span> <span class="o">/</span> <span class="p">(</span><span class="mf">1.0e-24</span> <span class="o">*</span> <span class="n">curr_sys</span><span class="o">.</span><span class="n">get_volume</span><span class="p">())</span> <span class="c1"># [g/cm^3]</span>
+            <span class="k">if</span> <span class="n">early_stop_probability</span> <span class="o">&gt;</span> <span class="n">random</span><span class="o">.</span><span class="n">random</span><span class="p">():</span>
+                <span class="k">break</span>
+        <span class="k">elif</span> <span class="n">new_mol_solute</span><span class="p">:</span>
+            <span class="c1"># If the new molecule failed, and we are attempting to add solute (definite molecules) re add to list to try again.</span>
+            <span class="n">solute_molecules</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">new_mol_name</span><span class="p">)</span>
+
+    <span class="n">start_system</span><span class="o">.</span><span class="n">update_metadata</span><span class="p">({</span><span class="s1">&#39;target_density&#39;</span><span class="p">:</span> <span class="n">density</span><span class="p">,</span> <span class="s1">&#39;actual_density&#39;</span><span class="p">:</span> <span class="n">actual_dens</span><span class="p">})</span>
+    <span class="n">start_system</span><span class="o">.</span><span class="n">update_atoms</span><span class="p">(</span><span class="n">curr_sys</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">start_system</span></div>
+
+
+
+<span class="nd">@python_app</span><span class="p">(</span><span class="n">executors</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;alf_sampler_executor&#39;</span><span class="p">])</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">simple_condensed_phase_builder_task</span><span class="p">(</span><span class="n">moleculeid</span><span class="p">,</span> <span class="n">builder_config</span><span class="p">,</span> <span class="n">molecule_library_dir</span><span class="p">,</span> <span class="n">cell_range</span><span class="p">,</span>
+                                        <span class="n">solute_molecule_options</span><span class="p">,</span> <span class="n">Rrange</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Condensed phase builder task that will be fed to the sampler.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        moleculeid (str): String that uniquely identifies a system in the database.</span>
+<span class="sd">        builder_config (dict): Dictionary that stores the config parameters of the builder.</span>
+<span class="sd">        molecule_library_dir (str): Path of the molecule library directory.</span>
+<span class="sd">        cell_range (list): A (3,2) list with the x, y, and z ranges for the cell size [min, max].</span>
+<span class="sd">        solute_molecule_options (list): List of lists detailing sets of solutes.</span>
+<span class="sd">        Rrange (list): Density range [density_min, density_max].</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        (MoleculesObject): A MoleculesObject representing the system.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1">#    import glob</span>
+    <span class="c1">#    import random</span>
+    <span class="c1">#    import os</span>
+    <span class="c1">#    import numpy as np</span>
+    <span class="c1">#    import json</span>
+    <span class="c1">#</span>
+    <span class="c1">#    import ase</span>
+    <span class="c1">#    from ase import Atoms</span>
+    <span class="c1">#    from ase import neighborlist</span>
+    <span class="c1">#    from ase.geometry.cell import complete_cell</span>
+    <span class="c1">#    from ase.io import read, write</span>
+    <span class="c1">#</span>
+    <span class="c1">#    from alframework.tools.tools import random_rotation_matrix</span>
+    <span class="c1">#    import random</span>
+    <span class="c1">#    from copy import deepcopy</span>
+
+    <span class="n">cell_shape</span> <span class="o">=</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">dim</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">dim</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="k">for</span> <span class="n">dim</span> <span class="ow">in</span> <span class="n">cell_range</span><span class="p">]</span>
+
+    <span class="n">empty_system</span> <span class="o">=</span> <span class="n">MoleculesObject</span><span class="p">(</span><span class="n">Atoms</span><span class="p">(</span><span class="n">cell</span><span class="o">=</span><span class="n">cell_shape</span><span class="p">),</span> <span class="n">moleculeid</span><span class="p">)</span>
+
+    <span class="n">molecule_library</span><span class="p">,</span> <span class="n">mols</span> <span class="o">=</span> <span class="n">readMolFiles</span><span class="p">(</span><span class="n">molecule_library_dir</span><span class="p">)</span>
+
+    <span class="n">solute_molecules</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">solute_molecule_options</span><span class="p">)</span>
+
+    <span class="n">feed_parameters</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;solute_molecules&#39;</span><span class="p">:</span> <span class="n">solute_molecules</span><span class="p">,</span> <span class="s1">&#39;density&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">Rrange</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">Rrange</span><span class="p">[</span><span class="mi">1</span><span class="p">])}</span>
+
+    <span class="n">input_parameters</span> <span class="o">=</span> <span class="n">build_input_dict</span><span class="p">(</span><span class="n">condensed_phase_builder</span><span class="p">,</span>
+                                        <span class="p">[{</span><span class="s2">&quot;start_system&quot;</span><span class="p">:</span> <span class="n">empty_system</span><span class="p">,</span> <span class="s2">&quot;molecule_library&quot;</span><span class="p">:</span> <span class="n">molecule_library</span><span class="p">},</span>
+                                         <span class="n">feed_parameters</span><span class="p">,</span>
+                                         <span class="n">builder_config</span><span class="p">]</span>
+                                        <span class="p">)</span>
+
+    <span class="n">system</span> <span class="o">=</span> <span class="n">condensed_phase_builder</span><span class="p">(</span><span class="o">**</span><span class="n">input_parameters</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">system</span><span class="p">,</span> <span class="n">MoleculesObject</span><span class="p">),</span> <span class="s1">&#39;system must be an instance of MoleculesObject&#39;</span>
+
+    <span class="k">return</span> <span class="n">system</span>
+
+
+<span class="nd">@python_app</span><span class="p">(</span><span class="n">executors</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;alf_sampler_executor&#39;</span><span class="p">])</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">simple_multi_condensed_phase_builder_task</span><span class="p">(</span><span class="n">moleculeids</span><span class="p">,</span> <span class="n">builder_config</span><span class="p">,</span> <span class="n">molecule_library_dir</span><span class="p">,</span> <span class="n">cell_range</span><span class="p">,</span>
+                                              <span class="n">solute_molecule_options</span><span class="p">,</span> <span class="n">Rrange</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Multi condensed phase builder task that will be fed to the sampler.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        moleculeids (str): List of strings that uniquely identifies a system in the database.</span>
+<span class="sd">        builder_config (dict): Dictionary that stores the config parameters of the builder.</span>
+<span class="sd">        molecule_library_dir (str): Path of the molecule library directory.</span>
+<span class="sd">        cell_range (list): A (3,2) list with the x, y, and z ranges for the cell size [min, max].</span>
+<span class="sd">        solute_molecule_options (list): List of lists detailing sets of solutes.</span>
+<span class="sd">        Rrange (list): Density range [density_min, density_max].</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        (list): A list of objects from MoleculesObject.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1">#    import glob</span>
+    <span class="c1">#    import random</span>
+    <span class="c1">#    import os</span>
+    <span class="c1">#    import numpy as np</span>
+    <span class="c1">#    import json</span>
+    <span class="c1">#</span>
+    <span class="c1">#    import ase</span>
+    <span class="c1">#    from ase import Atoms</span>
+    <span class="c1">#    from ase import neighborlist</span>
+    <span class="c1">#    from ase.geometry.cell import complete_cell</span>
+    <span class="c1">#    from ase.io import read, write</span>
+    <span class="c1">#</span>
+    <span class="c1">#    from alframework.tools.tools import random_rotation_matrix</span>
+    <span class="c1">#    import random</span>
+    <span class="c1">#    from copy import deepcopy</span>
+
+    <span class="n">molecule_library</span><span class="p">,</span> <span class="n">mols</span> <span class="o">=</span> <span class="n">readMolFiles</span><span class="p">(</span><span class="n">molecule_library_dir</span><span class="p">)</span>
+    <span class="n">system_list</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="k">for</span> <span class="n">moleculeid</span> <span class="ow">in</span> <span class="n">moleculeids</span><span class="p">:</span>
+        <span class="n">cell_shape</span> <span class="o">=</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">dim</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">dim</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="k">for</span> <span class="n">dim</span> <span class="ow">in</span> <span class="n">cell_range</span><span class="p">]</span>
+
+        <span class="n">empty_system</span> <span class="o">=</span> <span class="n">MoleculesObject</span><span class="p">(</span><span class="n">Atoms</span><span class="p">(</span><span class="n">cell</span><span class="o">=</span><span class="n">cell_shape</span><span class="p">),</span> <span class="n">moleculeid</span><span class="p">)</span>
+
+        <span class="n">feed_parameters</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;solute_molecules&#39;</span><span class="p">:</span> <span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">solute_molecule_options</span><span class="p">),</span>
+                           <span class="s1">&#39;density&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">Rrange</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">Rrange</span><span class="p">[</span><span class="mi">1</span><span class="p">])}</span>
+
+        <span class="n">input_parameters</span> <span class="o">=</span> <span class="n">build_input_dict</span><span class="p">(</span><span class="n">condensed_phase_builder</span><span class="p">,</span>
+                                            <span class="p">[{</span><span class="s2">&quot;start_system&quot;</span><span class="p">:</span> <span class="n">empty_system</span><span class="p">,</span> <span class="s2">&quot;molecule_library&quot;</span><span class="p">:</span> <span class="n">molecule_library</span><span class="p">},</span>
+                                             <span class="n">feed_parameters</span><span class="p">,</span> <span class="n">builder_config</span><span class="p">])</span>
+
+        <span class="n">system</span> <span class="o">=</span> <span class="n">condensed_phase_builder</span><span class="p">(</span><span class="o">**</span><span class="n">input_parameters</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">system</span><span class="p">,</span> <span class="n">MoleculesObject</span><span class="p">),</span> <span class="s1">&#39;system must be an instance of MoleculesObject&#39;</span>
+        <span class="n">system_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">system</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">system_list</span>
+
+<span class="c1">#####################################################################################################</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">Counter</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ase.data</span><span class="w"> </span><span class="kn">import</span> <span class="n">atomic_masses</span><span class="p">,</span> <span class="n">atomic_numbers</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">itertools</span><span class="w"> </span><span class="kn">import</span> <span class="n">product</span>
+
+<div class="viewcode-block" id="create_atomic_system">
+<a class="viewcode-back" href="../../../api_documentation/alframework.builders.builders.html#alframework.builders.builders.create_atomic_system">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">create_atomic_system</span><span class="p">(</span><span class="n">atom_charges</span><span class="p">,</span> <span class="n">target_num_atoms</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Create a neutral atomic system.</span>
+
+<span class="sd">    Sometimes it will be impossible to have the exact number &#39;taget_num_atoms&#39; in the system due to the random</span>
+<span class="sd">    way in which the atoms were chosen. This isn&#39;t a problem because the box volume can be adjusted to yield the</span>
+<span class="sd">    desired density.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">      atom_charges (dict): Contains the atom type as key and its valence as values.</span>
+<span class="sd">      target_num_atoms (int): Targeted number of atoms to have in the system.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">      (dict): A dictionary where the keys are the atom types in the system and the corresponding values the number of</span>
+<span class="sd">              each atom type in the system.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">total_charge</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">atom_types</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">atom_charges</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+    <span class="n">atomic_system</span> <span class="o">=</span> <span class="p">{</span><span class="n">el</span><span class="p">:</span> <span class="mi">0</span> <span class="k">for</span> <span class="n">el</span> <span class="ow">in</span> <span class="n">atom_types</span><span class="p">}</span>
+
+    <span class="n">anions</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">filter</span><span class="p">(</span><span class="k">lambda</span> <span class="n">an</span><span class="p">:</span> <span class="n">atom_charges</span><span class="p">[</span><span class="n">an</span><span class="p">]</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">,</span> <span class="n">atom_types</span><span class="p">))</span>
+    <span class="n">cations</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">atom_types</span><span class="o">.</span><span class="n">difference</span><span class="p">(</span><span class="n">anions</span><span class="p">))</span>
+    <span class="n">atom_types</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">atom_types</span><span class="p">)</span>
+
+    <span class="n">max_anion_charge</span> <span class="o">=</span> <span class="nb">min</span><span class="p">({</span><span class="n">atom_charges</span><span class="p">[</span><span class="n">anion</span><span class="p">]</span> <span class="k">for</span> <span class="n">anion</span> <span class="ow">in</span> <span class="n">anions</span><span class="p">})</span> <span class="c1"># anions are negative, so we use min</span>
+    <span class="n">max_cation_charge</span> <span class="o">=</span> <span class="nb">max</span><span class="p">({</span><span class="n">atom_charges</span><span class="p">[</span><span class="n">cation</span><span class="p">]</span> <span class="k">for</span> <span class="n">cation</span> <span class="ow">in</span> <span class="n">cations</span><span class="p">})</span>
+
+    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="c1"># Picking a random atom</span>
+        <span class="k">if</span> <span class="n">total_charge</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">atom</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">atom_types</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">atom</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">anions</span><span class="p">)</span> <span class="k">if</span> <span class="n">total_charge</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">cations</span><span class="p">)</span>
+        <span class="n">atomic_system</span><span class="p">[</span><span class="n">atom</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="n">total_charge</span> <span class="o">+=</span> <span class="n">atom_charges</span><span class="p">[</span><span class="n">atom</span><span class="p">]</span>
+
+        <span class="c1"># We want the charges to always be at most as negative as the most positive cation or as positive as the most</span>
+        <span class="c1"># negative anion. The reason for this is because when the number of atoms in &#39;atomic_system&#39; is close to the</span>
+        <span class="c1"># targeted number of atoms, we can always fix the total charge without having to put a lot of atoms.</span>
+        <span class="k">if</span> <span class="n">total_charge</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">total_charge</span> <span class="o">&gt;</span> <span class="nb">abs</span><span class="p">(</span><span class="n">max_anion_charge</span><span class="p">):</span>
+            <span class="k">while</span> <span class="n">total_charge</span> <span class="o">&gt;</span> <span class="nb">abs</span><span class="p">(</span><span class="n">max_anion_charge</span><span class="p">):</span>
+                <span class="n">balance_atom</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">anions</span><span class="p">)</span>
+                <span class="n">atomic_system</span><span class="p">[</span><span class="n">balance_atom</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+                <span class="n">total_charge</span> <span class="o">+=</span> <span class="n">atom_charges</span><span class="p">[</span><span class="n">balance_atom</span><span class="p">]</span>
+
+        <span class="k">elif</span> <span class="n">total_charge</span> <span class="o">&lt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="nb">abs</span><span class="p">(</span><span class="n">total_charge</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">max_cation_charge</span><span class="p">:</span>
+            <span class="k">while</span> <span class="nb">abs</span><span class="p">(</span><span class="n">total_charge</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">max_cation_charge</span><span class="p">:</span>
+                <span class="n">balance_atom</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">cations</span><span class="p">)</span>
+                <span class="n">atomic_system</span><span class="p">[</span><span class="n">balance_atom</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+                <span class="n">total_charge</span> <span class="o">+=</span> <span class="n">atom_charges</span><span class="p">[</span><span class="n">balance_atom</span><span class="p">]</span>
+
+        <span class="c1"># Checking if the number of atoms in the system is close to the targeted number of atoms.</span>
+        <span class="n">current_num_atoms</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">atomic_system</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+        <span class="k">if</span> <span class="n">current_num_atoms</span> <span class="o">&gt;=</span> <span class="p">(</span><span class="n">target_num_atoms</span> <span class="o">-</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">total_charge</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">candidates</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">filter</span><span class="p">(</span><span class="k">lambda</span> <span class="n">at</span><span class="p">:</span> <span class="n">atom_charges</span><span class="p">[</span><span class="n">at</span><span class="p">]</span> <span class="o">==</span> <span class="o">-</span><span class="n">total_charge</span><span class="p">,</span> <span class="n">atom_types</span><span class="p">))</span>
+                <span class="c1"># If the anion/cation charges spectrum us &quot;gapped&quot; e.g. {-1,-3} then there is a chance that the total</span>
+                <span class="c1"># charge will be, for instance, +2 and no single atom will neutralize it, so candidates will be empty.</span>
+                <span class="k">if</span> <span class="n">candidates</span><span class="p">:</span>
+                    <span class="n">balance_atom</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">candidates</span><span class="p">)</span>
+                    <span class="n">atomic_system</span><span class="p">[</span><span class="n">balance_atom</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+                    <span class="n">total_charge</span> <span class="o">+=</span> <span class="n">atom_charges</span><span class="p">[</span><span class="n">balance_atom</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="n">total_charge</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">current_num_atoms</span> <span class="o">&gt;=</span> <span class="p">(</span><span class="n">target_num_atoms</span><span class="o">-</span><span class="mi">1</span><span class="p">):</span>
+            <span class="k">break</span>
+
+    <span class="c1"># Keeping only the elements whose frequency is greater than zero</span>
+    <span class="n">atomic_system</span> <span class="o">=</span> <span class="p">{</span><span class="n">atom_type</span><span class="p">:</span> <span class="n">atomic_system</span><span class="p">[</span><span class="n">atom_type</span><span class="p">]</span>
+                     <span class="k">for</span> <span class="n">atom_type</span> <span class="ow">in</span> <span class="n">atom_charges</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span> <span class="k">if</span> <span class="n">atomic_system</span><span class="p">[</span><span class="n">atom_type</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">}</span>
+
+    <span class="k">return</span> <span class="n">atomic_system</span></div>
+
+
+
+<div class="viewcode-block" id="to_mic">
+<a class="viewcode-back" href="../../../api_documentation/alframework.builders.builders.html#alframework.builders.builders.to_mic">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">to_mic</span><span class="p">(</span><span class="n">r_ij</span><span class="p">,</span> <span class="n">box_length</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Impose minimum image convention (MIC) on the array containing the distances between atoms.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        r_ij (ndarray): A (n_atoms, 3) matrix r_ij = r_i - r, or a (n_atoms, n_atoms, 3) array containing all r_i - r.</span>
+<span class="sd">        box_length (float): Length of cubic cell.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        (ndarray): Distances under MIC.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">r_ij</span> <span class="o">-</span> <span class="n">box_length</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="n">r_ij</span><span class="o">/</span><span class="n">box_length</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="construct_simulation_box">
+<a class="viewcode-back" href="../../../api_documentation/alframework.builders.builders.html#alframework.builders.builders.construct_simulation_box">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">construct_simulation_box</span><span class="p">(</span><span class="n">atomic_system</span><span class="p">,</span> <span class="n">min_distance</span><span class="p">,</span> <span class="n">box_length</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">density</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">scale_coords</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                             <span class="n">max_iter</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span> <span class="n">max_tries</span><span class="o">=</span><span class="mi">25</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Constructs a initial configuration for the given atomic system respecting the imposed constraints.</span>
+
+<span class="sd">    Given a dictionary containing the atomic species and their charges, a random configuration of the system is</span>
+<span class="sd">    constructed respecting the constraints (desired density (g/cm^3), box length, minimum distance between atoms).</span>
+<span class="sd">    The atoms are randomly placed in the simulation box.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        atomic_system (dict): A dictionary where the keys are the atom types and the values the corresponding number</span>
+<span class="sd">                              of this atom type to be placed in the box.</span>
+<span class="sd">        min_distance (float): Minimum absolute distance between any two atoms in Angstroms.</span>
+<span class="sd">        box_length (float): Length of the cubic box.</span>
+<span class="sd">        density (float): Density of the atomic system in g/cm^3.</span>
+<span class="sd">        scale_coords (bool): Scales distances by the box length such that all coordinates are now between [0,1].</span>
+<span class="sd">        max_iter (int): Maximum number of tries to place an atom in a specific grid.</span>
+<span class="sd">        max_tries (int): Maximum number of tries to rerun the algorithm and try to fit the atoms that are missing to</span>
+<span class="sd">                         reach the desired number of atoms.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        (ndarray): A (N,3) array where &#39;N&#39; is the total number of atoms in the system.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># The box volume is defined by the number of atoms, their type, and the desired density.</span>
+    <span class="k">if</span> <span class="n">box_length</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">density</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="s1">&#39;Please specify either the box length or the density&#39;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">box_length</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span> <span class="c1"># Estimate box length from the desired density</span>
+        <span class="n">mass_system</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">([</span><span class="n">atomic_masses</span><span class="p">[</span><span class="n">atomic_numbers</span><span class="p">[</span><span class="n">atom_type</span><span class="p">]]</span> <span class="o">*</span> <span class="n">n_atoms</span> <span class="o">/</span> <span class="mf">6.022e23</span>
+                           <span class="k">for</span> <span class="n">atom_type</span><span class="p">,</span> <span class="n">n_atoms</span> <span class="ow">in</span> <span class="n">atomic_system</span><span class="o">.</span><span class="n">items</span><span class="p">()])</span> <span class="c1"># [g]</span>
+        <span class="n">box_volume</span> <span class="o">=</span> <span class="p">(</span><span class="n">mass_system</span> <span class="o">/</span> <span class="n">density</span> <span class="o">*</span> <span class="mf">1e24</span><span class="p">)</span> <span class="c1"># [Angstrom^3]</span>
+        <span class="n">box_length</span> <span class="o">=</span> <span class="n">box_volume</span> <span class="o">**</span> <span class="p">(</span><span class="mi">1</span><span class="o">/</span><span class="mi">3</span><span class="p">)</span> <span class="c1"># [Angstrom]</span>
+
+    <span class="n">n_atoms</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">atomic_system</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+
+    <span class="n">N</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">box_length</span> <span class="o">//</span> <span class="n">min_distance</span><span class="p">)</span>
+    <span class="n">grid_spacing</span> <span class="o">=</span> <span class="n">box_length</span> <span class="o">/</span> <span class="n">N</span>
+    <span class="n">grid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">box_length</span><span class="p">,</span> <span class="n">grid_spacing</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">N</span><span class="o">**</span><span class="mi">3</span> <span class="o">&lt;=</span> <span class="p">(</span><span class="n">n_atoms</span> <span class="o">*</span> <span class="mf">1.1</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Density is too high, there is no way or it will take a very long time to place </span><span class="si">{</span><span class="n">n_atoms</span><span class="si">}</span><span class="s1"> atoms &#39;</span>
+                         <span class="sa">f</span><span class="s1">&#39;in a box length of </span><span class="si">{</span><span class="n">box_length</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1"> given that each atom must be </span><span class="si">{</span><span class="n">min_distance</span><span class="si">}</span><span class="s1"> apart&#39;</span><span class="p">)</span>
+
+    <span class="c1"># Creating a grid that when indexed by (i,j,k) returns the base coordinate at that point</span>
+    <span class="n">mesh_grid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">meshgrid</span><span class="p">(</span><span class="n">grid</span><span class="p">,</span> <span class="n">grid</span><span class="p">,</span> <span class="n">grid</span><span class="p">))</span><span class="o">.</span><span class="n">T</span>
+    <span class="c1"># Swapping axes such that meshgrid[a,b,c] corresponds to gridspacing * [a,b,c]</span>
+    <span class="n">mesh_grid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">swapaxes</span><span class="p">(</span><span class="n">mesh_grid</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+    <span class="n">mesh_grid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">swapaxes</span><span class="p">(</span><span class="n">mesh_grid</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="n">occupied_mesh_grid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">mesh_grid</span><span class="p">)</span> <span class="c1"># Will store the absolute position of each atom in the grid</span>
+
+    <span class="n">all_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">indices</span><span class="p">((</span><span class="n">N</span><span class="p">,</span><span class="n">N</span><span class="p">,</span><span class="n">N</span><span class="p">))</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mi">3</span><span class="p">)</span>
+    <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">shuffle</span><span class="p">(</span><span class="n">all_indices</span><span class="p">)</span>
+    <span class="n">available_indices</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="nb">tuple</span><span class="p">,</span> <span class="n">all_indices</span><span class="p">))</span>
+    <span class="n">occupied_indices</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="n">aux_neighbors_idx</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">product</span><span class="p">((</span><span class="mi">0</span><span class="p">,</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">)))</span>
+    <span class="k">del</span> <span class="n">aux_neighbors_idx</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="c1"># Removing (0,0,0) since it is useless</span>
+    <span class="n">aux_neighbors_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">aux_neighbors_idx</span><span class="p">)</span>
+
+    <span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">()</span>
+    <span class="n">total_tries</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="k">while</span> <span class="nb">len</span><span class="p">(</span><span class="n">occupied_indices</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">n_atoms</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">available_indices</span><span class="p">:</span>
+            <span class="c1"># Refill &#39;available_indices&#39; with the indices that are not occupied after a full sweep over all grid points.</span>
+            <span class="n">available_indices</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="nb">tuple</span><span class="p">,</span> <span class="n">all_indices</span><span class="o">.</span><span class="n">tolist</span><span class="p">()))</span><span class="o">.</span><span class="n">difference</span><span class="p">(</span><span class="n">occupied_indices</span><span class="p">)</span>
+            <span class="n">total_tries</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="c1"># This increase of &#39;max_iter&#39; speeds the code because we are now trying harder to fit the remaining atoms</span>
+            <span class="c1"># in the box for a given index, which may avoid calculating the neighbors and redoing the whole cycle.</span>
+            <span class="n">max_iter</span> <span class="o">+=</span> <span class="mi">2</span>
+            <span class="k">if</span> <span class="n">total_tries</span> <span class="o">&gt;</span> <span class="n">max_tries</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Exceeded maximum iterations, only </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">occupied_indices</span><span class="p">)</span><span class="si">}</span><span class="s1"> were placed&#39;</span><span class="p">)</span>
+
+        <span class="n">idx</span> <span class="o">=</span> <span class="n">available_indices</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
+        <span class="n">neighbor_list</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span> <span class="o">+</span> <span class="n">aux_neighbors_idx</span>
+
+        <span class="c1"># Applying PBC to the neighbors</span>
+        <span class="n">neighbor_list</span><span class="p">[</span><span class="n">neighbor_list</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">N</span><span class="o">-</span><span class="mi">1</span>
+        <span class="n">neighbor_list</span><span class="p">[</span><span class="n">neighbor_list</span> <span class="o">==</span> <span class="n">N</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+
+        <span class="c1"># Getting only the coordinates of the occupied neighbors from the neighbor list since it suffices to check</span>
+        <span class="c1"># distances for them (its redundant to check distances for a empty cells).</span>
+        <span class="n">i_neighbors</span><span class="p">,</span> <span class="n">j_neighbors</span><span class="p">,</span> <span class="n">k_neighbors</span> <span class="o">=</span> <span class="n">neighbor_list</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">],</span> <span class="n">neighbor_list</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">],</span> <span class="n">neighbor_list</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">]</span>
+        <span class="n">neighbors_coords</span> <span class="o">=</span> <span class="n">occupied_mesh_grid</span><span class="p">[</span><span class="nb">tuple</span><span class="p">(</span><span class="n">i_neighbors</span><span class="p">),</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">j_neighbors</span><span class="p">),</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">k_neighbors</span><span class="p">)]</span>
+        <span class="n">occupied_neighbors_coords</span> <span class="o">=</span> <span class="n">neighbors_coords</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">neighbors_coords</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)]</span> <span class="c1"># Empty grids have coords (0,0,0)</span>
+
+        <span class="c1"># Trying to fit an atom at a random position in an available grid position</span>
+        <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">max_iter</span><span class="p">):</span>
+            <span class="n">candidate_coord</span> <span class="o">=</span> <span class="n">mesh_grid</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">+</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">grid_spacing</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+            <span class="n">distances</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">to_mic</span><span class="p">(</span><span class="n">candidate_coord</span> <span class="o">-</span> <span class="n">occupied_neighbors_coords</span><span class="p">,</span> <span class="n">box_length</span><span class="p">),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">distances</span> <span class="o">&gt;</span> <span class="n">min_distance</span><span class="p">):</span>
+                <span class="n">occupied_mesh_grid</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">candidate_coord</span>
+                <span class="n">occupied_indices</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">tuple</span><span class="p">(</span><span class="n">idx</span><span class="p">))</span>
+                <span class="k">break</span>
+
+    <span class="n">occupied_mesh_grid</span> <span class="o">=</span> <span class="n">occupied_mesh_grid</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mi">3</span><span class="p">)</span>
+    <span class="n">coords</span> <span class="o">=</span> <span class="n">occupied_mesh_grid</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">occupied_mesh_grid</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)]</span>
+    <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">shuffle</span><span class="p">(</span><span class="n">coords</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">scale_coords</span><span class="p">:</span>
+        <span class="n">coords</span> <span class="o">/=</span> <span class="n">box_length</span>
+
+    <span class="k">return</span> <span class="n">coords</span></div>
+
+
+
+<div class="viewcode-block" id="atomic_system_builder">
+<a class="viewcode-back" href="../../../api_documentation/alframework.builders.builders.html#alframework.builders.builders.atomic_system_builder">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">atomic_system_builder</span><span class="p">(</span><span class="n">atom_charges</span><span class="p">,</span> <span class="n">target_num_atoms</span><span class="p">,</span> <span class="n">min_distance</span><span class="p">,</span> <span class="n">box_length</span><span class="p">,</span> <span class="n">max_tries</span><span class="o">=</span><span class="mi">25</span><span class="p">,</span> <span class="n">scale_coords</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Builds the atomic system</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        atom_charges (dict): A dictionary where the keys are the atom types in the system and the corresponding values</span>
+<span class="sd">                             the charge of each atom type.</span>
+<span class="sd">        target_num_atoms (int): Targeted total number of atoms in the system.</span>
+<span class="sd">        min_distance (float): Minimum absolute distance between any two atoms [Angstroms].</span>
+<span class="sd">        box_length (float): Length of the box [Angstroms]</span>
+<span class="sd">        max_tries (int): Maximum number of cycles in the atom placing algorithm</span>
+<span class="sd">        scale_coords (bool): Determines whether to scale the coordinates by the box length or not.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        (ase.Atoms): ASE atoms object representing a random configuration of the atomic system.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">atomic_system</span> <span class="o">=</span> <span class="n">create_atomic_system</span><span class="p">(</span><span class="n">atom_charges</span><span class="p">,</span> <span class="n">target_num_atoms</span><span class="p">)</span>
+    <span class="n">coords</span> <span class="o">=</span> <span class="n">construct_simulation_box</span><span class="p">(</span><span class="n">atomic_system</span><span class="p">,</span> <span class="n">min_distance</span><span class="p">,</span> <span class="n">box_length</span><span class="p">,</span> <span class="n">max_tries</span><span class="o">=</span><span class="n">max_tries</span><span class="p">,</span> <span class="n">scale_coords</span><span class="o">=</span><span class="n">scale_coords</span><span class="p">)</span>
+
+    <span class="n">atoms_type_list</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">atomic_system</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="n">atoms_type_list</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="n">k</span><span class="p">]</span> <span class="o">*</span> <span class="n">v</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ase</span><span class="o">.</span><span class="n">Atoms</span><span class="p">(</span><span class="n">atoms_type_list</span><span class="p">,</span> <span class="n">coords</span><span class="p">,</span> <span class="n">pbc</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">cell</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">([</span><span class="n">box_length</span><span class="p">]</span><span class="o">*</span><span class="mi">3</span><span class="p">))</span></div>
+
+
+
+<span class="nd">@python_app</span><span class="p">(</span><span class="n">executors</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;alf_sampler_executor&#39;</span><span class="p">])</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">atomic_system_task</span><span class="p">(</span><span class="n">moleculeid</span><span class="p">,</span> <span class="n">atom_charges</span><span class="p">,</span> <span class="n">target_num_atoms</span><span class="p">,</span> <span class="n">min_distance</span><span class="p">,</span> <span class="n">box_length_range</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Atomic system task that will be fed to the sampler.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        moleculeid (str): Unique identifier of the atomic system in the database.</span>
+<span class="sd">        atom_charges (dict): A dictionary where the keys are the atom types in the system and the corresponding </span>
+<span class="sd">                             values are the charge of each atom type.</span>
+<span class="sd">        target_num_atoms (int): Targeted total number of atoms in the system.</span>
+<span class="sd">        min_distance (float): Minimum absolute distance between any two atoms [Angstroms].</span>
+<span class="sd">        box_length_range (list): A list containing the minimum and maximum simulation box length [Angstroms].</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        (MoleculesObject): A MoleculesObject representing the system.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">()</span>
+    <span class="n">box_length</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="nb">min</span><span class="p">(</span><span class="n">box_length_range</span><span class="p">),</span> <span class="nb">max</span><span class="p">(</span><span class="n">box_length_range</span><span class="p">))</span>
+
+    <span class="n">ase_atoms</span> <span class="o">=</span> <span class="n">atomic_system_builder</span><span class="p">(</span><span class="n">atom_charges</span><span class="p">,</span> <span class="n">target_num_atoms</span><span class="p">,</span> <span class="n">min_distance</span><span class="p">,</span> <span class="n">box_length</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">MoleculesObject</span><span class="p">(</span><span class="n">ase_atoms</span><span class="p">,</span> <span class="n">moleculeid</span><span class="p">)</span>
+
+
+<span class="nd">@python_app</span><span class="p">(</span><span class="n">executors</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;alf_sampler_executor&#39;</span><span class="p">])</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">TiAl_builder_task</span><span class="p">(</span><span class="n">moleculeid</span><span class="p">,</span> <span class="n">target_num_atoms</span><span class="p">,</span> <span class="n">min_distance</span><span class="p">,</span> <span class="n">box_length_range</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Atomic system task that will be fed to the sampler.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        moleculeid (str): Unique identifier of the atomic system in the database.</span>
+<span class="sd">        target_num_atoms (int): Targeted total number of atoms in the system.</span>
+<span class="sd">        min_distance (float): Minimum absolute distance between any two atoms [Angstroms].</span>
+<span class="sd">        box_length_range (list): A list containing the minimum and maximum simulation box length [Angstroms].</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        (MoleculesObject): A MoleculesObject representing the system.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">box_length</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="nb">min</span><span class="p">(</span><span class="n">box_length_range</span><span class="p">),</span> <span class="nb">max</span><span class="p">(</span><span class="n">box_length_range</span><span class="p">))</span>
+    <span class="n">num_Ti</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">target_num_atoms</span><span class="o">+</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="n">atomic_system</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;Ti&#39;</span><span class="p">:</span> <span class="n">num_Ti</span><span class="p">,</span> <span class="s1">&#39;Al&#39;</span><span class="p">:</span> <span class="n">target_num_atoms</span> <span class="o">-</span> <span class="n">num_Ti</span><span class="p">}</span>
+    <span class="n">coords</span> <span class="o">=</span> <span class="n">construct_simulation_box</span><span class="p">(</span><span class="n">atomic_system</span><span class="p">,</span> <span class="n">min_distance</span><span class="p">,</span> <span class="n">box_length</span><span class="p">,</span> <span class="n">max_tries</span><span class="o">=</span><span class="mi">25</span><span class="p">,</span> <span class="n">scale_coords</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+
+    <span class="n">atoms_type_list</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">atomic_system</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="n">atoms_type_list</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="n">k</span><span class="p">]</span> <span class="o">*</span> <span class="n">v</span><span class="p">)</span>
+
+    <span class="n">ase_atoms</span> <span class="o">=</span> <span class="n">ase</span><span class="o">.</span><span class="n">Atoms</span><span class="p">(</span><span class="n">atoms_type_list</span><span class="p">,</span> <span class="n">coords</span><span class="p">,</span> <span class="n">pbc</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">cell</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">([</span><span class="n">box_length</span><span class="p">]</span> <span class="o">*</span> <span class="mi">3</span><span class="p">))</span>
+
+    <span class="k">return</span> <span class="n">MoleculesObject</span><span class="p">(</span><span class="n">ase_atoms</span><span class="p">,</span> <span class="n">moleculeid</span><span class="p">)</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023, ALF Team.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

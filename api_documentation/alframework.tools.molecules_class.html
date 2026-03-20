@@ -1,0 +1,282 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>alframework.tools.molecules_class module &mdash; ALF 0.0.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=5c79bd3c"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="alframework.tools.plotting module" href="alframework.tools.plotting.html" />
+    <link rel="prev" title="alframework.tools namespace" href="alframework.tools.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            ALF
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="alframework.html">API documentation</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="alframework.html#subpackages">Subpackages</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="alframework.builders.html">alframework.builders namespace</a></li>
+<li class="toctree-l3"><a class="reference internal" href="alframework.ml_interfaces.html">alframework.ml_interfaces namespace</a></li>
+<li class="toctree-l3"><a class="reference internal" href="alframework.parsl_resource_configs.html">alframework.parsl_resource_configs namespace</a></li>
+<li class="toctree-l3"><a class="reference internal" href="alframework.qm_interfaces.html">alframework.qm_interfaces namespace</a></li>
+<li class="toctree-l3"><a class="reference internal" href="alframework.samplers.html">alframework.samplers namespace</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="alframework.tools.html">alframework.tools namespace</a><ul class="current">
+<li class="toctree-l4 current"><a class="reference internal" href="alframework.tools.html#submodules">Submodules</a><ul class="current">
+<li class="toctree-l5 current"><a class="current reference internal" href="#">alframework.tools.molecules_class module</a><ul>
+<li class="toctree-l6"><a class="reference internal" href="#alframework.tools.molecules_class.MoleculesObject"><code class="docutils literal notranslate"><span class="pre">MoleculesObject</span></code></a><ul>
+<li class="toctree-l7"><a class="reference internal" href="#alframework.tools.molecules_class.MoleculesObject.append_atoms"><code class="docutils literal notranslate"><span class="pre">MoleculesObject.append_atoms()</span></code></a></li>
+<li class="toctree-l7"><a class="reference internal" href="#alframework.tools.molecules_class.MoleculesObject.check_convergence"><code class="docutils literal notranslate"><span class="pre">MoleculesObject.check_convergence()</span></code></a></li>
+<li class="toctree-l7"><a class="reference internal" href="#alframework.tools.molecules_class.MoleculesObject.check_stored_results"><code class="docutils literal notranslate"><span class="pre">MoleculesObject.check_stored_results()</span></code></a></li>
+<li class="toctree-l7"><a class="reference internal" href="#alframework.tools.molecules_class.MoleculesObject.get_atoms"><code class="docutils literal notranslate"><span class="pre">MoleculesObject.get_atoms()</span></code></a></li>
+<li class="toctree-l7"><a class="reference internal" href="#alframework.tools.molecules_class.MoleculesObject.get_metadata"><code class="docutils literal notranslate"><span class="pre">MoleculesObject.get_metadata()</span></code></a></li>
+<li class="toctree-l7"><a class="reference internal" href="#alframework.tools.molecules_class.MoleculesObject.get_moleculeid"><code class="docutils literal notranslate"><span class="pre">MoleculesObject.get_moleculeid()</span></code></a></li>
+<li class="toctree-l7"><a class="reference internal" href="#alframework.tools.molecules_class.MoleculesObject.get_results"><code class="docutils literal notranslate"><span class="pre">MoleculesObject.get_results()</span></code></a></li>
+<li class="toctree-l7"><a class="reference internal" href="#alframework.tools.molecules_class.MoleculesObject.get_system_signature"><code class="docutils literal notranslate"><span class="pre">MoleculesObject.get_system_signature()</span></code></a></li>
+<li class="toctree-l7"><a class="reference internal" href="#alframework.tools.molecules_class.MoleculesObject.set_converged_flag"><code class="docutils literal notranslate"><span class="pre">MoleculesObject.set_converged_flag()</span></code></a></li>
+<li class="toctree-l7"><a class="reference internal" href="#alframework.tools.molecules_class.MoleculesObject.store_results"><code class="docutils literal notranslate"><span class="pre">MoleculesObject.store_results()</span></code></a></li>
+<li class="toctree-l7"><a class="reference internal" href="#alframework.tools.molecules_class.MoleculesObject.update_atoms"><code class="docutils literal notranslate"><span class="pre">MoleculesObject.update_atoms()</span></code></a></li>
+<li class="toctree-l7"><a class="reference internal" href="#alframework.tools.molecules_class.MoleculesObject.update_metadata"><code class="docutils literal notranslate"><span class="pre">MoleculesObject.update_metadata()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l6"><a class="reference internal" href="#alframework.tools.molecules_class.compare_chemical_composition"><code class="docutils literal notranslate"><span class="pre">compare_chemical_composition()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l5"><a class="reference internal" href="alframework.tools.plotting.html">alframework.tools.plotting module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="alframework.tools.pyanitools.html">alframework.tools.pyanitools module</a></li>
+<li class="toctree-l5"><a class="reference internal" href="alframework.tools.tools.html">alframework.tools.tools module</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../license.html">License</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">ALF</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="alframework.html">alframework package</a></li>
+          <li class="breadcrumb-item"><a href="alframework.tools.html">alframework.tools namespace</a></li>
+      <li class="breadcrumb-item active">alframework.tools.molecules_class module</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/api_documentation/alframework.tools.molecules_class.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul><div class="rst-breadcrumbs-buttons" role="navigation" aria-label="Sequential page navigation">
+        <a href="alframework.tools.html" class="btn btn-neutral float-left" title="alframework.tools namespace" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="alframework.tools.plotting.html" class="btn btn-neutral float-right" title="alframework.tools.plotting module" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+  </div>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="module-alframework.tools.molecules_class">
+<span id="alframework-tools-molecules-class-module"></span><h1>alframework.tools.molecules_class module<a class="headerlink" href="#module-alframework.tools.molecules_class" title="Link to this heading"></a></h1>
+<dl class="py class">
+<dt class="sig sig-object py" id="alframework.tools.molecules_class.MoleculesObject">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">MoleculesObject</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">atoms</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">moleculeid</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/tools/molecules_class.html#MoleculesObject"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.molecules_class.MoleculesObject" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Class to create molecule objects</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.tools.molecules_class.MoleculesObject.append_atoms">
+<span class="sig-name descname"><span class="pre">append_atoms</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">new_atoms</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/tools/molecules_class.html#MoleculesObject.append_atoms"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.molecules_class.MoleculesObject.append_atoms" title="Link to this definition"></a></dt>
+<dd><p>Append atoms to the existing atomic system.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>new_atoms (ase.Atoms): ase.Atoms object to append to the current system.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.tools.molecules_class.MoleculesObject.check_convergence">
+<span class="sig-name descname"><span class="pre">check_convergence</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/tools/molecules_class.html#MoleculesObject.check_convergence"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.molecules_class.MoleculesObject.check_convergence" title="Link to this definition"></a></dt>
+<dd><p>True if converged, False otherwise, and None if no QM calculation was performed yet</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.tools.molecules_class.MoleculesObject.check_stored_results">
+<span class="sig-name descname"><span class="pre">check_stored_results</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/tools/molecules_class.html#MoleculesObject.check_stored_results"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.molecules_class.MoleculesObject.check_stored_results" title="Link to this definition"></a></dt>
+<dd><p>Checks if there is any QM result stored</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.tools.molecules_class.MoleculesObject.get_atoms">
+<span class="sig-name descname"><span class="pre">get_atoms</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/tools/molecules_class.html#MoleculesObject.get_atoms"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.molecules_class.MoleculesObject.get_atoms" title="Link to this definition"></a></dt>
+<dd><p>Get the ase.Atoms object</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.tools.molecules_class.MoleculesObject.get_metadata">
+<span class="sig-name descname"><span class="pre">get_metadata</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/tools/molecules_class.html#MoleculesObject.get_metadata"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.molecules_class.MoleculesObject.get_metadata" title="Link to this definition"></a></dt>
+<dd><p>Get metadata</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.tools.molecules_class.MoleculesObject.get_moleculeid">
+<span class="sig-name descname"><span class="pre">get_moleculeid</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/tools/molecules_class.html#MoleculesObject.get_moleculeid"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.molecules_class.MoleculesObject.get_moleculeid" title="Link to this definition"></a></dt>
+<dd><p>Get the moleculeid of the system</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.tools.molecules_class.MoleculesObject.get_results">
+<span class="sig-name descname"><span class="pre">get_results</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/tools/molecules_class.html#MoleculesObject.get_results"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.molecules_class.MoleculesObject.get_results" title="Link to this definition"></a></dt>
+<dd><p>Get the QM results</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.tools.molecules_class.MoleculesObject.get_system_signature">
+<span class="sig-name descname"><span class="pre">get_system_signature</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/tools/molecules_class.html#MoleculesObject.get_system_signature"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.molecules_class.MoleculesObject.get_system_signature" title="Link to this definition"></a></dt>
+<dd><p>Returns the system signature as a string.</p>
+<dl class="simple">
+<dt>Returns:</dt><dd><p>(str): String representing the system cell and the atoms types and coordinates.</p>
+</dd>
+<dt>#TODO: Compute system moments of inertia and rotate the system so that the highest order moment points along</dt><dd><p>the x-axis, midde moment point along y-axis and last moment points along z-axis.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.tools.molecules_class.MoleculesObject.set_converged_flag">
+<span class="sig-name descname"><span class="pre">set_converged_flag</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">convergence_flag</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/tools/molecules_class.html#MoleculesObject.set_converged_flag"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.molecules_class.MoleculesObject.set_converged_flag" title="Link to this definition"></a></dt>
+<dd><p>Set the convergence flag.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>convergence_flag (bool): Bool indicating whether the calculation converged or not.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.tools.molecules_class.MoleculesObject.store_results">
+<span class="sig-name descname"><span class="pre">store_results</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">results</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">replace</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/tools/molecules_class.html#MoleculesObject.store_results"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.molecules_class.MoleculesObject.store_results" title="Link to this definition"></a></dt>
+<dd><p>Stores the QM results</p>
+<dl>
+<dt>Args:</dt><dd><p>results (dict): Dictionary containing the results of the QM calculations that we wish to store
+replace (bool): If True completely update self.qm_results including values of common keys, but if False only</p>
+<blockquote>
+<div><p>the keys in ‘results’ that doesn’t exist in self.qm_results are added.</p>
+</div></blockquote>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.tools.molecules_class.MoleculesObject.update_atoms">
+<span class="sig-name descname"><span class="pre">update_atoms</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">new_atoms</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/tools/molecules_class.html#MoleculesObject.update_atoms"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.molecules_class.MoleculesObject.update_atoms" title="Link to this definition"></a></dt>
+<dd><p>Update the atoms attribute</p>
+<p>This is necessary because when running MLMD we may find a new configuration of the system that the NNs
+disagree. Thus, we want to store this configuration to run QM. When we update to None it means that
+there was no configuration during the MLMD in which the ensemble of NNs disagreed.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>new_atoms (ase.Atoms): Atoms object representing the new configuration or system.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.tools.molecules_class.MoleculesObject.update_metadata">
+<span class="sig-name descname"><span class="pre">update_metadata</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">new_metadata</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">replace</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/tools/molecules_class.html#MoleculesObject.update_metadata"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.molecules_class.MoleculesObject.update_metadata" title="Link to this definition"></a></dt>
+<dd><p>Updates the object metadata</p>
+<dl>
+<dt>Args:</dt><dd><p>new_metadata (dict): New metadata to be added.
+replace (bool): If True completely update self.metadata including values of common keys, but if False only</p>
+<blockquote>
+<div><p>the keys in ‘new_metadata’ that doesn’t exist in self.metadata are added.</p>
+</div></blockquote>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.tools.molecules_class.compare_chemical_composition">
+<span class="sig-name descname"><span class="pre">compare_chemical_composition</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">system1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">system2</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/tools/molecules_class.html#compare_chemical_composition"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.molecules_class.compare_chemical_composition" title="Link to this definition"></a></dt>
+<dd><p>Check if two MoleculesObject instances have the same chemical composition</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>system1 (MoleculesObject): First object to be compared.
+system2 (MoleculesObject): Second object to be compared.</p>
+</dd>
+<dt>Returns:</dt><dd><p>(bool): True if the two systems have the same chemical composition.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="alframework.tools.html" class="btn btn-neutral float-left" title="alframework.tools namespace" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="alframework.tools.plotting.html" class="btn btn-neutral float-right" title="alframework.tools.plotting module" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023, ALF Team.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

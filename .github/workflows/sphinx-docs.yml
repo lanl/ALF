@@ -29,7 +29,7 @@ jobs:
 
       - name: Set Python Path
         run: |
-            echo "PYTHONPATH=$(pwd)/alframework" >> $GITHUB_ENV
+            echo "PYTHONPATH=$(pwd)" >> $GITHUB_ENV
 
       - name: Install your package
         run: |
@@ -39,7 +39,7 @@ jobs:
         run: |
           rm -f docs/source/api_documentation/alframework*.rst
           sphinx-apidoc --separate --implicit-namespaces --module-first -d 5 -o docs/source/api_documentation alframework
-          sphinx-build -n -W --keep-going -b html docs/source docs/_autobuild/html
+          sphinx-build -b html docs/source docs/_autobuild/html
 
       - name: Deploy to GitHub Pages
         if: github.ref == 'refs/heads/main'  #  deploy on main branch

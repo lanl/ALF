@@ -37,9 +37,9 @@ jobs:
 
       - name: Build Docs
         run: |
-          sphinx-build -b html docs/source docs/_autobuild/html
-
-
+          rm -f docs/source/api_documentation/alframework*.rst
+          sphinx-apidoc --separate --implicit-namespaces --module-first -d 5 -o docs/source/api_documentation alframework
+          sphinx-build -n -W --keep-going -b html docs/source docs/_autobuild/html
 
       - name: Deploy to GitHub Pages
         if: github.ref == 'refs/heads/main'  #  deploy on main branch

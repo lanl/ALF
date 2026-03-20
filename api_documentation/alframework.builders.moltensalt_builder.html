@@ -44,22 +44,33 @@
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul class="current">
-<li class="toctree-l1 current"><a class="reference internal" href="alframework.html">API documentation</a><ul class="current">
-<li class="toctree-l2 current"><a class="reference internal" href="alframework.html#subpackages">Subpackages</a><ul class="current">
-<li class="toctree-l3 current"><a class="reference internal" href="alframework.builders.html">alframework.builders namespace</a><ul class="current">
-<li class="toctree-l4 current"><a class="reference internal" href="alframework.builders.html#submodules">Submodules</a><ul class="current">
-<li class="toctree-l5"><a class="reference internal" href="alframework.builders.builders.html">alframework.builders.builders module</a></li>
-<li class="toctree-l5 current"><a class="current reference internal" href="#">alframework.builders.moltensalt_builder module</a></li>
-<li class="toctree-l5"><a class="reference internal" href="alframework.builders.reactive_builder.html">alframework.builders.reactive_builder module</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="modules.html">API documentation</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="alframework.html">alframework package</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="alframework.html#subpackages">Subpackages</a><ul class="current">
+<li class="toctree-l4 current"><a class="reference internal" href="alframework.builders.html">alframework.builders namespace</a><ul class="current">
+<li class="toctree-l5 current"><a class="reference internal" href="alframework.builders.html#submodules">Submodules</a><ul class="current">
+<li class="toctree-l6"><a class="reference internal" href="alframework.builders.builders.html">alframework.builders.builders module</a></li>
+<li class="toctree-l6 current"><a class="current reference internal" href="#">alframework.builders.moltensalt_builder module</a><ul>
+<li class="toctree-l7"><a class="reference internal" href="#alframework.builders.moltensalt_builder.atomic_system_builder"><code class="docutils literal notranslate"><span class="pre">atomic_system_builder()</span></code></a></li>
+<li class="toctree-l7"><a class="reference internal" href="#alframework.builders.moltensalt_builder.construct_simulation_box"><code class="docutils literal notranslate"><span class="pre">construct_simulation_box()</span></code></a></li>
+<li class="toctree-l7"><a class="reference internal" href="#alframework.builders.moltensalt_builder.create_atomic_system"><code class="docutils literal notranslate"><span class="pre">create_atomic_system()</span></code></a></li>
+<li class="toctree-l7"><a class="reference internal" href="#alframework.builders.moltensalt_builder.test_atomic_system"><code class="docutils literal notranslate"><span class="pre">test_atomic_system()</span></code></a></li>
+<li class="toctree-l7"><a class="reference internal" href="#alframework.builders.moltensalt_builder.test_distances"><code class="docutils literal notranslate"><span class="pre">test_distances()</span></code></a></li>
+<li class="toctree-l7"><a class="reference internal" href="#alframework.builders.moltensalt_builder.to_mic"><code class="docutils literal notranslate"><span class="pre">to_mic()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l6"><a class="reference internal" href="alframework.builders.reactive_builder.html">alframework.builders.reactive_builder module</a></li>
 </ul>
 </li>
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="alframework.ml_interfaces.html">alframework.ml_interfaces namespace</a></li>
-<li class="toctree-l3"><a class="reference internal" href="alframework.parsl_resource_configs.html">alframework.parsl_resource_configs namespace</a></li>
-<li class="toctree-l3"><a class="reference internal" href="alframework.qm_interfaces.html">alframework.qm_interfaces namespace</a></li>
-<li class="toctree-l3"><a class="reference internal" href="alframework.samplers.html">alframework.samplers namespace</a></li>
-<li class="toctree-l3"><a class="reference internal" href="alframework.tools.html">alframework.tools namespace</a></li>
+<li class="toctree-l4"><a class="reference internal" href="alframework.ml_interfaces.html">alframework.ml_interfaces namespace</a></li>
+<li class="toctree-l4"><a class="reference internal" href="alframework.parsl_resource_configs.html">alframework.parsl_resource_configs namespace</a></li>
+<li class="toctree-l4"><a class="reference internal" href="alframework.qm_interfaces.html">alframework.qm_interfaces namespace</a></li>
+<li class="toctree-l4"><a class="reference internal" href="alframework.samplers.html">alframework.samplers namespace</a></li>
+<li class="toctree-l4"><a class="reference internal" href="alframework.tools.html">alframework.tools namespace</a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
@@ -81,6 +92,7 @@
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="modules.html">alframework</a></li>
           <li class="breadcrumb-item"><a href="alframework.html">alframework package</a></li>
           <li class="breadcrumb-item"><a href="alframework.builders.html">alframework.builders namespace</a></li>
       <li class="breadcrumb-item active">alframework.builders.moltensalt_builder module</li>
@@ -96,8 +108,97 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="alframework-builders-moltensalt-builder-module">
-<h1>alframework.builders.moltensalt_builder module<a class="headerlink" href="#alframework-builders-moltensalt-builder-module" title="Link to this heading"></a></h1>
+  <section id="module-alframework.builders.moltensalt_builder">
+<span id="alframework-builders-moltensalt-builder-module"></span><h1>alframework.builders.moltensalt_builder module<a class="headerlink" href="#module-alframework.builders.moltensalt_builder" title="Link to this heading"></a></h1>
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.builders.moltensalt_builder.atomic_system_builder">
+<span class="sig-name descname"><span class="pre">atomic_system_builder</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">atom_charges</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_num_atoms</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_distance</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">box_length_range</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_tries</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">25</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale_coords</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/builders/moltensalt_builder.html#atomic_system_builder"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.builders.moltensalt_builder.atomic_system_builder" title="Link to this definition"></a></dt>
+<dd><p>Builds the atomic system</p>
+<dl>
+<dt>Args:</dt><dd><dl class="simple">
+<dt>atom_charges (dict): A dictionary where the keys are the atom types in the system and the corresponding values</dt><dd><p>the charge of each atom type.</p>
+</dd>
+</dl>
+<p>target_num_atoms (int): Targeted total number of atoms in the system.
+min_distance (float): Minimum absolute distance between any two atoms in Angstroms.
+box_length_range (list): A list containing the minimum and maximum simulation box length [L_min, L_max].
+max_tries (int): Maximum number of cycles in the atom placing algorithm
+scale_coords (bool): Determines whether to scale the coordinates by the box length or not.</p>
+</dd>
+<dt>Returns:</dt><dd><p>(ase.Atoms): ASE atoms object representing a random configuration of the atomic system.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.builders.moltensalt_builder.construct_simulation_box">
+<span class="sig-name descname"><span class="pre">construct_simulation_box</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">atomic_system</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_distance</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">box_length</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">density</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale_coords</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_iter</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">30</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_tries</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">25</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/builders/moltensalt_builder.html#construct_simulation_box"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.builders.moltensalt_builder.construct_simulation_box" title="Link to this definition"></a></dt>
+<dd><p>Constructs a initial configuration for the given atomic system respecting the imposed constraints.</p>
+<p>Given a dictionary containing the atomic species and their charges, a random configuration of the system is
+constructed respecting the constraints (desired density (g/cm^3), box length, minimum distance between atoms).
+The atoms are randomly placed in the simulation box.</p>
+<dl>
+<dt>Args:</dt><dd><dl class="simple">
+<dt>atomic_system (dict): A dictionary where the keys are the atom types and the values the corresponding number</dt><dd><p>of this atom type to be placed in the box.</p>
+</dd>
+</dl>
+<p>min_distance (float): Minimum absolute distance between any two atoms in Angstroms.
+box_length (float): Length of the cubic box.
+density (float): Density of the atomic system in g/cm^3.
+scale_coords (bool): Scales distances by the box length such that all coordinates are now between [0,1].
+max_iter (int): Maximum number of tries to place an atom in a specific grid.
+max_tries (int): Maximum number of tries to rerun the algorithm and try to fit the atoms that are missing to</p>
+<blockquote>
+<div><p>reach the desired number of atoms.</p>
+</div></blockquote>
+</dd>
+<dt>Returns:</dt><dd><p>(ndarray): A (N,3) array where ‘N’ is the total number of atoms in the system.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.builders.moltensalt_builder.create_atomic_system">
+<span class="sig-name descname"><span class="pre">create_atomic_system</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">atom_charges</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_num_atoms</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/builders/moltensalt_builder.html#create_atomic_system"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.builders.moltensalt_builder.create_atomic_system" title="Link to this definition"></a></dt>
+<dd><p>Create a neutral atomic system.</p>
+<p>Sometimes it will be impossible to have the exact number ‘taget_num_atoms’ in the system due to the random
+way in which the atoms were chosen. This isn’t a problem because the box volume can be adjusted to yield the
+desired density.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>atom_charges (dict): Contains the atom type as key and its valence as values.
+target_num_atoms (int): Targeted number of atoms to have in the system.</p>
+</dd>
+<dt>Returns:</dt><dd><dl class="simple">
+<dt>(dict): A dictionary where the keys are the atom types in the system and the corresponding values the number of</dt><dd><p>each atom type in the system.</p>
+</dd>
+</dl>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.builders.moltensalt_builder.test_atomic_system">
+<span class="sig-name descname"><span class="pre">test_atomic_system</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">charges</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_num_ats</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">iterations</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">10000</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/builders/moltensalt_builder.html#test_atomic_system"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.builders.moltensalt_builder.test_atomic_system" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.builders.moltensalt_builder.test_distances">
+<span class="sig-name descname"><span class="pre">test_distances</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">coords</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">box_length</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/builders/moltensalt_builder.html#test_distances"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.builders.moltensalt_builder.test_distances" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.builders.moltensalt_builder.to_mic">
+<span class="sig-name descname"><span class="pre">to_mic</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">r_ij</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">box_length</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/builders/moltensalt_builder.html#to_mic"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.builders.moltensalt_builder.to_mic" title="Link to this definition"></a></dt>
+<dd><p>Impose minimum image convention (MIC) on the array containing the distances between atoms.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>r_ij (ndarray): A (n_atoms, 3) matrix r_ij = r_i - r, or a (n_atoms, n_atoms, 3) array containing all r_i - r.
+box_length (float): Length of cubic cell.</p>
+</dd>
+<dt>Returns:</dt><dd><p>(ndarray): Distances under MIC</p>
+</dd>
+</dl>
+</dd></dl>
+
 </section>
 
 

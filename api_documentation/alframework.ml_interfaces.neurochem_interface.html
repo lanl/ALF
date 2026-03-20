@@ -44,21 +44,31 @@
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul class="current">
-<li class="toctree-l1 current"><a class="reference internal" href="alframework.html">API documentation</a><ul class="current">
-<li class="toctree-l2 current"><a class="reference internal" href="alframework.html#subpackages">Subpackages</a><ul class="current">
-<li class="toctree-l3"><a class="reference internal" href="alframework.builders.html">alframework.builders namespace</a></li>
-<li class="toctree-l3 current"><a class="reference internal" href="alframework.ml_interfaces.html">alframework.ml_interfaces namespace</a><ul class="current">
-<li class="toctree-l4 current"><a class="reference internal" href="alframework.ml_interfaces.html#submodules">Submodules</a><ul class="current">
-<li class="toctree-l5"><a class="reference internal" href="alframework.ml_interfaces.hippynn_interface.html">alframework.ml_interfaces.hippynn_interface module</a></li>
-<li class="toctree-l5 current"><a class="current reference internal" href="#">alframework.ml_interfaces.neurochem_interface module</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="modules.html">API documentation</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="alframework.html">alframework package</a><ul class="current">
+<li class="toctree-l3 current"><a class="reference internal" href="alframework.html#subpackages">Subpackages</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="alframework.builders.html">alframework.builders namespace</a></li>
+<li class="toctree-l4 current"><a class="reference internal" href="alframework.ml_interfaces.html">alframework.ml_interfaces namespace</a><ul class="current">
+<li class="toctree-l5 current"><a class="reference internal" href="alframework.ml_interfaces.html#submodules">Submodules</a><ul class="current">
+<li class="toctree-l6"><a class="reference internal" href="alframework.ml_interfaces.hippynn_interface.html">alframework.ml_interfaces.hippynn_interface module</a></li>
+<li class="toctree-l6 current"><a class="current reference internal" href="#">alframework.ml_interfaces.neurochem_interface module</a><ul>
+<li class="toctree-l7"><a class="reference internal" href="#alframework.ml_interfaces.neurochem_interface.NeuroChemCalculator"><code class="docutils literal notranslate"><span class="pre">NeuroChemCalculator()</span></code></a></li>
+<li class="toctree-l7"><a class="reference internal" href="#alframework.ml_interfaces.neurochem_interface.NeuroChemTrainer"><code class="docutils literal notranslate"><span class="pre">NeuroChemTrainer</span></code></a><ul>
+<li class="toctree-l8"><a class="reference internal" href="#alframework.ml_interfaces.neurochem_interface.NeuroChemTrainer.train_models"><code class="docutils literal notranslate"><span class="pre">NeuroChemTrainer.train_models()</span></code></a></li>
 </ul>
 </li>
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="alframework.parsl_resource_configs.html">alframework.parsl_resource_configs namespace</a></li>
-<li class="toctree-l3"><a class="reference internal" href="alframework.qm_interfaces.html">alframework.qm_interfaces namespace</a></li>
-<li class="toctree-l3"><a class="reference internal" href="alframework.samplers.html">alframework.samplers namespace</a></li>
-<li class="toctree-l3"><a class="reference internal" href="alframework.tools.html">alframework.tools namespace</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l4"><a class="reference internal" href="alframework.parsl_resource_configs.html">alframework.parsl_resource_configs namespace</a></li>
+<li class="toctree-l4"><a class="reference internal" href="alframework.qm_interfaces.html">alframework.qm_interfaces namespace</a></li>
+<li class="toctree-l4"><a class="reference internal" href="alframework.samplers.html">alframework.samplers namespace</a></li>
+<li class="toctree-l4"><a class="reference internal" href="alframework.tools.html">alframework.tools namespace</a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
@@ -80,6 +90,7 @@
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="modules.html">alframework</a></li>
           <li class="breadcrumb-item"><a href="alframework.html">alframework package</a></li>
           <li class="breadcrumb-item"><a href="alframework.ml_interfaces.html">alframework.ml_interfaces namespace</a></li>
       <li class="breadcrumb-item active">alframework.ml_interfaces.neurochem_interface module</li>
@@ -95,8 +106,42 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="alframework-ml-interfaces-neurochem-interface-module">
-<h1>alframework.ml_interfaces.neurochem_interface module<a class="headerlink" href="#alframework-ml-interfaces-neurochem-interface-module" title="Link to this heading"></a></h1>
+  <section id="module-alframework.ml_interfaces.neurochem_interface">
+<span id="alframework-ml-interfaces-neurochem-interface-module"></span><h1>alframework.ml_interfaces.neurochem_interface module<a class="headerlink" href="#module-alframework.ml_interfaces.neurochem_interface" title="Link to this heading"></a></h1>
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.ml_interfaces.neurochem_interface.NeuroChemCalculator">
+<span class="sig-name descname"><span class="pre">NeuroChemCalculator</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_details</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/ml_interfaces/neurochem_interface.html#NeuroChemCalculator"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.ml_interfaces.neurochem_interface.NeuroChemCalculator" title="Link to this definition"></a></dt>
+<dd><p>Neurochem calculator that uses an ensemble of ANI neural networks.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>model_details (dict): Dictionary containing the details of the model.</p>
+</dd>
+<dt>Returns:</dt><dd><p>(ase_interface.ANIEN): An object representing an ensemble of ANI neural networks.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="alframework.ml_interfaces.neurochem_interface.NeuroChemTrainer">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">NeuroChemTrainer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ensemble_size</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gpuids</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_training</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">periodic</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rmhighe</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rmhighf</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">build_test</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">remove_existing</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/ml_interfaces/neurochem_interface.html#NeuroChemTrainer"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.ml_interfaces.neurochem_interface.NeuroChemTrainer" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Class that interfaces ALF and neurochem/ANI</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="alframework.ml_interfaces.neurochem_interface.NeuroChemTrainer.train_models">
+<span class="sig-name descname"><span class="pre">train_models</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tparam</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/ml_interfaces/neurochem_interface.html#NeuroChemTrainer.train_models"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.ml_interfaces.neurochem_interface.NeuroChemTrainer.train_models" title="Link to this definition"></a></dt>
+<dd><p>Trains an ensemble of ANI networks.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>tparam (dict): Dicitonary containing training parameters.</p>
+</dd>
+<dt>Returns:</dt><dd><dl class="simple">
+<dt>(tuple): Tuple of lists (all_nets, completed) where the first element contain training information of the</dt><dd><p>networks and the second element tell us whether training was successfuly completed or not.</p>
+</dd>
+</dl>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
 </section>
 
 

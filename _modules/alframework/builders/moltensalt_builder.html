@@ -1,0 +1,452 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>alframework.builders.moltensalt_builder &mdash; ALF 0.0.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=5c79bd3c"></script>
+      <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            ALF
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../api_documentation/modules.html">API documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../license.html">License</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">ALF</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">alframework.builders.moltensalt_builder</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for alframework.builders.moltensalt_builder</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">random</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">ase</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">tqdm</span><span class="w"> </span><span class="kn">import</span> <span class="n">tqdm</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">Counter</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">itertools</span><span class="w"> </span><span class="kn">import</span> <span class="n">product</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ase.data</span><span class="w"> </span><span class="kn">import</span> <span class="n">atomic_masses</span><span class="p">,</span> <span class="n">atomic_numbers</span>
+
+<div class="viewcode-block" id="create_atomic_system">
+<a class="viewcode-back" href="../../../api_documentation/alframework.builders.moltensalt_builder.html#alframework.builders.moltensalt_builder.create_atomic_system">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">create_atomic_system</span><span class="p">(</span><span class="n">atom_charges</span><span class="p">,</span> <span class="n">target_num_atoms</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Create a neutral atomic system.</span>
+
+<span class="sd">    Sometimes it will be impossible to have the exact number &#39;taget_num_atoms&#39; in the system due to the random</span>
+<span class="sd">    way in which the atoms were chosen. This isn&#39;t a problem because the box volume can be adjusted to yield the</span>
+<span class="sd">    desired density.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">      atom_charges (dict): Contains the atom type as key and its valence as values.</span>
+<span class="sd">      target_num_atoms (int): Targeted number of atoms to have in the system.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">      (dict): A dictionary where the keys are the atom types in the system and the corresponding values the number of</span>
+<span class="sd">              each atom type in the system.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">total_charge</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">atom_types</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">atom_charges</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+    <span class="n">atomic_system</span> <span class="o">=</span> <span class="p">{</span><span class="n">el</span><span class="p">:</span> <span class="mi">0</span> <span class="k">for</span> <span class="n">el</span> <span class="ow">in</span> <span class="n">atom_types</span><span class="p">}</span>
+
+    <span class="n">anions</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">filter</span><span class="p">(</span><span class="k">lambda</span> <span class="n">an</span><span class="p">:</span> <span class="n">atom_charges</span><span class="p">[</span><span class="n">an</span><span class="p">]</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">,</span> <span class="n">atom_types</span><span class="p">))</span>
+    <span class="n">cations</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">atom_types</span><span class="o">.</span><span class="n">difference</span><span class="p">(</span><span class="n">anions</span><span class="p">))</span>
+    <span class="n">atom_types</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">atom_types</span><span class="p">)</span>
+
+    <span class="n">max_anion_charge</span> <span class="o">=</span> <span class="nb">min</span><span class="p">({</span><span class="n">atom_charges</span><span class="p">[</span><span class="n">anion</span><span class="p">]</span> <span class="k">for</span> <span class="n">anion</span> <span class="ow">in</span> <span class="n">anions</span><span class="p">})</span> <span class="c1"># anions are negative, so we use min</span>
+    <span class="n">max_cation_charge</span> <span class="o">=</span> <span class="nb">max</span><span class="p">({</span><span class="n">atom_charges</span><span class="p">[</span><span class="n">cation</span><span class="p">]</span> <span class="k">for</span> <span class="n">cation</span> <span class="ow">in</span> <span class="n">cations</span><span class="p">})</span>
+
+    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="c1"># Picking a random atom</span>
+        <span class="k">if</span> <span class="n">total_charge</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">atom</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">atom_types</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">atom</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">anions</span><span class="p">)</span> <span class="k">if</span> <span class="n">total_charge</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">cations</span><span class="p">)</span>
+        <span class="n">atomic_system</span><span class="p">[</span><span class="n">atom</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="n">total_charge</span> <span class="o">+=</span> <span class="n">atom_charges</span><span class="p">[</span><span class="n">atom</span><span class="p">]</span>
+
+        <span class="c1"># We want the charges to always be at most as negative as the most positive cation or as positive as the most</span>
+        <span class="c1"># negative anion. The reason for this is because when the number of atoms in atomic_system is close to the</span>
+        <span class="c1"># targeted number of atoms, we can always fix the total charge without having to put a lot of atoms.</span>
+        <span class="k">if</span> <span class="n">total_charge</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">total_charge</span> <span class="o">&gt;</span> <span class="nb">abs</span><span class="p">(</span><span class="n">max_anion_charge</span><span class="p">):</span>
+            <span class="k">while</span> <span class="n">total_charge</span> <span class="o">&gt;</span> <span class="nb">abs</span><span class="p">(</span><span class="n">max_anion_charge</span><span class="p">):</span>
+                <span class="n">balance_atom</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">anions</span><span class="p">)</span>
+                <span class="n">atomic_system</span><span class="p">[</span><span class="n">balance_atom</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+                <span class="n">total_charge</span> <span class="o">+=</span> <span class="n">atom_charges</span><span class="p">[</span><span class="n">balance_atom</span><span class="p">]</span>
+
+        <span class="k">elif</span> <span class="n">total_charge</span> <span class="o">&lt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="nb">abs</span><span class="p">(</span><span class="n">total_charge</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">max_cation_charge</span><span class="p">:</span>
+            <span class="k">while</span> <span class="nb">abs</span><span class="p">(</span><span class="n">total_charge</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">max_cation_charge</span><span class="p">:</span>
+                <span class="n">balance_atom</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">cations</span><span class="p">)</span>
+                <span class="n">atomic_system</span><span class="p">[</span><span class="n">balance_atom</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+                <span class="n">total_charge</span> <span class="o">+=</span> <span class="n">atom_charges</span><span class="p">[</span><span class="n">balance_atom</span><span class="p">]</span>
+
+        <span class="c1"># Checking if the number of atoms in the system is close to the targeted number of atoms.</span>
+        <span class="n">current_num_atoms</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">atomic_system</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+        <span class="k">if</span> <span class="n">current_num_atoms</span> <span class="o">&gt;=</span> <span class="p">(</span><span class="n">target_num_atoms</span> <span class="o">-</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">total_charge</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">candidates</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">filter</span><span class="p">(</span><span class="k">lambda</span> <span class="n">at</span><span class="p">:</span> <span class="n">atom_charges</span><span class="p">[</span><span class="n">at</span><span class="p">]</span> <span class="o">==</span> <span class="o">-</span><span class="n">total_charge</span><span class="p">,</span> <span class="n">atom_types</span><span class="p">))</span>
+                <span class="c1"># If the anion/cation charges spectrum us &quot;gapped&quot; e.g. {-1,-3} then there is a chance that the total</span>
+                <span class="c1"># charge will be, for instance, +2 and no single atom will neutralize it, so candidates will be empty.</span>
+                <span class="k">if</span> <span class="n">candidates</span><span class="p">:</span>
+                    <span class="n">balance_atom</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">candidates</span><span class="p">)</span>
+                    <span class="n">atomic_system</span><span class="p">[</span><span class="n">balance_atom</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+                    <span class="n">total_charge</span> <span class="o">+=</span> <span class="n">atom_charges</span><span class="p">[</span><span class="n">balance_atom</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="n">total_charge</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">current_num_atoms</span> <span class="o">&gt;=</span> <span class="p">(</span><span class="n">target_num_atoms</span><span class="o">-</span><span class="mi">1</span><span class="p">):</span>
+            <span class="k">break</span>
+
+    <span class="c1"># Keeping only the elements whose frequency is greater than zero</span>
+    <span class="n">atomic_system</span> <span class="o">=</span> <span class="p">{</span><span class="n">atom_type</span><span class="p">:</span> <span class="n">atomic_system</span><span class="p">[</span><span class="n">atom_type</span><span class="p">]</span>
+                     <span class="k">for</span> <span class="n">atom_type</span> <span class="ow">in</span> <span class="n">atom_charges</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span> <span class="k">if</span> <span class="n">atomic_system</span><span class="p">[</span><span class="n">atom_type</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">}</span>
+
+    <span class="c1"># &quot;Sorting&quot; (dicts are unordered) according to atomic number</span>
+    <span class="c1"># atom_types.sort(key=lambda at: atomic_numbers[at])</span>
+    <span class="c1"># atomic_system = {at: atomic_system[at] for at in atom_types}</span>
+
+    <span class="k">return</span> <span class="n">atomic_system</span></div>
+
+
+
+<div class="viewcode-block" id="to_mic">
+<a class="viewcode-back" href="../../../api_documentation/alframework.builders.moltensalt_builder.html#alframework.builders.moltensalt_builder.to_mic">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">to_mic</span><span class="p">(</span><span class="n">r_ij</span><span class="p">,</span> <span class="n">box_length</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Impose minimum image convention (MIC) on the array containing the distances between atoms.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        r_ij (ndarray): A (n_atoms, 3) matrix r_ij = r_i - r, or a (n_atoms, n_atoms, 3) array containing all r_i - r.</span>
+<span class="sd">        box_length (float): Length of cubic cell.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        (ndarray): Distances under MIC</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">r_ij</span> <span class="o">-</span> <span class="n">box_length</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="n">r_ij</span><span class="o">/</span><span class="n">box_length</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="construct_simulation_box">
+<a class="viewcode-back" href="../../../api_documentation/alframework.builders.moltensalt_builder.html#alframework.builders.moltensalt_builder.construct_simulation_box">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">construct_simulation_box</span><span class="p">(</span><span class="n">atomic_system</span><span class="p">,</span> <span class="n">min_distance</span><span class="p">,</span> <span class="n">box_length</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">density</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">scale_coords</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                             <span class="n">max_iter</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span> <span class="n">max_tries</span><span class="o">=</span><span class="mi">25</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Constructs a initial configuration for the given atomic system respecting the imposed constraints.</span>
+
+<span class="sd">    Given a dictionary containing the atomic species and their charges, a random configuration of the system is</span>
+<span class="sd">    constructed respecting the constraints (desired density (g/cm^3), box length, minimum distance between atoms).</span>
+<span class="sd">    The atoms are randomly placed in the simulation box.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        atomic_system (dict): A dictionary where the keys are the atom types and the values the corresponding number</span>
+<span class="sd">                              of this atom type to be placed in the box.</span>
+<span class="sd">        min_distance (float): Minimum absolute distance between any two atoms in Angstroms.</span>
+<span class="sd">        box_length (float): Length of the cubic box.</span>
+<span class="sd">        density (float): Density of the atomic system in g/cm^3.</span>
+<span class="sd">        scale_coords (bool): Scales distances by the box length such that all coordinates are now between [0,1].</span>
+<span class="sd">        max_iter (int): Maximum number of tries to place an atom in a specific grid.</span>
+<span class="sd">        max_tries (int): Maximum number of tries to rerun the algorithm and try to fit the atoms that are missing to</span>
+<span class="sd">                         reach the desired number of atoms.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        (ndarray): A (N,3) array where &#39;N&#39; is the total number of atoms in the system.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># The box volume is defined by the number of atoms, their type, and the desired density.</span>
+    <span class="k">if</span> <span class="n">box_length</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">density</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="s1">&#39;Please specify either the box length or the density&#39;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">box_length</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span> <span class="c1"># Estimate box length from the desired density</span>
+        <span class="n">mass_system</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">([</span><span class="n">atomic_masses</span><span class="p">[</span><span class="n">atomic_numbers</span><span class="p">[</span><span class="n">atom_type</span><span class="p">]]</span> <span class="o">*</span> <span class="n">n_atoms</span> <span class="o">/</span> <span class="mf">6.022e23</span>
+                           <span class="k">for</span> <span class="n">atom_type</span><span class="p">,</span> <span class="n">n_atoms</span> <span class="ow">in</span> <span class="n">atomic_system</span><span class="o">.</span><span class="n">items</span><span class="p">()])</span>  <span class="c1"># [g]</span>
+        <span class="n">box_volume</span> <span class="o">=</span> <span class="p">(</span><span class="n">mass_system</span> <span class="o">/</span> <span class="n">density</span> <span class="o">*</span> <span class="mf">1e24</span><span class="p">)</span> <span class="c1"># [Angstrom^3]</span>
+        <span class="n">box_length</span> <span class="o">=</span> <span class="n">box_volume</span> <span class="o">**</span> <span class="p">(</span><span class="mi">1</span><span class="o">/</span><span class="mi">3</span><span class="p">)</span> <span class="c1"># [Angstrom]</span>
+
+    <span class="n">n_atoms</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">atomic_system</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+
+    <span class="n">N</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">box_length</span> <span class="o">//</span> <span class="n">min_distance</span><span class="p">)</span>
+    <span class="n">grid_spacing</span> <span class="o">=</span> <span class="n">box_length</span> <span class="o">/</span> <span class="n">N</span>
+    <span class="n">grid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">box_length</span><span class="p">,</span> <span class="n">grid_spacing</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">N</span><span class="o">**</span><span class="mi">3</span> <span class="o">&lt;=</span> <span class="p">(</span><span class="n">n_atoms</span> <span class="o">*</span> <span class="mf">1.1</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Density is too high, there is no way or it will take a very long time to place </span><span class="si">{</span><span class="n">n_atoms</span><span class="si">}</span><span class="s1"> atoms &#39;</span>
+                         <span class="sa">f</span><span class="s1">&#39;in a box length of </span><span class="si">{</span><span class="n">box_length</span><span class="si">:</span><span class="s1">.2f</span><span class="si">}</span><span class="s1"> given that each atom must be </span><span class="si">{</span><span class="n">min_distance</span><span class="si">}</span><span class="s1"> apart&#39;</span><span class="p">)</span>
+
+    <span class="c1"># Creating a grid that when indexed by (i,j,k) returns the base coordinate at that point</span>
+    <span class="n">mesh_grid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">meshgrid</span><span class="p">(</span><span class="n">grid</span><span class="p">,</span> <span class="n">grid</span><span class="p">,</span> <span class="n">grid</span><span class="p">))</span><span class="o">.</span><span class="n">T</span>
+    <span class="c1"># Swapping axes such that meshgrid[a,b,c] corresponds to gridspacing * [a,b,c]</span>
+    <span class="n">mesh_grid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">swapaxes</span><span class="p">(</span><span class="n">mesh_grid</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+    <span class="n">mesh_grid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">swapaxes</span><span class="p">(</span><span class="n">mesh_grid</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="n">occupied_mesh_grid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">mesh_grid</span><span class="p">)</span> <span class="c1"># Will store the absolute position of each atom in the grid</span>
+
+    <span class="n">all_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">indices</span><span class="p">((</span><span class="n">N</span><span class="p">,</span><span class="n">N</span><span class="p">,</span><span class="n">N</span><span class="p">))</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mi">3</span><span class="p">)</span>
+    <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">shuffle</span><span class="p">(</span><span class="n">all_indices</span><span class="p">)</span>
+    <span class="n">available_indices</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="nb">tuple</span><span class="p">,</span> <span class="n">all_indices</span><span class="p">))</span>
+    <span class="n">occupied_indices</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="n">aux_neighbors_idx</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">product</span><span class="p">((</span><span class="mi">0</span><span class="p">,</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">)))</span>
+    <span class="k">del</span> <span class="n">aux_neighbors_idx</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="c1"># Removing (0,0,0) since it is useless</span>
+    <span class="n">aux_neighbors_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">aux_neighbors_idx</span><span class="p">)</span>
+
+    <span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">()</span>
+    <span class="n">total_tries</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="k">while</span> <span class="nb">len</span><span class="p">(</span><span class="n">occupied_indices</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">n_atoms</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">available_indices</span><span class="p">:</span>
+            <span class="c1"># Refill &#39;available_indices&#39; with the indices that are not occupied after a full sweep over all grid points.</span>
+            <span class="n">available_indices</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="nb">tuple</span><span class="p">,</span> <span class="n">all_indices</span><span class="o">.</span><span class="n">tolist</span><span class="p">()))</span><span class="o">.</span><span class="n">difference</span><span class="p">(</span><span class="n">occupied_indices</span><span class="p">)</span>
+            <span class="n">total_tries</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="c1"># This increase of &#39;max_iter&#39; speeds the code because we are now trying harder to fit the remaining atoms</span>
+            <span class="c1"># in the box for a given index, which may avoid calculating the neighbors and redoing the whole cycle.</span>
+            <span class="n">max_iter</span> <span class="o">+=</span> <span class="mi">2</span>
+            <span class="k">if</span> <span class="n">total_tries</span> <span class="o">&gt;</span> <span class="n">max_tries</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Exceeded maximum iterations, only </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">occupied_indices</span><span class="p">)</span><span class="si">}</span><span class="s1"> were placed&#39;</span><span class="p">)</span>
+
+        <span class="n">idx</span> <span class="o">=</span> <span class="n">available_indices</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
+        <span class="n">neighbor_list</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span> <span class="o">+</span> <span class="n">aux_neighbors_idx</span>
+
+        <span class="c1"># Applying PBC to the neighbors</span>
+        <span class="n">neighbor_list</span><span class="p">[</span><span class="n">neighbor_list</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">N</span><span class="o">-</span><span class="mi">1</span>
+        <span class="n">neighbor_list</span><span class="p">[</span><span class="n">neighbor_list</span> <span class="o">==</span> <span class="n">N</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+
+        <span class="c1"># Getting only the coordinates of the occupied neighbors from the neighbor list since it suffices to check</span>
+        <span class="c1"># distances for them (its redundant to check distances for a empty cells).</span>
+        <span class="n">i_neighbors</span><span class="p">,</span> <span class="n">j_neighbors</span><span class="p">,</span> <span class="n">k_neighbors</span> <span class="o">=</span> <span class="n">neighbor_list</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">],</span> <span class="n">neighbor_list</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">],</span> <span class="n">neighbor_list</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">]</span>
+        <span class="n">neighbors_coords</span> <span class="o">=</span> <span class="n">occupied_mesh_grid</span><span class="p">[</span><span class="nb">tuple</span><span class="p">(</span><span class="n">i_neighbors</span><span class="p">),</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">j_neighbors</span><span class="p">),</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">k_neighbors</span><span class="p">)]</span>
+        <span class="n">occupied_neighbors_coords</span> <span class="o">=</span> <span class="n">neighbors_coords</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">neighbors_coords</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)]</span> <span class="c1"># Empty grids have coords (0,0,0)</span>
+
+        <span class="c1"># Trying to fit an atom at a random position in an available grid position</span>
+        <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">max_iter</span><span class="p">):</span>
+            <span class="n">candidate_coord</span> <span class="o">=</span> <span class="n">mesh_grid</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">+</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">grid_spacing</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+            <span class="n">distances</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">to_mic</span><span class="p">(</span><span class="n">candidate_coord</span> <span class="o">-</span> <span class="n">occupied_neighbors_coords</span><span class="p">,</span> <span class="n">box_length</span><span class="p">),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">distances</span> <span class="o">&gt;</span> <span class="n">min_distance</span><span class="p">):</span>
+                <span class="n">occupied_mesh_grid</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">candidate_coord</span>
+                <span class="n">occupied_indices</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">tuple</span><span class="p">(</span><span class="n">idx</span><span class="p">))</span>
+                <span class="k">break</span>
+
+    <span class="n">occupied_mesh_grid</span> <span class="o">=</span> <span class="n">occupied_mesh_grid</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span><span class="mi">3</span><span class="p">)</span>
+    <span class="n">coords</span> <span class="o">=</span> <span class="n">occupied_mesh_grid</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">occupied_mesh_grid</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)]</span>
+    <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">shuffle</span><span class="p">(</span><span class="n">coords</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">scale_coords</span><span class="p">:</span>
+        <span class="n">coords</span> <span class="o">/=</span> <span class="n">box_length</span>
+
+    <span class="k">return</span> <span class="n">coords</span></div>
+
+
+
+<div class="viewcode-block" id="atomic_system_builder">
+<a class="viewcode-back" href="../../../api_documentation/alframework.builders.moltensalt_builder.html#alframework.builders.moltensalt_builder.atomic_system_builder">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">atomic_system_builder</span><span class="p">(</span><span class="n">atom_charges</span><span class="p">,</span> <span class="n">target_num_atoms</span><span class="p">,</span> <span class="n">min_distance</span><span class="p">,</span> <span class="n">box_length_range</span><span class="p">,</span> <span class="n">max_tries</span><span class="o">=</span><span class="mi">25</span><span class="p">,</span> <span class="n">scale_coords</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Builds the atomic system</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        atom_charges (dict): A dictionary where the keys are the atom types in the system and the corresponding values</span>
+<span class="sd">                             the charge of each atom type.</span>
+<span class="sd">        target_num_atoms (int): Targeted total number of atoms in the system.</span>
+<span class="sd">        min_distance (float): Minimum absolute distance between any two atoms in Angstroms.</span>
+<span class="sd">        box_length_range (list): A list containing the minimum and maximum simulation box length [L_min, L_max].</span>
+<span class="sd">        max_tries (int): Maximum number of cycles in the atom placing algorithm</span>
+<span class="sd">        scale_coords (bool): Determines whether to scale the coordinates by the box length or not.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        (ase.Atoms): ASE atoms object representing a random configuration of the atomic system.</span>
+
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">()</span>
+    <span class="n">box_length</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="nb">min</span><span class="p">(</span><span class="n">box_length_range</span><span class="p">),</span> <span class="nb">max</span><span class="p">(</span><span class="n">box_length_range</span><span class="p">))</span>
+    <span class="n">atomic_system</span> <span class="o">=</span> <span class="n">create_atomic_system</span><span class="p">(</span><span class="n">atom_charges</span><span class="p">,</span> <span class="n">target_num_atoms</span><span class="p">)</span>
+    <span class="n">coords</span> <span class="o">=</span> <span class="n">construct_simulation_box</span><span class="p">(</span><span class="n">atomic_system</span><span class="p">,</span> <span class="n">min_distance</span><span class="p">,</span> <span class="n">box_length</span><span class="p">,</span> <span class="n">max_tries</span><span class="o">=</span><span class="n">max_tries</span><span class="p">,</span> <span class="n">scale_coords</span><span class="o">=</span><span class="n">scale_coords</span><span class="p">)</span>
+
+    <span class="n">atoms_type_list</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">atomic_system</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="n">atoms_type_list</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="n">k</span><span class="p">]</span> <span class="o">*</span> <span class="n">v</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">ase</span><span class="o">.</span><span class="n">Atoms</span><span class="p">(</span><span class="n">atoms_type_list</span><span class="p">,</span> <span class="n">coords</span><span class="p">,</span> <span class="n">pbc</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">cell</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">([</span><span class="n">box_length</span><span class="p">]</span><span class="o">*</span><span class="mi">3</span><span class="p">))</span></div>
+
+
+
+<span class="c1">#----------------------------------------------------------------------------------------------------------------------#</span>
+<span class="c1">## Tests</span>
+<div class="viewcode-block" id="test_atomic_system">
+<a class="viewcode-back" href="../../../api_documentation/alframework.builders.moltensalt_builder.html#alframework.builders.moltensalt_builder.test_atomic_system">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">test_atomic_system</span><span class="p">(</span><span class="n">charges</span><span class="p">,</span> <span class="n">target_num_ats</span><span class="p">,</span> <span class="n">iterations</span><span class="o">=</span><span class="mi">10000</span><span class="p">):</span>
+    <span class="n">freq_natoms</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">total_charges</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">freq_type</span> <span class="o">=</span> <span class="n">Counter</span><span class="p">({</span><span class="n">k</span><span class="p">:</span> <span class="mi">0</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">charges</span><span class="o">.</span><span class="n">keys</span><span class="p">()})</span>
+
+    <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">tqdm</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="n">iterations</span><span class="p">)):</span>
+        <span class="n">at_sys</span> <span class="o">=</span> <span class="n">Counter</span><span class="p">(</span><span class="n">create_atomic_system</span><span class="p">(</span><span class="n">charges</span><span class="p">,</span> <span class="n">target_num_ats</span><span class="p">))</span>
+        <span class="n">freq_type</span> <span class="o">+=</span> <span class="n">at_sys</span>
+        <span class="n">n_atoms</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">at_sys</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+
+        <span class="k">if</span> <span class="n">freq_natoms</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">n_atoms</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">freq_natoms</span><span class="p">[</span><span class="n">n_atoms</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">freq_natoms</span><span class="p">[</span><span class="n">n_atoms</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+
+        <span class="n">total_charges</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">sum</span><span class="p">([</span><span class="n">at_sys</span><span class="p">[</span><span class="n">at</span><span class="p">]</span> <span class="o">*</span> <span class="n">charges</span><span class="p">[</span><span class="n">at</span><span class="p">]</span> <span class="k">for</span> <span class="n">at</span> <span class="ow">in</span> <span class="n">charges</span><span class="o">.</span><span class="n">keys</span><span class="p">()]))</span>
+
+    <span class="n">total</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">freq_type</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+    <span class="n">prob</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="n">v</span><span class="o">/</span><span class="n">total</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span><span class="n">v</span> <span class="ow">in</span> <span class="n">freq_type</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">total_charges</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">):</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;All systems were charge neutral&#39;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Error, some systems were not charge neutral&#39;</span><span class="p">)</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Number of atoms in the atomic system: </span><span class="si">{</span><span class="n">freq_natoms</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;Frequency of each atomic species: </span><span class="si">{</span><span class="n">prob</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="test_distances">
+<a class="viewcode-back" href="../../../api_documentation/alframework.builders.moltensalt_builder.html#alframework.builders.moltensalt_builder.test_distances">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">test_distances</span><span class="p">(</span><span class="n">coords</span><span class="p">,</span> <span class="n">box_length</span><span class="p">):</span>
+    <span class="n">d_ijk</span> <span class="o">=</span> <span class="n">to_mic</span><span class="p">(</span><span class="n">coords</span><span class="p">[:,</span><span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">,:]</span> <span class="o">-</span> <span class="n">coords</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">,:,:],</span> <span class="n">box_length</span><span class="p">)</span>
+    <span class="n">dists</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">d_ijk</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+    <span class="n">min_distances</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">dists</span><span class="p">[</span><span class="n">dists</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">d_ijk</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">d_ijk</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="n">axis</span><span class="o">=-</span><span class="mi">1</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;The minimum distance for each atom is </span><span class="si">{</span><span class="n">min_distances</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;The minimum distance between any two atoms assuming PBC is </span><span class="si">{</span><span class="nb">min</span><span class="p">(</span><span class="n">min_distances</span><span class="p">)</span><span class="si">:</span><span class="s1">.6f</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">)</span></div>
+
+
+
+<span class="c1">## Testing the charge neutrality of the system and if the total number of atoms in it is close to what we want.</span>
+<span class="c1"># test_atomic_system({&#39;F&#39;: -1, &#39;Li&#39;: 1, &#39;Na&#39;: 1, &#39;K&#39;: 1, &#39;Cl&#39;: -2, &#39;Mg&#39;: 2, &#39;Be&#39;: 2}, 100)</span>
+<span class="c1"># print(create_atomic_system({&#39;F&#39;: -1, &#39;Li&#39;: 1, &#39;Na&#39;: 1, &#39;K&#39;: 1, &#39;Cl&#39;: -2, &#39;Mg&#39;: 2, &#39;Be&#39;: 2}, 100))</span>
+<span class="c1"># quit()</span>
+
+
+<span class="c1">## Testing the minimum distance between any two atoms considering PBC to check if it respects the &#39;min_distance&#39;.</span>
+<span class="c1"># L = 10</span>
+<span class="c1"># coords = construct_simulation_box(create_atomic_system({&#39;F&#39;: -1, &#39;Li&#39;: 1, &#39;Na&#39;: 1, &#39;K&#39;: 1, &#39;Cl&#39;: -2, &#39;Mg&#39;: 2, &#39;Be&#39;: 2}, 100),</span>
+<span class="c1">#                                   1.5, box_length=L, scale_coords=False, max_tries=20, max_iter=30)</span>
+<span class="c1"># test_distances(coords, L)</span>
+<span class="c1"># quit()</span>
+
+
+<span class="c1">## Testing algorithm&#39;s stability for very small box sizes (high densities)</span>
+<span class="c1"># L = 8.5</span>
+<span class="c1"># for i in tqdm(range(5000)):</span>
+<span class="c1">#     coords = construct_simulation_box(create_atomic_system({&#39;F&#39;: -1, &#39;Li&#39;: 1, &#39;Na&#39;: 1, &#39;K&#39;: 1, &#39;Cl&#39;: -2, &#39;Mg&#39;: 2, &#39;Be&#39;: 2}, 100),</span>
+<span class="c1">#                                         1.5, box_length=L, scale_coords=False, max_tries=20, max_iter=30)</span>
+<span class="c1"># quit()</span>
+
+
+<span class="c1">## Checking the return from the builder</span>
+<span class="c1"># atoms = atomic_system_builder({&#39;F&#39;: -1, &#39;Li&#39;: 1, &#39;Na&#39;: 1, &#39;K&#39;: 1, &#39;Cl&#39;: -2, &#39;Mg&#39;: 2, &#39;Be&#39;: 2}, 100, 1.5, [8.5,13])</span>
+<span class="c1"># print(atoms.get_atomic_numbers())</span>
+<span class="c1"># print(atoms.cell.cellpar())</span>
+<span class="c1"># print(atoms.get_all_distances()[atoms.get_all_distances() != 0].min())</span>
+<span class="c1"># print(atoms.get_positions().tolist())</span>
+<span class="c1"># print(atoms.get_chemical_symbols())</span>
+<span class="c1"># quit()</span>
+
+
+<span class="c1">## Testing the number of atoms inside the atomic environment of a given atom and its minimum distance</span>
+<span class="c1"># N = 100</span>
+<span class="c1"># min_dist = np.empty(N)</span>
+<span class="c1"># n_neigh = np.empty(N)</span>
+<span class="c1"># L = 12</span>
+<span class="c1"># for i in range(N):</span>
+<span class="c1">#     coords = construct_simulation_box({&#39;F&#39;: 17, &#39;Li&#39;: 14, &#39;Na&#39;: 9, &#39;K&#39;: 12, &#39;Cl&#39;: 28, &#39;Mg&#39;: 9, &#39;Be&#39;: 10}, 1.5, box_length=L, scale_coords=False)</span>
+<span class="c1">#     d_1 = np.linalg.norm(to_mic(coords[0] - coords[1:], L), axis=1) # Using the first atom to find the distances</span>
+<span class="c1">#     neigh = d_1[d_1 &lt;= 7]</span>
+<span class="c1">#     min_dist[i] = neigh.min()</span>
+<span class="c1">#     n_neigh[i] = neigh.shape[0]</span>
+<span class="c1">#</span>
+<span class="c1"># hist_dist = np.histogram(min_dist, np.arange(1.5, 3.1, 0.1))</span>
+<span class="c1"># hist_neigh = np.histogram(n_neigh, np.arange(1.5, 3.1, 0.1))</span>
+<span class="c1">#</span>
+<span class="c1"># print(np.sort(min_dist))</span>
+<span class="c1"># print(np.sort(n_neigh))</span>
+<span class="c1"># print(min_dist[min_dist&gt;2].size)</span>
+<span class="c1"># print(f&#39;Minimum avg distance in the AEV: {np.mean(min_dist):.2f}, avg number of atoms in the AEV: {np.mean(n_neigh):.2f}&#39;)</span>
+<span class="c1">#</span>
+<span class="c1"># import matplotlib.pyplot as plt</span>
+<span class="c1"># fig, ax = plt.subplots()</span>
+<span class="c1"># ax.hist(min_dist, bins=hist_dist[1], rwidth=0.95, color=&#39;navy&#39;)</span>
+<span class="c1">#</span>
+<span class="c1"># for i, rect in enumerate(ax.patches):</span>
+<span class="c1">#     height = rect.get_height()</span>
+<span class="c1">#     ax.annotate(f&#39;{int(hist_dist[0][i])}&#39;, xy=(rect.get_x()+rect.get_width()/2, height),</span>
+<span class="c1">#                 xytext=(0, 2), textcoords=&#39;offset points&#39;, ha=&#39;center&#39;, va=&#39;bottom&#39;, fontsize=15, color=&#39;orangered&#39;)</span>
+<span class="c1"># plt.show()</span>
+
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023, ALF Team.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -12,7 +12,7 @@ Welcome to ALF's documentation!
    :maxdepth: 2
    :caption: Contents:
 
-   API documentation <api_documentation/alframework>
+   API documentation <api_documentation/modules>
    license
 
 

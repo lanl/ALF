@@ -1,0 +1,169 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QM Interfaces &mdash; ALF 0.0.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=5c79bd3c"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Simple Water Example" href="../examples/simple_water.html" />
+    <link rel="prev" title="ML Interfaces" href="ml_interfaces.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            ALF
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started/what_is_alf.html">What Is ALF</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started/installation.html">Installation</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="builders.html">Builders</a></li>
+<li class="toctree-l1"><a class="reference internal" href="samplers.html">Samplers</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ml_interfaces.html">ML Interfaces</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">QM Interfaces</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#available-qm-interface-modules">Available QM interface modules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#choosing-a-qm-interface">Choosing a QM interface</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#qm-interface-api-links">QM interface API links</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Examples</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../examples/simple_water.html">Simple Water Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/molten_salt.html">Molten Salt Example</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../api_documentation/modules.html">alframework</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../license.html">License</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">ALF</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">QM Interfaces</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/user_guide/qm_interfaces.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul><div class="rst-breadcrumbs-buttons" role="navigation" aria-label="Sequential page navigation">
+        <a href="ml_interfaces.html" class="btn btn-neutral float-left" title="ML Interfaces" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../examples/simple_water.html" class="btn btn-neutral float-right" title="Simple Water Example" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+  </div>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="qm-interfaces">
+<h1>QM Interfaces<a class="headerlink" href="#qm-interfaces" title="Link to this heading"></a></h1>
+<p>QM interfaces connect ALF to electronic structure engines.</p>
+<section id="available-qm-interface-modules">
+<h2>Available QM interface modules<a class="headerlink" href="#available-qm-interface-modules" title="Link to this heading"></a></h2>
+<p>ALF currently includes several QM interface modules:</p>
+<ol class="arabic simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">alframework.qm_interfaces.ase_calculator_interface</span></code>
+Generic QM task wrappers for use with ASE calculators.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">alframework.qm_interfaces.orca5_interface</span></code>
+Interface for ORCA, including task and parsing utilities for single-point calculations and
+property extraction.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">alframework.qm_interfaces.vaspase_interface</span></code>
+Interface for the Vienna ab initio Simulation Package (VASP) plane-wave electronic structure code.</p></li>
+</ol>
+</section>
+<section id="choosing-a-qm-interface">
+<h2>Choosing a QM interface<a class="headerlink" href="#choosing-a-qm-interface" title="Link to this heading"></a></h2>
+<p>Use <code class="docutils literal notranslate"><span class="pre">ase_calculator_interface</span></code> when your QM engine is exposed through an ASE
+calculator and you want a general integration path.</p>
+<p>Use <code class="docutils literal notranslate"><span class="pre">orca5_interface</span></code> when your workflow is built around ORCA input blocks
+and ORCA-specific output parsing.</p>
+<p>Use <code class="docutils literal notranslate"><span class="pre">vaspase_interface</span></code> when your workflow requires VASP-specific controls
+and file handling beyond the generic ASE path.</p>
+</section>
+<section id="qm-interface-api-links">
+<h2>QM interface API links<a class="headerlink" href="#qm-interface-api-links" title="Link to this heading"></a></h2>
+<p>You can link from this guide directly to API pages:</p>
+<ul class="simple">
+<li><p><a class="reference internal" href="../api_documentation/alframework.qm_interfaces.html"><span class="doc">QM interfaces package API</span></a></p></li>
+<li><p><a class="reference internal" href="../api_documentation/alframework.qm_interfaces.ase_calculator_interface.html"><span class="doc">ASE calculator interface module</span></a></p></li>
+<li><p><a class="reference internal" href="../api_documentation/alframework.qm_interfaces.orca5_interface.html"><span class="doc">ORCA interface module</span></a></p></li>
+<li><p><a class="reference internal" href="../api_documentation/alframework.qm_interfaces.vaspase_interface.html"><span class="doc">VASP interface module</span></a></p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="ml_interfaces.html" class="btn btn-neutral float-left" title="ML Interfaces" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../examples/simple_water.html" class="btn btn-neutral float-right" title="Simple Water Example" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023, ALF Team.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

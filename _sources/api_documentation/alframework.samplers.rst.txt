@@ -1,7 +1,10 @@
-alframework.samplers namespace
-==============================
+alframework.samplers package
+============================
 
-.. py:module:: alframework.samplers
+.. automodule:: alframework.samplers
+   :members:
+   :show-inheritance:
+   :undoc-members:
 
 Submodules
 ----------

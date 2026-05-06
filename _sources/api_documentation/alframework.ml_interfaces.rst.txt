@@ -1,7 +1,10 @@
-alframework.ml\_interfaces namespace
-====================================
+alframework.ml\_interfaces package
+==================================
 
-.. py:module:: alframework.ml_interfaces
+.. automodule:: alframework.ml_interfaces
+   :members:
+   :show-inheritance:
+   :undoc-members:
 
 Submodules
 ----------

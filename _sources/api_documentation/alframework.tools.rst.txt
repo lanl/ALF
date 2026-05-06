@@ -1,7 +1,10 @@
-alframework.tools namespace
-===========================
+alframework.tools package
+=========================
 
-.. py:module:: alframework.tools
+.. automodule:: alframework.tools
+   :members:
+   :show-inheritance:
+   :undoc-members:
 
 Submodules
 ----------

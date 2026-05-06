@@ -1,7 +1,10 @@
-alframework.qm\_interfaces namespace
-====================================
+alframework.qm\_interfaces package
+==================================
 
-.. py:module:: alframework.qm_interfaces
+.. automodule:: alframework.qm_interfaces
+   :members:
+   :show-inheritance:
+   :undoc-members:
 
 Submodules
 ----------

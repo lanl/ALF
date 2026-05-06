@@ -1,7 +1,10 @@
-alframework.parsl\_resource\_configs namespace
-==============================================
+alframework.parsl\_resource\_configs package
+============================================
 
-.. py:module:: alframework.parsl_resource_configs
+.. automodule:: alframework.parsl_resource_configs
+   :members:
+   :show-inheritance:
+   :undoc-members:
 
 Submodules
 ----------

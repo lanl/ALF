@@ -1,7 +1,10 @@
-alframework.builders namespace
-==============================
+alframework.builders package
+============================
 
-.. py:module:: alframework.builders
+.. automodule:: alframework.builders
+   :members:
+   :show-inheritance:
+   :undoc-members:
 
 Submodules
 ----------

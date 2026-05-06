@@ -20,7 +20,7 @@ config_standard = Config(
             # Optional: the network interface on the login node to
             # which compute nodes can communicate
             #address=address_by_interface('bond0.144'),
-            max_workers=1,
+            max_workers_per_node=1,
             #cpu_affinity='alternating',
 
 
@@ -61,7 +61,7 @@ config_standard = Config(
             # Optional: the network interface on the login node to
             # which compute nodes can communicate
             #address=address_by_interface('bond0.144'),
-            max_workers=1,
+            max_workers_per_node=1,
             #cpu_affinity='alternating',
 
 
@@ -99,7 +99,7 @@ config_standard = Config(
             # Optional: the network interface on the login node to
             # which compute nodes can communicate
             #address=address_by_interface('bond0.144'),
-            max_workers=1,
+            max_workers_per_node=1,
             #cpu_affinity='alternating',
 
 
@@ -138,7 +138,7 @@ config_standard = Config(
             # Optional: the network interface on the login node to
             # which compute nodes can communicate
             #address=address_by_interface('bond0.144'),
-            max_workers=4,
+            max_workers_per_node=4,
             #cpu_affinity='alternating',
 
             provider=SlurmProvider(
@@ -176,7 +176,7 @@ config_standard = Config(
             # Optional: the network interface on the login node to
             # which compute nodes can communicate
             #address=address_by_interface('bond0.144'),
-            max_workers=4,
+            max_workers_per_node=4,
             #cpu_affinity='alternating',
 
             provider=SlurmProvider(
@@ -222,7 +222,7 @@ config_gpu = Config(
             # Optional: the network interface on the login node to
             # which compute nodes can communicate
             #address=address_by_interface('bond0.144'),
-            max_workers=1,
+            max_workers_per_node=1,
             #cpu_affinity='alternating',
 
 
@@ -263,7 +263,7 @@ config_gpu = Config(
             # Optional: the network interface on the login node to
             # which compute nodes can communicate
             #address=address_by_interface('bond0.144'),
-            max_workers=1,
+            max_workers_per_node=1,
             #cpu_affinity='alternating',
 
 
@@ -301,7 +301,7 @@ config_gpu = Config(
             # Optional: the network interface on the login node to
             # which compute nodes can communicate
             #address=address_by_interface('bond0.144'),
-            max_workers=1,
+            max_workers_per_node=1,
             #cpu_affinity='alternating',
 
 
@@ -340,7 +340,7 @@ config_gpu = Config(
             # Optional: the network interface on the login node to
             # which compute nodes can communicate
             #address=address_by_interface('bond0.144'),
-            max_workers=4,
+            max_workers_per_node=4,
             #cpu_affinity='alternating',
 
             provider=SlurmProvider(
@@ -384,7 +384,7 @@ config_debug = Config(
             # Optional: the network interface on the login node to
             # which compute nodes can communicate
             #address=address_by_interface('bond0.144'),
-            max_workers=1,
+            max_workers_per_node=1,
             #cpu_affinity='alternating',
 
 
@@ -422,7 +422,7 @@ config_debug = Config(
             # Optional: the network interface on the login node to
             # which compute nodes can communicate
             #address=address_by_interface('bond0.144'),
-            max_workers=1,
+            max_workers_per_node=1,
             #cpu_affinity='alternating',
 
 
@@ -461,7 +461,7 @@ config_debug = Config(
             # Optional: the network interface on the login node to
             # which compute nodes can communicate
             #address=address_by_interface('bond0.144'),
-            max_workers=4,
+            max_workers_per_node=4,
             #cpu_affinity='alternating',
 
             provider=SlurmProvider(
@@ -504,7 +504,7 @@ config_debug_hybrid = Config(
             # Optional: the network interface on the login node to
             # which compute nodes can communicate
             #address=address_by_interface('bond0.144'),
-            max_workers=1,
+            max_workers_per_node=1,
             #cpu_affinity='alternating',
 
 
@@ -542,7 +542,7 @@ config_debug_hybrid = Config(
             # Optional: the network interface on the login node to
             # which compute nodes can communicate
             #address=address_by_interface('bond0.144'),
-            max_workers=1,
+            max_workers_per_node=1,
             #cpu_affinity='alternating',
 
 
@@ -581,7 +581,7 @@ config_debug_hybrid = Config(
             # Optional: the network interface on the login node to
             # which compute nodes can communicate
             #address=address_by_interface('bond0.144'),
-            max_workers=4,
+            max_workers_per_node=4,
             #cpu_affinity='alternating',
 
             provider=SlurmProvider(

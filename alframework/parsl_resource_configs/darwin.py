@@ -17,7 +17,7 @@ config_atdm_ml = Config(
             # Optional: the network interface on the login node to
             # which compute nodes can communicate
             #address=address_by_interface('bond0.144'),
-            max_workers=1,
+            max_workers_per_node=1,
 
 
             provider=SlurmProvider(
@@ -54,7 +54,7 @@ config_atdm_ml = Config(
             # Optional: the network interface on the login node to
             # which compute nodes can communicate
             #address=address_by_interface('bond0.144'),
-            max_workers=1,
+            max_workers_per_node=1,
 
 
             provider=SlurmProvider(
@@ -91,7 +91,7 @@ config_atdm_ml = Config(
             # Optional: the network interface on the login node to
             # which compute nodes can communicate
             #address=address_by_interface('bond0.144'),
-            max_workers=1,
+            max_workers_per_node=1,
             #cpu_affinity='alternating',
 
 
@@ -129,7 +129,7 @@ config_atdm_ml = Config(
             # Optional: the network interface on the login node to
             # which compute nodes can communicate
             #address=address_by_interface('bond0.144'),
-            max_workers=8,
+            max_workers_per_node=8,
             #cpu_affinity='alternating',
 
             provider=SlurmProvider(
@@ -171,7 +171,7 @@ config_atdm_ml_short = Config(
             # Optional: the network interface on the login node to
             # which compute nodes can communicate
             #address=address_by_interface('bond0.144'),
-            max_workers=1,
+            max_workers_per_node=1,
             #cpu_affinity='alternating',
 
 
@@ -209,7 +209,7 @@ config_atdm_ml_short = Config(
             # Optional: the network interface on the login node to
             # which compute nodes can communicate
             #address=address_by_interface('bond0.144'),
-            max_workers=1,
+            max_workers_per_node=1,
             #cpu_affinity='alternating',
 
 
@@ -247,7 +247,7 @@ config_atdm_ml_short = Config(
             # Optional: the network interface on the login node to
             # which compute nodes can communicate
             #address=address_by_interface('bond0.144'),
-            max_workers=1,
+            max_workers_per_node=1,
 
 
             provider=SlurmProvider(
@@ -284,7 +284,7 @@ config_atdm_ml_short = Config(
             # Optional: the network interface on the login node to
             # which compute nodes can communicate
             #address=address_by_interface('bond0.144'),
-            max_workers=8,
+            max_workers_per_node=8,
 
             provider=SlurmProvider(
                 # Partition / QOS
@@ -328,7 +328,7 @@ shared_1node= Config(
             # Optional: the network interface on the login node to
             # which compute nodes can communicate
             #address=address_by_interface('bond0.144'),
-            max_workers=36,
+            max_workers_per_node=36,
             #cpu_affinity='alternating',
 
 
@@ -366,7 +366,7 @@ shared_1node= Config(
             # Optional: the network interface on the login node to
             # which compute nodes can communicate
             #address=address_by_interface('bond0.144'),
-            max_workers=1,
+            max_workers_per_node=1,
             #cpu_affinity='alternating',
 
 
@@ -406,7 +406,7 @@ shared_1node= Config(
             # Optional: the network interface on the login node to
             # which compute nodes can communicate
             #address=address_by_interface('bond0.144'),
-            max_workers=4,
+            max_workers_per_node=4,
             #cpu_affinity='alternating',
 
             provider=SlurmProvider(

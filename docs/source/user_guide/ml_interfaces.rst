@@ -35,3 +35,10 @@ You can link from this guide directly to API pages:
 * :doc:`ML interfaces package API <../api_documentation/alframework.ml_interfaces>`
 * :doc:`HIPPYNN interface module <../api_documentation/alframework.ml_interfaces.hippynn_interface>`
 * :doc:`NeuroChem interface module <../api_documentation/alframework.ml_interfaces.neurochem_interface>`
+
+Related examples
+----------------
+
+See :doc:`../examples/simple_water`, :doc:`../examples/molten_salt`, and
+:doc:`../examples/reactive_sampling` for HIPPYNN-based active-learning
+workflows.

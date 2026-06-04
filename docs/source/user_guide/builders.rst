@@ -40,3 +40,10 @@ You can link from this guide directly to API pages:
 * :doc:`Core builders module <../api_documentation/alframework.builders.builders>`
 * :doc:`Molten-salt builder module <../api_documentation/alframework.builders.moltensalt_builder>`
 * :doc:`Reactive builder module <../api_documentation/alframework.builders.reactive_builder>`
+
+Related examples
+----------------
+
+See :doc:`../examples/simple_water` for condensed-phase construction,
+:doc:`../examples/molten_salt` for charge-balanced atomic systems, and
+:doc:`../examples/reactive_sampling` for reaction-structure loading.

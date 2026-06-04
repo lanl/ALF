@@ -46,6 +46,7 @@
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../getting_started/what_is_alf.html">What Is ALF</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../getting_started/installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started/quickstart.html">Quickstart</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
 <ul>
@@ -57,8 +58,13 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul class="current">
-<li class="toctree-l1 current"><a class="current reference internal" href="#">Simple Water Example</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Simple Water Example</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#what-it-demonstrates">What it demonstrates</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#relevant-files">Relevant files</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="molten_salt.html">Molten Salt Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="reactive_sampling.html">Reactive Sampling Example</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
 <ul>
@@ -95,8 +101,33 @@
              
   <section id="simple-water-example">
 <h1>Simple Water Example<a class="headerlink" href="#simple-water-example" title="Link to this heading"></a></h1>
-<p>This example demonstrates a minimal ALF workflow for a small molecular system.</p>
-<p>Use it to validate environment setup and end-to-end execution.</p>
+<p>The simple water example is a compact ALF workflow for a small molecular
+system. It is a useful starting point for checking that the builder, sampler,
+QM interface, ML interface, and Parsl resource configuration are connected
+correctly.</p>
+<section id="what-it-demonstrates">
+<h2>What it demonstrates<a class="headerlink" href="#what-it-demonstrates" title="Link to this heading"></a></h2>
+<p>This example uses:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">simple_condensed_phase_builder_task</span></code> for structure construction</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">simple_mlmd_sampling_task</span></code> for uncertainty-driven MD sampling</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">orca_calculator_task</span></code> for QM labeling</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">train_HIPPYNN_ensemble_task</span></code> for model retraining</p></li>
+</ul>
+</section>
+<section id="relevant-files">
+<h2>Relevant files<a class="headerlink" href="#relevant-files" title="Link to this heading"></a></h2>
+<p>The example lives in <code class="docutils literal notranslate"><span class="pre">examples/simple_water</span></code>.</p>
+<ul class="simple">
+<li><p><a class="reference external" href="https://github.com/lanl/ALF/blob/main/examples/simple_water/master_config.json">master_config.json</a></p></li>
+<li><p><a class="reference external" href="https://github.com/lanl/ALF/blob/main/examples/simple_water/builder_config.json">builder_config.json</a></p></li>
+<li><p><a class="reference external" href="https://github.com/lanl/ALF/blob/main/examples/simple_water/mlmd_config.json">mlmd_config.json</a></p></li>
+<li><p><a class="reference external" href="https://github.com/lanl/ALF/blob/main/examples/simple_water/orca_config.json">orca_config.json</a></p></li>
+<li><p><a class="reference external" href="https://github.com/lanl/ALF/blob/main/examples/simple_water/hippynn_config.json">hippynn_config.json</a></p></li>
+</ul>
+<p>Use this example when you want a small end-to-end workflow to adapt before
+moving to larger systems.</p>
+</section>
 </section>
 
 

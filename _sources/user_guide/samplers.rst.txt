@@ -33,3 +33,10 @@ You can link from this guide directly to API pages:
 * :doc:`Samplers package API <../api_documentation/alframework.samplers>`
 * :doc:`MLMD sampling module <../api_documentation/alframework.samplers.mlmd_sampling>`
 * :doc:`Reactive sampler module <../api_documentation/alframework.samplers.reactive_sampler>`
+
+Related examples
+----------------
+
+See :doc:`../examples/simple_water` and :doc:`../examples/molten_salt` for
+MLMD-style sampling, and :doc:`../examples/reactive_sampling` for reaction-path
+sampling.

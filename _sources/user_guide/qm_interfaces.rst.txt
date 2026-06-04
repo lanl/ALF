@@ -37,3 +37,10 @@ You can link from this guide directly to API pages:
 * :doc:`ASE calculator interface module <../api_documentation/alframework.qm_interfaces.ase_calculator_interface>`
 * :doc:`ORCA interface module <../api_documentation/alframework.qm_interfaces.orca5_interface>`
 * :doc:`VASP interface module <../api_documentation/alframework.qm_interfaces.vaspase_interface>`
+
+Related examples
+----------------
+
+See :doc:`../examples/simple_water` and :doc:`../examples/reactive_sampling`
+for ORCA-backed workflows, and :doc:`../examples/molten_salt` for a
+VASP-backed workflow.

@@ -45,6 +45,7 @@
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="getting_started/what_is_alf.html">What Is ALF</a></li>
 <li class="toctree-l1"><a class="reference internal" href="getting_started/installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="getting_started/quickstart.html">Quickstart</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
 <ul>
@@ -58,6 +59,7 @@
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="examples/simple_water.html">Simple Water Example</a></li>
 <li class="toctree-l1"><a class="reference internal" href="examples/molten_salt.html">Molten Salt Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples/reactive_sampling.html">Reactive Sampling Example</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
 <ul>
@@ -93,6 +95,23 @@
              
   <section id="welcome-to-alf-s-documentation">
 <h1>Welcome to ALF’s documentation!<a class="headerlink" href="#welcome-to-alf-s-documentation" title="Link to this heading"></a></h1>
+<p>ALF, the Active Learning Framework, automates the construction of training
+datasets for machine-learned interatomic potentials. It coordinates structure
+generation, ML-driven sampling, quantum-mechanical labeling, and model
+retraining in a single active-learning loop.</p>
+<p>The documentation is organized around the main ways users interact with ALF:
+setting up a run, understanding workflow components, adapting examples, and
+checking API details.</p>
+<section id="what-is-alf">
+<h2>What is ALF?<a class="headerlink" href="#what-is-alf" title="Link to this heading"></a></h2>
+<p>ALF uses configurable Parsl tasks to connect builders, samplers, machine
+learning interfaces, and electronic structure interfaces. Candidate structures
+are sampled with an ensemble model, uncertain configurations are sent to QM,
+and the resulting data are written back into training datasets for subsequent
+model updates.</p>
+<p>Start with <a class="reference internal" href="getting_started/what_is_alf.html"><span class="doc">What Is ALF</span></a> for a high-level overview, then
+use <a class="reference internal" href="user_guide/configuration.html"><span class="doc">Configuration</span></a> and the example pages to connect the
+pieces to a concrete run.</p>
 <div class="toctree-wrapper compound">
 <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
 <ul>
@@ -104,6 +123,7 @@
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="getting_started/installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="getting_started/quickstart.html">Quickstart</a></li>
 </ul>
 </div>
 <div class="toctree-wrapper compound">
@@ -113,30 +133,35 @@
 <li class="toctree-l2"><a class="reference internal" href="user_guide/configuration.html#how-configuration-is-organized">How configuration is organized</a></li>
 <li class="toctree-l2"><a class="reference internal" href="user_guide/configuration.html#how-alf-uses-these-files">How ALF uses these files</a></li>
 <li class="toctree-l2"><a class="reference internal" href="user_guide/configuration.html#practical-tips">Practical tips</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide/configuration.html#related-examples">Related examples</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="user_guide/builders.html">Builders</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="user_guide/builders.html#available-builder-modules">Available builder modules</a></li>
 <li class="toctree-l2"><a class="reference internal" href="user_guide/builders.html#choosing-a-builder">Choosing a builder</a></li>
 <li class="toctree-l2"><a class="reference internal" href="user_guide/builders.html#builder-api-links">Builder API links</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide/builders.html#related-examples">Related examples</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="user_guide/samplers.html">Samplers</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="user_guide/samplers.html#available-sampler-modules">Available sampler modules</a></li>
 <li class="toctree-l2"><a class="reference internal" href="user_guide/samplers.html#choosing-a-sampler">Choosing a sampler</a></li>
 <li class="toctree-l2"><a class="reference internal" href="user_guide/samplers.html#sampler-api-links">Sampler API links</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide/samplers.html#related-examples">Related examples</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="user_guide/ml_interfaces.html">ML Interfaces</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="user_guide/ml_interfaces.html#available-ml-interface-modules">Available ML interface modules</a></li>
 <li class="toctree-l2"><a class="reference internal" href="user_guide/ml_interfaces.html#choosing-an-ml-interface">Choosing an ML interface</a></li>
 <li class="toctree-l2"><a class="reference internal" href="user_guide/ml_interfaces.html#ml-interface-api-links">ML interface API links</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide/ml_interfaces.html#related-examples">Related examples</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="user_guide/qm_interfaces.html">QM Interfaces</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="user_guide/qm_interfaces.html#available-qm-interface-modules">Available QM interface modules</a></li>
 <li class="toctree-l2"><a class="reference internal" href="user_guide/qm_interfaces.html#choosing-a-qm-interface">Choosing a QM interface</a></li>
 <li class="toctree-l2"><a class="reference internal" href="user_guide/qm_interfaces.html#qm-interface-api-links">QM interface API links</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide/qm_interfaces.html#related-examples">Related examples</a></li>
 </ul>
 </li>
 </ul>
@@ -144,8 +169,21 @@
 <div class="toctree-wrapper compound">
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="examples/simple_water.html">Simple Water Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="examples/molten_salt.html">Molten Salt Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples/simple_water.html">Simple Water Example</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="examples/simple_water.html#what-it-demonstrates">What it demonstrates</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples/simple_water.html#relevant-files">Relevant files</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="examples/molten_salt.html">Molten Salt Example</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="examples/molten_salt.html#what-it-demonstrates">What it demonstrates</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples/molten_salt.html#relevant-files">Relevant files</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="examples/reactive_sampling.html">Reactive Sampling Example</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="examples/reactive_sampling.html#what-it-demonstrates">What it demonstrates</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples/reactive_sampling.html#relevant-files">Relevant files</a></li>
+</ul>
+</li>
 </ul>
 </div>
 <div class="toctree-wrapper compound">
@@ -158,6 +196,15 @@
 <li class="toctree-l1"><a class="reference internal" href="license.html">License</a></li>
 </ul>
 </div>
+</section>
+</section>
+<section id="indices-and-tables">
+<h1>Indices and tables<a class="headerlink" href="#indices-and-tables" title="Link to this heading"></a></h1>
+<ul class="simple">
+<li><p><a class="reference internal" href="genindex.html"><span class="std std-ref">Index</span></a></p></li>
+<li><p><a class="reference internal" href="py-modindex.html"><span class="std std-ref">Module Index</span></a></p></li>
+<li><p><a class="reference internal" href="search.html"><span class="std std-ref">Search Page</span></a></p></li>
+</ul>
 </section>
 
 

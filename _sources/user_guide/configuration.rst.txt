@@ -41,3 +41,9 @@ Practical tips
 1. Keep all JSON files for a run in one directory for reproducibility.
 2. Use descriptive filenames so multiple runs are easier to track.
 3. Validate each stage with ALF test flags before long production runs.
+
+Related examples
+----------------
+
+See :doc:`../examples/simple_water`, :doc:`../examples/molten_salt`, and
+:doc:`../examples/reactive_sampling` for complete configuration sets.

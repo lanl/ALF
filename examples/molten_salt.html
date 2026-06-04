@@ -19,7 +19,7 @@
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="alframework" href="../api_documentation/modules.html" />
+    <link rel="next" title="Reactive Sampling Example" href="reactive_sampling.html" />
     <link rel="prev" title="Simple Water Example" href="simple_water.html" /> 
 </head>
 
@@ -46,6 +46,7 @@
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../getting_started/what_is_alf.html">What Is ALF</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../getting_started/installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started/quickstart.html">Quickstart</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
 <ul>
@@ -58,7 +59,12 @@
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="simple_water.html">Simple Water Example</a></li>
-<li class="toctree-l1 current"><a class="current reference internal" href="#">Molten Salt Example</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Molten Salt Example</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#what-it-demonstrates">What it demonstrates</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#relevant-files">Relevant files</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="reactive_sampling.html">Reactive Sampling Example</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
 <ul>
@@ -86,7 +92,7 @@
       </li>
   </ul><div class="rst-breadcrumbs-buttons" role="navigation" aria-label="Sequential page navigation">
         <a href="simple_water.html" class="btn btn-neutral float-left" title="Simple Water Example" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="../api_documentation/modules.html" class="btn btn-neutral float-right" title="alframework" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="reactive_sampling.html" class="btn btn-neutral float-right" title="Reactive Sampling Example" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
   </div>
   <hr/>
 </div>
@@ -95,8 +101,34 @@
              
   <section id="molten-salt-example">
 <h1>Molten Salt Example<a class="headerlink" href="#molten-salt-example" title="Link to this heading"></a></h1>
-<p>This example demonstrates ALF setup for molten-salt-style systems and workflows.</p>
-<p>Adapt paths and compute settings to your cluster environment.</p>
+<p>The molten salt example demonstrates an ALF workflow for periodic ionic
+systems. It is intended for workflows where the builder constructs
+charge-balanced atomic systems and the QM stage labels selected configurations
+with VASP.</p>
+<section id="what-it-demonstrates">
+<h2>What it demonstrates<a class="headerlink" href="#what-it-demonstrates" title="Link to this heading"></a></h2>
+<p>This example uses:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">atomic_system_task</span></code> for charge-balanced structure generation</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">simple_mlmd_sampling_task</span></code> for uncertainty-driven MD sampling</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">VASP_ase_calculator_task</span></code> for QM labeling</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">train_HIPPYNN_ensemble_task</span></code> for model retraining</p></li>
+</ul>
+</section>
+<section id="relevant-files">
+<h2>Relevant files<a class="headerlink" href="#relevant-files" title="Link to this heading"></a></h2>
+<p>The example lives in <code class="docutils literal notranslate"><span class="pre">examples/molten_salt</span></code>.</p>
+<ul class="simple">
+<li><p><a class="reference external" href="https://github.com/lanl/ALF/blob/main/examples/molten_salt/master_config.json">master_config.json</a></p></li>
+<li><p><a class="reference external" href="https://github.com/lanl/ALF/blob/main/examples/molten_salt/builder_config.json">builder_config.json</a></p></li>
+<li><p><a class="reference external" href="https://github.com/lanl/ALF/blob/main/examples/molten_salt/mlmd_config.json">mlmd_config.json</a></p></li>
+<li><p><a class="reference external" href="https://github.com/lanl/ALF/blob/main/examples/molten_salt/vasp_config.json">vasp_config.json</a></p></li>
+<li><p><a class="reference external" href="https://github.com/lanl/ALF/blob/main/examples/molten_salt/hippynn_config.json">hippynn_config.json</a></p></li>
+<li><p><a class="reference external" href="https://github.com/lanl/ALF/blob/main/examples/molten_salt/p310-alf-load.bash">p310-alf-load.bash</a></p></li>
+</ul>
+<p>Adapt the VASP command, Parsl resource configuration, scratch paths, and module
+load script to match the target compute environment.</p>
+</section>
 </section>
 
 
@@ -104,7 +136,7 @@
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="simple_water.html" class="btn btn-neutral float-left" title="Simple Water Example" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="../api_documentation/modules.html" class="btn btn-neutral float-right" title="alframework" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="reactive_sampling.html" class="btn btn-neutral float-right" title="Reactive Sampling Example" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

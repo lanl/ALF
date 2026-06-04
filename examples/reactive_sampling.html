@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>alframework.qm_interfaces.ase_calculator_interface module &mdash; ALF 0.0.0 documentation</title>
+  <title>Reactive Sampling Example &mdash; ALF 0.0.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
 
@@ -19,8 +19,8 @@
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="alframework.qm_interfaces.orca5_interface module" href="alframework.qm_interfaces.orca5_interface.html" />
-    <link rel="prev" title="alframework.qm_interfaces package" href="alframework.qm_interfaces.html" /> 
+    <link rel="next" title="alframework" href="../api_documentation/modules.html" />
+    <link rel="prev" title="Molten Salt Example" href="molten_salt.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -57,36 +57,18 @@
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/qm_interfaces.html">QM Interfaces</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="../examples/simple_water.html">Simple Water Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/molten_salt.html">Molten Salt Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/reactive_sampling.html">Reactive Sampling Example</a></li>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="simple_water.html">Simple Water Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="molten_salt.html">Molten Salt Example</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Reactive Sampling Example</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#what-it-demonstrates">What it demonstrates</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#relevant-files">Relevant files</a></li>
+</ul>
+</li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
-<ul class="current">
-<li class="toctree-l1 current"><a class="reference internal" href="modules.html">alframework</a><ul class="current">
-<li class="toctree-l2 current"><a class="reference internal" href="alframework.html">alframework package</a><ul class="current">
-<li class="toctree-l3 current"><a class="reference internal" href="alframework.html#subpackages">Subpackages</a><ul class="current">
-<li class="toctree-l4"><a class="reference internal" href="alframework.builders.html">alframework.builders package</a></li>
-<li class="toctree-l4"><a class="reference internal" href="alframework.ml_interfaces.html">alframework.ml_interfaces package</a></li>
-<li class="toctree-l4"><a class="reference internal" href="alframework.parsl_resource_configs.html">alframework.parsl_resource_configs package</a></li>
-<li class="toctree-l4 current"><a class="reference internal" href="alframework.qm_interfaces.html">alframework.qm_interfaces package</a><ul class="current">
-<li class="toctree-l5 current"><a class="reference internal" href="alframework.qm_interfaces.html#submodules">Submodules</a><ul class="current">
-<li class="toctree-l6 current"><a class="current reference internal" href="#">alframework.qm_interfaces.ase_calculator_interface module</a></li>
-<li class="toctree-l6"><a class="reference internal" href="alframework.qm_interfaces.orca5_interface.html">alframework.qm_interfaces.orca5_interface module</a></li>
-<li class="toctree-l6"><a class="reference internal" href="alframework.qm_interfaces.vaspase_interface.html">alframework.qm_interfaces.vaspase_interface module</a></li>
-</ul>
-</li>
-</ul>
-</li>
-<li class="toctree-l4"><a class="reference internal" href="alframework.samplers.html">alframework.samplers package</a></li>
-<li class="toctree-l4"><a class="reference internal" href="alframework.tools.html">alframework.tools package</a></li>
-</ul>
-</li>
-</ul>
-</li>
-</ul>
-</li>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../api_documentation/modules.html">alframework</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../license.html">License</a></li>
 </ul>
 
@@ -104,32 +86,56 @@
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
-          <li class="breadcrumb-item"><a href="modules.html">alframework</a></li>
-          <li class="breadcrumb-item"><a href="alframework.html">alframework package</a></li>
-          <li class="breadcrumb-item"><a href="alframework.qm_interfaces.html">alframework.qm_interfaces package</a></li>
-      <li class="breadcrumb-item active">alframework.qm_interfaces.ase_calculator_interface module</li>
+      <li class="breadcrumb-item active">Reactive Sampling Example</li>
       <li class="wy-breadcrumbs-aside">
-            <a href="../_sources/api_documentation/alframework.qm_interfaces.ase_calculator_interface.rst.txt" rel="nofollow"> View page source</a>
+            <a href="../_sources/examples/reactive_sampling.rst.txt" rel="nofollow"> View page source</a>
       </li>
   </ul><div class="rst-breadcrumbs-buttons" role="navigation" aria-label="Sequential page navigation">
-        <a href="alframework.qm_interfaces.html" class="btn btn-neutral float-left" title="alframework.qm_interfaces package" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="alframework.qm_interfaces.orca5_interface.html" class="btn btn-neutral float-right" title="alframework.qm_interfaces.orca5_interface module" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="molten_salt.html" class="btn btn-neutral float-left" title="Molten Salt Example" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../api_documentation/modules.html" class="btn btn-neutral float-right" title="alframework" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
   </div>
   <hr/>
 </div>
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="module-alframework.qm_interfaces.ase_calculator_interface">
-<span id="alframework-qm-interfaces-ase-calculator-interface-module"></span><h1>alframework.qm_interfaces.ase_calculator_interface module<a class="headerlink" href="#module-alframework.qm_interfaces.ase_calculator_interface" title="Link to this heading"></a></h1>
+  <section id="reactive-sampling-example">
+<h1>Reactive Sampling Example<a class="headerlink" href="#reactive-sampling-example" title="Link to this heading"></a></h1>
+<p>The reactive sampling example demonstrates an ALF workflow for reaction-pathway
+sampling. It is intended for systems where reactant, transition-state, and
+product structures are used to guide sampling toward chemically relevant
+configurations.</p>
+<section id="what-it-demonstrates">
+<h2>What it demonstrates<a class="headerlink" href="#what-it-demonstrates" title="Link to this heading"></a></h2>
+<p>This example uses:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">load_reactive_task</span></code> for loading reaction structures</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">reactive_sampling</span></code> for NEB- and dimer-style reactive sampling</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">orca_calculator_task</span></code> for QM labeling</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">train_HIPPYNN_ensemble_task</span></code> for model retraining</p></li>
+</ul>
+</section>
+<section id="relevant-files">
+<h2>Relevant files<a class="headerlink" href="#relevant-files" title="Link to this heading"></a></h2>
+<p>The example lives in <code class="docutils literal notranslate"><span class="pre">examples/reactive_sampling</span></code>.</p>
+<ul class="simple">
+<li><p><a class="reference external" href="https://github.com/lanl/ALF/blob/main/examples/reactive_sampling/master_config.json">master_config.json</a></p></li>
+<li><p><a class="reference external" href="https://github.com/lanl/ALF/blob/main/examples/reactive_sampling/builder_config.json">builder_config.json</a></p></li>
+<li><p><a class="reference external" href="https://github.com/lanl/ALF/blob/main/examples/reactive_sampling/react_sampler_config.json">react_sampler_config.json</a></p></li>
+<li><p><a class="reference external" href="https://github.com/lanl/ALF/blob/main/examples/reactive_sampling/orca_config.json">orca_config.json</a></p></li>
+<li><p><a class="reference external" href="https://github.com/lanl/ALF/blob/main/examples/reactive_sampling/hippynn_config.json">hippynn_config.json</a></p></li>
+</ul>
+<p>Use this example when the active-learning target is a reaction coordinate or a
+set of related reaction pathways rather than broad molecular dynamics sampling.</p>
+</section>
 </section>
 
 
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="alframework.qm_interfaces.html" class="btn btn-neutral float-left" title="alframework.qm_interfaces package" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="alframework.qm_interfaces.orca5_interface.html" class="btn btn-neutral float-right" title="alframework.qm_interfaces.orca5_interface module" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="molten_salt.html" class="btn btn-neutral float-left" title="Molten Salt Example" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../api_documentation/modules.html" class="btn btn-neutral float-right" title="alframework" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

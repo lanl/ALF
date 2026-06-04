@@ -30,6 +30,15 @@ The requirements for this software are evolving, though generally, they will inc
 4) A QM software package with interface (usually ASE)
 5) A MLIP model - we provide an interface to the open-source and flexible [HIPPYNN](https://github.com/lanl/hippynn) architecture
 
+## ✅ Installation
+
+Clone the repository and install ALF using pip:
+
+```bash
+git clone https://github.com/lanl/ALF.git
+cd ALF
+python -m pip install -e .
+```
 
 ## ⚙️ Configuration:
 

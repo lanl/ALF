@@ -1,0 +1,7 @@
+alframework.builders.rdkit\_condensed\_phase module
+===================================================
+
+.. automodule:: alframework.builders.rdkit_condensed_phase
+   :members:
+   :show-inheritance:
+   :undoc-members:

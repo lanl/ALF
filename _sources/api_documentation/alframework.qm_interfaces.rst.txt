@@ -14,4 +14,5 @@ Submodules
 
    alframework.qm_interfaces.ase_calculator_interface
    alframework.qm_interfaces.orca5_interface
+   alframework.qm_interfaces.qchem_DFT_interface
    alframework.qm_interfaces.vaspase_interface

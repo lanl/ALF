@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>alframework.qm_interfaces.ase_calculator_interface module &mdash; ALF 0.0.0 documentation</title>
+  <title>alframework.builders.rdkit_condensed_phase module &mdash; ALF 0.0.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
 
@@ -19,8 +19,8 @@
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="alframework.qm_interfaces.orca5_interface module" href="alframework.qm_interfaces.orca5_interface.html" />
-    <link rel="prev" title="alframework.qm_interfaces package" href="alframework.qm_interfaces.html" /> 
+    <link rel="next" title="alframework.builders.reactive_builder module" href="alframework.builders.reactive_builder.html" />
+    <link rel="prev" title="alframework.builders.moltensalt_builder module" href="alframework.builders.moltensalt_builder.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -67,19 +67,19 @@
 <li class="toctree-l1 current"><a class="reference internal" href="modules.html">alframework</a><ul class="current">
 <li class="toctree-l2 current"><a class="reference internal" href="alframework.html">alframework package</a><ul class="current">
 <li class="toctree-l3 current"><a class="reference internal" href="alframework.html#subpackages">Subpackages</a><ul class="current">
-<li class="toctree-l4"><a class="reference internal" href="alframework.builders.html">alframework.builders package</a></li>
+<li class="toctree-l4 current"><a class="reference internal" href="alframework.builders.html">alframework.builders package</a><ul class="current">
+<li class="toctree-l5 current"><a class="reference internal" href="alframework.builders.html#submodules">Submodules</a><ul class="current">
+<li class="toctree-l6"><a class="reference internal" href="alframework.builders.builders.html">alframework.builders.builders module</a></li>
+<li class="toctree-l6"><a class="reference internal" href="alframework.builders.moltensalt_builder.html">alframework.builders.moltensalt_builder module</a></li>
+<li class="toctree-l6 current"><a class="current reference internal" href="#">alframework.builders.rdkit_condensed_phase module</a></li>
+<li class="toctree-l6"><a class="reference internal" href="alframework.builders.reactive_builder.html">alframework.builders.reactive_builder module</a></li>
+</ul>
+</li>
+</ul>
+</li>
 <li class="toctree-l4"><a class="reference internal" href="alframework.ml_interfaces.html">alframework.ml_interfaces package</a></li>
 <li class="toctree-l4"><a class="reference internal" href="alframework.parsl_resource_configs.html">alframework.parsl_resource_configs package</a></li>
-<li class="toctree-l4 current"><a class="reference internal" href="alframework.qm_interfaces.html">alframework.qm_interfaces package</a><ul class="current">
-<li class="toctree-l5 current"><a class="reference internal" href="alframework.qm_interfaces.html#submodules">Submodules</a><ul class="current">
-<li class="toctree-l6 current"><a class="current reference internal" href="#">alframework.qm_interfaces.ase_calculator_interface module</a></li>
-<li class="toctree-l6"><a class="reference internal" href="alframework.qm_interfaces.orca5_interface.html">alframework.qm_interfaces.orca5_interface module</a></li>
-<li class="toctree-l6"><a class="reference internal" href="alframework.qm_interfaces.qchem_DFT_interface.html">alframework.qm_interfaces.qchem_DFT_interface module</a></li>
-<li class="toctree-l6"><a class="reference internal" href="alframework.qm_interfaces.vaspase_interface.html">alframework.qm_interfaces.vaspase_interface module</a></li>
-</ul>
-</li>
-</ul>
-</li>
+<li class="toctree-l4"><a class="reference internal" href="alframework.qm_interfaces.html">alframework.qm_interfaces package</a></li>
 <li class="toctree-l4"><a class="reference internal" href="alframework.samplers.html">alframework.samplers package</a></li>
 <li class="toctree-l4"><a class="reference internal" href="alframework.tools.html">alframework.tools package</a></li>
 </ul>
@@ -107,30 +107,30 @@
       <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
           <li class="breadcrumb-item"><a href="modules.html">alframework</a></li>
           <li class="breadcrumb-item"><a href="alframework.html">alframework package</a></li>
-          <li class="breadcrumb-item"><a href="alframework.qm_interfaces.html">alframework.qm_interfaces package</a></li>
-      <li class="breadcrumb-item active">alframework.qm_interfaces.ase_calculator_interface module</li>
+          <li class="breadcrumb-item"><a href="alframework.builders.html">alframework.builders package</a></li>
+      <li class="breadcrumb-item active">alframework.builders.rdkit_condensed_phase module</li>
       <li class="wy-breadcrumbs-aside">
-            <a href="../_sources/api_documentation/alframework.qm_interfaces.ase_calculator_interface.rst.txt" rel="nofollow"> View page source</a>
+            <a href="../_sources/api_documentation/alframework.builders.rdkit_condensed_phase.rst.txt" rel="nofollow"> View page source</a>
       </li>
   </ul><div class="rst-breadcrumbs-buttons" role="navigation" aria-label="Sequential page navigation">
-        <a href="alframework.qm_interfaces.html" class="btn btn-neutral float-left" title="alframework.qm_interfaces package" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="alframework.qm_interfaces.orca5_interface.html" class="btn btn-neutral float-right" title="alframework.qm_interfaces.orca5_interface module" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="alframework.builders.moltensalt_builder.html" class="btn btn-neutral float-left" title="alframework.builders.moltensalt_builder module" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="alframework.builders.reactive_builder.html" class="btn btn-neutral float-right" title="alframework.builders.reactive_builder module" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
   </div>
   <hr/>
 </div>
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="module-alframework.qm_interfaces.ase_calculator_interface">
-<span id="alframework-qm-interfaces-ase-calculator-interface-module"></span><h1>alframework.qm_interfaces.ase_calculator_interface module<a class="headerlink" href="#module-alframework.qm_interfaces.ase_calculator_interface" title="Link to this heading"></a></h1>
+  <section id="alframework-builders-rdkit-condensed-phase-module">
+<h1>alframework.builders.rdkit_condensed_phase module<a class="headerlink" href="#alframework-builders-rdkit-condensed-phase-module" title="Link to this heading"></a></h1>
 </section>
 
 
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="alframework.qm_interfaces.html" class="btn btn-neutral float-left" title="alframework.qm_interfaces package" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="alframework.qm_interfaces.orca5_interface.html" class="btn btn-neutral float-right" title="alframework.qm_interfaces.orca5_interface module" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="alframework.builders.moltensalt_builder.html" class="btn btn-neutral float-left" title="alframework.builders.moltensalt_builder module" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="alframework.builders.reactive_builder.html" class="btn btn-neutral float-right" title="alframework.builders.reactive_builder module" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

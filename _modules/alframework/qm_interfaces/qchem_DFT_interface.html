@@ -1,0 +1,324 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>alframework.qm_interfaces.qchem_DFT_interface &mdash; ALF 0.0.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=5c79bd3c"></script>
+      <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            ALF
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../getting_started/what_is_alf.html">What Is ALF</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../getting_started/installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../getting_started/quickstart.html">Quickstart</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../user_guide/configuration.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../user_guide/builders.html">Builders</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../user_guide/samplers.html">Samplers</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../user_guide/ml_interfaces.html">ML Interfaces</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../user_guide/qm_interfaces.html">QM Interfaces</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Examples</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../examples/simple_water.html">Simple Water Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../examples/molten_salt.html">Molten Salt Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../examples/reactive_sampling.html">Reactive Sampling Example</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../api_documentation/modules.html">alframework</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../license.html">License</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">ALF</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">alframework.qm_interfaces.qchem_DFT_interface</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for alframework.qm_interfaces.qchem_DFT_interface</h1><div class="highlight"><pre>
+<span></span><span class="c1"># The builder code goes here</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">glob</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">random</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">parsl</span><span class="w"> </span><span class="kn">import</span> <span class="n">python_app</span><span class="p">,</span> <span class="n">bash_app</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">ase</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ase</span><span class="w"> </span><span class="kn">import</span> <span class="n">Atoms</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ase</span><span class="w"> </span><span class="kn">import</span> <span class="n">neighborlist</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ase.geometry.cell</span><span class="w"> </span><span class="kn">import</span> <span class="n">complete_cell</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ase.io</span><span class="w"> </span><span class="kn">import</span> <span class="n">cfg</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ase.io</span><span class="w"> </span><span class="kn">import</span> <span class="n">read</span><span class="p">,</span> <span class="n">write</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ase.data</span><span class="w"> </span><span class="kn">import</span> <span class="n">chemical_symbols</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ase</span><span class="w"> </span><span class="kn">import</span> <span class="n">units</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">alframework.tools.tools</span><span class="w"> </span><span class="kn">import</span> <span class="n">random_rotation_matrix</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">alframework.tools.tools</span><span class="w"> </span><span class="kn">import</span> <span class="n">build_input_dict</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">alframework.tools.tools</span><span class="w"> </span><span class="kn">import</span> <span class="n">system_checker</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">random</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">copy</span><span class="w"> </span><span class="kn">import</span> <span class="n">deepcopy</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">subprocess</span>
+
+<div class="viewcode-block" id="qchemGenerator">
+<a class="viewcode-back" href="../../../api_documentation/alframework.qm_interfaces.qchem_DFT_interface.html#alframework.qm_interfaces.qchem_DFT_interface.qchemGenerator">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">qchemGenerator</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    QChem 6.0</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">scratch_path</span><span class="o">=</span><span class="s2">&quot;/tmp/&quot;</span><span class="p">,</span> <span class="n">store_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">nproc</span><span class="o">=</span><span class="mi">36</span><span class="p">,</span>\
+                 <span class="n">unit</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;energy&#39;</span><span class="p">:</span> <span class="s1">&#39;hartree&#39;</span><span class="p">,</span> <span class="s1">&#39;length&#39;</span><span class="p">:</span> <span class="s1">&#39;bohr&#39;</span><span class="p">},</span>\
+                 <span class="n">qchem_env_file</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">qchem_command</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="n">qcheminput</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="n">qchemblocks</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        unit used for input coordincates: Angstrom</span>
+<span class="sd">        default units for output: atomic unit</span>
+<span class="sd">        output parsing is for qchem 6</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">scratch_path</span> <span class="o">=</span> <span class="n">scratch_path</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">store_path</span> <span class="o">=</span> <span class="n">store_path</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nproc</span> <span class="o">=</span> <span class="n">nproc</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">qchem_env_fn</span> <span class="o">=</span> <span class="n">qchem_env_file</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">qchem_command</span> <span class="o">=</span> <span class="n">qchem_command</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">qcheminput</span> <span class="o">=</span> <span class="n">qcheminput</span> <span class="k">if</span> <span class="n">qcheminput</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span> <span class="k">else</span> <span class="n">qcheminput</span><span class="o">+</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">qchemblocks</span> <span class="o">=</span> <span class="n">qchemblocks</span> <span class="k">if</span> <span class="n">qchemblocks</span><span class="o">.</span><span class="n">endswith</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span> <span class="k">else</span> <span class="n">qchemblocks</span><span class="o">+</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">unit</span> <span class="o">=</span> <span class="n">unit</span>
+        <span class="c1"># default a.u., hartree for energy, bohr for length as used for qchem</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">unit</span><span class="p">[</span><span class="s1">&#39;energy&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;hartree&#39;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">E_unit</span> <span class="o">=</span> <span class="mf">1.0</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">unit</span><span class="p">[</span><span class="s1">&#39;energy&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;ev&#39;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">E_unit</span> <span class="o">=</span> <span class="mf">27.2113834</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="s1">&#39;energy unit not implemented&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">unit</span><span class="p">[</span><span class="s1">&#39;length&#39;</span><span class="p">]</span> <span class="o">==</span><span class="s1">&#39;bohr&#39;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">L_unit</span> <span class="o">=</span> <span class="mf">1.0</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">unit</span><span class="p">[</span><span class="s1">&#39;length&#39;</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;angstrom&#39;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">L_unit</span> <span class="o">=</span> <span class="mf">0.5291772083</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="s1">&#39;length unit not implemented&#39;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">datacounter</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;QCSCRATCH&#39;</span><span class="p">):</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s1">&#39;QCSCRATCH&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">scratch_path</span>   
+ 
+<div class="viewcode-block" id="qchemGenerator.write_qchem_input">
+<a class="viewcode-back" href="../../../api_documentation/alframework.qm_interfaces.qchem_DFT_interface.html#alframework.qm_interfaces.qchem_DFT_interface.qchemGenerator.write_qchem_input">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">write_qchem_input</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">molecule</span><span class="p">,</span> <span class="n">charge</span><span class="p">,</span> <span class="n">mult</span><span class="p">,</span> <span class="n">filename</span><span class="o">=</span><span class="s2">&quot;qchem.in&quot;</span><span class="p">):</span>
+        <span class="n">numbers</span> <span class="o">=</span> <span class="n">molecule</span><span class="o">.</span><span class="n">get_atomic_numbers</span><span class="p">()</span>
+        <span class="n">positions</span> <span class="o">=</span> <span class="n">molecule</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;$molecule</span><span class="se">\n</span><span class="si">{</span><span class="n">charge</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">mult</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">ix</span><span class="p">,</span> <span class="n">ixyz</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">numbers</span><span class="p">,</span> <span class="n">positions</span><span class="p">):</span>
+                <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">{}</span><span class="s2"> </span><span class="si">{}</span><span class="s2"> </span><span class="si">{}</span><span class="s2"> </span><span class="si">{}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">ix</span><span class="p">,</span> <span class="o">*</span><span class="n">ixyz</span><span class="p">))</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;$end</span><span class="se">\n\n</span><span class="s2">$rem</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">qcheminput</span><span class="p">)</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;$end</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">qchemblocks</span><span class="p">)</span></div>
+
+    
+<div class="viewcode-block" id="qchemGenerator.single_point">
+<a class="viewcode-back" href="../../../api_documentation/alframework.qm_interfaces.qchem_DFT_interface.html#alframework.qm_interfaces.qchem_DFT_interface.qchemGenerator.single_point">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">single_point</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">molecule</span><span class="p">,</span> <span class="n">charge</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">mult</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">prefix</span><span class="o">=</span><span class="s2">&quot;qchem&quot;</span><span class="p">,</span> <span class="n">properties</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;energy&#39;</span><span class="p">,</span><span class="s1">&#39;forces&#39;</span><span class="p">]):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        mol : ase.atoms.Atoms object, will get chemical symbols and positions</span>
+<span class="sd">        prefix : all the input and output file will start with this prefix, eg. qchem.in, qchem.out</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="n">job_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">scratch_path</span><span class="p">,</span> <span class="n">prefix</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;job_path:, </span><span class="si">{</span><span class="n">job_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+
+        <span class="n">filename</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">job_path</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">.in&quot;</span><span class="p">)</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="n">job_path</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">write_qchem_input</span><span class="p">(</span><span class="n">molecule</span><span class="p">,</span> <span class="n">charge</span><span class="p">,</span> <span class="n">mult</span><span class="p">,</span> <span class="n">filename</span><span class="o">=</span><span class="n">filename</span><span class="p">)</span>
+        
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">qchem_env_fn</span> <span class="o">!=</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">runcmd</span> <span class="o">=</span> <span class="s1">&#39;source &#39;</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">qchem_env_fn</span> <span class="o">+</span> <span class="s1">&#39;; &#39;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">runcmd</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
+
+        <span class="n">runcmd</span> <span class="o">=</span> <span class="n">runcmd</span> <span class="o">+</span> <span class="s1">&#39; &#39;</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">qchem_command</span> <span class="o">+</span> <span class="s1">&#39; &#39;</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">scratch_path</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">store_path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">store_dir</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">store_path</span><span class="p">,</span> <span class="n">prefix</span><span class="p">)</span>
+            <span class="n">outfile</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">store_dir</span><span class="p">,</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s1">.out&#39;</span><span class="p">)</span>
+            <span class="c1">#os.makedirs(store_dir, exist_ok=True)</span>
+            <span class="n">Path</span><span class="p">(</span><span class="n">store_dir</span><span class="p">)</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">outfile</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+                <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">proc</span><span class="o">.</span><span class="n">stdout</span><span class="p">)</span>
+
+        <span class="n">energy</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">proc</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">):</span>
+            <span class="k">if</span> <span class="s2">&quot;Total energy in the final basis set = &quot;</span> <span class="ow">in</span> <span class="n">line</span><span class="p">:</span>
+                <span class="n">energy</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">()[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+
+        <span class="n">natoms</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">molecule</span><span class="p">)</span>
+        <span class="n">nblocks</span> <span class="o">=</span> <span class="n">natoms</span> <span class="o">//</span> <span class="mi">6</span>
+        <span class="k">if</span> <span class="n">natoms</span><span class="o">%</span><span class="mi">6</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span> <span class="n">nblocks</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="n">grad</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">Acharge</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">natoms</span><span class="p">)</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="nb">iter</span><span class="p">(</span><span class="n">proc</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">))</span>
+        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">out</span><span class="p">:</span>
+            <span class="k">if</span> <span class="s2">&quot;Gradient of SCF Energy&quot;</span> <span class="ow">in</span> <span class="n">line</span><span class="p">:</span>
+                <span class="n">grad</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">natoms</span><span class="p">,</span> <span class="mi">3</span><span class="p">))</span>
+                <span class="k">for</span> <span class="n">block</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nblocks</span><span class="p">):</span>
+                    <span class="nb">next</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
+                    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">3</span><span class="p">):</span>
+                        <span class="n">line</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="n">out</span><span class="p">)[</span><span class="mi">5</span><span class="p">:]</span><span class="o">.</span><span class="n">rstrip</span><span class="p">()</span>
+                        <span class="n">grad_i</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="nb">float</span><span class="p">(</span><span class="n">line</span><span class="p">[</span><span class="n">j</span><span class="p">:</span><span class="n">j</span><span class="o">+</span><span class="mi">12</span><span class="p">])</span> <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">line</span><span class="p">),</span> <span class="mi">12</span><span class="p">)])</span>
+                        <span class="n">grad</span><span class="p">[</span><span class="mi">6</span><span class="o">*</span><span class="n">block</span><span class="p">:</span><span class="mi">6</span><span class="o">*</span><span class="n">block</span><span class="o">+</span><span class="nb">len</span><span class="p">(</span><span class="n">grad_i</span><span class="p">),</span> <span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">grad_i</span>
+            <span class="k">elif</span> <span class="s2">&quot;Ground-State Mulliken Net Atomic Charges&quot;</span> <span class="ow">in</span> <span class="n">line</span><span class="p">:</span>
+                <span class="nb">next</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
+                <span class="nb">next</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
+                <span class="nb">next</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">curI</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">natoms</span><span class="p">):</span>
+                    <span class="n">line</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
+                    <span class="n">Acharge</span><span class="p">[</span><span class="n">curI</span><span class="p">]</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">()[</span><span class="mi">2</span><span class="p">])</span>
+            <span class="k">elif</span> <span class="s2">&quot;Cartesian Multipole Moments&quot;</span> <span class="ow">in</span> <span class="n">line</span><span class="p">:</span>
+                <span class="nb">next</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
+                <span class="nb">next</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
+                <span class="nb">next</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
+                <span class="nb">next</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
+                <span class="n">line</span><span class="o">=</span><span class="nb">next</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
+                <span class="n">Sline</span> <span class="o">=</span> <span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+                <span class="n">dipole</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="nb">float</span><span class="p">(</span><span class="n">Sline</span><span class="p">[</span><span class="mi">1</span><span class="p">]),</span><span class="nb">float</span><span class="p">(</span><span class="n">Sline</span><span class="p">[</span><span class="mi">3</span><span class="p">]),</span><span class="nb">float</span><span class="p">(</span><span class="n">Sline</span><span class="p">[</span><span class="mi">5</span><span class="p">])])</span>
+                <span class="nb">next</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
+                <span class="nb">next</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
+                <span class="n">line1</span><span class="o">=</span><span class="nb">next</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
+                <span class="n">line2</span><span class="o">=</span><span class="nb">next</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
+                <span class="n">Sline1</span><span class="o">=</span><span class="n">line1</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+                <span class="n">Sline2</span><span class="o">=</span><span class="n">line2</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+                <span class="n">quadrupole</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="nb">float</span><span class="p">(</span><span class="n">Sline1</span><span class="p">[</span><span class="mi">1</span><span class="p">]),</span><span class="nb">float</span><span class="p">(</span><span class="n">Sline1</span><span class="p">[</span><span class="mi">3</span><span class="p">]),</span><span class="nb">float</span><span class="p">(</span><span class="n">Sline2</span><span class="p">[</span><span class="mi">1</span><span class="p">])],</span>
+                <span class="p">[</span><span class="nb">float</span><span class="p">(</span><span class="n">Sline1</span><span class="p">[</span><span class="mi">3</span><span class="p">]),</span><span class="nb">float</span><span class="p">(</span><span class="n">Sline1</span><span class="p">[</span><span class="mi">5</span><span class="p">]),</span><span class="nb">float</span><span class="p">(</span><span class="n">Sline2</span><span class="p">[</span><span class="mi">3</span><span class="p">])],</span>
+                <span class="p">[</span><span class="nb">float</span><span class="p">(</span><span class="n">Sline2</span><span class="p">[</span><span class="mi">1</span><span class="p">]),</span><span class="nb">float</span><span class="p">(</span><span class="n">Sline2</span><span class="p">[</span><span class="mi">3</span><span class="p">]),</span><span class="nb">float</span><span class="p">(</span><span class="n">Sline2</span><span class="p">[</span><span class="mi">5</span><span class="p">])]])</span>
+
+        <span class="k">if</span> <span class="n">energy</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">grad</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">{</span><span class="s1">&#39;converged&#39;</span><span class="p">:</span> <span class="kc">False</span><span class="p">}</span>
+
+        <span class="n">propertiesout</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;converged&#39;</span><span class="p">:</span> <span class="kc">True</span><span class="p">}</span>
+        <span class="k">if</span> <span class="s1">&#39;forces&#39;</span> <span class="ow">in</span> <span class="n">properties</span><span class="p">:</span>
+            <span class="n">propertiesout</span><span class="p">[</span><span class="s1">&#39;forces&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="n">grad</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">E_unit</span><span class="o">/</span><span class="bp">self</span><span class="o">.</span><span class="n">L_unit</span>
+        <span class="k">if</span> <span class="s1">&#39;energy&#39;</span> <span class="ow">in</span> <span class="n">properties</span><span class="p">:</span>
+            <span class="n">propertiesout</span><span class="p">[</span><span class="s1">&#39;energy&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">energy</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">E_unit</span>
+        <span class="k">if</span> <span class="s1">&#39;dipole&#39;</span> <span class="ow">in</span> <span class="n">properties</span><span class="p">:</span>
+            <span class="n">propertiesout</span><span class="p">[</span><span class="s1">&#39;dipole&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">dipole</span>
+        <span class="k">if</span> <span class="s1">&#39;quadrupole&#39;</span> <span class="ow">in</span> <span class="n">properties</span><span class="p">:</span>
+            <span class="n">propertiesout</span><span class="p">[</span><span class="s1">&#39;quadrupole&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">quadrupole</span>
+        <span class="k">if</span> <span class="s1">&#39;mulliken_charge&#39;</span> <span class="ow">in</span> <span class="n">properties</span><span class="p">:</span>
+            <span class="n">propertiesout</span><span class="p">[</span><span class="s1">&#39;mulliken_charge&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">Acharge</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">datacounter</span> <span class="o">+=</span> <span class="mi">1</span>
+
+        <span class="k">return</span> <span class="n">propertiesout</span></div>
+</div>
+
+ 
+        
+<span class="nd">@python_app</span><span class="p">(</span><span class="n">executors</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;alf_QM_executor&#39;</span><span class="p">])</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">qchem_dft_calculator_task</span><span class="p">(</span><span class="n">molecule_object</span><span class="p">,</span><span class="n">ncpu</span><span class="p">,</span><span class="n">qchem_env_file</span><span class="p">,</span><span class="n">QM_run_command</span><span class="p">,</span><span class="n">rem</span><span class="p">,</span><span class="n">qchemblocks</span><span class="p">,</span><span class="n">QM_scratch_dir</span><span class="p">,</span><span class="n">properties_list</span><span class="p">):</span>
+    <span class="n">properties</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">properties_list</span><span class="p">)</span>
+    <span class="n">directory</span> <span class="o">=</span> <span class="n">QM_scratch_dir</span> <span class="o">+</span> <span class="s1">&#39;/&#39;</span> <span class="o">+</span> <span class="n">molecule_object</span><span class="o">.</span><span class="n">get_moleculeid</span><span class="p">()</span> <span class="o">+</span> <span class="s1">&#39;/&#39;</span>
+    <span class="n">Path</span><span class="p">(</span><span class="n">directory</span><span class="p">)</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span><span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    
+    <span class="n">molecule_id</span> <span class="o">=</span> <span class="n">molecule_object</span><span class="o">.</span><span class="n">get_moleculeid</span>
+    <span class="n">atoms</span> <span class="o">=</span> <span class="n">molecule_object</span><span class="o">.</span><span class="n">get_atoms</span><span class="p">()</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+    <span class="n">calc</span> <span class="o">=</span> <span class="n">qchemGenerator</span><span class="p">(</span><span class="n">scratch_path</span><span class="o">=</span><span class="n">directory</span><span class="p">,</span> <span class="n">store_path</span><span class="o">=</span><span class="n">directory</span><span class="o">+</span><span class="s1">&#39;/&#39;</span><span class="p">,</span> <span class="n">nproc</span><span class="o">=</span><span class="n">ncpu</span><span class="p">,</span><span class="n">qchem_env_file</span><span class="o">=</span><span class="n">qchem_env_file</span><span class="p">,</span><span class="n">qchem_command</span><span class="o">=</span><span class="n">QM_run_command</span><span class="p">,</span><span class="n">qcheminput</span><span class="o">=</span><span class="n">rem</span><span class="p">,</span><span class="n">qchemblocks</span><span class="o">=</span><span class="n">qchemblocks</span><span class="p">,</span><span class="n">unit</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;energy&#39;</span><span class="p">:</span> <span class="s1">&#39;ev&#39;</span><span class="p">,</span> <span class="s1">&#39;length&#39;</span><span class="p">:</span> <span class="s1">&#39;angstrom&#39;</span><span class="p">})</span>
+    
+    <span class="n">out_properties</span> <span class="o">=</span> <span class="n">calc</span><span class="o">.</span><span class="n">single_point</span><span class="p">(</span><span class="n">molecule</span><span class="o">=</span><span class="n">atoms</span><span class="p">,</span> <span class="n">charge</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">mult</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">prefix</span><span class="o">=</span><span class="s1">&#39;qchem&#39;</span><span class="p">,</span> <span class="n">properties</span><span class="o">=</span><span class="n">properties</span><span class="p">)</span>
+
+    <span class="n">molecule_object</span><span class="o">.</span><span class="n">store_results</span><span class="p">(</span><span class="n">out_properties</span><span class="p">)</span>
+    <span class="k">if</span> <span class="s1">&#39;forces&#39;</span> <span class="ow">in</span> <span class="n">out_properties</span><span class="p">:</span>
+        <span class="n">molecule_object</span><span class="o">.</span><span class="n">set_converged_flag</span><span class="p">(</span><span class="kc">True</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span> 
+        <span class="n">molecule_object</span><span class="o">.</span><span class="n">set_converged_flag</span><span class="p">(</span><span class="kc">False</span><span class="p">)</span>
+        
+    
+    <span class="k">return</span><span class="p">(</span><span class="n">molecule_object</span><span class="p">)</span>
+
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023, ALF Team.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

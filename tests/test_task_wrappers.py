@@ -1,45 +1,45 @@
 import numpy as np
 
 from alframework.tools.molecules_class import MoleculesObject
+from tests.helpers.fakes import FakeASECalculator
+from tests.helpers.interface_checks import (
+    check_energy_force_results,
+    check_molecule_result,
+    check_scratch_directory,
+    check_task_convergence,
+)
 
 
 def test_ase_calculator_task_uses_mocked_calculator(tmp_path, monkeypatch, h2_atoms):
     from alframework.qm_interfaces import ase_calculator_interface
 
-    class FakeExternalCalculator:
-        def __init__(self, atoms, directory, command, **kwargs):
-            self.atoms = atoms
-            self.directory = directory
-            self.command = command
-            self.kwargs = kwargs
-            self.results = {}
-            self.converged = False
-
-        def calculate(self, atoms, properties):
-            assert properties == ["energy", "forces"]
-            assert self.command == "fake-qm"
-            self.results = {"energy": -1.25, "forces": np.ones((len(atoms), 3))}
-            self.converged = True
-
     monkeypatch.setattr(
         ase_calculator_interface,
         "load_module_from_config",
-        lambda config, field: FakeExternalCalculator,
+        lambda config, field: FakeASECalculator,
     )
 
     task_func = getattr(ase_calculator_interface.ase_calculator_task, "func", ase_calculator_interface.ase_calculator_task)
     molecule = MoleculesObject(h2_atoms, "h2")
     result = task_func(
         molecule,
-        {"QM_run_command": "fake-qm", "ASE_calculator": "fake.module.Calculator", "label": "kept"},
+        {
+            "QM_run_command": "fake-qm",
+            "ASE_calculator": "fake.module.Calculator",
+            "label": "kept",
+            "fake_expected_command": "fake-qm",
+            "fake_expected_properties": ["energy", "forces"],
+            "fake_results": {"energy": -1.25, "forces": np.ones((len(h2_atoms), 3))},
+        },
         str(tmp_path),
         {"energy": ["energy", "system", 1.0], "forces": ["forces", "atomic", 1.0]},
     )
 
-    assert result.check_convergence() is True
+    check_molecule_result(result, natoms=2, required_properties=["energy", "forces"])
+    check_task_convergence(result, True)
     assert result.get_results()["energy"] == -1.25
     np.testing.assert_allclose(result.get_results()["forces"], np.ones((2, 3)))
-    assert (tmp_path / "h2").is_dir()
+    check_scratch_directory(tmp_path, "h2")
 
 
 def test_orca_double_task_averages_runs_and_checks_thresholds(tmp_path, monkeypatch, h2_atoms):
@@ -73,7 +73,8 @@ def test_orca_double_task_averages_runs_and_checks_thresholds(tmp_path, monkeypa
         {"energy": ["energy", "system", 1.0], "forces": ["forces", "atomic", 1.0]},
     )
 
-    assert result.check_convergence() is True
+    check_molecule_result(result, natoms=2, required_properties=["energy", "forces"])
+    check_task_convergence(result, True)
     assert result.get_results()["energy"] == -1.1
     np.testing.assert_allclose(result.get_results()["forces"], np.ones((2, 3)) * 0.1)
 
@@ -103,5 +104,7 @@ def test_qchem_task_uses_mocked_single_point(tmp_path, monkeypatch, water_atoms)
         properties_list={"energy": ["energy", "system", 1.0], "forces": ["forces", "atomic", 1.0]},
     )
 
-    assert result.check_convergence() is True
+    check_molecule_result(result, natoms=3, required_properties=["energy", "forces"])
+    check_task_convergence(result, True)
+    check_energy_force_results(result.get_results(), natoms=3)
     assert result.get_results() == expected

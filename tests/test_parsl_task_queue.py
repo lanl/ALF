@@ -1,24 +1,5 @@
 from alframework.tools.tools import parsl_task_queue
-
-
-class FakeTask:
-    def __init__(self, status, result=None, done=True, running=False):
-        self._status = status
-        self._result = result
-        self._done = done
-        self._running = running
-
-    def done(self):
-        return self._done
-
-    def running(self):
-        return self._running
-
-    def task_status(self):
-        return self._status
-
-    def result(self):
-        return self._result
+from tests.helpers.fakes import FakeTask
 
 
 def test_parsl_task_queue_counts_statuses():

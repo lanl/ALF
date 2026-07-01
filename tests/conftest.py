@@ -1,9 +1,9 @@
 import numpy as np
 import pytest
 from ase import Atoms
-from ase.calculators.calculator import Calculator, all_changes
 
 from alframework.tools.molecules_class import MoleculesObject
+from tests.helpers.fakes import FixedCalculator
 
 
 @pytest.fixture
@@ -27,20 +27,6 @@ def periodic_water_atoms(water_atoms):
 @pytest.fixture
 def water_molecule(periodic_water_atoms):
     return MoleculesObject(periodic_water_atoms, "water-0")
-
-
-class FixedCalculator(Calculator):
-    implemented_properties = ["energy", "forces"]
-
-    def __init__(self, energy, forces):
-        super().__init__()
-        self.energy = energy
-        self.forces = np.array(forces, dtype=float)
-
-    def calculate(self, atoms=None, properties=("energy",), system_changes=all_changes):
-        super().calculate(atoms, properties, system_changes)
-        self.results["energy"] = self.energy
-        self.results["forces"] = self.forces.copy()
 
 
 @pytest.fixture

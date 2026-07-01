@@ -5,6 +5,7 @@ from ase import Atoms
 from alframework.qm_interfaces.orca5_interface import orcaGenerator
 from alframework.qm_interfaces.qchem_DFT_interface import qchemGenerator
 from alframework.tools.molecules_class import MoleculesObject
+from tests.helpers.interface_checks import check_molecule_result, check_task_convergence
 
 
 def write_orca_outputs(path):
@@ -157,5 +158,6 @@ def test_orca_task_can_be_tested_with_mocked_single_point(tmp_path, monkeypatch)
         {"energy": ["energy", "system", 1.0], "forces": ["forces", "atomic", 1.0]},
     )
 
+    check_molecule_result(result, natoms=1, required_properties=["energy", "forces", "converged"])
+    check_task_convergence(result, True)
     assert result.get_results() == expected
-    assert result.check_convergence() is True

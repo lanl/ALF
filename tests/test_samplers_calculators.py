@@ -2,6 +2,7 @@ import numpy as np
 from ase import Atoms
 
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator, Well_Potential
+from tests.helpers.interface_checks import check_ase_calculator_interface, check_energy_force_results
 
 
 def test_well_potential_applies_restoring_force_outside_radius():
@@ -32,8 +33,8 @@ def test_mlmd_calculator_reports_ensemble_means_and_uncertainties(fixed_calculat
     model_b = fixed_calculator_factory(energy=3.0, forces=[[3.0, 0.0, 0.0], [0.0, 3.0, 0.0]])
     calc = MLMD_calculator([model_a, model_b])
 
-    calc.calculate(atoms, properties=["energy", "forces", "energy_stdev", "forces_stdev_mean", "forces_stdev_max"])
-
+    check_ase_calculator_interface(calc, atoms, ["energy", "forces", "energy_stdev", "forces_stdev_mean", "forces_stdev_max"])
+    check_energy_force_results(calc.results, len(atoms))
     assert calc.results["energy"] == 2.0
     np.testing.assert_allclose(calc.results["forces"], [[2.0, 0.0, 0.0], [0.0, 2.0, 0.0]])
     assert calc.results["energy_stdev"] == 1.0

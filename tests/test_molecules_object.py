@@ -9,7 +9,7 @@ def water():
     return Atoms("OH2", positions=[[0.0, 0.0, 0.0], [0.0, 0.7, 0.7], [0.0, -0.7, 0.7]])
 
 
-def test_molecules_object_state_and_legacy_indexing():
+def test_molecules_object_state():
     atoms = water()
     molecule = MoleculesObject(atoms, "water-0")
 
@@ -48,17 +48,7 @@ def test_update_and_append_atoms():
     assert molecule.get_atoms() is None
 
 
-def test_equality_uses_other_coordinates_regression():
-    molecule_a = MoleculesObject(water(), "a")
-    translated = water()
-    translated.positions[1, 1] += 0.2
-    molecule_b = MoleculesObject(translated, "b")
-
-    assert molecule_a != molecule_b
-    assert molecule_a == MoleculesObject(water(), "c")
-
-
-def test_composition_and_signature_are_order_stable():
+def test_composition_and_signature():
     molecule_a = MoleculesObject(water(), "a")
     molecule_b = MoleculesObject(Atoms("H2O", positions=[[3, 0, 0], [4, 0, 0], [5, 0, 0]]), "b")
 

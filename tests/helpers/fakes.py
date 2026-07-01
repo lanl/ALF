@@ -48,6 +48,33 @@ class FixedCalculator(Calculator):
         self.results["forces"] = self.forces.copy()
 
 
+class FakeUncertaintyCalculator(Calculator):
+    implemented_properties = ["energy_stdev", "forces_stdev_mean", "forces_stdev_max"]
+
+    def calculate(self, atoms=None, properties=("energy_stdev",), system_changes=all_changes):
+        super().calculate(atoms, properties, system_changes)
+        self.results = {
+            "energy_stdev": 0.0,
+            "forces_stdev_mean": 0.0,
+            "forces_stdev_max": 0.0,
+        }
+
+
+class FakeLangevin:
+    def __init__(self, atoms, timestep, friction, temperature_K):
+        self.atoms = atoms
+        self.timestep = timestep
+        self.friction = friction
+        self.temperature_K = temperature_K
+        self.run_calls = []
+
+    def run(self, steps):
+        self.run_calls.append(steps)
+
+    def set_temperature(self, temperature_K):
+        self.temperature_K = temperature_K
+
+
 class FakeTask:
     def __init__(self, status, result=None, done=True, running=False):
         self._status = status

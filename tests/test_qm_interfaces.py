@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 from ase import Atoms
 
 from alframework.qm_interfaces.orca5_interface import orcaGenerator
@@ -86,6 +87,35 @@ def test_orca_input_writer_and_parser(tmp_path):
     assert parsed["quadrupole"].shape == (3, 3)
     np.testing.assert_allclose(parsed["hirshfeld"], [0.10, 0.20])
     np.testing.assert_allclose(parsed["hirshfeld_spin"], [0.01, 0.02])
+
+
+@pytest.mark.parametrize(
+    "unit,energy_scale,force_scale",
+    [
+        ({"energy": "hartree", "length": "bohr"}, 1.0, 1.0),
+        ({"energy": "ev", "length": "angstrom"}, 27.2113834, 27.2113834 / 0.5291772083),
+    ],
+)
+def test_orca_parser_applies_unit_conversion(tmp_path, unit, energy_scale, force_scale):
+    write_orca_outputs(tmp_path)
+    generator = orcaGenerator(unit=unit)
+
+    parsed = generator.parse_output(str(tmp_path) + "/", "orca", natom=2, properties=["energy", "forces"])
+
+    assert parsed["energy"] == -2.5 * energy_scale
+    np.testing.assert_allclose(parsed["forces"], -np.array([[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]) * force_scale)
+
+
+@pytest.mark.parametrize(
+    "unit",
+    [
+        {"energy": "kcal", "length": "bohr"},
+        {"energy": "hartree", "length": "nanometer"},
+    ],
+)
+def test_orca_generator_rejects_unknown_units(unit):
+    with pytest.raises(KeyError):
+        orcaGenerator(unit=unit)
 
 
 def test_qchem_input_writer(tmp_path):

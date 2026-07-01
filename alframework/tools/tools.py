@@ -233,7 +233,7 @@ class parsl_task_queue():
         successful_number = 0
         for taski,task in enumerate(self.task_list):
             task_status = task.task_status()
-            if task_status == 'exec_done' and task.done:
+            if task_status == 'exec_done' and task.done():
                 successful_number=successful_number+1
         return(successful_number)
 
@@ -256,11 +256,11 @@ class parsl_task_queue():
         failed_number = 0
         for taski,task in reversed(list(enumerate(self.task_list))):
             task_status = task.task_status()
-            if task_status == 'exec_done' and task.done:
+            if task_status == 'exec_done' and task.done():
                 results_list.append(task.result())
                 del self.task_list[taski]
             elif task_status == 'failed':
-                failed_number += failed_number
+                failed_number += 1
                 del self.task_list[taski]
 
         return results_list, failed_number

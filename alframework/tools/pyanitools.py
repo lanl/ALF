@@ -6,6 +6,16 @@ import os
 # Determine python version
 PY_VERSION = int(platform.python_version().split('.')[0]) > 3
 
+
+def _decode_byte_array(dataset):
+    if isinstance(dataset, np.ndarray) and dataset.size != 0:
+        first_value = dataset.flat[0]
+        if isinstance(first_value, (bytes, np.bytes_)):
+            decoded = [value.decode('ascii') for value in dataset.flat]
+            return np.array(decoded).reshape(dataset.shape).tolist()
+    return dataset
+
+
 '''                ANI data packer class
     Class for storing data supplied as a dictionary.
 '''
@@ -59,11 +69,7 @@ class anidataloader(object):
                 for k in keys:
                     if not isinstance(item[k], h5py.Group):
                         dataset = np.array(item[k][()])
-
-                        if type(dataset) is np.ndarray:
-                            if dataset.size != 0:
-                                if type(dataset[0]) is np.bytes_:
-                                    dataset = [a.decode('ascii') for a in dataset]
+                        dataset = _decode_byte_array(dataset)
 
                         data.update({k:dataset})
 
@@ -94,11 +100,7 @@ class anidataloader(object):
         for k in keys:
             if not isinstance(item[k], h5py.Group):
                 dataset = np.array(item[k][()])
-
-                if type(dataset) is np.ndarray:
-                    if dataset.size != 0:
-                        if type(dataset[0]) is np.bytes_:
-                            dataset = [a.decode('ascii') for a in dataset]
+                dataset = _decode_byte_array(dataset)
 
                 data.update({k: dataset})
         return data
@@ -117,4 +119,3 @@ class anidataloader(object):
     ''' Close the HDF5 file '''
     def cleanup(self):
         self.store.close()
-

@@ -32,7 +32,7 @@ class Well_Potential(Calculator):
         self.zero_properties = zero_properties
         if 'energy' in self.zero_properties:
             self.zero_properties.remove('energy')
-        if 'forces' in self.zero_properties:
+        if 'potential_energy' in self.zero_properties:
             self.zero_properties.remove('potential_energy')
         if 'forces' in self.zero_properties:
             self.zero_properties.remove('forces')

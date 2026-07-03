@@ -28,6 +28,11 @@ and ORCA-specific output parsing.
 Use ``vaspase_interface`` when your workflow requires VASP-specific controls
 and file handling beyond the generic ASE path.
 
+For HPC runs, remember that ALF's QM interface command and the Parsl resource
+configuration must agree. For example, an MPI VASP command such as
+``srun -n 128 vasp_std`` should be paired with a Parsl executor that requests
+the matching nodes and tasks. See :doc:`parsl` for practical examples.
+
 QM interface API links
 ----------------------
 

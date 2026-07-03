@@ -7,5 +7,6 @@ After configuring input files, run ALF from the command line:
 
    python -m alframework --master master.json
 
-See the examples section for concrete starter configurations.
-
+For a first complete walkthrough, see :doc:`../examples/simple_water`.
+If you are running on a cluster, read :doc:`../user_guide/parsl` before
+launching a production workflow.

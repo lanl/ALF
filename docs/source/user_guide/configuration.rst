@@ -35,6 +35,10 @@ used to initialize tasks, queues, resource configs, and data paths.
 In practice, this means most configuration changes can be made without editing
 Python source code.
 
+The master configuration also selects the Parsl resource configuration used to
+execute tasks. See :doc:`parsl` for guidance on adapting executor labels,
+Slurm settings, and HPC launch commands.
+
 Practical tips
 --------------
 

@@ -40,6 +40,7 @@ pieces to a concrete run.
    user_guide/samplers
    user_guide/ml_interfaces
    user_guide/qm_interfaces
+   user_guide/parsl
 
 .. toctree::
    :maxdepth: 2

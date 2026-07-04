@@ -23,9 +23,10 @@ system, check the following items.
 * ``orca_config.json`` contains an ORCA executable path. Replace
   ``QM_run_command`` with the ORCA command available on your machine.
 * ``master_config.json`` points to a Parsl configuration named
-  ``custom_modules.config_1node``. Edit ``examples/simple_water/custom_modules.py``
+  ``parsl_configs.config_1node``. Edit ``examples/simple_water/parsl_configs.py``
   or point ``parsl_configuration`` to a different resource config for your
-  cluster.
+  cluster. This file is a template for Parsl executor, Slurm partition,
+  account, walltime, module, and launcher settings.
 * HIPPYNN and its ML dependencies must be installed if you run ML training or
   sampling. The builder and QM test modes can be used separately while bringing
   up the environment.
@@ -83,6 +84,40 @@ After the individual stages work, start the active-learning loop:
 
 ALF writes ``status.txt`` and then continues running the active-learning loop,
 periodically printing queue status for builder, sampler, QM, and ML tasks.
+
+Batched Builder Variant
+-----------------------
+
+After the base simple water example is working, the next example to try is the
+batched-builder variant in ``examples/simple_water_multi_builder``. It builds
+the same kind of condensed-phase water boxes with the same builder, sampler,
+QM, and ML settings, but changes how many initial structures each builder task
+returns.
+
+The base ``examples/simple_water`` run uses
+``simple_condensed_phase_builder_task``. Each builder task returns one generated
+water box, and ALF sends that structure to one sampler task.
+
+The ``examples/simple_water_multi_builder`` run uses
+``simple_multi_condensed_phase_builder_task``. Each builder task returns a list
+of generated water boxes, and ALF starts a sampler task for each structure in
+that list. In the provided config, ``maximum_builder_structures`` is set to
+``5``, so each builder task creates five independent initial candidates.
+
+To run the batched variant, use the same staged bring-up commands from the
+``examples/simple_water_multi_builder`` directory:
+
+.. code-block:: bash
+
+   python -m alframework --master master_config.json --test_builder
+   python -m alframework --master master_config.json --test_qm
+   python -m alframework --master master_config.json --test_ml
+   python -m alframework --master master_config.json --test_sampler
+   python -m alframework --master master_config.json
+
+This variant is useful when builder overhead is significant or when you want a
+single builder submission to feed multiple sampler tasks. It does not change the
+chemical system being built; it only changes the builder task throughput.
 
 Expected Outputs
 ----------------
@@ -211,7 +246,7 @@ Sampler Configuration
    * - ``end_dens``, ``amp_dens``, ``per_dens``
      - Density target and fluctuation controls. ``null`` disables density
        changes in this example.
-   * - ``meta_path``
+   * - ``meta_dir``
      - Directory for sampler metadata files.
    * - ``ase_calculator``
      - Import string for the ML ensemble calculator loader.

@@ -41,12 +41,14 @@ In ``master_config.json``, these fields select the Parsl configuration:
 .. code-block:: json
 
    {
-     "parsl_configuration": "custom_modules.config_1node",
-     "parsl_debug_configuration": "custom_modules.config_debug"
+     "parsl_configuration": "parsl_configs.config_1node",
+     "parsl_debug_configuration": "parsl_configs.config_debug"
    }
 
 Normal runs use ``parsl_configuration``. Stage checks such as ``--test_builder``
 and ``--test_qm`` use ``parsl_debug_configuration`` when it is present.
+In the example directories, ``parsl_configs.py`` is a template for Parsl
+executor, Slurm partition, account, walltime, module, and launcher settings.
 
 Minimal Single-Node Debug Config
 --------------------------------
@@ -208,6 +210,11 @@ Configuration Knobs
 
 These are the Parsl settings most users need to edit.
 
+In Parsl, a block is one scheduler allocation. For one executor, the largest
+node footprint Parsl may request is ``max_blocks * nodes_per_block``. The
+worker setting then controls how many ALF tasks can run inside those allocated
+resources.
+
 .. list-table::
    :header-rows: 1
    :widths: 30 70
@@ -250,6 +257,6 @@ Bring-Up Checklist
    stages work.
 
 The existing files in ``alframework/parsl_resource_configs`` and
-``examples/*/custom_modules.py`` are concrete examples, but they contain
-site-specific partitions, accounts, and module assumptions. Treat them as
-templates to adapt rather than portable defaults.
+``examples/*/parsl_configs.py`` show the expected structure, but cluster
+partition names, accounts, modules, walltimes, and launcher choices must be
+adapted for the resources you plan to use.

@@ -35,7 +35,7 @@ Configuration files must be modified in order to run the example on your availab
   cluster. This file is a placeholder template for Parsl executor, Slurm
   partition, account, QoS, walltime, module, launcher, and worker-count
   settings; it is not a ready-to-run cluster configuration.
-* CPU-only QM resources and GPU ML/sampling resources should usually be
+* CPU-only resources and GPU ML/sampling resources should usually be
   configured separately. In the template, ORCA/QM tasks use
   ``alf_QM_executor`` while HIPPYNN training and MLMD sampling use
   ``alf_ML_executor`` and ``alf_sampler_executor``.
@@ -59,8 +59,8 @@ Builder stage
    the only fragment is ``fragment_library/water.xyz``.
 
 Sampler stage
-   ``simple_mlmd_sampling_task`` reads ``mlmd_config.json`` and runs
-   uncertainty-driven MLMD using a HIPPYNN ensemble. Configurations are selected
+   ``simple_mlmd_sampling_task`` reads ``mlmd_config.json`` and drives
+    MLMD using a HIPPYNN ensemble. Configurations are selected
    for QM if energy or force uncertainty exceeds the configured cutoffs.
 
 QM stage

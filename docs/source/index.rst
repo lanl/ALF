@@ -48,6 +48,8 @@ pieces to a concrete run.
 
    examples/simple_water
    examples/molten_salt
+   examples/il
+   examples/uo2
    examples/reactive_sampling
 
 .. toctree::

@@ -20,7 +20,7 @@
 	"parsl_configuration":"parsl_configs.config_1node",
 	"parsl_debug_configuration":"parsl_configs.config_debug",
 	"gpus_per_node":4,
-	"QM_scratch_dir":"water-test-running/",
+	"QM_scratch_dir":"orca_scratch/",
 	"plotting_utility":"alframework.tools.plotting.analysis_plot",
 	"plot_dir":"status_plots/"
 }

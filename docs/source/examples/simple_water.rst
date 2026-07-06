@@ -1,24 +1,31 @@
 Simple Water Example
 ====================
 
-The simple water example is a compact ALF workflow for a small molecular
+The simple water example is a compact ALF workflow for a small molecular (water)
 system. It is intended as the first example to copy and adapt when setting up a
-new active-learning run. The example connects all major ALF stages:
+new ALF run. The example connects all major ALF stages:
 
-1. Build initial water-containing structures.
-2. Sample those structures with ML-driven molecular dynamics.
-3. Send selected high-uncertainty configurations to ORCA for QM labeling.
-4. Store labeled data in HDF5 files.
-5. Retrain a HIPPYNN ensemble from the accumulated data.
+1. Build initial water-containing structures (bootstrapping)
+2. Label bootstrap structures with QM engine (ORCA)
+3. Train an initial HIPPYNN ensemble from the labeled data.
+4. Sample new structures with ML-driven molecular dynamics.
+5. Send selected high-uncertainty configurations to ORCA for QM labeling.
+6. Store labeled data in HDF5 files.
+7. Retrain a HIPPYNN ensemble once the number of high-uncertainty configurations exceeds ``save_h5_threshold``.
 
-The files live in ``examples/simple_water``. The JSON files are deliberately
-small, but each one controls a different part of the workflow.
+The files needed to run the example are located in ``examples/simple_water``.
+
+.. figure:: ../_static/water.png
+   :alt: A cluster of randomly placed water molecules created by the Builder.
+   :align: center
+   :width: 85%
+
+   A cluster of randomly placed water molecules created by the Builder.
 
 Before You Run
 --------------
 
-The example is not a machine-independent benchmark. Before running it on a new
-system, check the following items.
+Configuration files must be modified in order to run the example on your available compute.
 
 * ``orca_config.json`` contains an ORCA executable path. Replace
   ``QM_run_command`` with the ORCA command available on your machine.
@@ -36,7 +43,7 @@ system, check the following items.
   sampling. The builder and QM test modes can be used separately while bringing
   up the environment.
 * Paths such as ``h5store/``, ``models/``, ``sampling/``, and
-  ``water-test-running/`` are run outputs. Use a clean working directory or
+  ``orca_scratch/`` are run outputs. Use a clean working directory or
   archive old output before starting a new production run.
 
 See :doc:`../user_guide/parsl` for details on how Parsl resource configuration
@@ -47,7 +54,7 @@ Workflow Stages
 
 Builder stage
    ``simple_condensed_phase_builder_task`` reads ``builder_config.json`` and
-   creates initial water structures from the fragment library. In this example,
+   creates clusters of water molecules using the fragment library. In this example,
    the only fragment is ``fragment_library/water.xyz``.
 
 Sampler stage
@@ -138,17 +145,14 @@ During staged checks and full runs, expect these files and directories:
    * - ``status.txt``
      - Restart and progress state, including current model/data ids and failed
        task counters.
-   * - ``qm_test.h5``
-     - HDF5 file written by ``--test_qm`` so you can compare parsed ORCA output
-       with stored training data.
-   * - ``h5store/data-0000.h5``
-     - First stored training-data batch from converged QM results.
-   * - ``models/model-0000``
-     - First trained HIPPYNN ensemble directory.
+   * - ``h5store/data-*.h5``
+     - Stored labled data batches from converged QM results.
+   * - ``models/model-*``
+     - Directories containing trained HIPPYNN ensembles.
    * - ``sampling/metadata-*.p``
      - Per-sampling-task metadata, including uncertainty, temperature, density,
        and final structure information.
-   * - ``water-test-running/``
+   * - ``orca_scratch/``
      - QM scratch directory containing per-molecule ORCA run directories.
    * - ``status_plots/``
      - Optional plots created by the configured plotting utility.

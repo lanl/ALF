@@ -155,20 +155,15 @@ command:
        ),
    )
 
-Different clusters use different launchers and MPI integration. Some sites
-prefer ``srun`` inside ``QM_run_command``; others require a launcher override or
-site-specific wrapper script. The resource request and QM command should agree
+Different clusters use different launchers and MPI integration. The resource request and QM command should agree
 on node count, rank count, thread count, and environment modules.
 
-GPU Executors For ML And Sampling
----------------------------------
+Separate GPU Executors For ML And Sampling
+------------------------------------------
 
-ML training and MLMD sampling commonly need GPUs. Use separate executors so
-these tasks do not compete with CPU-only QM jobs.
-GPU scheduler syntax is site-specific: one cluster may use
-``#SBATCH --gres=gpu:N``, another may use ``#SBATCH --gpus=N``, and another may
-require constraints or site wrappers. Treat the GPU lines below as examples to
-replace, not portable defaults.
+ML training and MLMD sampling tasks typically need GPUs. Use separate executors so
+these tasks do not compete with CPU-only (e.g., QM) jobs. Below is an example parsl config 
+for GPU execution of ML and sampling tasks.
 
 .. code-block:: python
 
@@ -214,72 +209,243 @@ GPU ids inside sampler tasks.
 Generic CPU/GPU Template Pattern
 --------------------------------
 
-For portable examples, keep CPU and GPU resource placeholders separate. Account
-and QoS lines can be optional when a partition does not require them.
+The simple-water example includes a generic Slurm template in
+``examples/simple_water/parsl_configs.py``. The pattern below mirrors that file:
+CPU resources are used for QM labeling, GPU resources are used for ML training
+and sampling, and a smaller debug configuration is available for staged test
+commands.
+
+This is still a template. Replace partition names, accounts, QoS values,
+``#SBATCH`` resource lines, module loads, launchers, and walltimes with values
+that match cluster.
 
 .. code-block:: python
 
+   from parsl.config import Config
+   from parsl.executors import HighThroughputExecutor
+   from parsl.launchers import SimpleLauncher, SingleNodeLauncher
+   from parsl.providers import SlurmProvider
+
    CPU_PARTITION = "your_cpu_partition"
    GPU_PARTITION = "your_gpu_partition"
-   CPU_ACCOUNT = None
+   DEBUG_PARTITION = "your_debug_partition"
+
+   CPU_ACCOUNT = "your_cpu_account"
    GPU_ACCOUNT = "your_gpu_account"
+   DEBUG_ACCOUNT = "your_debug_account"
+
    CPU_QOS = None
    GPU_QOS = None
+   DEBUG_QOS = None
 
    CPU_RESOURCE_OPTIONS = "#SBATCH --nodes=1\n#SBATCH --ntasks-per-node=36"
-   GPU_RESOURCE_OPTIONS = "#SBATCH --nodes=1\n#SBATCH --gres=gpu:4"
+   GPU_TRAINING_RESOURCE_OPTIONS = "#SBATCH --nodes=1\n#SBATCH --gres=gpu:4"
+   GPU_SAMPLER_RESOURCE_OPTIONS = "#SBATCH --nodes=1\n#SBATCH --gres=gpu:4"
+   DEBUG_CPU_RESOURCE_OPTIONS = "#SBATCH --nodes=1\n#SBATCH --ntasks-per-node=36"
+   DEBUG_GPU_RESOURCE_OPTIONS = "#SBATCH --nodes=1\n#SBATCH --gres=gpu:4"
 
-   def slurm_options(extra_options="", account=None, qos=None):
+   CPU_WORKER_INIT = ""
+   GPU_WORKER_INIT = ""
+
+   def slurm_options(extra_options="", account=None):
        lines = []
        if account:
            lines.append(f"#SBATCH --account={account}")
-       if qos:
-           lines.append(f"#SBATCH --qos={qos}")
        if extra_options:
            lines.append(extra_options)
        return "\n".join(lines)
 
-   HighThroughputExecutor(
-       label="alf_QM_executor",
-       max_workers_per_node=1,
-       provider=SlurmProvider(
-           partition=CPU_PARTITION,
-           nodes_per_block=1,
-           init_blocks=0,
-           min_blocks=0,
-           max_blocks=8,
-           scheduler_options=slurm_options(
-               CPU_RESOURCE_OPTIONS,
-               account=CPU_ACCOUNT,
-               qos=CPU_QOS,
+   config_1node = Config(
+       executors=[
+           HighThroughputExecutor(
+               label="alf_QM_executor",
+               max_workers_per_node=1,
+               provider=SlurmProvider(
+                   partition=CPU_PARTITION,
+                   init_blocks=0,
+                   min_blocks=0,
+                   max_blocks=2,
+                   nodes_per_block=1,
+                   scheduler_options=slurm_options(
+                       CPU_RESOURCE_OPTIONS,
+                       account=CPU_ACCOUNT,
+                       qos=CPU_QOS,
+                   ),
+                   worker_init=CPU_WORKER_INIT,
+                   launcher=SimpleLauncher(),
+                   walltime="6:00:00",
+                   cmd_timeout=30,
+               ),
            ),
-           worker_init="module load orca",
-           launcher=SimpleLauncher(),
-       ),
+           HighThroughputExecutor(
+               label="alf_QM_standby_executor",
+               max_workers_per_node=1,
+               provider=SlurmProvider(
+                   partition=CPU_PARTITION,
+                   init_blocks=0,
+                   min_blocks=0,
+                   max_blocks=2,
+                   nodes_per_block=1,
+                   scheduler_options=slurm_options(
+                       CPU_RESOURCE_OPTIONS,
+                       account=CPU_ACCOUNT,
+                       qos=CPU_QOS,
+                   ),
+                   worker_init=CPU_WORKER_INIT,
+                   launcher=SimpleLauncher(),
+                   walltime="1:00:00",
+                   cmd_timeout=30,
+               ),
+           ),
+           HighThroughputExecutor(
+               label="alf_ML_executor",
+               max_workers_per_node=1,
+               provider=SlurmProvider(
+                   partition=GPU_PARTITION,
+                   init_blocks=0,
+                   min_blocks=0,
+                   max_blocks=1,
+                   nodes_per_block=1,
+                   scheduler_options=slurm_options(
+                       GPU_TRAINING_RESOURCE_OPTIONS,
+                       account=GPU_ACCOUNT,
+                       qos=GPU_QOS,
+                   ),
+                   worker_init=GPU_WORKER_INIT,
+                   launcher=SingleNodeLauncher(),
+                   walltime="16:00:00",
+                   cmd_timeout=30,
+               ),
+           ),
+           HighThroughputExecutor(
+               label="alf_sampler_executor",
+               max_workers_per_node=4,
+               provider=SlurmProvider(
+                   partition=GPU_PARTITION,
+                   init_blocks=0,
+                   min_blocks=0,
+                   max_blocks=2,
+                   nodes_per_block=1,
+                   scheduler_options=slurm_options(
+                       GPU_SAMPLER_RESOURCE_OPTIONS,
+                       account=GPU_ACCOUNT,
+                       qos=GPU_QOS,
+                   ),
+                   worker_init=GPU_WORKER_INIT,
+                   launcher=SingleNodeLauncher(),
+                   walltime="4:00:00",
+                   cmd_timeout=30,
+               ),
+           ),
+           HighThroughputExecutor(
+               label="alf_sampler_standby_executor",
+               max_workers_per_node=4,
+               provider=SlurmProvider(
+                   partition=GPU_PARTITION,
+                   init_blocks=0,
+                   min_blocks=0,
+                   max_blocks=2,
+                   nodes_per_block=1,
+                   scheduler_options=slurm_options(
+                       GPU_SAMPLER_RESOURCE_OPTIONS,
+                       account=GPU_ACCOUNT,
+                       qos=GPU_QOS,
+                   ),
+                   worker_init=GPU_WORKER_INIT,
+                   launcher=SingleNodeLauncher(),
+                   walltime="4:00:00",
+                   cmd_timeout=30,
+               ),
+           ),
+       ]
    )
 
-   HighThroughputExecutor(
-       label="alf_sampler_executor",
-       max_workers_per_node=4,
-       provider=SlurmProvider(
-           partition=GPU_PARTITION,
-           nodes_per_block=1,
-           init_blocks=0,
-           min_blocks=0,
-           max_blocks=1,
-           scheduler_options=slurm_options(
-               GPU_RESOURCE_OPTIONS,
-               account=GPU_ACCOUNT,
-               qos=GPU_QOS,
+Production executors in this template have separate roles. ``alf_QM_executor``
+runs CPU QM labeling tasks with one ALF worker per node. The optional
+``alf_QM_standby_executor`` can target lower-priority or shorter-walltime CPU
+resources. ``alf_ML_executor`` runs one ML training task per GPU allocation.
+``alf_sampler_executor`` runs MLMD or reactive sampling tasks on GPU resources,
+and ``alf_sampler_standby_executor`` is the optional standby version of that
+sampler pool.
+
+The debug configuration should be smaller and faster. The ``--test_builder``,
+``--test_qm``, ``--test_ml``, and ``--test_sampler`` commands use it when
+``parsl_debug_configuration`` is set in ``master_config.json``.
+
+.. code-block:: python
+
+   config_debug = Config(
+       executors=[
+           HighThroughputExecutor(
+               label="alf_QM_executor",
+               max_workers_per_node=1,
+               provider=SlurmProvider(
+                   partition=DEBUG_PARTITION,
+                   init_blocks=0,
+                   min_blocks=0,
+                   max_blocks=1,
+                   nodes_per_block=1,
+                   scheduler_options=slurm_options(
+                       DEBUG_CPU_RESOURCE_OPTIONS,
+                       account=DEBUG_ACCOUNT,
+                       qos=DEBUG_QOS,
+                   ),
+                   worker_init=CPU_WORKER_INIT,
+                   launcher=SimpleLauncher(),
+                   walltime="2:00:00",
+                   cmd_timeout=30,
+               ),
            ),
-           worker_init="module load cuda",
-           launcher=SingleNodeLauncher(),
-       ),
+           HighThroughputExecutor(
+               label="alf_ML_executor",
+               max_workers_per_node=1,
+               provider=SlurmProvider(
+                   partition=DEBUG_PARTITION,
+                   init_blocks=0,
+                   min_blocks=0,
+                   max_blocks=1,
+                   nodes_per_block=1,
+                   scheduler_options=slurm_options(
+                       DEBUG_GPU_RESOURCE_OPTIONS,
+                       account=GPU_ACCOUNT,
+                       qos=DEBUG_QOS,
+                   ),
+                   worker_init=GPU_WORKER_INIT,
+                   launcher=SingleNodeLauncher(),
+                   walltime="1:00:00",
+                   cmd_timeout=30,
+               ),
+           ),
+           HighThroughputExecutor(
+               label="alf_sampler_executor",
+               max_workers_per_node=4,
+               provider=SlurmProvider(
+                   partition=DEBUG_PARTITION,
+                   init_blocks=0,
+                   min_blocks=0,
+                   max_blocks=1,
+                   nodes_per_block=1,
+                   scheduler_options=slurm_options(
+                       DEBUG_GPU_RESOURCE_OPTIONS,
+                       account=GPU_ACCOUNT,
+                       qos=DEBUG_QOS,
+                   ),
+                   worker_init=GPU_WORKER_INIT,
+                   launcher=SingleNodeLauncher(),
+                   walltime="1:00:00",
+                   cmd_timeout=30,
+               ),
+           ),
+       ]
    )
 
-In this pattern, ``max_blocks`` controls how many scheduler allocations Parsl
-may request for that executor, and ``max_workers_per_node`` controls how many
-ALF tasks may run on each allocated node.
+In these patterns, a Parsl block is one scheduler allocation. For each
+executor, ``nodes_per_block * max_blocks`` controls the maximum node footprint
+Parsl may request, while ``max_workers_per_node`` controls how many ALF tasks
+can run on each allocated node. ALF settings such as ``parallel_samplers`` and
+``target_queued_QM`` are queue-depth targets; they do not directly request
+nodes. For sampler tasks, make sure ``gpus_per_node`` matches the number of
+sampler workers you expect to place on each GPU node.
 
 Configuration Knobs
 -------------------
@@ -321,16 +487,6 @@ resources.
      - Network interface or hostname used when compute nodes must connect back
        to the submit process.
 
-Bring-Up Checklist
-------------------
-
-1. Start with a debug Parsl config and run ``--test_builder``.
-2. Run ``--test_qm`` with a tiny system and inspect the QM scratch directory.
-3. Confirm parsed values are written to ``qm_test.h5``.
-4. Run ``--test_ml`` after a small HDF5 data file exists.
-5. Run ``--test_sampler`` only after a trained model is available.
-6. Increase ``max_blocks``, walltime, and queue thresholds only after individual
-   stages work.
 
 The existing files in ``alframework/parsl_resource_configs`` and
 ``examples/*/parsl_configs.py`` show the expected structure, but cluster

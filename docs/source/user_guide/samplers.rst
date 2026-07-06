@@ -36,35 +36,17 @@ Supported Sampler Tasks
        monitors energy and force uncertainty, and returns configurations that
        exceed uncertainty or distance criteria.
      - General active-learning loops based on MD exploration.
+   * - ``alframework.samplers.udd_sampling.simple_udd_sampling_task``
+     - Runs MLMD with an uncertainty-driven dynamics bias that steers
+       trajectories toward high ensemble energy uncertainty while retaining the
+       usual QM-selection threshold checks.
+     - Exploration runs where biasing MD toward model disagreement is desired.
    * - ``alframework.samplers.reactive_sampler.reactive_sampling``
      - Uses NEB and/or dimer-style searches from reaction metadata, monitors
        ensemble uncertainty along reaction pathways, and returns uncertain
        structures for QM labeling.
      - Reaction-pathway active learning with reactant, transition-state, and
        product structures.
-
-Choosing A Sampler
-------------------
-
-Use ``simple_mlmd_sampling_task`` for most ALF workflows. It is designed for
-active-learning loops where an MLIP ensemble explores configuration space and
-uncertainty thresholds decide which structures need QM labels.
-
-Use ``reactive_sampling`` when the builder provides reaction metadata. The
-input ``MoleculesObject`` must contain reactant, transition-state, and product
-structures, such as those returned by
-``alframework.builders.reactive_builder.load_reactive_task``.
-
-Use HIPPYNN-style MLMD sampling when ``ase_calculator`` points to a model
-loader such as ``alframework.ml_interfaces.hippynn_interface.HIPNN_ASE_load_ensemble``.
-Use NeuroChem-specific sampling behavior when ``use_potential_specific_code``
-is set to ``"neurochem"`` and ``ase_calculator`` points to the NeuroChem
-calculator loader.
-
-Keep sampler resource expectations in sync with Parsl. MLMD and reactive
-sampling often need GPUs, so ``alf_sampler_executor``, ``gpus_per_node``, and
-cluster GPU scheduler options should agree. See :doc:`parsl` for resource
-configuration guidance.
 
 Common Configuration Fields
 ---------------------------
@@ -146,6 +128,9 @@ Density schedule fields
 
 ML calculator fields
    These fields control how sampler tasks load and wrap ML models.
+   See :ref:`ml-interface-extension-points` and
+   :ref:`ml-interface-new-architecture-template` for the corresponding ML
+   interface requirements.
 
    .. list-table::
       :header-rows: 1
@@ -160,6 +145,34 @@ ML calculator fields
       * - ``translate_to_center``
         - Whether to translate the incoming structure so its center of mass is
           near the origin before sampling.
+
+Uncertainty-driven dynamics
+   Uncertainty-driven dynamics (UDD) is a biased MLMD sampler that steers
+   dynamics toward regions where the model committee has high ensemble energy
+   uncertainty. The usual ``Escut`` and ``Fscut`` threshold logic still decides
+   whether a sampled configuration is returned for QM labeling.
+
+   Select UDD in ``master_config.json`` with a separate sampler task:
+
+   .. code-block:: json
+
+      {
+        "sampler_task": "alframework.samplers.udd_sampling.simple_udd_sampling_task"
+      }
+
+   Set the bias strength in the sampler config:
+
+   .. code-block:: json
+
+      {
+        "udd_bias_weight": 0.45,
+        "MLMD_calculator_options": {
+          "well_params": null
+        }
+      }
+
+   ``udd_bias_weight`` controls the strength of the energy-uncertainty bias.
+   Use ``simple_mlmd_sampling_task`` instead when no UDD bias is desired.
 
 Output and trajectory fields
    These fields control sampler metadata and optional trajectory output.
@@ -248,6 +261,9 @@ Related Examples
    * - ``examples/reactive_sampling``
      - ``alframework.samplers.reactive_sampler.reactive_sampling``
      - NEB/dimer-style reaction-pathway sampling.
+   * - UDD workflows
+     - ``alframework.samplers.udd_sampling.simple_udd_sampling_task``
+     - Biased MLMD sampling toward high ensemble energy uncertainty.
 
 Sampler API Links
 -----------------
@@ -258,4 +274,3 @@ You can link from this guide directly to API pages:
 * :doc:`MLMD sampling module <../api_documentation/alframework.samplers.mlmd_sampling>`
 * :doc:`Reactive sampler module <../api_documentation/alframework.samplers.reactive_sampler>`
 * :doc:`ASE ensemble calculator module <../api_documentation/alframework.samplers.ASE_ensemble_constructor>`
-

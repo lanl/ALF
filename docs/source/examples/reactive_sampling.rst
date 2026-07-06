@@ -29,3 +29,5 @@ The example lives in ``examples/reactive_sampling``.
 
 Use this example when the active-learning target is a reaction coordinate or a
 set of related reaction pathways rather than broad molecular dynamics sampling.
+See :doc:`../user_guide/ml_interfaces` for the HIPPYNN training task and ASE
+calculator loader pattern used by the reactive sampler.

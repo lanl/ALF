@@ -72,12 +72,14 @@ class Well_Potential(Calculator):
         
 class MLMD_calculator(Calculator):
     """This is a calculator that enables MLMD sampling with an ensemble of ML potentials"""
-    def __init__(self, models, well_params=None, debug_print=False):
+    def __init__(self, models, well_params=None, debug_print=False, udd_bias_weight=None, udd_bias_eps=1e-12):
         """
         Args:
             models (list): A list of ASE calculators that are joined to perform MD.
             well_params (dict): Inputs for the well potential which enables constrained MD simulations.
             debug_print (bool): Print debug information if true.
+            udd_bias_weight (float): Optional weight for uncertainty-driven dynamics energy bias.
+            udd_bias_eps (float): Minimum energy standard deviation used before the UDD force bias is zeroed.
 
         """
         Calculator.__init__(self)
@@ -85,6 +87,8 @@ class MLMD_calculator(Calculator):
         self.N_models = len(models)
         self.models = models
         self.weights = [1/self.N_models for _ in range(self.N_models)]
+        self.udd_bias_weight = udd_bias_weight
+        self.udd_bias_eps = udd_bias_eps
         self.calculator_properties = list(set.intersection(*(set(calc.implemented_properties) for calc in self.models)))
         if debug_print:
             print("calculator properties:" + str(self.calculator_properties))
@@ -107,6 +111,8 @@ class MLMD_calculator(Calculator):
         if 'forces' in self.implemented_properties:
             self.implemented_properties.append('forces_stdev_mean')
             self.implemented_properties.append('forces_stdev_max')
+        if self.udd_bias_weight is not None:
+            self.implemented_properties.extend(['E_en_bias', 'F_en_bias', 'unbiased_energy', 'unbiased_forces'])
 
     def calculate(self, atoms, properties, system_changes=all_changes):
         """Run the MLMD ensemble calculation.
@@ -129,16 +135,47 @@ class MLMD_calculator(Calculator):
         if 'forces_stdev_max' in add_properties or 'forces_stdev_mean' in add_properties:
             add_properties.append("forces")
 
+        if self.udd_bias_weight is not None:
+            add_properties.extend(["energy", "forces"])
+
         run_properties = list(set.intersection(set(self.calculator_properties), set(add_properties)))
         # Not good practice, all attributes should be initialized inside __init__, even if as None or {}.
         self.atoms = atoms.copy()
         self.results = self.mixer.get_properties(run_properties, atoms)
 
-        if 'energy_stdev' in properties:
+        if 'energy_stdev' in properties or self.udd_bias_weight is not None:
             self.results['energy_stdev'] = np.std(self.results['energy_contributions'][:self.N_models])
 
         if 'forces_stdev_mean' in properties or 'forces_stdev_max' in properties:
             force_stdev = np.std(np.array(self.results['forces_contributions'][:self.N_models]), axis=0)
             self.results['forces_stdev_mean'] = np.mean(np.abs(force_stdev))
             self.results['forces_stdev_max'] = np.max(np.abs(force_stdev))
+
+        if self.udd_bias_weight is not None:
+            self._apply_udd_bias()
+
+    def _apply_udd_bias(self):
+        energy_stdev = self.results['energy_stdev']
+        energy_contributions = np.array(self.results['energy_contributions'][:self.N_models])
+        force_contributions = np.array(self.results['forces_contributions'][:self.N_models])
+        unbiased_energy = self.results['energy']
+        unbiased_forces = self.results['forces'].copy()
+
+        energy_bias = self.udd_bias_weight * energy_stdev
+        if energy_stdev <= self.udd_bias_eps:
+            force_bias = np.zeros_like(unbiased_forces)
+        else:
+            energy_deviations = energy_contributions - np.mean(energy_contributions)
+            force_deviations = force_contributions - np.mean(force_contributions, axis=0)
+            force_bias = self.udd_bias_weight * np.sum(
+                energy_deviations[:, np.newaxis, np.newaxis] * force_deviations,
+                axis=0,
+            ) / (self.N_models * energy_stdev)
+
+        self.results['unbiased_energy'] = unbiased_energy
+        self.results['unbiased_forces'] = unbiased_forces
+        self.results['E_en_bias'] = energy_bias
+        self.results['F_en_bias'] = force_bias
+        self.results['energy'] = unbiased_energy + energy_bias
+        self.results['forces'] = unbiased_forces + force_bias
         

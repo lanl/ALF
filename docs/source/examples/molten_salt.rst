@@ -29,4 +29,6 @@ The example lives in ``examples/molten_salt``.
 * `p310-alf-load.bash <https://github.com/lanl/ALF/blob/main/examples/molten_salt/p310-alf-load.bash>`_
 
 Adapt the VASP command, Parsl resource configuration, scratch paths, and module
-load script to match the target compute environment.
+load script to match the target compute environment. See
+:doc:`../user_guide/ml_interfaces` for the HIPPYNN configuration pattern and
+the ML sampler calculator hook used by this example.

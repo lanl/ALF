@@ -40,8 +40,9 @@ Configuration files must be modified in order to run the example on your availab
   ``alf_QM_executor`` while HIPPYNN training and MLMD sampling use
   ``alf_ML_executor`` and ``alf_sampler_executor``.
 * HIPPYNN and its ML dependencies must be installed if you run ML training or
-  sampling. The builder and QM test modes can be used separately while bringing
-  up the environment.
+  sampling. See :ref:`ml-interface-common-configuration` for the ML task and
+  sampler calculator settings. The builder and QM test modes can be used
+  separately while bringing up the environment.
 * Paths such as ``h5store/``, ``models/``, ``sampling/``, and
   ``orca_scratch/`` are run outputs. Use a clean working directory or
   archive old output before starting a new production run.
@@ -69,7 +70,8 @@ QM stage
 
 ML stage
    ``train_HIPPYNN_ensemble_task`` reads ``hippynn_config.json`` and trains a
-   HIPPYNN model ensemble from the HDF5 data written by ALF.
+   HIPPYNN model ensemble from the HDF5 data written by ALF. See
+   :doc:`../user_guide/ml_interfaces` for the general ML interface pattern.
 
 Recommended Bring-Up Commands
 -----------------------------
@@ -313,7 +315,8 @@ HIPPYNN Configuration
 ---------------------
 
 ``hippynn_config.json`` controls model architecture, training, and data
-filtering.
+filtering. The broader HIPPYNN and new-backend configuration pattern is
+described in :doc:`../user_guide/ml_interfaces`.
 
 .. list-table::
    :header-rows: 1

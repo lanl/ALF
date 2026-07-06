@@ -49,6 +49,8 @@ Normal runs use ``parsl_configuration``. Stage checks such as ``--test_builder``
 and ``--test_qm`` use ``parsl_debug_configuration`` when it is present.
 In the example directories, ``parsl_configs.py`` is a template for Parsl
 executor, Slurm partition, account, walltime, module, and launcher settings.
+The placeholders in those files must be replaced for your cluster before a
+full run.
 
 Minimal Single-Node Debug Config
 --------------------------------
@@ -163,6 +165,10 @@ GPU Executors For ML And Sampling
 
 ML training and MLMD sampling commonly need GPUs. Use separate executors so
 these tasks do not compete with CPU-only QM jobs.
+GPU scheduler syntax is site-specific: one cluster may use
+``#SBATCH --gres=gpu:N``, another may use ``#SBATCH --gpus=N``, and another may
+require constraints or site wrappers. Treat the GPU lines below as examples to
+replace, not portable defaults.
 
 .. code-block:: python
 
@@ -204,6 +210,76 @@ these tasks do not compete with CPU-only QM jobs.
 
 ALF also uses ``gpus_per_node`` from the master configuration to assign visible
 GPU ids inside sampler tasks.
+
+Generic CPU/GPU Template Pattern
+--------------------------------
+
+For portable examples, keep CPU and GPU resource placeholders separate. Account
+and QoS lines can be optional when a partition does not require them.
+
+.. code-block:: python
+
+   CPU_PARTITION = "your_cpu_partition"
+   GPU_PARTITION = "your_gpu_partition"
+   CPU_ACCOUNT = None
+   GPU_ACCOUNT = "your_gpu_account"
+   CPU_QOS = None
+   GPU_QOS = None
+
+   CPU_RESOURCE_OPTIONS = "#SBATCH --nodes=1\n#SBATCH --ntasks-per-node=36"
+   GPU_RESOURCE_OPTIONS = "#SBATCH --nodes=1\n#SBATCH --gres=gpu:4"
+
+   def slurm_options(extra_options="", account=None, qos=None):
+       lines = []
+       if account:
+           lines.append(f"#SBATCH --account={account}")
+       if qos:
+           lines.append(f"#SBATCH --qos={qos}")
+       if extra_options:
+           lines.append(extra_options)
+       return "\n".join(lines)
+
+   HighThroughputExecutor(
+       label="alf_QM_executor",
+       max_workers_per_node=1,
+       provider=SlurmProvider(
+           partition=CPU_PARTITION,
+           nodes_per_block=1,
+           init_blocks=0,
+           min_blocks=0,
+           max_blocks=8,
+           scheduler_options=slurm_options(
+               CPU_RESOURCE_OPTIONS,
+               account=CPU_ACCOUNT,
+               qos=CPU_QOS,
+           ),
+           worker_init="module load orca",
+           launcher=SimpleLauncher(),
+       ),
+   )
+
+   HighThroughputExecutor(
+       label="alf_sampler_executor",
+       max_workers_per_node=4,
+       provider=SlurmProvider(
+           partition=GPU_PARTITION,
+           nodes_per_block=1,
+           init_blocks=0,
+           min_blocks=0,
+           max_blocks=1,
+           scheduler_options=slurm_options(
+               GPU_RESOURCE_OPTIONS,
+               account=GPU_ACCOUNT,
+               qos=GPU_QOS,
+           ),
+           worker_init="module load cuda",
+           launcher=SingleNodeLauncher(),
+       ),
+   )
+
+In this pattern, ``max_blocks`` controls how many scheduler allocations Parsl
+may request for that executor, and ``max_workers_per_node`` controls how many
+ALF tasks may run on each allocated node.
 
 Configuration Knobs
 -------------------

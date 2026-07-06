@@ -25,8 +25,13 @@ system, check the following items.
 * ``master_config.json`` points to a Parsl configuration named
   ``parsl_configs.config_1node``. Edit ``examples/simple_water/parsl_configs.py``
   or point ``parsl_configuration`` to a different resource config for your
-  cluster. This file is a template for Parsl executor, Slurm partition,
-  account, walltime, module, and launcher settings.
+  cluster. This file is a placeholder template for Parsl executor, Slurm
+  partition, account, QoS, walltime, module, launcher, and worker-count
+  settings; it is not a ready-to-run cluster configuration.
+* CPU-only QM resources and GPU ML/sampling resources should usually be
+  configured separately. In the template, ORCA/QM tasks use
+  ``alf_QM_executor`` while HIPPYNN training and MLMD sampling use
+  ``alf_ML_executor`` and ``alf_sampler_executor``.
 * HIPPYNN and its ML dependencies must be installed if you run ML training or
   sampling. The builder and QM test modes can be used separately while bringing
   up the environment.
@@ -180,7 +185,8 @@ loop.
      - Queue thresholds controlling when ALF launches QM tasks and stores new
        labeled data.
    * - ``parallel_samplers``
-     - Target number of builder/sampler tasks ALF tries to keep active.
+     - Target number of builder/sampler candidates ALF tries to keep active.
+       This is a queue-depth target, not the number of GPUs or nodes requested.
    * - ``bootstrap_set``
      - Number of initial QM labels to collect before the first model training.
    * - ``parsl_configuration``
@@ -189,6 +195,25 @@ loop.
      - Import string for the smaller config used by stage test modes.
    * - ``QM_scratch_dir``
      - Directory for QM input, output, and scratch subdirectories.
+
+Queue Depth And Resource Concurrency
+------------------------------------
+
+``target_queued_QM`` controls how much QM work ALF tries to keep queued, but
+it does not by itself request more CPU nodes. During bootstrap, ALF first has
+to generate structures with the builder; ``parallel_samplers`` controls how
+many builder/sampler candidates ALF tries to keep active. The QM executor in
+``parsl_configs.py`` then controls how many queued QM tasks can actually run,
+through settings such as ``max_blocks``, ``nodes_per_block``, and
+``max_workers_per_node``.
+
+For example, if the QM executor uses ``nodes_per_block=1``,
+``max_blocks=10``, and ``max_workers_per_node=1``, Parsl may request up to ten
+one-node QM allocations. ALF will only fill those allocations if enough
+structures have been generated and enough QM tasks are queued. Likewise,
+``gpus_per_node`` tells ALF how sampler workers map onto GPUs, while the
+sampler executor's worker and block settings determine how many sampler tasks
+can run at once.
 
 Builder Configuration
 ---------------------

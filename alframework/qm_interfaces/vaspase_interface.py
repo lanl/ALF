@@ -125,15 +125,12 @@ class VASPGenerator:
     def single_point(self, molecule, force_calculation=False, output_file=None):
         """Run one VASP calculation through ASE.
 
-        Args:
-            molecule: ``ase.Atoms``, ``MoleculesObject``, or legacy object with
-                ``S`` and ``X`` attributes.
-            force_calculation (bool): If True, include forces in the returned
-                properties.
-            output_file: Kept for legacy call compatibility. It is not used.
-
-        Returns:
-            tuple: ``(atoms, properties)`` where ``atoms`` is the final
+        :param molecule: ``ase.Atoms``, ``MoleculesObject``, or legacy object
+            with ``S`` and ``X`` attributes.
+        :param force_calculation: If True, include forces in the returned
+            properties.
+        :param output_file: Kept for legacy call compatibility. It is not used.
+        :returns: ``(atoms, properties)`` where ``atoms`` is the final
             ``ase.Atoms`` object and ``properties`` contains ASE-unit results.
         """
         del output_file

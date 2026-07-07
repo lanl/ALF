@@ -1,17 +1,17 @@
 What Is ALF
 ===========
 
-The Active Learning Framework (ALF) automates the construction of structurally diverse datasets for
+The **Active Learning Framework (ALF)** automates the construction of structurally diverse datasets for
 machine learning interatomic potentials (MLIPs) using a query by committee (QBC) active-learning approach.
 
 At a high level, ALF coordinates four core modules:
 
-* System construction (builders)
-* Sampling (samplers)
-* ML model training (ML interfaces)
-* Electronic structure calculations (QM interfaces)
+* **System construction (Builders)**
+* **Sampling (Samplers)**
+* **ML model training (ML interfaces)**
+* **Electronic structure calculations (QM interfaces)**
 
-These modules are used to perform the main ALF workflow:
+**These modules are used to perform the main ALF workflow:**
 
 1. Build initial structures (bootstrapping) and label with a QM engine of choice. This step accomplishes initial sampling of the conformational/chemical space.
 2. Train an initial MLIP ensemble from the labeled data.

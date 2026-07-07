@@ -158,7 +158,7 @@ of ASE calculators. The generic MLMD sampler wraps that list with
 
 .. _ml-interface-new-architecture-template:
 
-Template For Adding A New ML Architecture
+Adding New ML Architectures
 -----------------------------------------
 
 New ML backends can be added as ordinary Python modules that ALF imports from

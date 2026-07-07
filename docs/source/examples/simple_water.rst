@@ -104,9 +104,9 @@ Batched Builder Variant
 
 After the base simple water example is working, the next example to try is the
 batched-builder variant in ``examples/simple_water_multi_builder``. It builds
-the same kind of condensed-phase water boxes with the same builder, sampler,
-QM, and ML settings, but changes how many initial structures each builder task
-returns.
+the same kind of condensed-phase water boxes with the same sampler, QM, ML, and
+ORCA scratch settings, but changes the builder task and how many initial
+structures each builder task returns.
 
 The base ``examples/simple_water`` run uses
 ``simple_condensed_phase_builder_task``. Each builder task returns one generated
@@ -131,7 +131,8 @@ To run the batched variant, use the same staged bring-up commands from the
 
 This variant is useful when builder overhead is significant or when you want a
 single builder submission to feed multiple sampler tasks. It does not change the
-chemical system being built; it only changes the builder task throughput.
+chemical system being built or the ORCA scratch directory; it only changes the
+builder task throughput.
 
 Expected Outputs
 ----------------

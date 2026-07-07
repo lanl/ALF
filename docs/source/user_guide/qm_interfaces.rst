@@ -14,13 +14,13 @@ Supported QM Packages
 
    * - Package
      - Associated interface
-   * - ORCA
+   * - `ORCA <https://www.faccts.de/orca/>`__
      - ``alframework.qm_interfaces.orca5_interface.orca_calculator_task``
-   * - VASP
+   * - `VASP <https://vasp.at/>`__
      - ``alframework.qm_interfaces.ase_calculator_interface.VASP_ase_calculator_task``
-   * - QChem
+   * - `Q-Chem <https://www.q-chem.com/>`__
      - ``alframework.qm_interfaces.qchem_DFT_interface.qchem_dft_calculator_task``
-   * - ASE-supported calculators
+   * - `ASE-supported calculators <https://docs.ase-lib.org/ase/calculators/calculators.html#supported-calculators>`__
      - ``alframework.qm_interfaces.ase_calculator_interface.ase_calculator_task``
 
 When a QM engine already has a reliable ASE calculator, the generic ASE task is
@@ -109,7 +109,7 @@ practical resource examples.
 
 .. _qm-interface-new-engine-template:
 
-Template For Adding A New QM Engine
+Adding New QM Engines
 -----------------------------------
 
 Preferred ASE route

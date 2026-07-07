@@ -52,6 +52,7 @@
 <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
 <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="units.html">Units And Property Conversion</a></li>
 <li class="toctree-l1"><a class="reference internal" href="builders.html">Builders</a></li>
 <li class="toctree-l1"><a class="reference internal" href="samplers.html">Samplers</a></li>
 <li class="toctree-l1"><a class="reference internal" href="ml_interfaces.html">ML Interfaces</a></li>
@@ -68,13 +69,13 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../examples/simple_water.html">Simple Water Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/seeded_active_learning.html">Seeded Active Learning Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/fine_tuning.html">Fine-Tuning Existing Model Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/molten_salt.html">Molten Salt Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/il.html">Ionic Liquid Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/uo2.html">UO2 Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/reactive_sampling.html">Reactive Sampling Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/simple_water.html">Simple Water</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/seeded_active_learning.html">Seeded Active Learning</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/fine_tuning.html">Fine-Tuning Existing Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/molten_salt.html">Molten Salts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/il.html">Ionic Liquids</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/uo2.html">Periodic Solids (UO2)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/reactive_sampling.html">Reactive Sampling</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
 <ul>
@@ -165,7 +166,7 @@ directories are created. QM tasks typically create one subdirectory per
 <dt>Properties</dt><dd><p>The <code class="docutils literal notranslate"><span class="pre">properties_list</span></code> field defines which properties ALF requests and how
 those properties are written to HDF5. It also records whether each property
 is system-level or atom-level and includes the unit conversion used when
-storing data.</p>
+storing data. See <a class="reference internal" href="units.html"><span class="doc">Units And Property Conversion</span></a> for how these multipliers are applied.</p>
 </dd>
 </dl>
 </section>
@@ -239,6 +240,13 @@ example, an MPI VASP command such as <code class="docutils literal notranslate">
 with an <code class="docutils literal notranslate"><span class="pre">alf_QM_executor</span></code> configuration that requests the matching nodes,
 tasks, walltime, modules, and launcher behavior. See <a class="reference internal" href="parsl.html"><span class="doc">Parsl And HPC Execution</span></a> for
 practical resource examples.</p>
+<dl class="simple">
+<dt>Legacy VASP helper</dt><dd><p><code class="docutils literal notranslate"><span class="pre">alframework.qm_interfaces.vaspase_interface.VASPGenerator</span></code> is deprecated
+and kept only for older imports. New VASP workflows should use
+<code class="docutils literal notranslate"><span class="pre">alframework.qm_interfaces.ase_calculator_interface.VASP_ase_calculator_task</span></code>
+or the generic <code class="docutils literal notranslate"><span class="pre">ase_calculator_task</span></code>.</p>
+</dd>
+</dl>
 </section>
 <section id="adding-new-qm-engines">
 <span id="qm-interface-new-engine-template"></span><h2>Adding New QM Engines<a class="headerlink" href="#adding-new-qm-engines" title="Link to this heading"></a></h2>
@@ -294,9 +302,9 @@ the ALF QM task signature:</p>
 </pre></div>
 </div>
 <p>The <code class="docutils literal notranslate"><span class="pre">results</span></code> dictionary should use the same property names requested in
-<code class="docutils literal notranslate"><span class="pre">properties_list</span></code>. Energies and forces should be converted consistently
-with the unit factors in the master configuration before they are stored or
-interpreted downstream.</p>
+<code class="docutils literal notranslate"><span class="pre">properties_list</span></code>. Custom tasks should document the units they place in
+<code class="docutils literal notranslate"><span class="pre">MoleculesObject.results</span></code> so the master configuration can apply the
+correct HDF5 conversion factor.</p>
 </dd>
 <dt>Implementation checklist</dt><dd><p>Before using a new QM backend in production, check that:</p>
 <ul class="simple">
@@ -320,14 +328,14 @@ MPI engines.</p></li>
 <li><p><a class="reference internal" href="../api_documentation/alframework.qm_interfaces.ase_calculator_interface.html"><span class="doc">ASE calculator interface module</span></a></p></li>
 <li><p><a class="reference internal" href="../api_documentation/alframework.qm_interfaces.orca5_interface.html"><span class="doc">ORCA interface module</span></a></p></li>
 <li><p><a class="reference internal" href="../api_documentation/alframework.qm_interfaces.qchem_DFT_interface.html"><span class="doc">QChem interface module</span></a></p></li>
-<li><p><a class="reference internal" href="../api_documentation/alframework.qm_interfaces.vaspase_interface.html"><span class="doc">VASP interface module</span></a></p></li>
+<li><p><a class="reference internal" href="../api_documentation/alframework.qm_interfaces.vaspase_interface.html"><span class="doc">Legacy VASP interface module</span></a></p></li>
 <li><p><a class="reference internal" href="parsl.html"><span class="doc">Parsl execution guide</span></a></p></li>
 </ul>
 </section>
 <section id="related-examples">
 <h2>Related Examples<a class="headerlink" href="#related-examples" title="Link to this heading"></a></h2>
-<p>See <a class="reference internal" href="../examples/simple_water.html"><span class="doc">Simple Water Example</span></a> and <a class="reference internal" href="../examples/reactive_sampling.html"><span class="doc">Reactive Sampling Example</span></a>
-for ORCA-backed workflows, and <a class="reference internal" href="../examples/molten_salt.html"><span class="doc">Molten Salt Example</span></a> for a
+<p>See <a class="reference internal" href="../examples/simple_water.html"><span class="doc">Simple Water</span></a> and <a class="reference internal" href="../examples/reactive_sampling.html"><span class="doc">Reactive Sampling</span></a>
+for ORCA-backed workflows, and <a class="reference internal" href="../examples/molten_salt.html"><span class="doc">Molten Salts</span></a> for a
 VASP-backed workflow.</p>
 </section>
 </section>

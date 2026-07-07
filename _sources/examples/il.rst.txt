@@ -1,5 +1,5 @@
-Ionic Liquid Example
-====================
+Ionic Liquids
+=============
 
 The ionic liquid example demonstrates a molecular condensed-phase ALF workflow
 with a richer fragment library than the simple water example. It is intended as

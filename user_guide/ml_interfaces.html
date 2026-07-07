@@ -52,6 +52,7 @@
 <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
 <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="units.html">Units And Property Conversion</a></li>
 <li class="toctree-l1"><a class="reference internal" href="builders.html">Builders</a></li>
 <li class="toctree-l1"><a class="reference internal" href="samplers.html">Samplers</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">ML Interfaces</a><ul>
@@ -69,13 +70,13 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../examples/simple_water.html">Simple Water Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/seeded_active_learning.html">Seeded Active Learning Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/fine_tuning.html">Fine-Tuning Existing Model Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/molten_salt.html">Molten Salt Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/il.html">Ionic Liquid Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/uo2.html">UO2 Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/reactive_sampling.html">Reactive Sampling Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/simple_water.html">Simple Water</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/seeded_active_learning.html">Seeded Active Learning</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/fine_tuning.html">Fine-Tuning Existing Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/molten_salt.html">Molten Salts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/il.html">Ionic Liquids</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/uo2.html">Periodic Solids (UO2)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/reactive_sampling.html">Reactive Sampling</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
 <ul>
@@ -144,10 +145,6 @@ through its own training task and sampler loading path.</p>
 task is passed from the master configuration through <code class="docutils literal notranslate"><span class="pre">gpus_per_node</span></code>. The
 actual cluster resources are controlled by the Parsl configuration; see
 <a class="reference internal" href="parsl.html"><span class="doc">Parsl And HPC Execution</span></a>.</p>
-<p>HIPPYNN is the package name used throughout the documentation. Some existing
-ALF function names use <code class="docutils literal notranslate"><span class="pre">HIPNN</span></code> without the <code class="docutils literal notranslate"><span class="pre">Y</span></code>, such as
-<code class="docutils literal notranslate"><span class="pre">HIPNN_ASE_load_ensemble</span></code>. Those names are historical API names and should be
-used exactly as written in config files.</p>
 </section>
 <section id="how-alf-uses-ml-interfaces">
 <span id="ml-interface-extension-points"></span><h2>How ALF Uses ML Interfaces<a class="headerlink" href="#how-alf-uses-ml-interfaces" title="Link to this heading"></a></h2>
@@ -212,7 +209,8 @@ must match the names written by <code class="docutils literal notranslate"><span
 Common keys are <code class="docutils literal notranslate"><span class="pre">energy</span></code>, <code class="docutils literal notranslate"><span class="pre">forces</span></code>, <code class="docutils literal notranslate"><span class="pre">species</span></code>, and <code class="docutils literal notranslate"><span class="pre">coordinates</span></code>.
 Periodic, electrostatic, or multipole training may also require keys such as
 <code class="docutils literal notranslate"><span class="pre">cell</span></code>, <code class="docutils literal notranslate"><span class="pre">charges</span></code>, <code class="docutils literal notranslate"><span class="pre">dipole</span></code>, or <code class="docutils literal notranslate"><span class="pre">quadrupole</span></code> depending on the ML
-backend.</p>
+backend. See <a class="reference internal" href="units.html"><span class="doc">Units And Property Conversion</span></a> for how QM results are converted before they reach
+the HDF5 training data.</p>
 </dd>
 </dl>
 </section>
@@ -368,7 +366,7 @@ training task.</p></li>
 <li><p>ASE calculator results use ALF’s expected units, usually eV for energies
 and eV/Angstrom for forces.</p></li>
 <li><p>Dataset names in the ML config match the HDF5 data written by
-<code class="docutils literal notranslate"><span class="pre">properties_list</span></code>.</p></li>
+<code class="docutils literal notranslate"><span class="pre">properties_list</span></code> and the units described in <a class="reference internal" href="units.html"><span class="doc">Units And Property Conversion</span></a>.</p></li>
 <li><p>External dependencies are installed through the environment loaded by the
 ML and sampler Parsl workers.</p></li>
 </ul>
@@ -388,8 +386,8 @@ ML and sampler Parsl workers.</p></li>
 </section>
 <section id="related-examples">
 <h2>Related Examples<a class="headerlink" href="#related-examples" title="Link to this heading"></a></h2>
-<p>See <a class="reference internal" href="../examples/simple_water.html"><span class="doc">Simple Water Example</span></a>, <a class="reference internal" href="../examples/molten_salt.html"><span class="doc">Molten Salt Example</span></a>, and
-<a class="reference internal" href="../examples/reactive_sampling.html"><span class="doc">Reactive Sampling Example</span></a> for HIPPYNN-based active-learning
+<p>See <a class="reference internal" href="../examples/simple_water.html"><span class="doc">Simple Water</span></a>, <a class="reference internal" href="../examples/molten_salt.html"><span class="doc">Molten Salts</span></a>, and
+<a class="reference internal" href="../examples/reactive_sampling.html"><span class="doc">Reactive Sampling</span></a> for HIPPYNN-based active-learning
 workflows. See the UO2 example in the repository for a NeuroChem/ANI-style
 workflow.</p>
 </section>

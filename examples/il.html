@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Ionic Liquid Example &mdash; ALF 0.0.0 documentation</title>
+  <title>Ionic Liquids &mdash; ALF 0.0.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=eaec28dc" />
@@ -20,8 +20,8 @@
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="UO2 Example" href="uo2.html" />
-    <link rel="prev" title="Molten Salt Example" href="molten_salt.html" /> 
+    <link rel="next" title="Periodic Solids (UO2)" href="uo2.html" />
+    <link rel="prev" title="Molten Salts" href="molten_salt.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -52,6 +52,7 @@
 <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/configuration.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/units.html">Units And Property Conversion</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/builders.html">Builders</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/samplers.html">Samplers</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/ml_interfaces.html">ML Interfaces</a></li>
@@ -60,11 +61,11 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul class="current">
-<li class="toctree-l1"><a class="reference internal" href="simple_water.html">Simple Water Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="seeded_active_learning.html">Seeded Active Learning Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="fine_tuning.html">Fine-Tuning Existing Model Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="molten_salt.html">Molten Salt Example</a></li>
-<li class="toctree-l1 current"><a class="current reference internal" href="#">Ionic Liquid Example</a><ul>
+<li class="toctree-l1"><a class="reference internal" href="simple_water.html">Simple Water</a></li>
+<li class="toctree-l1"><a class="reference internal" href="seeded_active_learning.html">Seeded Active Learning</a></li>
+<li class="toctree-l1"><a class="reference internal" href="fine_tuning.html">Fine-Tuning Existing Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="molten_salt.html">Molten Salts</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Ionic Liquids</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#before-you-run">Before You Run</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#workflow-pattern">Workflow Pattern</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#recommended-bring-up-commands">Recommended Bring-Up Commands</a></li>
@@ -72,8 +73,8 @@
 <li class="toctree-l2"><a class="reference internal" href="#expected-outputs">Expected Outputs</a></li>
 </ul>
 </li>
-<li class="toctree-l1"><a class="reference internal" href="uo2.html">UO2 Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="reactive_sampling.html">Reactive Sampling Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="uo2.html">Periodic Solids (UO2)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="reactive_sampling.html">Reactive Sampling</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
 <ul>
@@ -95,21 +96,21 @@
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
-      <li class="breadcrumb-item active">Ionic Liquid Example</li>
+      <li class="breadcrumb-item active">Ionic Liquids</li>
       <li class="wy-breadcrumbs-aside">
             <a href="../_sources/examples/il.rst.txt" rel="nofollow"> View page source</a>
       </li>
   </ul><div class="rst-breadcrumbs-buttons" role="navigation" aria-label="Sequential page navigation">
-        <a href="molten_salt.html" class="btn btn-neutral float-left" title="Molten Salt Example" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="uo2.html" class="btn btn-neutral float-right" title="UO2 Example" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="molten_salt.html" class="btn btn-neutral float-left" title="Molten Salts" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="uo2.html" class="btn btn-neutral float-right" title="Periodic Solids (UO2)" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
   </div>
   <hr/>
 </div>
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="ionic-liquid-example">
-<h1>Ionic Liquid Example<a class="headerlink" href="#ionic-liquid-example" title="Link to this heading"></a></h1>
+  <section id="ionic-liquids">
+<h1>Ionic Liquids<a class="headerlink" href="#ionic-liquids" title="Link to this heading"></a></h1>
 <p>The ionic liquid example demonstrates a molecular condensed-phase ALF workflow
 with a richer fragment library than the simple water example. It is intended as
 a starting point for mixtures containing solvent molecules, cations, anions,
@@ -233,8 +234,8 @@ and density schedules, trajectory output, and ML calculator options.</p></td>
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="molten_salt.html" class="btn btn-neutral float-left" title="Molten Salt Example" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="uo2.html" class="btn btn-neutral float-right" title="UO2 Example" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="molten_salt.html" class="btn btn-neutral float-left" title="Molten Salts" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="uo2.html" class="btn btn-neutral float-right" title="Periodic Solids (UO2)" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

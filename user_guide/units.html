@@ -1,0 +1,246 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Units And Property Conversion &mdash; ALF 0.0.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=eaec28dc" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=5c79bd3c"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Builders" href="builders.html" />
+    <link rel="prev" title="Configuration" href="configuration.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            ALF
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started/what_is_alf.html">What Is ALF</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started/installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started/quickstart.html">Quickstart</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Units And Property Conversion</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#alf-data-path">ALF Data Path</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#properties-list-format"><code class="docutils literal notranslate"><span class="pre">properties_list</span></code> Format</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#practical-checks">Practical Checks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#related-pages">Related Pages</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="builders.html">Builders</a></li>
+<li class="toctree-l1"><a class="reference internal" href="samplers.html">Samplers</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ml_interfaces.html">ML Interfaces</a></li>
+<li class="toctree-l1"><a class="reference internal" href="qm_interfaces.html">QM Interfaces</a></li>
+<li class="toctree-l1"><a class="reference internal" href="parsl.html">Parsl And HPC Execution</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Examples</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../examples/simple_water.html">Simple Water</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/seeded_active_learning.html">Seeded Active Learning</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/fine_tuning.html">Fine-Tuning Existing Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/molten_salt.html">Molten Salts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/il.html">Ionic Liquids</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/uo2.html">Periodic Solids (UO2)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/reactive_sampling.html">Reactive Sampling</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../api_documentation/modules.html">alframework</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../license.html">License</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">ALF</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Units And Property Conversion</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/user_guide/units.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul><div class="rst-breadcrumbs-buttons" role="navigation" aria-label="Sequential page navigation">
+        <a href="configuration.html" class="btn btn-neutral float-left" title="Configuration" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="builders.html" class="btn btn-neutral float-right" title="Builders" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+  </div>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="units-and-property-conversion">
+<h1>Units And Property Conversion<a class="headerlink" href="#units-and-property-conversion" title="Link to this heading"></a></h1>
+<p>ALF does not enforce one global unit system at runtime. Instead, each workflow
+must keep the QM parser, HDF5 training data, ML configuration, and sampler
+calculator units consistent. This page describes where conversion happens and
+where users should check their configs.</p>
+<section id="alf-data-path">
+<h2>ALF Data Path<a class="headerlink" href="#alf-data-path" title="Link to this heading"></a></h2>
+<p>For a normal active-learning iteration:</p>
+<ol class="arabic simple">
+<li><p>A QM task parses engine output and stores values in
+<code class="docutils literal notranslate"><span class="pre">MoleculesObject.results</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">properties_list</span></code> in <code class="docutils literal notranslate"><span class="pre">master_config.json</span></code> selects which result keys are
+written to HDF5.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">store_current_data(...)</span></code> multiplies each saved property by the conversion
+factor in <code class="docutils literal notranslate"><span class="pre">properties_list</span></code>.</p></li>
+<li><p>ML config files read the HDF5 dataset names written by <code class="docutils literal notranslate"><span class="pre">properties_list</span></code>.</p></li>
+<li><p>Sampler calculators return energies and forces to ASE during MLMD or
+reactive sampling.</p></li>
+</ol>
+<p>The important point is that the third entry in each <code class="docutils literal notranslate"><span class="pre">properties_list</span></code> record
+is a multiplicative conversion applied when ALF writes HDF5 training data.</p>
+</section>
+<section id="properties-list-format">
+<h2><code class="docutils literal notranslate"><span class="pre">properties_list</span></code> Format<a class="headerlink" href="#properties-list-format" title="Link to this heading"></a></h2>
+<p>A typical molecular example uses:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="nt">&quot;properties_list&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;energy&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;energy&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;system&quot;</span><span class="p">,</span><span class="w"> </span><span class="mf">27.211386024367243</span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;forces&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;forces&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;atomic&quot;</span><span class="p">,</span><span class="w"> </span><span class="mf">51.422067090480645</span><span class="p">]</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>Each property entry maps a parsed result to an HDF5 dataset:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 30.0%" />
+<col style="width: 24.0%" />
+<col style="width: 46.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>JSON location</p></th>
+<th class="head"><p>Example value</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Property key</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;energy&quot;</span></code></p></td>
+<td><p>Property name expected in <code class="docutils literal notranslate"><span class="pre">MoleculesObject.results</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p>First list entry</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;energy&quot;</span></code></p></td>
+<td><p>HDF5 dataset name written for ML training.</p></td>
+</tr>
+<tr class="row-even"><td><p>Second list entry</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;system&quot;</span></code></p></td>
+<td><p>Property scope. Use <code class="docutils literal notranslate"><span class="pre">&quot;system&quot;</span></code> for one value per structure and
+<code class="docutils literal notranslate"><span class="pre">&quot;atomic&quot;</span></code> for one value per atom.</p></td>
+</tr>
+<tr class="row-odd"><td><p>Third list entry</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">27.211386024367243</span></code></p></td>
+<td><p>Multiplicative conversion factor applied when writing the HDF5 dataset.</p></td>
+</tr>
+</tbody>
+</table>
+<p>The property key and HDF5 dataset name are often the same, as in
+<code class="docutils literal notranslate"><span class="pre">&quot;energy&quot;:</span> <span class="pre">[&quot;energy&quot;,</span> <span class="pre">...]</span></code>, but they do not have to be. For example, a QM
+task could store <code class="docutils literal notranslate"><span class="pre">&quot;SCF_energy&quot;</span></code> in <code class="docutils literal notranslate"><span class="pre">MoleculesObject.results</span></code> and write it
+to an HDF5 dataset named <code class="docutils literal notranslate"><span class="pre">&quot;energy&quot;</span></code>.</p>
+<p>For atom-level properties, ALF sorts atoms by atomic number before writing the
+dataset, matching the sorted <code class="docutils literal notranslate"><span class="pre">species</span></code> and <code class="docutils literal notranslate"><span class="pre">coordinates</span></code> arrays.</p>
+<p>Custom QM tasks should document the units they place in
+<code class="docutils literal notranslate"><span class="pre">MoleculesObject.results</span></code>. Then choose the <code class="docutils literal notranslate"><span class="pre">properties_list</span></code> multiplier so
+the HDF5 data match the ML configuration.</p>
+</section>
+<section id="practical-checks">
+<h2>Practical Checks<a class="headerlink" href="#practical-checks" title="Link to this heading"></a></h2>
+<p>Use the QM test mode before launching a long run:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json<span class="w"> </span>--test_qm
+</pre></div>
+</div>
+<p>This writes <code class="docutils literal notranslate"><span class="pre">qm_test.h5</span></code> and prints both parsed QM values and HDF5 values
+after conversion. Compare those numbers to the external QM output and the
+expected ML training units.</p>
+<p>Before production runs, also check:</p>
+<ul class="simple">
+<li><p>ML config keys match the HDF5 dataset names in <code class="docutils literal notranslate"><span class="pre">properties_list</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Escut</span></code> and <code class="docutils literal notranslate"><span class="pre">Fscut</span></code> in sampler configs use units compatible with the
+sampler calculator results.</p></li>
+<li><p>Custom ML calculators return ASE-compatible units unless the sampler path
+explicitly handles another convention.</p></li>
+</ul>
+</section>
+<section id="related-pages">
+<h2>Related Pages<a class="headerlink" href="#related-pages" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><a class="reference internal" href="configuration.html"><span class="doc">Configuration</span></a> for the master config structure.</p></li>
+<li><p><a class="reference internal" href="qm_interfaces.html"><span class="doc">QM Interfaces</span></a> for QM parser and task setup.</p></li>
+<li><p><a class="reference internal" href="ml_interfaces.html"><span class="doc">ML Interfaces</span></a> for ML data keys and sampler calculator setup.</p></li>
+<li><p><a class="reference internal" href="samplers.html"><span class="doc">Samplers</span></a> for MLMD and reactive sampler thresholds.</p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="configuration.html" class="btn btn-neutral float-left" title="Configuration" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="builders.html" class="btn btn-neutral float-right" title="Builders" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023, ALF Team.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

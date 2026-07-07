@@ -1,15 +1,12 @@
-Fine-Tuning Existing Model Example
-==================================
+Fine-Tuning Existing Models
+===========================
 
-The fine-tuning example demonstrates how to start ALF from an existing HIPPYNN
-ensemble and adapt that ensemble to new ALF data. It combines seeded active
-learning with weights-based fine-tuning: ALF loads a pretrained ensemble for
-MLMD sampling, labels new high-uncertainty structures, then continues
-supervised training from the pretrained HIPPYNN weights.
-
-This matches the common MLIP fine-tuning pattern: initialize from pretrained
-weights, train on smaller target data with a lower learning rate, and write an
-adapted model. It does not reuse the old optimizer state.
+This fine-tuning example demonstrates how to start ALF from existing HIPPYNN
+weights and adapt them to new ALF data. The cleanest starting point is a
+pretrained ensemble, but a common fine-tuning workflow starts from only
+one model. In this case, copy the same model into multiple ensemble-member
+directories, fine-tune the copies independently on seed target-domain labels,
+and then continue active learning.
 
 The files needed to run the example are located in
 ``examples/fine_tuning``. If you only want to bring your own
@@ -19,8 +16,10 @@ structures or HDF5 data without starting from model weights, use
 Before You Run
 --------------
 
-This example assumes you already have a trained HIPPYNN ensemble that can be
-used for sampling and weight initialization.
+This example assumes you already have trained HIPPYNN weights that can be used
+for sampling and weight initialization. A true pretrained ensemble is ideal. A
+single pretrained model can also be used, but copied ensemble members have zero
+or near-zero disagreement until they are fine-tuned differently.
 
 * Put starting structures in ``fragment_library`` as ASE-readable ``.cfg``
   files. The included ``water_seed.cfg`` is a minimal builder-test structure.
@@ -31,6 +30,7 @@ used for sampling and weight initialization.
 * Edit ``hippynn_config.json`` so species and data keys match the pretrained
   ensemble and any prior HDF5 data. The model graph itself is loaded from the
   HIPPYNN checkpoint files.
+* Set ``n_models`` to the number of ensemble-member directories you provide.
 * Keep ``learning_rate`` lower than the original pretraining run unless you have
   a reason to aggressively adapt the model.
 * Edit ``parsl_configs.py`` for the target machine.
@@ -64,7 +64,9 @@ task pattern for other model architectures.
 Seed The Model
 --------------
 
-Place a trained HIPPYNN ensemble in the first ALF model slot:
+Place trained HIPPYNN weights in the first ALF model slot. If you have a true
+ensemble, each ``model-XX`` directory should contain a different ensemble
+member:
 
 .. code-block:: text
 
@@ -72,11 +74,39 @@ Place a trained HIPPYNN ensemble in the first ALF model slot:
    models/model-0000/model-01/
    ...
 
+If you have only one foundation model, copy that same model into each
+``model-XX`` directory and set ``n_models`` in ``hippynn_config.json`` to the
+number of copied members:
+
+.. code-block:: text
+
+   models/model-0000/model-00/experiment_structure.pt
+   models/model-0000/model-00/best_checkpoint.pt
+   models/model-0000/model-01/experiment_structure.pt
+   models/model-0000/model-01/best_checkpoint.pt
+   ...
+
 Do not create ``status.txt`` before the first run. When ALF starts without a
 status file, it checks ``model_path``. If ``models/model-0000`` already exists,
 ALF sets ``current_model_id`` to ``0`` and uses that model for sampling instead
 of building a bootstrap set. The local fine-tuning task then uses the same model
 id as the source weights for the next training job.
+
+Initial Ensemble Disagreement
+-----------------------------
+
+Copying one model into multiple ensemble slots does not by itself create useful
+uncertainty. Before the copied members are fine-tuned, they make the same or
+nearly the same predictions, so ``energy_stdev``, ``forces_stdev_mean``, and
+``forces_stdev_max`` will be zero or very small. UDD bias also has no useful
+effect when the ensemble energy standard deviation is zero.
+
+The disagreement appears only after the copied members are trained differently.
+The example-local fine-tuning task creates a fresh optimizer for each member
+and uses randomized train/validation/test splits, so copied members can diverge
+once they are fine-tuned on target-domain HDF5 data. The first useful ensemble
+for uncertainty-driven active learning is usually the fine-tuned output, such
+as ``models/model-0001``.
 
 If you have previous labeled data in ALF/HIPPYNN HDF5 format, place it in the
 run's HDF5 store:
@@ -89,6 +119,12 @@ run's HDF5 store:
 
 The fine-tuning task reads the HDF5 directory, so those batches can be included
 when ALF trains the next ensemble.
+
+If you do not have seed labels, the copied model can still run deterministic
+MLMD, but uncertainty-triggered QM selection may not fire. In that case, first
+collect a seed set using bootstrap QM labels, MD snapshots, or manual structure selection. After
+those labels are written to HDF5, run the fine-tuning task to create a
+diversified ensemble for continued ALF sampling.
 
 Fine-Tuning Task
 ----------------
@@ -113,6 +149,15 @@ Each ensemble member is loaded from the current ALF model id:
 The task creates a fresh Adam optimizer for the target data and writes the
 adapted ensemble to ``models/model-0001``. Later active-learning rounds
 fine-tune from the latest accepted model and write the next model id.
+
+For a single-model starting point, the recommended sequence is:
+
+1. Copy the model into ``models/model-0000/model-00`` through
+   ``model-NN``.
+2. Provide or collect a small target-domain HDF5 seed set.
+3. Fine-tune the copied members independently to produce ``models/model-0001``.
+4. Continue active learning from ``models/model-0001``, where ensemble
+   disagreement can guide QM selection.
 
 Recommended Bring-Up Commands
 -----------------------------
@@ -155,7 +200,7 @@ During a fine-tuning run, ALF writes the standard outputs:
      - First ensemble fine-tuned from the seed model.
    * - ``sampling/metadata-*.p``
      - MLMD sampling metadata and uncertainty diagnostics.
-   * - ``orca_scratch/``
+   * - ``qm_scratch/``
      - ORCA input, output, and scratch directories for selected structures.
 
 Use this example when you already have a model that can guide sampling and want

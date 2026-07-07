@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Reactive Sampling Example &mdash; ALF 0.0.0 documentation</title>
+  <title>Reactive Sampling &mdash; ALF 0.0.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=eaec28dc" />
@@ -21,7 +21,7 @@
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="alframework" href="../api_documentation/modules.html" />
-    <link rel="prev" title="UO2 Example" href="uo2.html" /> 
+    <link rel="prev" title="Periodic Solids (UO2)" href="uo2.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -52,6 +52,7 @@
 <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/configuration.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/units.html">Units And Property Conversion</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/builders.html">Builders</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/samplers.html">Samplers</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/ml_interfaces.html">ML Interfaces</a></li>
@@ -60,13 +61,13 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul class="current">
-<li class="toctree-l1"><a class="reference internal" href="simple_water.html">Simple Water Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="seeded_active_learning.html">Seeded Active Learning Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="fine_tuning.html">Fine-Tuning Existing Model Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="molten_salt.html">Molten Salt Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="il.html">Ionic Liquid Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="uo2.html">UO2 Example</a></li>
-<li class="toctree-l1 current"><a class="current reference internal" href="#">Reactive Sampling Example</a><ul>
+<li class="toctree-l1"><a class="reference internal" href="simple_water.html">Simple Water</a></li>
+<li class="toctree-l1"><a class="reference internal" href="seeded_active_learning.html">Seeded Active Learning</a></li>
+<li class="toctree-l1"><a class="reference internal" href="fine_tuning.html">Fine-Tuning Existing Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="molten_salt.html">Molten Salts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="il.html">Ionic Liquids</a></li>
+<li class="toctree-l1"><a class="reference internal" href="uo2.html">Periodic Solids (UO2)</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Reactive Sampling</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#before-you-run">Before You Run</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#workflow-pattern">Workflow Pattern</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#recommended-bring-up-commands">Recommended Bring-Up Commands</a></li>
@@ -95,12 +96,12 @@
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
-      <li class="breadcrumb-item active">Reactive Sampling Example</li>
+      <li class="breadcrumb-item active">Reactive Sampling</li>
       <li class="wy-breadcrumbs-aside">
             <a href="../_sources/examples/reactive_sampling.rst.txt" rel="nofollow"> View page source</a>
       </li>
   </ul><div class="rst-breadcrumbs-buttons" role="navigation" aria-label="Sequential page navigation">
-        <a href="uo2.html" class="btn btn-neutral float-left" title="UO2 Example" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="uo2.html" class="btn btn-neutral float-left" title="Periodic Solids (UO2)" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
         <a href="../api_documentation/modules.html" class="btn btn-neutral float-right" title="alframework" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
   </div>
   <hr/>
@@ -108,8 +109,8 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="reactive-sampling-example">
-<h1>Reactive Sampling Example<a class="headerlink" href="#reactive-sampling-example" title="Link to this heading"></a></h1>
+  <section id="reactive-sampling">
+<h1>Reactive Sampling<a class="headerlink" href="#reactive-sampling" title="Link to this heading"></a></h1>
 <p>The reactive sampling example demonstrates an ALF workflow for reaction-pathway
 sampling. It is intended for systems where reactant, transition-state, and
 product structures are used to guide sampling toward chemically relevant
@@ -257,7 +258,7 @@ and uncertainty thresholds.</p></td>
 <p>Use this example when the active-learning target is a reaction coordinate or a
 set of related reaction pathways rather than broad molecular dynamics sampling.
 For broader sampling around a stable phase, start with
-<a class="reference internal" href="simple_water.html"><span class="doc">Simple Water Example</span></a> or <a class="reference internal" href="molten_salt.html"><span class="doc">Molten Salt Example</span></a> instead.</p>
+<a class="reference internal" href="simple_water.html"><span class="doc">Simple Water</span></a> or <a class="reference internal" href="molten_salt.html"><span class="doc">Molten Salts</span></a> instead.</p>
 </section>
 </section>
 
@@ -265,7 +266,7 @@ For broader sampling around a stable phase, start with
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="uo2.html" class="btn btn-neutral float-left" title="UO2 Example" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="uo2.html" class="btn btn-neutral float-left" title="Periodic Solids (UO2)" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
         <a href="../api_documentation/modules.html" class="btn btn-neutral float-right" title="alframework" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 

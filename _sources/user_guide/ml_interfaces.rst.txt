@@ -30,11 +30,6 @@ task is passed from the master configuration through ``gpus_per_node``. The
 actual cluster resources are controlled by the Parsl configuration; see
 :doc:`parsl`.
 
-HIPPYNN is the package name used throughout the documentation. Some existing
-ALF function names use ``HIPNN`` without the ``Y``, such as
-``HIPNN_ASE_load_ensemble``. Those names are historical API names and should be
-used exactly as written in config files.
-
 .. _ml-interface-extension-points:
 
 How ALF Uses ML Interfaces
@@ -94,7 +89,8 @@ Data and property expectations
    Common keys are ``energy``, ``forces``, ``species``, and ``coordinates``.
    Periodic, electrostatic, or multipole training may also require keys such as
    ``cell``, ``charges``, ``dipole``, or ``quadrupole`` depending on the ML
-   backend.
+   backend. See :doc:`units` for how QM results are converted before they reach
+   the HDF5 training data.
 
 HIPPYNN Interface
 -----------------
@@ -249,7 +245,7 @@ Implementation checklist
    * ASE calculator results use ALF's expected units, usually eV for energies
      and eV/Angstrom for forces.
    * Dataset names in the ML config match the HDF5 data written by
-     ``properties_list``.
+     ``properties_list`` and the units described in :doc:`units`.
    * External dependencies are installed through the environment loaded by the
      ML and sampler Parsl workers.
 

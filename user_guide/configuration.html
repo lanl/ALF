@@ -20,7 +20,7 @@
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Builders" href="builders.html" />
+    <link rel="next" title="Units And Property Conversion" href="units.html" />
     <link rel="prev" title="Quickstart" href="../getting_started/quickstart.html" /> 
 </head>
 
@@ -62,6 +62,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#related-examples">Related Examples</a></li>
 </ul>
 </li>
+<li class="toctree-l1"><a class="reference internal" href="units.html">Units And Property Conversion</a></li>
 <li class="toctree-l1"><a class="reference internal" href="builders.html">Builders</a></li>
 <li class="toctree-l1"><a class="reference internal" href="samplers.html">Samplers</a></li>
 <li class="toctree-l1"><a class="reference internal" href="ml_interfaces.html">ML Interfaces</a></li>
@@ -70,13 +71,13 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../examples/simple_water.html">Simple Water Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/seeded_active_learning.html">Seeded Active Learning Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/fine_tuning.html">Fine-Tuning Existing Model Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/molten_salt.html">Molten Salt Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/il.html">Ionic Liquid Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/uo2.html">UO2 Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/reactive_sampling.html">Reactive Sampling Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/simple_water.html">Simple Water</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/seeded_active_learning.html">Seeded Active Learning</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/fine_tuning.html">Fine-Tuning Existing Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/molten_salt.html">Molten Salts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/il.html">Ionic Liquids</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/uo2.html">Periodic Solids (UO2)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/reactive_sampling.html">Reactive Sampling</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
 <ul>
@@ -104,7 +105,7 @@
       </li>
   </ul><div class="rst-breadcrumbs-buttons" role="navigation" aria-label="Sequential page navigation">
         <a href="../getting_started/quickstart.html" class="btn btn-neutral float-left" title="Quickstart" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="builders.html" class="btn btn-neutral float-right" title="Builders" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="units.html" class="btn btn-neutral float-right" title="Units And Property Conversion" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
   </div>
   <hr/>
 </div>
@@ -205,7 +206,8 @@ files.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">properties_list</span></code></p></td>
 <td><p>Mapping from ALF property names to HDF5 dataset names, property scope,
-and unit conversion factors.</p></td>
+and unit conversion factors. See <a class="reference internal" href="units.html"><span class="doc">Units And Property Conversion</span></a> for the conversion
+direction and common factors.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">parsl_configuration</span></code></p></td>
 <td><p>Parsl resource configuration used for normal runs.</p></td>
@@ -337,9 +339,9 @@ metadata, and QM scratch directories before starting a new independent run.</p><
 </section>
 <section id="related-examples">
 <h2>Related Examples<a class="headerlink" href="#related-examples" title="Link to this heading"></a></h2>
-<p>Start with <a class="reference internal" href="../examples/simple_water.html"><span class="doc">Simple Water Example</span></a> for a complete first workflow. Use
-<a class="reference internal" href="../examples/seeded_active_learning.html"><span class="doc">Seeded Active Learning Example</span></a> when starting from existing
-structures or HDF5 data, and <a class="reference internal" href="../examples/fine_tuning.html"><span class="doc">Fine-Tuning Existing Model Example</span></a> when starting from
+<p>Start with <a class="reference internal" href="../examples/simple_water.html"><span class="doc">Simple Water</span></a> for a complete first workflow. Use
+<a class="reference internal" href="../examples/seeded_active_learning.html"><span class="doc">Seeded Active Learning</span></a> when starting from existing
+structures or HDF5 data, and <a class="reference internal" href="../examples/fine_tuning.html"><span class="doc">Fine-Tuning Existing Models</span></a> when starting from
 existing model weights.</p>
 </section>
 </section>
@@ -349,7 +351,7 @@ existing model weights.</p>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="../getting_started/quickstart.html" class="btn btn-neutral float-left" title="Quickstart" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="builders.html" class="btn btn-neutral float-right" title="Builders" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="units.html" class="btn btn-neutral float-right" title="Units And Property Conversion" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

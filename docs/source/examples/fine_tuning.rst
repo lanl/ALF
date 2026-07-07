@@ -16,6 +16,25 @@ The files needed to run the example are located in
 structures or HDF5 data without starting from model weights, use
 :doc:`seeded_active_learning`.
 
+Before You Run
+--------------
+
+This example assumes you already have a trained HIPPYNN ensemble that can be
+used for sampling and weight initialization.
+
+* Put starting structures in ``fragment_library`` as ASE-readable ``.cfg``
+  files. The included ``water_seed.cfg`` is a minimal builder-test structure.
+* Set ``shake`` in ``builder_config.json`` to ``0.0`` for exact reuse or to a
+  small value such as ``0.05`` to perturb loaded structures.
+* Edit ``orca_config.json`` so ``QM_run_command`` points to the local ORCA
+  executable.
+* Edit ``hippynn_config.json`` so species and data keys match the pretrained
+  ensemble and any prior HDF5 data. The model graph itself is loaded from the
+  HIPPYNN checkpoint files.
+* Keep ``learning_rate`` lower than the original pretraining run unless you have
+  a reason to aggressively adapt the model.
+* Edit ``parsl_configs.py`` for the target machine.
+
 Workflow Pattern
 ----------------
 
@@ -70,24 +89,6 @@ run's HDF5 store:
 
 The fine-tuning task reads the HDF5 directory, so those batches can be included
 when ALF trains the next ensemble.
-
-Configure Inputs
-----------------
-
-Before running:
-
-* Put starting structures in ``fragment_library`` as ASE-readable ``.cfg``
-  files. The included ``water_seed.cfg`` is a minimal builder-test structure.
-* Set ``shake`` in ``builder_config.json`` to ``0.0`` for exact reuse or to a
-  small value such as ``0.05`` to perturb loaded structures.
-* Edit ``orca_config.json`` so ``QM_run_command`` points to the local ORCA
-  executable.
-* Edit ``hippynn_config.json`` so species and data keys match the pretrained
-  ensemble and any prior HDF5 data. The model graph itself is loaded from the
-  HIPPYNN checkpoint files.
-* Keep ``learning_rate`` lower than the original pretraining run unless you have
-  a reason to aggressively adapt the model.
-* Edit ``parsl_configs.py`` for the target machine.
 
 Fine-Tuning Task
 ----------------

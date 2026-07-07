@@ -23,8 +23,8 @@ This example is more specialized than the HIPPYNN examples.
 * Review the CFG files in ``fragment_library``. These are pre-generated
   structures loaded by the builder rather than molecules assembled by ALF.
 
-Workflow Stages
----------------
+Workflow Pattern
+----------------
 
 .. list-table::
    :header-rows: 1

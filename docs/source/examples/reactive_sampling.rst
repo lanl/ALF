@@ -27,8 +27,8 @@ the reaction family you want to explore.
 * Edit ``react_sampler_config.json`` to choose the reactive search method,
   number of NEB images, optimization limits, and uncertainty thresholds.
 
-Workflow Stages
----------------
+Workflow Pattern
+----------------
 
 This example uses:
 

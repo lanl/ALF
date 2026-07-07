@@ -9,6 +9,22 @@ to avoid a random bootstrap stage.
 The files needed to run the example are located in
 ``examples/seeded_active_learning``.
 
+Before You Run
+--------------
+
+This example assumes you can provide starting structures, prior HDF5 data, or
+both.
+
+* Convert starting structures to ASE-readable ``.cfg`` files and place them in
+  ``fragment_library``.
+* Place optional prior labeled data in ``h5store`` using ALF/HIPPYNN HDF5
+  format.
+* Edit ``hippynn_config.json`` so architecture, species, and data keys match
+  the provided HDF5 data.
+* Edit ``orca_config.json`` so ``QM_run_command`` points to the local ORCA
+  executable.
+* Edit ``parsl_configs.py`` for the target machine.
+
 Workflow Pattern
 ----------------
 
@@ -61,21 +77,6 @@ When ``status.txt`` is absent and ``h5store/data-0000.h5`` exists, ALF detects
 the existing HDF5 store. Because labeled data already exists, ALF skips the
 random bootstrap-labeling stage and trains ``models/model-0000`` from the
 provided data before starting ML-driven sampling.
-
-Configure Inputs
-----------------
-
-Before running:
-
-* Convert starting structures to ASE-readable ``.cfg`` files and place them in
-  ``fragment_library``.
-* Place optional prior labeled data in ``h5store`` using ALF/HIPPYNN HDF5
-  format.
-* Edit ``hippynn_config.json`` so architecture, species, and data keys match
-  the provided HDF5 data.
-* Edit ``orca_config.json`` so ``QM_run_command`` points to the local ORCA
-  executable.
-* Edit ``parsl_configs.py`` for the target machine.
 
 Recommended Bring-Up Commands
 -----------------------------

@@ -50,8 +50,8 @@ Configuration files must be modified in order to run the example on your availab
 See :doc:`../user_guide/parsl` for details on how Parsl resource configuration
 maps ALF tasks onto local or HPC resources.
 
-Workflow Stages
----------------
+Workflow Pattern
+----------------
 
 Builder stage
    ``simple_condensed_phase_builder_task`` reads ``builder_config.json`` and
@@ -60,7 +60,7 @@ Builder stage
 
 Sampler stage
    ``simple_mlmd_sampling_task`` reads ``mlmd_config.json`` and drives
-    MLMD using a HIPPYNN ensemble. Configurations are selected
+   MLMD using a HIPPYNN ensemble. Configurations are selected
    for QM if energy or force uncertainty exceeds the configured cutoffs.
 
 QM stage
@@ -149,7 +149,7 @@ During staged checks and full runs, expect these files and directories:
      - Restart and progress state, including current model/data ids and failed
        task counters.
    * - ``h5store/data-*.h5``
-     - Stored labled data batches from converged QM results.
+     - Stored labeled data batches from converged QM results.
    * - ``models/model-*``
      - Directories containing trained HIPPYNN ensembles.
    * - ``sampling/metadata-*.p``

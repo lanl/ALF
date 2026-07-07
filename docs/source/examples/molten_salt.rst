@@ -25,8 +25,8 @@ running it on a new machine:
 * Confirm that the requested properties in ``master_config.json`` match the
   VASP calculator results and HDF5 keys you want to train on.
 
-Workflow Stages
----------------
+Workflow Pattern
+----------------
 
 This example uses:
 

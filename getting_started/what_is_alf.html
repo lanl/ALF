@@ -139,10 +139,10 @@ frames are identified, or the number of ALF iterations is exceeded. Use final ML
 <h2>Overview of the workflow<a class="headerlink" href="#overview-of-the-workflow" title="Link to this heading"></a></h2>
 <p>ALF uses a master process to orchestrate tasks and data flow between the core
 stages. The process is typically launched with:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master.json
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json
 </pre></div>
 </div>
-<p>The <code class="docutils literal notranslate"><span class="pre">master.json</span></code> file points to the other configuration files and task
+<p>The <code class="docutils literal notranslate"><span class="pre">master_config.json</span></code> file points to the other configuration files and task
 definitions needed for each stage. In practice, ALF uses five JSON files:</p>
 <ol class="arabic simple">
 <li><p>Master configuration</p></li>
@@ -178,10 +178,10 @@ can be customized for your system.</p>
 <section id="testing-individual-stages">
 <h2>Testing individual stages<a class="headerlink" href="#testing-individual-stages" title="Link to this heading"></a></h2>
 <p>Before long runs, ALF supports stage-level checks:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master.json<span class="w"> </span>--test_builder
-python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master.json<span class="w"> </span>--test_sampler
-python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master.json<span class="w"> </span>--test_ml
-python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master.json<span class="w"> </span>--test_qm
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json<span class="w"> </span>--test_builder
+python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json<span class="w"> </span>--test_sampler
+python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json<span class="w"> </span>--test_ml
+python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json<span class="w"> </span>--test_qm
 </pre></div>
 </div>
 <p>These tests validate each stage independently before running the full active

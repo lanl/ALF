@@ -52,10 +52,14 @@
 <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
 <ul class="current">
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Configuration</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#how-configuration-is-organized">How configuration is organized</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#how-alf-uses-these-files">How ALF uses these files</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#practical-tips">Practical tips</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#related-examples">Related examples</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#how-alf-uses-these-files">How ALF Uses These Files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#master-configuration">Master Configuration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#path-conventions">Path Conventions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#output-and-restart-files">Output And Restart Files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#common-run-lifecycle">Common Run Lifecycle</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#stage-config-files">Stage Config Files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#practical-tips">Practical Tips</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#related-examples">Related Examples</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="builders.html">Builders</a></li>
@@ -109,51 +113,234 @@
              
   <section id="configuration">
 <h1>Configuration<a class="headerlink" href="#configuration" title="Link to this heading"></a></h1>
-<p>ALF is primarily configured with JSON files.</p>
-<p>Typical setup includes five files:</p>
+<p>ALF runs are configured with a small set of JSON files plus a Python Parsl
+resource file. The master configuration is the entry point: it names the task
+functions, points to the stage-specific config files, and defines the output
+paths ALF uses while the active-learning loop runs.</p>
+<p>Most examples use these files:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 34.0%" />
+<col style="width: 66.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>File</p></th>
+<th class="head"><p>Purpose</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">master_config.json</span></code></p></td>
+<td><p>Connects all workflow stages, output paths, queue thresholds, and Parsl
+resource configurations.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">builder_config.json</span></code></p></td>
+<td><p>Defines how initial structures are loaded or constructed.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">sampler_config.json</span></code></p></td>
+<td><p>Defines ML-driven sampling behavior and uncertainty thresholds.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ml_config.json</span></code></p></td>
+<td><p>Defines model training, model loading, architecture, and data keys.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">qm_config.json</span></code></p></td>
+<td><p>Defines the external electronic-structure calculation.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">parsl_configs.py</span></code></p></td>
+<td><p>Defines local or cluster executors used by ALF tasks.</p></td>
+</tr>
+</tbody>
+</table>
+<section id="how-alf-uses-these-files">
+<h2>How ALF Uses These Files<a class="headerlink" href="#how-alf-uses-these-files" title="Link to this heading"></a></h2>
+<p>When you run ALF, pass the master configuration explicitly:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json
+</pre></div>
+</div>
+<p>ALF loads the master config first, then loads the builder, sampler, ML, and QM
+configs named by <code class="docutils literal notranslate"><span class="pre">*_config_path</span></code> fields. The combined settings are used to
+initialize Parsl tasks, queues, restart state, and output locations.</p>
+<p>In practice, this means most workflow changes can be made by editing config
+files rather than Python source code. Python changes are needed only when you
+add a new task implementation, parser, builder, sampler, or model backend.</p>
+</section>
+<section id="master-configuration">
+<h2>Master Configuration<a class="headerlink" href="#master-configuration" title="Link to this heading"></a></h2>
+<p>The master config controls the workflow wiring. Common fields include:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 34.0%" />
+<col style="width: 66.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">master_directory</span></code></p></td>
+<td><p>Base directory for relative paths. <code class="docutils literal notranslate"><span class="pre">&quot;pwd&quot;</span></code> means the directory where
+ALF is launched.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">builder_config_path</span></code>, <code class="docutils literal notranslate"><span class="pre">sampler_config_path</span></code>, <code class="docutils literal notranslate"><span class="pre">ML_config_path</span></code>,
+<code class="docutils literal notranslate"><span class="pre">QM_config_path</span></code></p></td>
+<td><p>Stage-specific config files loaded after the master config.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">builder_task</span></code>, <code class="docutils literal notranslate"><span class="pre">sampler_task</span></code>, <code class="docutils literal notranslate"><span class="pre">ML_task</span></code>, <code class="docutils literal notranslate"><span class="pre">QM_task</span></code></p></td>
+<td><p>Import strings for the Parsl task functions ALF will submit.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">h5_path</span></code></p></td>
+<td><p>Output pattern for HDF5 training batches, commonly
+<code class="docutils literal notranslate"><span class="pre">h5store/data-{:04d}.h5</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">model_path</span></code></p></td>
+<td><p>Output pattern for model directories, commonly
+<code class="docutils literal notranslate"><span class="pre">models/model-{:04d}</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">status_path</span></code></p></td>
+<td><p>Restart/progress state file, commonly <code class="docutils literal notranslate"><span class="pre">status.txt</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">QM_scratch_dir</span></code></p></td>
+<td><p>Directory where QM tasks write per-structure input, output, and scratch
+files.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">properties_list</span></code></p></td>
+<td><p>Mapping from ALF property names to HDF5 dataset names, property scope,
+and unit conversion factors.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">parsl_configuration</span></code></p></td>
+<td><p>Parsl resource configuration used for normal runs.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">parsl_debug_configuration</span></code></p></td>
+<td><p>Optional smaller Parsl configuration used by stage-test commands.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">gpus_per_node</span></code></p></td>
+<td><p>Number of GPUs ALF assumes each ML or sampler worker can see.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">target_queued_QM</span></code>, <code class="docutils literal notranslate"><span class="pre">parallel_samplers</span></code>, <code class="docutils literal notranslate"><span class="pre">minimum_QM</span></code>,
+<code class="docutils literal notranslate"><span class="pre">save_h5_threshold</span></code>, <code class="docutils literal notranslate"><span class="pre">bootstrap_set</span></code></p></td>
+<td><p>Queue-depth and retraining controls for the active-learning loop.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="path-conventions">
+<h2>Path Conventions<a class="headerlink" href="#path-conventions" title="Link to this heading"></a></h2>
+<p>Relative paths in config files are resolved from <code class="docutils literal notranslate"><span class="pre">master_directory</span></code>. In most
+examples, <code class="docutils literal notranslate"><span class="pre">&quot;master_directory&quot;:</span> <span class="pre">&quot;pwd&quot;</span></code> means ALF treats the current working
+directory as the run directory. This is why examples should usually be launched
+from inside their own directory.</p>
+<p>Fields ending in <code class="docutils literal notranslate"><span class="pre">_path</span></code> usually name a file or file pattern. ALF also derives
+the matching directory from those paths when it needs to create output
+directories. Fields ending in <code class="docutils literal notranslate"><span class="pre">_dir</span></code> are treated as directories and are
+created if needed.</p>
+</section>
+<section id="output-and-restart-files">
+<h2>Output And Restart Files<a class="headerlink" href="#output-and-restart-files" title="Link to this heading"></a></h2>
+<p>During a run, ALF writes a standard set of outputs:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 30.0%" />
+<col style="width: 70.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Path</p></th>
+<th class="head"><p>Purpose</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">status.txt</span></code></p></td>
+<td><p>Restart and progress state, including current HDF5, model, and molecule
+ids plus failed-task counters.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">h5store/data-*.h5</span></code></p></td>
+<td><p>Labeled data batches written from converged QM results.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">models/model-*</span></code></p></td>
+<td><p>Model ensembles trained or fine-tuned during the ALF loop.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">sampling/metadata-*.p</span></code></p></td>
+<td><p>Sampler metadata, uncertainty diagnostics, and selected-structure
+records.</p></td>
+</tr>
+<tr class="row-even"><td><p>QM scratch directory</p></td>
+<td><p>Engine-specific input, output, and scratch files for selected
+structures.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">status_plots/</span></code></p></td>
+<td><p>Optional progress plots when a plotting utility is configured.</p></td>
+</tr>
+</tbody>
+</table>
+<p>If <code class="docutils literal notranslate"><span class="pre">status.txt</span></code> exists, ALF restarts from it. If no status file exists, ALF
+checks existing model and HDF5 paths to decide whether to bootstrap, start from
+provided HDF5 data, or use an existing seed model.</p>
+</section>
+<section id="common-run-lifecycle">
+<h2>Common Run Lifecycle<a class="headerlink" href="#common-run-lifecycle" title="Link to this heading"></a></h2>
+<p>A typical ALF run follows this lifecycle:</p>
 <ol class="arabic simple">
-<li><p>A master configuration</p></li>
-<li><p>Builder configuration</p></li>
-<li><p>Sampler configuration</p></li>
-<li><p>ML configuration</p></li>
-<li><p>QM configuration</p></li>
-</ol>
-<section id="how-configuration-is-organized">
-<h2>How configuration is organized<a class="headerlink" href="#how-configuration-is-organized" title="Link to this heading"></a></h2>
-<p>The master configuration is the entry point. It defines where ALF should find
-the builder, sampler, ML, and QM configuration files, along with key paths and
-task definitions used at runtime.</p>
-<p>Each stage-specific file then defines options for one part of the workflow:</p>
-<ol class="arabic simple">
-<li><p>Builders: initial structures and system construction behavior</p></li>
-<li><p>Samplers: configuration-space exploration and sampling controls</p></li>
-<li><p>ML: model training and retraining settings</p></li>
-<li><p>QM: electronic structure calculation settings and interfaces</p></li>
+<li><p>Build or load initial structures with the configured builder task.</p></li>
+<li><p>Bootstrap with QM labels, or start from seeded data/model files already in
+the run directory.</p></li>
+<li><p>Train or load an initial ML model ensemble.</p></li>
+<li><p>Sample configurations with the current ML model.</p></li>
+<li><p>Send selected high-uncertainty structures to QM.</p></li>
+<li><p>Store converged QM labels in a new HDF5 batch.</p></li>
+<li><p>Retrain or fine-tune the model ensemble and update the current model id.</p></li>
+<li><p>Repeat sampling, QM labeling, and retraining until the run is stopped.</p></li>
 </ol>
 </section>
-<section id="how-alf-uses-these-files">
-<h2>How ALF uses these files<a class="headerlink" href="#how-alf-uses-these-files" title="Link to this heading"></a></h2>
-<p>When you run ALF with <code class="docutils literal notranslate"><span class="pre">--master</span></code>, ALF loads the master JSON first, then
-loads the four stage-specific JSON files referenced by it. Those settings are
-used to initialize tasks, queues, resource configs, and data paths.</p>
-<p>In practice, this means most configuration changes can be made without editing
-Python source code.</p>
-<p>The master configuration also selects the Parsl resource configuration used to
-execute tasks. See <a class="reference internal" href="parsl.html"><span class="doc">Parsl And HPC Execution</span></a> for guidance on adapting executor labels,
-Slurm settings, and HPC launch commands.</p>
+<section id="stage-config-files">
+<h2>Stage Config Files<a class="headerlink" href="#stage-config-files" title="Link to this heading"></a></h2>
+<dl class="simple">
+<dt>Builder config</dt><dd><p>Controls initial structure generation or loading. Examples include molecule
+libraries, fragment choices, cell ranges, minimum distances, seed structure
+directories, and coordinate perturbation settings.</p>
+</dd>
+<dt>Sampler config</dt><dd><p>Controls configuration-space exploration. MLMD examples define time step,
+maximum time, temperature and density schedules, uncertainty cutoffs,
+metadata output, and the ASE model-loader function.</p>
+</dd>
+<dt>ML config</dt><dd><p>Controls model training and model loading. HIPPYNN examples define ensemble
+size, species, data keys, architecture settings, loss weights, learning rate,
+scheduler options, controller options, and device behavior. See
+<a class="reference internal" href="ml_interfaces.html"><span class="doc">ML Interfaces</span></a> for ML-backend details.</p>
+</dd>
+<dt>QM config</dt><dd><p>Controls electronic-structure labeling. QM config files usually define the
+executable or launch command, CPU count, method keywords, input blocks, and
+engine-specific calculator options. See <a class="reference internal" href="qm_interfaces.html"><span class="doc">QM Interfaces</span></a> for supported
+QM interfaces.</p>
+</dd>
+<dt>Parsl resource config</dt><dd><p>Controls where tasks run. The master config selects <code class="docutils literal notranslate"><span class="pre">parsl_configuration</span></code>
+for normal runs and optionally <code class="docutils literal notranslate"><span class="pre">parsl_debug_configuration</span></code> for stage
+checks. See <a class="reference internal" href="parsl.html"><span class="doc">Parsl And HPC Execution</span></a> for executor labels and cluster templates.</p>
+</dd>
+</dl>
 </section>
 <section id="practical-tips">
-<h2>Practical tips<a class="headerlink" href="#practical-tips" title="Link to this heading"></a></h2>
-<ol class="arabic simple">
-<li><p>Keep all JSON files for a run in one directory for reproducibility.</p></li>
-<li><p>Use descriptive filenames so multiple runs are easier to track.</p></li>
-<li><p>Validate each stage with ALF test flags before long production runs.</p></li>
-</ol>
+<h2>Practical Tips<a class="headerlink" href="#practical-tips" title="Link to this heading"></a></h2>
+<ul>
+<li><p>Keep all config files for a run in one directory for reproducibility.</p></li>
+<li><p>Launch examples from their own directory unless <code class="docutils literal notranslate"><span class="pre">master_directory</span></code> points
+somewhere else intentionally.</p></li>
+<li><p>Run stage checks before long production runs:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json<span class="w"> </span>--test_builder
+python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json<span class="w"> </span>--test_qm
+python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json<span class="w"> </span>--test_ml
+python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json<span class="w"> </span>--test_sampler
+</pre></div>
+</div>
+</li>
+<li><p>Archive or remove old <code class="docutils literal notranslate"><span class="pre">status.txt</span></code>, <code class="docutils literal notranslate"><span class="pre">h5store/</span></code>, <code class="docutils literal notranslate"><span class="pre">models/</span></code>, sampler
+metadata, and QM scratch directories before starting a new independent run.</p></li>
+</ul>
 </section>
 <section id="related-examples">
-<h2>Related examples<a class="headerlink" href="#related-examples" title="Link to this heading"></a></h2>
-<p>See <a class="reference internal" href="../examples/simple_water.html"><span class="doc">Simple Water Example</span></a>, <a class="reference internal" href="../examples/molten_salt.html"><span class="doc">Molten Salt Example</span></a>, and
-<a class="reference internal" href="../examples/reactive_sampling.html"><span class="doc">Reactive Sampling Example</span></a> for complete configuration sets.</p>
+<h2>Related Examples<a class="headerlink" href="#related-examples" title="Link to this heading"></a></h2>
+<p>Start with <a class="reference internal" href="../examples/simple_water.html"><span class="doc">Simple Water Example</span></a> for a complete first workflow. Use
+<a class="reference internal" href="../examples/seeded_active_learning.html"><span class="doc">Seeded Active Learning Example</span></a> when starting from existing
+structures or HDF5 data, and <a class="reference internal" href="../examples/fine_tuning.html"><span class="doc">Fine-Tuning Existing Model Example</span></a> when starting from
+existing model weights.</p>
 </section>
 </section>
 

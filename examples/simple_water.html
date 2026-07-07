@@ -62,7 +62,7 @@
 <ul class="current">
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Simple Water Example</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#before-you-run">Before You Run</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#workflow-stages">Workflow Stages</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#workflow-pattern">Workflow Pattern</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#recommended-bring-up-commands">Recommended Bring-Up Commands</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#batched-builder-variant">Batched Builder Variant</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#expected-outputs">Expected Outputs</a></li>
@@ -164,18 +164,16 @@ archive old output before starting a new production run.</p></li>
 <p>See <a class="reference internal" href="../user_guide/parsl.html"><span class="doc">Parsl And HPC Execution</span></a> for details on how Parsl resource configuration
 maps ALF tasks onto local or HPC resources.</p>
 </section>
-<section id="workflow-stages">
-<h2>Workflow Stages<a class="headerlink" href="#workflow-stages" title="Link to this heading"></a></h2>
-<dl>
+<section id="workflow-pattern">
+<h2>Workflow Pattern<a class="headerlink" href="#workflow-pattern" title="Link to this heading"></a></h2>
+<dl class="simple">
 <dt>Builder stage</dt><dd><p><code class="docutils literal notranslate"><span class="pre">simple_condensed_phase_builder_task</span></code> reads <code class="docutils literal notranslate"><span class="pre">builder_config.json</span></code> and
 creates clusters of water molecules using the fragment library. In this example,
 the only fragment is <code class="docutils literal notranslate"><span class="pre">fragment_library/water.xyz</span></code>.</p>
 </dd>
-<dt>Sampler stage</dt><dd><dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">simple_mlmd_sampling_task</span></code> reads <code class="docutils literal notranslate"><span class="pre">mlmd_config.json</span></code> and drives</dt><dd><p>MLMD using a HIPPYNN ensemble. Configurations are selected</p>
-</dd>
-</dl>
-<p>for QM if energy or force uncertainty exceeds the configured cutoffs.</p>
+<dt>Sampler stage</dt><dd><p><code class="docutils literal notranslate"><span class="pre">simple_mlmd_sampling_task</span></code> reads <code class="docutils literal notranslate"><span class="pre">mlmd_config.json</span></code> and drives
+MLMD using a HIPPYNN ensemble. Configurations are selected
+for QM if energy or force uncertainty exceeds the configured cutoffs.</p>
 </dd>
 <dt>QM stage</dt><dd><p><code class="docutils literal notranslate"><span class="pre">orca_calculator_task</span></code> reads <code class="docutils literal notranslate"><span class="pre">orca_config.json</span></code>, writes ORCA input files,
 runs ORCA, parses requested properties, and returns a labeled
@@ -255,7 +253,7 @@ builder task throughput.</p>
 task counters.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">h5store/data-*.h5</span></code></p></td>
-<td><p>Stored labled data batches from converged QM results.</p></td>
+<td><p>Stored labeled data batches from converged QM results.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">models/model-*</span></code></p></td>
 <td><p>Directories containing trained HIPPYNN ensembles.</p></td>

@@ -63,9 +63,9 @@
 <li class="toctree-l1"><a class="reference internal" href="simple_water.html">Simple Water Example</a></li>
 <li class="toctree-l1"><a class="reference internal" href="seeded_active_learning.html">Seeded Active Learning Example</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Fine-Tuning Existing Model Example</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#before-you-run">Before You Run</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#workflow-pattern">Workflow Pattern</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#seed-the-model">Seed The Model</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#configure-inputs">Configure Inputs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#fine-tuning-task">Fine-Tuning Task</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#recommended-bring-up-commands">Recommended Bring-Up Commands</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#expected-outputs">Expected Outputs</a></li>
@@ -123,6 +123,25 @@ adapted model. It does not reuse the old optimizer state.</p>
 <code class="docutils literal notranslate"><span class="pre">examples/fine_tuning</span></code>. If you only want to bring your own
 structures or HDF5 data without starting from model weights, use
 <a class="reference internal" href="seeded_active_learning.html"><span class="doc">Seeded Active Learning Example</span></a>.</p>
+<section id="before-you-run">
+<h2>Before You Run<a class="headerlink" href="#before-you-run" title="Link to this heading"></a></h2>
+<p>This example assumes you already have a trained HIPPYNN ensemble that can be
+used for sampling and weight initialization.</p>
+<ul class="simple">
+<li><p>Put starting structures in <code class="docutils literal notranslate"><span class="pre">fragment_library</span></code> as ASE-readable <code class="docutils literal notranslate"><span class="pre">.cfg</span></code>
+files. The included <code class="docutils literal notranslate"><span class="pre">water_seed.cfg</span></code> is a minimal builder-test structure.</p></li>
+<li><p>Set <code class="docutils literal notranslate"><span class="pre">shake</span></code> in <code class="docutils literal notranslate"><span class="pre">builder_config.json</span></code> to <code class="docutils literal notranslate"><span class="pre">0.0</span></code> for exact reuse or to a
+small value such as <code class="docutils literal notranslate"><span class="pre">0.05</span></code> to perturb loaded structures.</p></li>
+<li><p>Edit <code class="docutils literal notranslate"><span class="pre">orca_config.json</span></code> so <code class="docutils literal notranslate"><span class="pre">QM_run_command</span></code> points to the local ORCA
+executable.</p></li>
+<li><p>Edit <code class="docutils literal notranslate"><span class="pre">hippynn_config.json</span></code> so species and data keys match the pretrained
+ensemble and any prior HDF5 data. The model graph itself is loaded from the
+HIPPYNN checkpoint files.</p></li>
+<li><p>Keep <code class="docutils literal notranslate"><span class="pre">learning_rate</span></code> lower than the original pretraining run unless you have
+a reason to aggressively adapt the model.</p></li>
+<li><p>Edit <code class="docutils literal notranslate"><span class="pre">parsl_configs.py</span></code> for the target machine.</p></li>
+</ul>
+</section>
 <section id="workflow-pattern">
 <h2>Workflow Pattern<a class="headerlink" href="#workflow-pattern" title="Link to this heading"></a></h2>
 <p>This example uses existing ALF hooks:</p>
@@ -179,24 +198,6 @@ h5store/data-0001.h5
 </div>
 <p>The fine-tuning task reads the HDF5 directory, so those batches can be included
 when ALF trains the next ensemble.</p>
-</section>
-<section id="configure-inputs">
-<h2>Configure Inputs<a class="headerlink" href="#configure-inputs" title="Link to this heading"></a></h2>
-<p>Before running:</p>
-<ul class="simple">
-<li><p>Put starting structures in <code class="docutils literal notranslate"><span class="pre">fragment_library</span></code> as ASE-readable <code class="docutils literal notranslate"><span class="pre">.cfg</span></code>
-files. The included <code class="docutils literal notranslate"><span class="pre">water_seed.cfg</span></code> is a minimal builder-test structure.</p></li>
-<li><p>Set <code class="docutils literal notranslate"><span class="pre">shake</span></code> in <code class="docutils literal notranslate"><span class="pre">builder_config.json</span></code> to <code class="docutils literal notranslate"><span class="pre">0.0</span></code> for exact reuse or to a
-small value such as <code class="docutils literal notranslate"><span class="pre">0.05</span></code> to perturb loaded structures.</p></li>
-<li><p>Edit <code class="docutils literal notranslate"><span class="pre">orca_config.json</span></code> so <code class="docutils literal notranslate"><span class="pre">QM_run_command</span></code> points to the local ORCA
-executable.</p></li>
-<li><p>Edit <code class="docutils literal notranslate"><span class="pre">hippynn_config.json</span></code> so species and data keys match the pretrained
-ensemble and any prior HDF5 data. The model graph itself is loaded from the
-HIPPYNN checkpoint files.</p></li>
-<li><p>Keep <code class="docutils literal notranslate"><span class="pre">learning_rate</span></code> lower than the original pretraining run unless you have
-a reason to aggressively adapt the model.</p></li>
-<li><p>Edit <code class="docutils literal notranslate"><span class="pre">parsl_configs.py</span></code> for the target machine.</p></li>
-</ul>
 </section>
 <section id="fine-tuning-task">
 <h2>Fine-Tuning Task<a class="headerlink" href="#fine-tuning-task" title="Link to this heading"></a></h2>

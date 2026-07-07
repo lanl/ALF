@@ -315,7 +315,7 @@ and sampling, and a smaller debug configuration is available for staged test
 commands.</p>
 <p>This is still a template. Replace partition names, accounts, QoS values,
 <code class="docutils literal notranslate"><span class="pre">#SBATCH</span></code> resource lines, module loads, launchers, and walltimes with values
-that match cluster.</p>
+that match the cluster.</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">parsl.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">Config</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">parsl.executors</span><span class="w"> </span><span class="kn">import</span> <span class="n">HighThroughputExecutor</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">parsl.launchers</span><span class="w"> </span><span class="kn">import</span> <span class="n">SimpleLauncher</span><span class="p">,</span> <span class="n">SingleNodeLauncher</span>

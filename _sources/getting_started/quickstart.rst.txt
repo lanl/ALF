@@ -1,9 +1,9 @@
 Quickstart
 ==========
 
-This quickstart to helps to get ALF up and running using ``examples/simple_water``. 
-It is a checklist for bringing up the workflow; the
-full walkthrough lives in :doc:`../examples/simple_water`.
+This quickstart helps get ALF up and running using ``examples/simple_water``.
+It is a checklist for bringing up the workflow; the full walkthrough lives in
+:doc:`../examples/simple_water`.
 
 Prerequisites
 -------------
@@ -29,8 +29,40 @@ Start with the simple water example:
 
 This example is small enough to inspect quickly, but it exercises all major ALF
 stages: builder, sampler, QM labeling, ML training, data storage, and retraining.
-After it is working, use the other example pages as templates for periodic,
-ionic-liquid, UO2, or reactive-sampling workflows.
+After it is working, use the other example pages as templates for seeded,
+periodic, reactive-sampling, and fine-tuning workflows.
+
+Which Example Should I Use?
+---------------------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 28 72
+
+   * - Example
+     - Use it when...
+   * - :doc:`../examples/simple_water`
+     - You want the recommended first full ALF run.
+   * - :doc:`../examples/seeded_active_learning`
+     - You want to bring existing structures, existing ALF/HIPPYNN HDF5 data,
+       or both.
+   * - :doc:`../examples/fine_tuning`
+     - You want to start from existing model weights and adapt the model to new
+       ALF data.
+   * - :doc:`../examples/molten_salt`
+     - You need a periodic VASP workflow.
+   * - :doc:`../examples/il`
+     - You need molecular mixtures or richer fragment libraries.
+   * - :doc:`../examples/reactive_sampling`
+     - You want reaction-path sampling around reactant, transition-state, and
+       product structures.
+   * - :doc:`../examples/uo2`
+     - You want a NeuroChem/ANI-style workflow.
+
+Seeded active learning and fine-tuning solve different setup problems. Seeded
+active learning starts from structures or labeled HDF5 data and trains with
+ALF's normal ML task. Fine-tuning starts from existing model weights, then
+continues supervised training on ALF data with an example-local ML task.
 
 Check The Config Files
 ----------------------

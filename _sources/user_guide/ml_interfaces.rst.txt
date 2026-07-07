@@ -30,6 +30,11 @@ task is passed from the master configuration through ``gpus_per_node``. The
 actual cluster resources are controlled by the Parsl configuration; see
 :doc:`parsl`.
 
+HIPPYNN is the package name used throughout the documentation. Some existing
+ALF function names use ``HIPNN`` without the ``Y``, such as
+``HIPNN_ASE_load_ensemble``. Those names are historical API names and should be
+used exactly as written in config files.
+
 .. _ml-interface-extension-points:
 
 How ALF Uses ML Interfaces

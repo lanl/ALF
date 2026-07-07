@@ -144,6 +144,10 @@ through its own training task and sampler loading path.</p>
 task is passed from the master configuration through <code class="docutils literal notranslate"><span class="pre">gpus_per_node</span></code>. The
 actual cluster resources are controlled by the Parsl configuration; see
 <a class="reference internal" href="parsl.html"><span class="doc">Parsl And HPC Execution</span></a>.</p>
+<p>HIPPYNN is the package name used throughout the documentation. Some existing
+ALF function names use <code class="docutils literal notranslate"><span class="pre">HIPNN</span></code> without the <code class="docutils literal notranslate"><span class="pre">Y</span></code>, such as
+<code class="docutils literal notranslate"><span class="pre">HIPNN_ASE_load_ensemble</span></code>. Those names are historical API names and should be
+used exactly as written in config files.</p>
 </section>
 <section id="how-alf-uses-ml-interfaces">
 <span id="ml-interface-extension-points"></span><h2>How ALF Uses ML Interfaces<a class="headerlink" href="#how-alf-uses-ml-interfaces" title="Link to this heading"></a></h2>

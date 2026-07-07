@@ -217,7 +217,7 @@ commands.
 
 This is still a template. Replace partition names, accounts, QoS values,
 ``#SBATCH`` resource lines, module loads, launchers, and walltimes with values
-that match cluster.
+that match the cluster.
 
 .. code-block:: python
 

@@ -62,9 +62,9 @@
 <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="simple_water.html">Simple Water Example</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Seeded Active Learning Example</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#before-you-run">Before You Run</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#workflow-pattern">Workflow Pattern</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#seed-the-run">Seed The Run</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#configure-inputs">Configure Inputs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#recommended-bring-up-commands">Recommended Bring-Up Commands</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#expected-outputs">Expected Outputs</a></li>
 </ul>
@@ -116,6 +116,22 @@ reasonable starting configurations, a small labeled dataset, or both, and want
 to avoid a random bootstrap stage.</p>
 <p>The files needed to run the example are located in
 <code class="docutils literal notranslate"><span class="pre">examples/seeded_active_learning</span></code>.</p>
+<section id="before-you-run">
+<h2>Before You Run<a class="headerlink" href="#before-you-run" title="Link to this heading"></a></h2>
+<p>This example assumes you can provide starting structures, prior HDF5 data, or
+both.</p>
+<ul class="simple">
+<li><p>Convert starting structures to ASE-readable <code class="docutils literal notranslate"><span class="pre">.cfg</span></code> files and place them in
+<code class="docutils literal notranslate"><span class="pre">fragment_library</span></code>.</p></li>
+<li><p>Place optional prior labeled data in <code class="docutils literal notranslate"><span class="pre">h5store</span></code> using ALF/HIPPYNN HDF5
+format.</p></li>
+<li><p>Edit <code class="docutils literal notranslate"><span class="pre">hippynn_config.json</span></code> so architecture, species, and data keys match
+the provided HDF5 data.</p></li>
+<li><p>Edit <code class="docutils literal notranslate"><span class="pre">orca_config.json</span></code> so <code class="docutils literal notranslate"><span class="pre">QM_run_command</span></code> points to the local ORCA
+executable.</p></li>
+<li><p>Edit <code class="docutils literal notranslate"><span class="pre">parsl_configs.py</span></code> for the target machine.</p></li>
+</ul>
+</section>
 <section id="workflow-pattern">
 <h2>Workflow Pattern<a class="headerlink" href="#workflow-pattern" title="Link to this heading"></a></h2>
 <p>This example uses ALF’s standard tasks:</p>
@@ -170,21 +186,6 @@ h5store/data-0001.h5
 the existing HDF5 store. Because labeled data already exists, ALF skips the
 random bootstrap-labeling stage and trains <code class="docutils literal notranslate"><span class="pre">models/model-0000</span></code> from the
 provided data before starting ML-driven sampling.</p>
-</section>
-<section id="configure-inputs">
-<h2>Configure Inputs<a class="headerlink" href="#configure-inputs" title="Link to this heading"></a></h2>
-<p>Before running:</p>
-<ul class="simple">
-<li><p>Convert starting structures to ASE-readable <code class="docutils literal notranslate"><span class="pre">.cfg</span></code> files and place them in
-<code class="docutils literal notranslate"><span class="pre">fragment_library</span></code>.</p></li>
-<li><p>Place optional prior labeled data in <code class="docutils literal notranslate"><span class="pre">h5store</span></code> using ALF/HIPPYNN HDF5
-format.</p></li>
-<li><p>Edit <code class="docutils literal notranslate"><span class="pre">hippynn_config.json</span></code> so architecture, species, and data keys match
-the provided HDF5 data.</p></li>
-<li><p>Edit <code class="docutils literal notranslate"><span class="pre">orca_config.json</span></code> so <code class="docutils literal notranslate"><span class="pre">QM_run_command</span></code> points to the local ORCA
-executable.</p></li>
-<li><p>Edit <code class="docutils literal notranslate"><span class="pre">parsl_configs.py</span></code> for the target machine.</p></li>
-</ul>
 </section>
 <section id="recommended-bring-up-commands">
 <h2>Recommended Bring-Up Commands<a class="headerlink" href="#recommended-bring-up-commands" title="Link to this heading"></a></h2>

@@ -132,6 +132,7 @@ pieces to a concrete run.</p>
 <li class="toctree-l1"><a class="reference internal" href="getting_started/quickstart.html">Quickstart</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="getting_started/quickstart.html#prerequisites">Prerequisites</a></li>
 <li class="toctree-l2"><a class="reference internal" href="getting_started/quickstart.html#pick-an-example">Pick An Example</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started/quickstart.html#which-example-should-i-use">Which Example Should I Use?</a></li>
 <li class="toctree-l2"><a class="reference internal" href="getting_started/quickstart.html#check-the-config-files">Check The Config Files</a></li>
 <li class="toctree-l2"><a class="reference internal" href="getting_started/quickstart.html#edit-machine-specific-settings">Edit Machine-Specific Settings</a></li>
 <li class="toctree-l2"><a class="reference internal" href="getting_started/quickstart.html#run-stage-checks">Run Stage Checks</a></li>
@@ -146,10 +147,14 @@ pieces to a concrete run.</p>
 <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="user_guide/configuration.html">Configuration</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/configuration.html#how-configuration-is-organized">How configuration is organized</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/configuration.html#how-alf-uses-these-files">How ALF uses these files</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/configuration.html#practical-tips">Practical tips</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/configuration.html#related-examples">Related examples</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide/configuration.html#how-alf-uses-these-files">How ALF Uses These Files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide/configuration.html#master-configuration">Master Configuration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide/configuration.html#path-conventions">Path Conventions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide/configuration.html#output-and-restart-files">Output And Restart Files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide/configuration.html#common-run-lifecycle">Common Run Lifecycle</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide/configuration.html#stage-config-files">Stage Config Files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide/configuration.html#practical-tips">Practical Tips</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide/configuration.html#related-examples">Related Examples</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="user_guide/builders.html">Builders</a><ul>
@@ -204,7 +209,7 @@ pieces to a concrete run.</p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="examples/simple_water.html">Simple Water Example</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="examples/simple_water.html#before-you-run">Before You Run</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/simple_water.html#workflow-stages">Workflow Stages</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples/simple_water.html#workflow-pattern">Workflow Pattern</a></li>
 <li class="toctree-l2"><a class="reference internal" href="examples/simple_water.html#recommended-bring-up-commands">Recommended Bring-Up Commands</a></li>
 <li class="toctree-l2"><a class="reference internal" href="examples/simple_water.html#batched-builder-variant">Batched Builder Variant</a></li>
 <li class="toctree-l2"><a class="reference internal" href="examples/simple_water.html#expected-outputs">Expected Outputs</a></li>
@@ -218,17 +223,17 @@ pieces to a concrete run.</p>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="examples/seeded_active_learning.html">Seeded Active Learning Example</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="examples/seeded_active_learning.html#before-you-run">Before You Run</a></li>
 <li class="toctree-l2"><a class="reference internal" href="examples/seeded_active_learning.html#workflow-pattern">Workflow Pattern</a></li>
 <li class="toctree-l2"><a class="reference internal" href="examples/seeded_active_learning.html#seed-the-run">Seed The Run</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/seeded_active_learning.html#configure-inputs">Configure Inputs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="examples/seeded_active_learning.html#recommended-bring-up-commands">Recommended Bring-Up Commands</a></li>
 <li class="toctree-l2"><a class="reference internal" href="examples/seeded_active_learning.html#expected-outputs">Expected Outputs</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="examples/fine_tuning.html">Fine-Tuning Existing Model Example</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="examples/fine_tuning.html#before-you-run">Before You Run</a></li>
 <li class="toctree-l2"><a class="reference internal" href="examples/fine_tuning.html#workflow-pattern">Workflow Pattern</a></li>
 <li class="toctree-l2"><a class="reference internal" href="examples/fine_tuning.html#seed-the-model">Seed The Model</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/fine_tuning.html#configure-inputs">Configure Inputs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="examples/fine_tuning.html#fine-tuning-task">Fine-Tuning Task</a></li>
 <li class="toctree-l2"><a class="reference internal" href="examples/fine_tuning.html#recommended-bring-up-commands">Recommended Bring-Up Commands</a></li>
 <li class="toctree-l2"><a class="reference internal" href="examples/fine_tuning.html#expected-outputs">Expected Outputs</a></li>
@@ -236,7 +241,7 @@ pieces to a concrete run.</p>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="examples/molten_salt.html">Molten Salt Example</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="examples/molten_salt.html#before-you-run">Before You Run</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/molten_salt.html#workflow-stages">Workflow Stages</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples/molten_salt.html#workflow-pattern">Workflow Pattern</a></li>
 <li class="toctree-l2"><a class="reference internal" href="examples/molten_salt.html#recommended-bring-up-commands">Recommended Bring-Up Commands</a></li>
 <li class="toctree-l2"><a class="reference internal" href="examples/molten_salt.html#expected-outputs">Expected Outputs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="examples/molten_salt.html#configuration-files">Configuration Files</a></li>
@@ -244,7 +249,7 @@ pieces to a concrete run.</p>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="examples/il.html">Ionic Liquid Example</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="examples/il.html#before-you-run">Before You Run</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/il.html#workflow-stages">Workflow Stages</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples/il.html#workflow-pattern">Workflow Pattern</a></li>
 <li class="toctree-l2"><a class="reference internal" href="examples/il.html#recommended-bring-up-commands">Recommended Bring-Up Commands</a></li>
 <li class="toctree-l2"><a class="reference internal" href="examples/il.html#configuration-files">Configuration Files</a></li>
 <li class="toctree-l2"><a class="reference internal" href="examples/il.html#expected-outputs">Expected Outputs</a></li>
@@ -252,7 +257,7 @@ pieces to a concrete run.</p>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="examples/uo2.html">UO2 Example</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="examples/uo2.html#before-you-run">Before You Run</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/uo2.html#workflow-stages">Workflow Stages</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples/uo2.html#workflow-pattern">Workflow Pattern</a></li>
 <li class="toctree-l2"><a class="reference internal" href="examples/uo2.html#recommended-bring-up-commands">Recommended Bring-Up Commands</a></li>
 <li class="toctree-l2"><a class="reference internal" href="examples/uo2.html#configuration-files">Configuration Files</a></li>
 <li class="toctree-l2"><a class="reference internal" href="examples/uo2.html#expected-outputs">Expected Outputs</a></li>
@@ -260,7 +265,7 @@ pieces to a concrete run.</p>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="examples/reactive_sampling.html">Reactive Sampling Example</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="examples/reactive_sampling.html#before-you-run">Before You Run</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/reactive_sampling.html#workflow-stages">Workflow Stages</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples/reactive_sampling.html#workflow-pattern">Workflow Pattern</a></li>
 <li class="toctree-l2"><a class="reference internal" href="examples/reactive_sampling.html#recommended-bring-up-commands">Recommended Bring-Up Commands</a></li>
 <li class="toctree-l2"><a class="reference internal" href="examples/reactive_sampling.html#expected-outputs">Expected Outputs</a></li>
 <li class="toctree-l2"><a class="reference internal" href="examples/reactive_sampling.html#configuration-files">Configuration Files</a></li>

@@ -36,9 +36,9 @@ stages. The process is typically launched with:
 
 .. code-block:: bash
 
-   python -m alframework --master master.json
+   python -m alframework --master master_config.json
 
-The ``master.json`` file points to the other configuration files and task
+The ``master_config.json`` file points to the other configuration files and task
 definitions needed for each stage. In practice, ALF uses five JSON files:
 
 1. Master configuration
@@ -80,10 +80,10 @@ Before long runs, ALF supports stage-level checks:
 
 .. code-block:: bash
 
-   python -m alframework --master master.json --test_builder
-   python -m alframework --master master.json --test_sampler
-   python -m alframework --master master.json --test_ml
-   python -m alframework --master master.json --test_qm
+   python -m alframework --master master_config.json --test_builder
+   python -m alframework --master master_config.json --test_sampler
+   python -m alframework --master master_config.json --test_ml
+   python -m alframework --master master_config.json --test_qm
 
 These tests validate each stage independently before running the full active
 learning workflow.

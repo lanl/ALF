@@ -50,6 +50,7 @@
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Quickstart</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#prerequisites">Prerequisites</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#pick-an-example">Pick An Example</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#which-example-should-i-use">Which Example Should I Use?</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#check-the-config-files">Check The Config Files</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#edit-machine-specific-settings">Edit Machine-Specific Settings</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#run-stage-checks">Run Stage Checks</a></li>
@@ -113,9 +114,9 @@
              
   <section id="quickstart">
 <h1>Quickstart<a class="headerlink" href="#quickstart" title="Link to this heading"></a></h1>
-<p>This quickstart to helps to get ALF up and running using <code class="docutils literal notranslate"><span class="pre">examples/simple_water</span></code>.
-It is a checklist for bringing up the workflow; the
-full walkthrough lives in <a class="reference internal" href="../examples/simple_water.html"><span class="doc">Simple Water Example</span></a>.</p>
+<p>This quickstart helps get ALF up and running using <code class="docutils literal notranslate"><span class="pre">examples/simple_water</span></code>.
+It is a checklist for bringing up the workflow; the full walkthrough lives in
+<a class="reference internal" href="../examples/simple_water.html"><span class="doc">Simple Water Example</span></a>.</p>
 <section id="prerequisites">
 <h2>Prerequisites<a class="headerlink" href="#prerequisites" title="Link to this heading"></a></h2>
 <p>Before running ALF, make sure:</p>
@@ -137,8 +138,52 @@ environment needed for training and sampling.</p></li>
 </div>
 <p>This example is small enough to inspect quickly, but it exercises all major ALF
 stages: builder, sampler, QM labeling, ML training, data storage, and retraining.
-After it is working, use the other example pages as templates for periodic,
-ionic-liquid, UO2, or reactive-sampling workflows.</p>
+After it is working, use the other example pages as templates for seeded,
+periodic, reactive-sampling, and fine-tuning workflows.</p>
+</section>
+<section id="which-example-should-i-use">
+<h2>Which Example Should I Use?<a class="headerlink" href="#which-example-should-i-use" title="Link to this heading"></a></h2>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 28.0%" />
+<col style="width: 72.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Example</p></th>
+<th class="head"><p>Use it when…</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><a class="reference internal" href="../examples/simple_water.html"><span class="doc">Simple Water Example</span></a></p></td>
+<td><p>You want the recommended first full ALF run.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="../examples/seeded_active_learning.html"><span class="doc">Seeded Active Learning Example</span></a></p></td>
+<td><p>You want to bring existing structures, existing ALF/HIPPYNN HDF5 data,
+or both.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="../examples/fine_tuning.html"><span class="doc">Fine-Tuning Existing Model Example</span></a></p></td>
+<td><p>You want to start from existing model weights and adapt the model to new
+ALF data.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="../examples/molten_salt.html"><span class="doc">Molten Salt Example</span></a></p></td>
+<td><p>You need a periodic VASP workflow.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="../examples/il.html"><span class="doc">Ionic Liquid Example</span></a></p></td>
+<td><p>You need molecular mixtures or richer fragment libraries.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="../examples/reactive_sampling.html"><span class="doc">Reactive Sampling Example</span></a></p></td>
+<td><p>You want reaction-path sampling around reactant, transition-state, and
+product structures.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="../examples/uo2.html"><span class="doc">UO2 Example</span></a></p></td>
+<td><p>You want a NeuroChem/ANI-style workflow.</p></td>
+</tr>
+</tbody>
+</table>
+<p>Seeded active learning and fine-tuning solve different setup problems. Seeded
+active learning starts from structures or labeled HDF5 data and trains with
+ALF’s normal ML task. Fine-tuning starts from existing model weights, then
+continues supervised training on ALF data with an example-local ML task.</p>
 </section>
 <section id="check-the-config-files">
 <h2>Check The Config Files<a class="headerlink" href="#check-the-config-files" title="Link to this heading"></a></h2>

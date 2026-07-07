@@ -23,8 +23,8 @@ This example is a template, not a ready-to-run cluster job.
 * Review ``builder_config.json`` before changing the fragment library. The
   builder expects fragment names to match files in ``fragment_library``.
 
-Workflow Stages
----------------
+Workflow Pattern
+----------------
 
 .. list-table::
    :header-rows: 1

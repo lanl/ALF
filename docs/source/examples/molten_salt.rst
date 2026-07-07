@@ -1,5 +1,5 @@
-Molten Salt Example
-===================
+Molten Salts
+============
 
 The molten salt example demonstrates an ALF workflow for periodic ionic
 systems. It is intended for workflows where the builder constructs

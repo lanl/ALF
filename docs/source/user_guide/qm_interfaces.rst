@@ -54,7 +54,7 @@ Properties
    The ``properties_list`` field defines which properties ALF requests and how
    those properties are written to HDF5. It also records whether each property
    is system-level or atom-level and includes the unit conversion used when
-   storing data.
+   storing data. See :doc:`units` for how these multipliers are applied.
 
 Common Configuration Fields
 ---------------------------
@@ -106,6 +106,12 @@ example, an MPI VASP command such as ``srun -n 128 vasp_std`` should be paired
 with an ``alf_QM_executor`` configuration that requests the matching nodes,
 tasks, walltime, modules, and launcher behavior. See :doc:`parsl` for
 practical resource examples.
+
+Legacy VASP helper
+   ``alframework.qm_interfaces.vaspase_interface.VASPGenerator`` is deprecated
+   and kept only for older imports. New VASP workflows should use
+   ``alframework.qm_interfaces.ase_calculator_interface.VASP_ase_calculator_task``
+   or the generic ``ase_calculator_task``.
 
 .. _qm-interface-new-engine-template:
 
@@ -170,9 +176,9 @@ Custom parser route
           return molecule_object
 
    The ``results`` dictionary should use the same property names requested in
-   ``properties_list``. Energies and forces should be converted consistently
-   with the unit factors in the master configuration before they are stored or
-   interpreted downstream.
+   ``properties_list``. Custom tasks should document the units they place in
+   ``MoleculesObject.results`` so the master configuration can apply the
+   correct HDF5 conversion factor.
 
 Implementation checklist
    Before using a new QM backend in production, check that:
@@ -195,7 +201,7 @@ You can link from this guide directly to API pages:
 * :doc:`ASE calculator interface module <../api_documentation/alframework.qm_interfaces.ase_calculator_interface>`
 * :doc:`ORCA interface module <../api_documentation/alframework.qm_interfaces.orca5_interface>`
 * :doc:`QChem interface module <../api_documentation/alframework.qm_interfaces.qchem_DFT_interface>`
-* :doc:`VASP interface module <../api_documentation/alframework.qm_interfaces.vaspase_interface>`
+* :doc:`Legacy VASP interface module <../api_documentation/alframework.qm_interfaces.vaspase_interface>`
 * :doc:`Parsl execution guide <parsl>`
 
 Related Examples

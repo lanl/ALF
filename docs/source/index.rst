@@ -36,6 +36,7 @@ pieces to a concrete run.
    :caption: User Guide
 
    user_guide/configuration
+   user_guide/units
    user_guide/builders
    user_guide/samplers
    user_guide/ml_interfaces

@@ -1,192 +1,176 @@
-#TODO: the whole file needs refactoring and cleanup.
+"""Deprecated legacy VASP ASE interface.
 
-# -*- coding: utf-8 -*-
+This module is kept for compatibility with older imports. New ALF workflows
+should use ``alframework.qm_interfaces.ase_calculator_interface`` instead,
+especially ``VASP_ase_calculator_task`` for VASP calculations through ASE.
 """
-@author: Ziyan
-"""
-
-from ase import Atoms, Atom
-from ase.calculators.vasp import Vasp
-
-from ase import units
-
-#VASP should handle MPI things
-#from mpi4py import MPI
 
 import os
-import sys
-import re
-import shutil
 import pickle as pkl
+import shutil
+import warnings
+from contextlib import contextmanager
+
 import numpy as np
+from ase import Atoms
+from ase.calculators.vasp import Vasp
+
 
 class SCFConvergenceFailure(Exception):
-    pass
+    """Raised when a VASP calculation finishes without SCF convergence."""
+
+
+@contextmanager
+def _temporary_environment(updates):
+    old_values = {}
+    for key, value in updates.items():
+        old_values[key] = os.environ.get(key)
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = str(value)
+    try:
+        yield
+    finally:
+        for key, value in old_values.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
+def _atoms_from_input(molecule):
+    if isinstance(molecule, Atoms):
+        return molecule.copy()
+    if hasattr(molecule, "get_atoms"):
+        return molecule.get_atoms().copy()
+    if hasattr(molecule, "S") and hasattr(molecule, "X"):
+        cell = getattr(molecule, "C", None)
+        pbc = cell is not None
+        return Atoms(molecule.S, positions=molecule.X, cell=cell, pbc=pbc)
+    raise TypeError("molecule must be an ase.Atoms, MoleculesObject, or legacy object with S/X attributes")
+
+
+def _molecule_id(molecule):
+    if hasattr(molecule, "get_moleculeid"):
+        return molecule.get_moleculeid()
+    return getattr(molecule, "ids", "vasp")
+
 
 class VASPGenerator:
+    """Deprecated VASP single-point helper.
 
-    # Constructor
-    # This will need to be more complicated for ad hoc cluster
-    def __init__(self, vasp_options, vasp_command, scratch='./', output_store=None,rm_scratch=False):
-        # Store variables
-        self.vasp_options = vasp_options ###RAM: Ziyan had commented this out. But I think it is useful
-        self.vasp_command = vasp_command #Command sequence to run VASP
+    Parameters are intentionally site-neutral. Provide the VASP launch command,
+    pseudopotential path, and any module/environment setup from the caller or
+    Parsl worker initialization. This class no longer constructs LANL-specific
+    commands or relies on MPI/GPU globals.
+    """
+
+    def __init__(
+        self,
+        vasp_options,
+        vasp_command=None,
+        scratch="./",
+        output_store=None,
+        rm_scratch=False,
+        vasp_pp_path=None,
+        environment=None,
+        omp_num_threads=None,
+    ):
+        warnings.warn(
+            "VASPGenerator is deprecated. Use "
+            "alframework.qm_interfaces.ase_calculator_interface.VASP_ase_calculator_task "
+            "or ase_calculator_task for new ALF workflows.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
+        self.vasp_options = vasp_options.copy()
+        self.vasp_command = vasp_command or self.vasp_options.pop("command", None)
         self.working_dir = scratch
         self.output_store = output_store
+        self.rm_scratch = rm_scratch
+        self.environment = {} if environment is None else environment.copy()
+        if self.vasp_command is not None:
+            self.environment["VASP_COMMAND"] = self.vasp_command
+        if vasp_pp_path is not None:
+            self.environment["VASP_PP_PATH"] = vasp_pp_path
+        if omp_num_threads is not None:
+            self.environment["OMP_NUM_THREADS"] = omp_num_threads
 
-        # Check for existing calculations
-        #self.existing_pkls = np.array([f for f in os.listdir(output_store) if f[-2:] == '.p'])
+        os.makedirs(self.working_dir, exist_ok=True)
+        if self.output_store is not None:
+            os.makedirs(self.output_store, exist_ok=True)
 
-        # Create rank working dir
-        if not os.path.isdir(self.working_dir):
-            os.mkdir(self.working_dir)
-
-        # Change current dir
-        try:
-            os.chdir(self.working_dir)
-        except NotADirectoryError:
-            print('Error: working dir not found.')
-            exit(1)
-        except PermissionError:
-            print('Error: permission error.')
-            exit(1)
-
-        # Prepare and save vasp command
-        if 'mpirun' not in VASP_COMMAND and 'two-step' not in VASP_COMMAND: ###Accepts two different forms of command
-            prepared_vasp_command = "module purge; source /usr/projects/ml4chem/Programs/vasp.6.2.1/vaspExports.bash; /projects/darwin-nv/centos8/x86_64/packages/nvhpc/Linux_x86_64/21.11/comm_libs/mpi/bin/mpirun -n 1 -host " + MPI.Get_processor_name() + ' ' + VASP_COMMAND ###RAM: 1/11
-        elif 'two-step' in VASP_COMMAND:
-            ###RAM: VASP calculation designed to fail immediately by removing the POTCAR
-            ###RAM: Changed to the new VASP compile 11/04/22
-            prepared_vasp_command = "module purge; source /usr/projects/t1vasp/vasp.6.3.2/vaspExports.bash; rm POTCAR; sed -i s/'ISPIN = .*'/'ISPIN = 1'/ INCAR; sed -i s/'NELM = .*'/'NELM = 1'/ INCAR; /projects/darwin-nv/rhel8/x86_64/packages/nvhpc/Linux_x86_64/22.9/comm_libs/mpi/bin/mpirun -n 1 -host " + MPI.Get_processor_name() + ' ' + '/usr/projects/t1vasp/vasp.6.3.2/bin/vasp_std'
-        elif 'mpirun' == VASP_COMMAND[:6]:
-            prepared_vasp_command = "mpirun -host " + MPI.Get_processor_name() + ' ' + VASP_COMMAND[6:] ###RAM: Remove the mpirun portion
-        print('Prepared VASP Command:',prepared_vasp_command)
-        os.environ['VASP_COMMAND'] = prepared_vasp_command
-        os.environ['VASP_PP_PATH'] = VASP_PP_PATH
-
-        # Set cuda device and number of OMP threads
-        if gpuid: os.environ['CUDA_VISIBLE_DEVICES'] = str(gpuid) ###RAM: Only set if using GPU
-        os.environ['OMP_NUM_THREADS'] = str(self.num_threads)
-       
-        # Define VASP settings
-        self.settings = dict(xc='pbe', prec='Accurate',
-        #self.settings = dict(prec='Accurate',
-                             ncore=vasp_options['ncore'] if 'ncore' in vasp_options else 1,
-                             lreal='Auto',
-                             nelm=vasp_options['nelm'] if 'nelm' in vasp_options else 120,
-                             ivdw=vasp_options['ivdw'] if 'ivdw' in vasp_options else 0,
-                             ispin=vasp_options['ispin']
-                             )
-        for key, val in vasp_options.items(): 
-            if key == 'kpoints':
-                self.settings['kpts'] = val
-            else:
+        self.settings = {
+            "xc": "pbe",
+            "prec": "Accurate",
+            "ncore": self.vasp_options.get("ncore", 1),
+            "lreal": "Auto",
+            "nelm": self.vasp_options.get("nelm", 120),
+            "ivdw": self.vasp_options.get("ivdw", 0),
+        }
+        for key, val in self.vasp_options.items():
+            if key == "kpoints":
+                self.settings["kpts"] = val
+            elif key != "command":
                 self.settings[key] = val
-      
 
-   
-    def get_magmom(self,atomic_no):
+    def get_magmom(self, atomic_no):
+        """Return configured magnetic moments or a simple atomic-number default."""
+        if "magmom" in self.vasp_options:
+            return self.vasp_options["magmom"]
+        return np.array(atomic_no).copy()
 
-        ###RAM: Allows the user to directly set magmom
-        if 'magmom' in self.vasp_options: return self.vasp_options['magmom']
+    def single_point(self, molecule, force_calculation=False, output_file=None):
+        """Run one VASP calculation through ASE.
 
-        magmom = atomic_no.copy() 
+        Args:
+            molecule: ``ase.Atoms``, ``MoleculesObject``, or legacy object with
+                ``S`` and ``X`` attributes.
+            force_calculation (bool): If True, include forces in the returned
+                properties.
+            output_file: Kept for legacy call compatibility. It is not used.
 
-        return magmom
+        Returns:
+            tuple: ``(atoms, properties)`` where ``atoms`` is the final
+            ``ase.Atoms`` object and ``properties`` contains ASE-unit results.
+        """
+        del output_file
 
-    #
-    # Function for obtaining a single point calculation
-    #
-    def single_point(self, molecule, force_calculation=False, output_file='output.opt'):
+        atoms = _atoms_from_input(molecule)
+        molecule_id = _molecule_id(molecule)
+        run_dir = os.path.join(self.working_dir, str(molecule_id))
+        os.makedirs(run_dir, exist_ok=True)
 
-        calc = Vasp(**self.settings) 
-
-        if self.existing_pkls.size > 0:
-            compute = np.where(self.existing_pkls == 'data-'+molecule.ids+'.p')[0].size == 0
-        else: 
-            compute = True
+        calc = Vasp(directory=run_dir, command=self.vasp_command, **self.settings)
+        atoms.calc = calc
 
         properties = {}
+        with _temporary_environment(self.environment):
+            properties["energy"] = atoms.get_potential_energy()
+            properties["stress"] = atoms.get_stress(voigt=False)
+            if force_calculation:
+                properties["forces"] = atoms.get_forces()
 
-        if compute:
-            # Define ASE Atoms object and set the calculator
-            atoms = Atoms(molecule.S, positions=molecule.X, cell=molecule.C, pbc=(True,True,True))
-            #if vasp_options['ispin'] == 2:
-            atomic_no = np.array(atoms.get_atomic_numbers())
+        if not getattr(calc, "converged", False):
+            raise SCFConvergenceFailure("VASP calculation did not converge")
 
-            atoms.set_calculator(calc)
+        if self.output_store is not None:
+            self._copy_outputs(run_dir, molecule_id)
+            pkl.dump(
+                {"atoms": atoms.copy(), "props": properties},
+                open(os.path.join(self.output_store, "data-" + str(molecule_id) + ".p"), "wb"),
+            )
 
-            try:
-                # Attempt to compute energies
-                properties['energy'] = (1.0/units.Hartree)*atoms.get_potential_energy()
-                
-                # Attempt to compute stress tensor: (xx, yy, zz, yz, xz, xy) or a 3x3 matrix
-                properties['stress'] = atoms.get_stress(voigt=False)
+        atoms.calc = None
+        if self.rm_scratch:
+            shutil.rmtree(run_dir, ignore_errors=True)
+        return atoms, properties
 
-                # Attempt to compute magnetic moment
-                #properties['magnetic_moment'] = atoms.get_magnetic_moment()
-
-                # Attempt to compute forces
-                if force_calculation:
-                    properties['forces'] = (1.0/units.Hartree)*atoms.get_forces()
-
-                #print('SCF CHECK:',atoms.calc.converged)
-                if not atoms.calc.converged:
-                    raise SCFConvergenceFailure()
-        
-                # Define new system
-                molecule = Molecule(np.array(atoms.get_positions()),molecule.S,molecule.Q,molecule.M,molecule.ids,C=molecule.C)
-                
-                # Move the success OUTCAR
-                output_data = open(self.working_dir+"/"+"OUTCAR", 'r').read()
-                output_file = open(self.output_store+"data-"+molecule.ids+'.OUTCAR',"w")
-                output_file.write(output_data)
-                output_file.close()
-                
-                output_data = open(self.working_dir+"/"+"POSCAR", 'r').read()
-                output_file = open(self.output_store+"data-"+molecule.ids+'.POSCAR',"w")
-                output_file.write(output_data)
-                output_file.close()
-                
-                output_data = open(self.working_dir+"/"+"CONTCAR", 'r').read()
-                output_file = open(self.output_store+"data-"+molecule.ids+'.CONTCAR',"w")
-                output_file.write(output_data)
-                output_file.close()
-                
-                # Store the calculation in pkl format
-                pkl.dump( {"molec":molecule,"props":properties}, open( self.output_store+"/data-"+molecule.ids+'.p', "wb" ) )
-
-                # Remove working files
-                for f in os.listdir(self.working_dir):
-                    os.remove(self.working_dir+'/'+f)
-                
-                # Return data
-                return molecule, properties
-            except:
-                # Obtain and print error out
-                e = sys.exc_info()[0]
-                print('!!ERROR!!:','data-'+molecule.ids+'.failed-OUTCAR\n',e)
-
-                # Move the failed OUTCAR
-                output_data = open(self.working_dir+"/"+"OUTCAR", 'r').read()    
-                output_file = open(self.output_store+"data-"+molecule.ids+'.failed-OUTCAR',"w")
-                output_file.write(output_data)
-                output_file.close()
-                 
-                output_data = open(self.working_dir+"/"+"POSCAR", 'r').read()
-                output_file = open(self.output_store+"data-"+molecule.ids+'.failed-POSCAR',"w")
-                output_file.write(output_data)
-                output_file.close()
-                
-                # Remove working files
-                for f in os.listdir(self.working_dir):
-                    os.remove(self.working_dir+'/'+f)
-
-                # Return failed data
-                return Molecule(np.array(atoms.get_positions()),molecule.S,molecule.Q,molecule.M,molecule.ids,C=molecule.C,failed=True), properties
-        else:
-            loaded_data = pkl.load( open( self.output_store+"/data-"+molecule.ids+'.p', "rb" ) )
-            print("DATA LOADED FROM FILE:",molecule.ids)
-            return loaded_data["molec"], loaded_data["props"]
-            
-        
+    def _copy_outputs(self, run_dir, molecule_id):
+        for filename in ("OUTCAR", "POSCAR", "CONTCAR"):
+            src = os.path.join(run_dir, filename)
+            if os.path.exists(src):
+                dst = os.path.join(self.output_store, "data-" + str(molecule_id) + "." + filename)
+                shutil.copyfile(src, dst)

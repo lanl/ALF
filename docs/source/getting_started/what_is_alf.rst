@@ -13,7 +13,7 @@ At a high level, ALF coordinates four core modules:
 
 **These modules are used to perform the main ALF workflow:**
 
-1. Build initial structures (bootstrapping) and label with a QM engine of choice. This step accomplishes initial sampling of the conformational/chemical space.
+1. Build initial structures (bootstrap) and label with a QM engine of choice. This step accomplishes initial sampling of the conformational/chemical space.
 2. Train an initial MLIP ensemble from the labeled data.
 3. Sample new structures with ML-driven molecular dynamics.
 4. Send selected high-uncertainty configurations to QM engine for labeling.
@@ -21,12 +21,24 @@ At a high level, ALF coordinates four core modules:
 6. Retrain ML ensemble once the number of high-uncertainty configurations exceeds a user-defined threshold. Repeat until no high-uncertainty
    frames are identified, or the number of ALF iterations is exceeded. Use final MLIP to perform down-stream production task (Not part of ALF).
 
+
+
 .. figure:: ../_static/alf.png
    :alt: Core ALF workflow from initial sampling (bootstrapping) to production-ready MLIP.
    :align: center
    :width: 85%
 
    Core ALF workflow from initial sampling (bootstrapping) to production-ready MLIP.
+
+
+
+During an iteration, ALF builds candidate structures, samples configurations
+using the current ML model ensemble, evaluates selected structures with QM,
+and stores the resulting data for retraining. The newly trained models are then
+used in the next sampling cycle.
+
+This loop is designed to run for many iterations with minimal user
+intervention.
 
 Overview of the workflow
 ------------------------
@@ -41,11 +53,11 @@ stages. The process is typically launched with:
 The ``master_config.json`` file points to the other configuration files and task
 definitions needed for each stage. In practice, ALF uses five JSON files:
 
-1. Master configuration
-2. Builder configuration
-3. Sampler configuration
-4. ML configuration
-5. QM configuration
+1. Master configuration --- ``master_config.json``
+2. Builder configuration --- ``builder_config.json``
+3. Sampler configuration --- ``mlmd_config.json``
+4. ML configuration --- ``ml_config.json``
+5. QM configuration --- ``qm_config.json``
 
 .. figure:: ../_static/alf_architecture.png
    :alt: Overview of ALF's code structure.
@@ -54,16 +66,7 @@ definitions needed for each stage. In practice, ALF uses five JSON files:
 
    Overview of ALF's code structure.
 
-How each iteration works
-------------------------
 
-During an iteration, ALF builds candidate structures, samples configurations
-using the current ML model ensemble, evaluates selected structures with QM,
-and stores the resulting data for retraining. The newly trained models are then
-used in the next sampling cycle.
-
-This loop is designed to run for many iterations with minimal user
-intervention.
 
 Execution model
 ---------------

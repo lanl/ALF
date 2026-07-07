@@ -1,5 +1,5 @@
-Reactive Sampling Example
-=========================
+Reactive Sampling
+=================
 
 The reactive sampling example demonstrates an ALF workflow for reaction-pathway
 sampling. It is intended for systems where reactant, transition-state, and

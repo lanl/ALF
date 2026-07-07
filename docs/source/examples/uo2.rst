@@ -1,5 +1,5 @@
-UO2 Example
-===========
+Periodic Solids (UO2)
+=====================
 
 The UO2 example demonstrates a periodic solid workflow built from pre-existing
 CFG structures. It also uses NeuroChem/ANI for ML and a custom

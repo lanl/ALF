@@ -1,5 +1,5 @@
-Seeded Active Learning Example
-==============================
+Seeded Active Learning
+======================
 
 The seeded active learning example shows how to start ALF from user-provided
 structures and optional existing labeled data. Use this when you already have
@@ -119,7 +119,7 @@ During a seeded run, ALF writes the standard outputs:
      - Existing and newly labeled data batches.
    * - ``sampling/metadata-*.p``
      - MLMD sampling metadata and uncertainty diagnostics.
-   * - ``orca_scratch/``
+   * - ``qm_scratch/``
      - ORCA input, output, and scratch directories for selected structures.
 
 Use this example when you want ALF to start from your own structures or data.

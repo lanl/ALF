@@ -1,5 +1,5 @@
-Simple Water Example
-====================
+Simple Water
+============
 
 The simple water example is a compact ALF workflow for a small molecular (water)
 system. It is intended as the first example to copy and adapt when setting up a
@@ -182,7 +182,8 @@ loop.
        Parsl.
    * - ``properties_list``
      - Maps ALF result names to HDF5 dataset names, property scope, and unit
-       conversion factor.
+       conversion factor. See :doc:`../user_guide/units` for how these
+       multipliers are applied.
    * - ``h5_path``
      - Output pattern for stored training data, such as
        ``h5store/data-0000.h5``.

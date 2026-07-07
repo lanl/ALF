@@ -168,16 +168,18 @@ commands or relies on MPI/GPU globals.</p>
 <dt class="sig sig-object py" id="alframework.qm_interfaces.vaspase_interface.VASPGenerator.single_point">
 <span class="sig-name descname"><span class="pre">single_point</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">molecule</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_calculation</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_file</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/qm_interfaces/vaspase_interface.html#VASPGenerator.single_point"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.qm_interfaces.vaspase_interface.VASPGenerator.single_point" title="Link to this definition"></a></dt>
 <dd><p>Run one VASP calculation through ASE.</p>
-<dl>
-<dt>Args:</dt><dd><dl class="simple">
-<dt>molecule: <code class="docutils literal notranslate"><span class="pre">ase.Atoms</span></code>, <code class="docutils literal notranslate"><span class="pre">MoleculesObject</span></code>, or legacy object with</dt><dd><p><code class="docutils literal notranslate"><span class="pre">S</span></code> and <code class="docutils literal notranslate"><span class="pre">X</span></code> attributes.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>molecule</strong> – <code class="docutils literal notranslate"><span class="pre">ase.Atoms</span></code>, <code class="docutils literal notranslate"><span class="pre">MoleculesObject</span></code>, or legacy object
+with <code class="docutils literal notranslate"><span class="pre">S</span></code> and <code class="docutils literal notranslate"><span class="pre">X</span></code> attributes.</p></li>
+<li><p><strong>force_calculation</strong> – If True, include forces in the returned
+properties.</p></li>
+<li><p><strong>output_file</strong> – Kept for legacy call compatibility. It is not used.</p></li>
+</ul>
 </dd>
-<dt>force_calculation (bool): If True, include forces in the returned</dt><dd><p>properties.</p>
-</dd>
-</dl>
-<p>output_file: Kept for legacy call compatibility. It is not used.</p>
-</dd>
-<dt>Returns:</dt><dd><p>tuple: <code class="docutils literal notranslate"><span class="pre">(atoms,</span> <span class="pre">properties)</span></code> where <code class="docutils literal notranslate"><span class="pre">atoms</span></code> is the final
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">(atoms,</span> <span class="pre">properties)</span></code> where <code class="docutils literal notranslate"><span class="pre">atoms</span></code> is the final
 <code class="docutils literal notranslate"><span class="pre">ase.Atoms</span></code> object and <code class="docutils literal notranslate"><span class="pre">properties</span></code> contains ASE-unit results.</p>
 </dd>
 </dl>

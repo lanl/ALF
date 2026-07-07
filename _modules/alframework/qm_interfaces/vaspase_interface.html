@@ -234,15 +234,12 @@
     <span class="k">def</span><span class="w"> </span><span class="nf">single_point</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">molecule</span><span class="p">,</span> <span class="n">force_calculation</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">output_file</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Run one VASP calculation through ASE.</span>
 
-<span class="sd">        Args:</span>
-<span class="sd">            molecule: ``ase.Atoms``, ``MoleculesObject``, or legacy object with</span>
-<span class="sd">                ``S`` and ``X`` attributes.</span>
-<span class="sd">            force_calculation (bool): If True, include forces in the returned</span>
-<span class="sd">                properties.</span>
-<span class="sd">            output_file: Kept for legacy call compatibility. It is not used.</span>
-
-<span class="sd">        Returns:</span>
-<span class="sd">            tuple: ``(atoms, properties)`` where ``atoms`` is the final</span>
+<span class="sd">        :param molecule: ``ase.Atoms``, ``MoleculesObject``, or legacy object</span>
+<span class="sd">            with ``S`` and ``X`` attributes.</span>
+<span class="sd">        :param force_calculation: If True, include forces in the returned</span>
+<span class="sd">            properties.</span>
+<span class="sd">        :param output_file: Kept for legacy call compatibility. It is not used.</span>
+<span class="sd">        :returns: ``(atoms, properties)`` where ``atoms`` is the final</span>
 <span class="sd">            ``ase.Atoms`` object and ``properties`` contains ASE-unit results.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">del</span> <span class="n">output_file</span>

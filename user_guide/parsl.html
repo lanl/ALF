@@ -63,6 +63,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#one-qm-job-per-allocation">One QM Job Per Allocation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#mpi-based-dft-codes">MPI-Based DFT Codes</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#separate-gpu-executors-for-ml-and-sampling">Separate GPU Executors For ML And Sampling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#globus-compute-endpoints">Globus Compute Endpoints</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#generic-cpu-gpu-template-pattern">Generic CPU/GPU Template Pattern</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#configuration-knobs">Configuration Knobs</a></li>
 </ul>
@@ -306,6 +307,41 @@ for GPU execution of ML and sampling tasks.</p>
 </div>
 <p>ALF also uses <code class="docutils literal notranslate"><span class="pre">gpus_per_node</span></code> from the master configuration to assign visible
 GPU ids inside sampler tasks.</p>
+</section>
+<section id="globus-compute-endpoints">
+<h2>Globus Compute Endpoints<a class="headerlink" href="#globus-compute-endpoints" title="Link to this heading"></a></h2>
+<p>ALF can also target <a class="reference external" href="https://www.globus.org/compute">Globus Compute</a>
+endpoints through Parsl. In this pattern, <code class="docutils literal notranslate"><span class="pre">parsl_configs.py</span></code> uses Parsl’s
+<code class="docutils literal notranslate"><span class="pre">GlobusComputeExecutor</span></code> instead of a scheduler-backed executor, while keeping
+the ALF executor labels such as <code class="docutils literal notranslate"><span class="pre">alf_QM_executor</span></code>, <code class="docutils literal notranslate"><span class="pre">alf_ML_executor</span></code>, or
+<code class="docutils literal notranslate"><span class="pre">alf_sampler_executor</span></code>. This can useful for multisite runs where different endpoints
+provide different resources, or for users who do not have a local scheduler.</p>
+<p>The Parsl documentation includes a
+<a class="reference external" href="https://parsl.readthedocs.io/en/stable/userguide/configuration/examples.html#globus-compute-multisite">Globus Compute multisite example</a>
+with additional endpoint setup details. A compact ALF-style configuration can
+look like this:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">globus_compute_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="n">Executor</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">parsl.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">Config</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">parsl.executors</span><span class="w"> </span><span class="kn">import</span> <span class="n">GlobusComputeExecutor</span>
+
+<span class="n">ml_endpoint</span> <span class="o">=</span> <span class="s2">&quot;YOUR_GLOBUS_COMPUTE_ENDPOINT_UUID&quot;</span>
+
+<span class="n">config_globus</span> <span class="o">=</span> <span class="n">Config</span><span class="p">(</span>
+    <span class="n">executors</span><span class="o">=</span><span class="p">[</span>
+        <span class="n">GlobusComputeExecutor</span><span class="p">(</span>
+            <span class="n">executor</span><span class="o">=</span><span class="n">Executor</span><span class="p">(</span><span class="n">endpoint_id</span><span class="o">=</span><span class="n">ml_endpoint</span><span class="p">),</span>
+            <span class="n">label</span><span class="o">=</span><span class="s2">&quot;alf_ML_executor&quot;</span><span class="p">,</span>
+        <span class="p">),</span>
+    <span class="p">],</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>For multisite runs, add more <code class="docutils literal notranslate"><span class="pre">GlobusComputeExecutor</span></code> entries with different
+endpoint UUIDs and the ALF labels for the work each endpoint should receive.
+For example, one endpoint could provide <code class="docutils literal notranslate"><span class="pre">alf_QM_executor</span></code> while another
+provides <code class="docutils literal notranslate"><span class="pre">alf_ML_executor</span></code> or <code class="docutils literal notranslate"><span class="pre">alf_sampler_executor</span></code>. Node that the Globus Compute
+SDK must be installed in the Python environment that runs ALF to use this pattern functionality.</p>
 </section>
 <section id="generic-cpu-gpu-template-pattern">
 <h2>Generic CPU/GPU Template Pattern<a class="headerlink" href="#generic-cpu-gpu-template-pattern" title="Link to this heading"></a></h2>

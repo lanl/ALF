@@ -206,6 +206,45 @@ for GPU execution of ML and sampling tasks.
 ALF also uses ``gpus_per_node`` from the master configuration to assign visible
 GPU ids inside sampler tasks.
 
+Globus Compute Endpoints
+------------------------
+
+ALF can also target `Globus Compute <https://www.globus.org/compute>`_
+endpoints through Parsl. In this pattern, ``parsl_configs.py`` uses Parsl's
+``GlobusComputeExecutor`` instead of a scheduler-backed executor, while keeping
+the ALF executor labels such as ``alf_QM_executor``, ``alf_ML_executor``, or
+``alf_sampler_executor``. This can useful for multisite runs where different endpoints 
+provide different resources, or for users who do not have a local scheduler.
+
+The Parsl documentation includes a
+`Globus Compute multisite example <https://parsl.readthedocs.io/en/stable/userguide/configuration/examples.html#globus-compute-multisite>`_
+with additional endpoint setup details. A compact ALF-style configuration can
+look like this:
+
+.. code-block:: python
+
+   from globus_compute_sdk import Executor
+
+   from parsl.config import Config
+   from parsl.executors import GlobusComputeExecutor
+
+   ml_endpoint = "YOUR_GLOBUS_COMPUTE_ENDPOINT_UUID"
+
+   config_globus = Config(
+       executors=[
+           GlobusComputeExecutor(
+               executor=Executor(endpoint_id=ml_endpoint),
+               label="alf_ML_executor",
+           ),
+       ],
+   )
+
+For multisite runs, add more ``GlobusComputeExecutor`` entries with different
+endpoint UUIDs and the ALF labels for the work each endpoint should receive.
+For example, one endpoint could provide ``alf_QM_executor`` while another
+provides ``alf_ML_executor`` or ``alf_sampler_executor``. Node that the Globus Compute 
+SDK must be installed in the Python environment that runs ALF to use this pattern functionality.
+
 Generic CPU/GPU Template Pattern
 --------------------------------
 

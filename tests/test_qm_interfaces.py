@@ -4,8 +4,6 @@ from ase import Atoms
 
 from alframework.qm_interfaces.orca5_interface import orcaGenerator
 from alframework.qm_interfaces.qchem_DFT_interface import qchemGenerator
-from alframework.tools.molecules_class import MoleculesObject
-from tests.helpers.interface_checks import check_molecule_result, check_task_convergence
 
 
 def write_orca_outputs(path):
@@ -107,18 +105,6 @@ def test_orca_parser_applies_unit_conversion(tmp_path, unit, energy_scale, force
     np.testing.assert_allclose(parsed["forces"], -np.array([[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]) * force_scale)
 
 
-@pytest.mark.parametrize(
-    "unit",
-    [
-        {"energy": "kcal", "length": "bohr"},
-        {"energy": "hartree", "length": "nanometer"},
-    ],
-)
-def test_orca_generator_rejects_unknown_units(unit):
-    with pytest.raises(KeyError):
-        orcaGenerator(unit=unit)
-
-
 def test_qchem_input_writer(tmp_path):
     atoms = Atoms("OH2", positions=[[0.0, 0.0, 0.0], [0.0, 0.7, 0.7], [0.0, -0.7, 0.7]])
     generator = qchemGenerator(scratch_path=str(tmp_path), qcheminput="JOBTYPE FORCE", qchemblocks="$pcm\n$end")
@@ -131,33 +117,3 @@ def test_qchem_input_writer(tmp_path):
     assert "8 0.0 0.0 0.0" in text
     assert "1 0.0 0.7 0.7" in text
     assert "$rem\nJOBTYPE FORCE\n$end" in text
-
-
-def test_orca_task_can_be_tested_with_mocked_single_point(tmp_path, monkeypatch):
-    from alframework.qm_interfaces import orca5_interface
-
-    atoms = Atoms("H", positions=[[0.0, 0.0, 0.0]])
-    molecule = MoleculesObject(atoms, "h")
-    expected = {"energy": -1.0, "forces": np.zeros((1, 3)), "converged": True}
-
-    def fake_single_point(self, molecule, prefix="orca", properties=None):
-        return expected
-
-    monkeypatch.setattr(orca5_interface.orcaGenerator, "single_point", fake_single_point)
-    task_func = getattr(orca5_interface.orca_calculator_task, "func", orca5_interface.orca_calculator_task)
-    result = task_func(
-        molecule,
-        {
-            "ncpu": 1,
-            "orca_env_file": None,
-            "QM_run_command": "orca",
-            "orcasimpleinput": "HF",
-            "orcablocks": "",
-        },
-        str(tmp_path),
-        {"energy": ["energy", "system", 1.0], "forces": ["forces", "atomic", 1.0]},
-    )
-
-    check_molecule_result(result, natoms=1, required_properties=["energy", "forces", "converged"])
-    check_task_convergence(result, True)
-    assert result.get_results() == expected

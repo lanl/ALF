@@ -3,10 +3,10 @@ name: Build and Deploy Sphinx Docs for ALF
 on:
   push:
     branches:
-      - first_publication
+      - development
   pull_request:
     branches:
-      - first_publication
+      - development
 
 jobs:
   build:
@@ -33,7 +33,7 @@ jobs:
           sphinx-build -b html docs/source docs/_autobuild/html
 
       - name: Deploy to GitHub Pages
-        if: github.ref == 'refs/heads/first_publication'  # deploy on first_publication branch
+        if: github.ref == 'refs/heads/development'  # deploy on first_publication branch
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}

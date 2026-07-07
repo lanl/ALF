@@ -8,6 +8,7 @@
   <title>alframework.tools.pyanitools &mdash; ALF 0.0.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=eaec28dc" />
 
   
       <script src="../../../_static/jquery.js?v=5d32c60e"></script>
@@ -52,11 +53,16 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../user_guide/samplers.html">Samplers</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../user_guide/ml_interfaces.html">ML Interfaces</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../user_guide/qm_interfaces.html">QM Interfaces</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../user_guide/parsl.html">Parsl And HPC Execution</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../../examples/simple_water.html">Simple Water Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../examples/seeded_active_learning.html">Seeded Active Learning Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../examples/fine_tuning.html">Fine-Tuning Existing Model Example</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../examples/molten_salt.html">Molten Salt Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../examples/il.html">Ionic Liquid Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../examples/uo2.html">UO2 Example</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../examples/reactive_sampling.html">Reactive Sampling Example</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
@@ -97,6 +103,16 @@
 
 <span class="c1"># Determine python version</span>
 <span class="n">PY_VERSION</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">platform</span><span class="o">.</span><span class="n">python_version</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;.&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">])</span> <span class="o">&gt;</span> <span class="mi">3</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_decode_byte_array</span><span class="p">(</span><span class="n">dataset</span><span class="p">):</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="ow">and</span> <span class="n">dataset</span><span class="o">.</span><span class="n">size</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">first_value</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">flat</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">first_value</span><span class="p">,</span> <span class="p">(</span><span class="nb">bytes</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">bytes_</span><span class="p">)):</span>
+            <span class="n">decoded</span> <span class="o">=</span> <span class="p">[</span><span class="n">value</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s1">&#39;ascii&#39;</span><span class="p">)</span> <span class="k">for</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">dataset</span><span class="o">.</span><span class="n">flat</span><span class="p">]</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">decoded</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">dataset</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">dataset</span>
+
 
 <span class="sd">&#39;&#39;&#39;                ANI data packer class</span>
 <span class="sd">    Class for storing data supplied as a dictionary.</span>
@@ -164,11 +180,7 @@
                 <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">keys</span><span class="p">:</span>
                     <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">item</span><span class="p">[</span><span class="n">k</span><span class="p">],</span> <span class="n">h5py</span><span class="o">.</span><span class="n">Group</span><span class="p">):</span>
                         <span class="n">dataset</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">item</span><span class="p">[</span><span class="n">k</span><span class="p">][()])</span>
-
-                        <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">dataset</span><span class="p">)</span> <span class="ow">is</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
-                            <span class="k">if</span> <span class="n">dataset</span><span class="o">.</span><span class="n">size</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
-                                <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="ow">is</span> <span class="n">np</span><span class="o">.</span><span class="n">bytes_</span><span class="p">:</span>
-                                    <span class="n">dataset</span> <span class="o">=</span> <span class="p">[</span><span class="n">a</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s1">&#39;ascii&#39;</span><span class="p">)</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">dataset</span><span class="p">]</span>
+                        <span class="n">dataset</span> <span class="o">=</span> <span class="n">_decode_byte_array</span><span class="p">(</span><span class="n">dataset</span><span class="p">)</span>
 
                         <span class="n">data</span><span class="o">.</span><span class="n">update</span><span class="p">({</span><span class="n">k</span><span class="p">:</span><span class="n">dataset</span><span class="p">})</span>
 
@@ -208,11 +220,7 @@
         <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">keys</span><span class="p">:</span>
             <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">item</span><span class="p">[</span><span class="n">k</span><span class="p">],</span> <span class="n">h5py</span><span class="o">.</span><span class="n">Group</span><span class="p">):</span>
                 <span class="n">dataset</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">item</span><span class="p">[</span><span class="n">k</span><span class="p">][()])</span>
-
-                <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">dataset</span><span class="p">)</span> <span class="ow">is</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
-                    <span class="k">if</span> <span class="n">dataset</span><span class="o">.</span><span class="n">size</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
-                        <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="ow">is</span> <span class="n">np</span><span class="o">.</span><span class="n">bytes_</span><span class="p">:</span>
-                            <span class="n">dataset</span> <span class="o">=</span> <span class="p">[</span><span class="n">a</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s1">&#39;ascii&#39;</span><span class="p">)</span> <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">dataset</span><span class="p">]</span>
+                <span class="n">dataset</span> <span class="o">=</span> <span class="n">_decode_byte_array</span><span class="p">(</span><span class="n">dataset</span><span class="p">)</span>
 
                 <span class="n">data</span><span class="o">.</span><span class="n">update</span><span class="p">({</span><span class="n">k</span><span class="p">:</span> <span class="n">dataset</span><span class="p">})</span>
         <span class="k">return</span> <span class="n">data</span></div>
@@ -241,7 +249,6 @@
     <span class="k">def</span><span class="w"> </span><span class="nf">cleanup</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">store</span><span class="o">.</span><span class="n">close</span><span class="p">()</span></div>
 </div>
-
 
 </pre></div>
 

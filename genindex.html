@@ -8,6 +8,7 @@
   <title>Index &mdash; ALF 0.0.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/custom.css?v=eaec28dc" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
@@ -52,11 +53,16 @@
 <li class="toctree-l1"><a class="reference internal" href="user_guide/samplers.html">Samplers</a></li>
 <li class="toctree-l1"><a class="reference internal" href="user_guide/ml_interfaces.html">ML Interfaces</a></li>
 <li class="toctree-l1"><a class="reference internal" href="user_guide/qm_interfaces.html">QM Interfaces</a></li>
+<li class="toctree-l1"><a class="reference internal" href="user_guide/parsl.html">Parsl And HPC Execution</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="examples/simple_water.html">Simple Water Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples/seeded_active_learning.html">Seeded Active Learning Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples/fine_tuning.html">Fine-Tuning Existing Model Example</a></li>
 <li class="toctree-l1"><a class="reference internal" href="examples/molten_salt.html">Molten Salt Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples/il.html">Ionic Liquid Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples/uo2.html">UO2 Example</a></li>
 <li class="toctree-l1"><a class="reference internal" href="examples/reactive_sampling.html">Reactive Sampling Example</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
@@ -266,6 +272,13 @@
 
       <ul>
         <li><a href="api_documentation/alframework.samplers.reactive_sampler.html#module-alframework.samplers.reactive_sampler">module</a>
+</li>
+      </ul></li>
+      <li>
+    alframework.samplers.udd_sampling
+
+      <ul>
+        <li><a href="api_documentation/alframework.samplers.udd_sampling.html#module-alframework.samplers.udd_sampling">module</a>
 </li>
       </ul></li>
       <li>
@@ -531,6 +544,8 @@
 </li>
         <li><a href="api_documentation/alframework.samplers.reactive_sampler.html#module-alframework.samplers.reactive_sampler">alframework.samplers.reactive_sampler</a>
 </li>
+        <li><a href="api_documentation/alframework.samplers.udd_sampling.html#module-alframework.samplers.udd_sampling">alframework.samplers.udd_sampling</a>
+</li>
         <li><a href="api_documentation/alframework.tools.html#module-alframework.tools">alframework.tools</a>
 </li>
         <li><a href="api_documentation/alframework.tools.molecules_class.html#module-alframework.tools.molecules_class">alframework.tools.molecules_class</a>
@@ -578,13 +593,11 @@
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_documentation/alframework.qm_interfaces.orca5_interface.html#alframework.qm_interfaces.orca5_interface.orcaGenerator.parse_output">parse_output() (orcaGenerator method)</a>
 </li>
-      <li><a href="api_documentation/alframework.tools.tools.html#alframework.tools.tools.parsl_task_queue">parsl_task_queue (class in alframework.tools.tools)</a>
-</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api_documentation/alframework.tools.tools.html#alframework.tools.tools.parsl_task_queue.print_status">print_status() (parsl_task_queue method)</a>
+      <li><a href="api_documentation/alframework.tools.tools.html#alframework.tools.tools.parsl_task_queue">parsl_task_queue (class in alframework.tools.tools)</a>
 </li>
-      <li><a href="api_documentation/alframework.tools.pyanitools.html#alframework.tools.pyanitools.PY_VERSION">PY_VERSION (in module alframework.tools.pyanitools)</a>
+      <li><a href="api_documentation/alframework.tools.tools.html#alframework.tools.tools.parsl_task_queue.print_status">print_status() (parsl_task_queue method)</a>
 </li>
   </ul></td>
 </tr></table>

@@ -9,6 +9,7 @@
   <title>Samplers &mdash; ALF 0.0.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=eaec28dc" />
 
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
@@ -53,19 +54,25 @@
 <li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration</a></li>
 <li class="toctree-l1"><a class="reference internal" href="builders.html">Builders</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Samplers</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#available-sampler-modules">Available sampler modules</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#choosing-a-sampler">Choosing a sampler</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#sampler-api-links">Sampler API links</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#related-examples">Related examples</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#supported-sampler-tasks">Supported Sampler Tasks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#common-configuration-fields">Common Configuration Fields</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#what-the-sampler-returns">What The Sampler Returns</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#related-examples">Related Examples</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#sampler-api-links">Sampler API Links</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="ml_interfaces.html">ML Interfaces</a></li>
 <li class="toctree-l1"><a class="reference internal" href="qm_interfaces.html">QM Interfaces</a></li>
+<li class="toctree-l1"><a class="reference internal" href="parsl.html">Parsl And HPC Execution</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../examples/simple_water.html">Simple Water Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/seeded_active_learning.html">Seeded Active Learning Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/fine_tuning.html">Fine-Tuning Existing Model Example</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../examples/molten_salt.html">Molten Salt Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/il.html">Ionic Liquid Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/uo2.html">UO2 Example</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../examples/reactive_sampling.html">Reactive Sampling Example</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
@@ -103,40 +110,354 @@
              
   <section id="samplers">
 <h1>Samplers<a class="headerlink" href="#samplers" title="Link to this heading"></a></h1>
-<p>Samplers drive data generation by exploring configuration space with QBC uncertainty quantification.</p>
-<section id="available-sampler-modules">
-<h2>Available sampler modules<a class="headerlink" href="#available-sampler-modules" title="Link to this heading"></a></h2>
-<p>ALF currently includes several sampler-related modules:</p>
-<ol class="arabic simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">alframework.samplers.mlmd_sampling</span></code>
-Main uncertainty-driven sampling workflow using Langevin dynamics. This is the
-primary sampler used in many ALF runs.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">alframework.samplers.reactive_sampler</span></code>
-Reactive sampling workflows based on NEB and dimer-style methods for constructing
-reaction-focused datasets.</p></li>
-</ol>
+<p>Samplers explore configuration space and decide whether a structure should be
+sent to QM labeling. In most ALF workflows, the sampler receives a
+<code class="docutils literal notranslate"><span class="pre">MoleculesObject</span></code> from the builder, evaluates it with an ensemble ML
+calculator, and returns either a selected high-uncertainty configuration or a
+marker that no QM calculation is needed.</p>
+<p>In a master configuration, the selected sampler is specified with the
+<code class="docutils literal notranslate"><span class="pre">sampler_task</span></code> import string:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;sampler_task&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;alframework.samplers.mlmd_sampling.simple_mlmd_sampling_task&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;sampler_config_path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;mlmd_config.json&quot;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>Sampler tasks usually run on the <code class="docutils literal notranslate"><span class="pre">alf_sampler_executor</span></code> Parsl executor. GPU
+assignment is controlled by <code class="docutils literal notranslate"><span class="pre">gpus_per_node</span></code> in the master configuration and
+the worker layout in the Parsl resource configuration.</p>
+<section id="supported-sampler-tasks">
+<h2>Supported Sampler Tasks<a class="headerlink" href="#supported-sampler-tasks" title="Link to this heading"></a></h2>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 40.0%" />
+<col style="width: 34.0%" />
+<col style="width: 26.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Sampler task</p></th>
+<th class="head"><p>What it does</p></th>
+<th class="head"><p>Typical use</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">alframework.samplers.mlmd_sampling.simple_mlmd_sampling_task</span></code></p></td>
+<td><p>Runs Langevin molecular dynamics with an ensemble ML calculator,
+monitors energy and force uncertainty, and returns configurations that
+exceed uncertainty or distance criteria.</p></td>
+<td><p>General active-learning loops based on MD exploration.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">alframework.samplers.udd_sampling.simple_udd_sampling_task</span></code></p></td>
+<td><p>Runs MLMD with an uncertainty-driven dynamics bias that steers
+trajectories toward high ensemble energy uncertainty while retaining the
+usual QM-selection threshold checks.</p></td>
+<td><p>Exploration runs where biasing MD toward model disagreement is desired.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">alframework.samplers.reactive_sampler.reactive_sampling</span></code></p></td>
+<td><p>Uses NEB and/or dimer-style searches from reaction metadata, monitors
+ensemble uncertainty along reaction pathways, and returns uncertain
+structures for QM labeling.</p></td>
+<td><p>Reaction-pathway active learning with reactant, transition-state, and
+product structures.</p></td>
+</tr>
+</tbody>
+</table>
 </section>
-<section id="choosing-a-sampler">
-<h2>Choosing a sampler<a class="headerlink" href="#choosing-a-sampler" title="Link to this heading"></a></h2>
-<p>Use <code class="docutils literal notranslate"><span class="pre">mlmd_sampling</span></code> for general active-learning loops where uncertainty
-thresholds are used to decide when to call QM.</p>
-<p>Use <code class="docutils literal notranslate"><span class="pre">reactive_sampler</span></code> when the target problem is reaction-pathway sampling
-and transition-state exploration.</p>
+<section id="common-configuration-fields">
+<h2>Common Configuration Fields<a class="headerlink" href="#common-configuration-fields" title="Link to this heading"></a></h2>
+<dl>
+<dt>MLMD dynamics fields</dt><dd><p>These fields control the length and cadence of MD sampling.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 30.0%" />
+<col style="width: 70.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">dt</span></code></p></td>
+<td><p>MD timestep in femtoseconds.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">maxt</span></code></p></td>
+<td><p>Maximum simulation time in picoseconds.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Ncheck</span></code></p></td>
+<td><p>Number of MD steps between uncertainty checks.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">min_time</span></code></p></td>
+<td><p>Optional minimum simulation time before uncertainty checks can select
+a structure.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">distcut</span></code></p></td>
+<td><p>Minimum allowed interatomic distance. Structures can be rejected if
+atoms come too close.</p></td>
+</tr>
+</tbody>
+</table>
+</dd>
+<dt>Uncertainty thresholds</dt><dd><p>These fields decide when a sampled configuration should be sent to QM.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 30.0%" />
+<col style="width: 70.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Escut</span></code></p></td>
+<td><p>Energy standard-deviation threshold.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Fscut</span></code></p></td>
+<td><p>Mean force standard-deviation threshold.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">forces_stdev_max</span></code></p></td>
+<td><p>The MLMD sampler also checks the maximum per-force uncertainty using
+an internal threshold of <code class="docutils literal notranslate"><span class="pre">3</span> <span class="pre">*</span> <span class="pre">Fscut</span></code>.</p></td>
+</tr>
+</tbody>
+</table>
+</dd>
+<dt>Temperature schedule fields</dt><dd><p>The sampler randomly chooses temperature schedule parameters from configured
+ranges for each task.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 30.0%" />
+<col style="width: 70.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">srt_temp</span></code></p></td>
+<td><p>Range for the starting temperature.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">end_temp</span></code></p></td>
+<td><p>Range for the ending temperature.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">amp_temp</span></code></p></td>
+<td><p>Range for sinusoidal temperature fluctuation amplitude.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">per_temp</span></code></p></td>
+<td><p>Range for temperature fluctuation period.</p></td>
+</tr>
+</tbody>
+</table>
+</dd>
+<dt>Density schedule fields</dt><dd><p>Density changes are optional. Use <code class="docutils literal notranslate"><span class="pre">null</span></code> for <code class="docutils literal notranslate"><span class="pre">end_dens</span></code>, <code class="docutils literal notranslate"><span class="pre">amp_dens</span></code>,
+and <code class="docutils literal notranslate"><span class="pre">per_dens</span></code> to disable density changes.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 30.0%" />
+<col style="width: 70.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">end_dens</span></code></p></td>
+<td><p>Target final density range. <code class="docutils literal notranslate"><span class="pre">null</span></code> disables cell rescaling.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">amp_dens</span></code></p></td>
+<td><p>Range for density fluctuation amplitude.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">per_dens</span></code></p></td>
+<td><p>Range for density fluctuation period.</p></td>
+</tr>
+</tbody>
+</table>
+</dd>
+<dt>ML calculator fields</dt><dd><p>These fields control how sampler tasks load and wrap ML models.
+See <a class="reference internal" href="ml_interfaces.html#ml-interface-extension-points"><span class="std std-ref">How ALF Uses ML Interfaces</span></a> and
+<a class="reference internal" href="ml_interfaces.html#ml-interface-new-architecture-template"><span class="std std-ref">Adding New ML Architectures</span></a> for the corresponding ML
+interface requirements.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 30.0%" />
+<col style="width: 70.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ase_calculator</span></code></p></td>
+<td><p>Import string for the ML calculator or model-loader function.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">MLMD_calculator_options</span></code></p></td>
+<td><p>Options passed to <code class="docutils literal notranslate"><span class="pre">MLMD_calculator</span></code>, such as <code class="docutils literal notranslate"><span class="pre">well_params</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">translate_to_center</span></code></p></td>
+<td><p>Whether to translate the incoming structure so its center of mass is
+near the origin before sampling.</p></td>
+</tr>
+</tbody>
+</table>
+</dd>
+<dt>Uncertainty-driven dynamics</dt><dd><p>Uncertainty-driven dynamics (UDD) is a biased MLMD sampler that steers
+dynamics toward regions where the model committee has high ensemble energy
+uncertainty. The usual <code class="docutils literal notranslate"><span class="pre">Escut</span></code> and <code class="docutils literal notranslate"><span class="pre">Fscut</span></code> threshold logic still decides
+whether a sampled configuration is returned for QM labeling.</p>
+<p>Select UDD in <code class="docutils literal notranslate"><span class="pre">master_config.json</span></code> with a separate sampler task:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;sampler_task&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;alframework.samplers.udd_sampling.simple_udd_sampling_task&quot;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>Set the bias strength in the sampler config:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;udd_bias_weight&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.45</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;MLMD_calculator_options&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;well_params&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">udd_bias_weight</span></code> controls the strength of the energy-uncertainty bias.
+Use <code class="docutils literal notranslate"><span class="pre">simple_mlmd_sampling_task</span></code> instead when no UDD bias is desired.</p>
+</dd>
+<dt>Output and trajectory fields</dt><dd><p>These fields control sampler metadata and optional trajectory output.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 30.0%" />
+<col style="width: 70.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">meta_dir</span></code> or <code class="docutils literal notranslate"><span class="pre">meta_path</span></code></p></td>
+<td><p>Directory for sampler metadata files. Examples use both names; the
+task input builder maps compatible names to the sampler function.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">trajectory_frequency</span></code></p></td>
+<td><p>Probability of writing a trajectory for a sampling task.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">trajectory_interval</span></code></p></td>
+<td><p>MD-step interval for trajectory writes when trajectory output is
+enabled.</p></td>
+</tr>
+</tbody>
+</table>
+</dd>
+<dt>Reactive sampler fields</dt><dd><p>These fields are used by <code class="docutils literal notranslate"><span class="pre">reactive_sampling</span></code>.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 30.0%" />
+<col style="width: 70.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">reactive_sampling_method</span></code></p></td>
+<td><p>Reactive search mode. Values containing <code class="docutils literal notranslate"><span class="pre">NEB</span></code> run NEB; values
+containing <code class="docutils literal notranslate"><span class="pre">DIMER</span></code> run dimer sampling.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">N_neb</span></code></p></td>
+<td><p>Number of intermediate NEB images.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">max_iter</span></code></p></td>
+<td><p>Maximum number of repeated reactive-sampling attempts.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">neb_steps</span></code></p></td>
+<td><p>Optimizer steps for each NEB or dimer call.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Escut</span></code>, <code class="docutils literal notranslate"><span class="pre">Fscut</span></code></p></td>
+<td><p>Energy and force uncertainty thresholds.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Fmmult</span></code></p></td>
+<td><p>Multiplier applied to <code class="docutils literal notranslate"><span class="pre">Fscut</span></code> for maximum force uncertainty. The
+default is <code class="docutils literal notranslate"><span class="pre">3.0</span></code>.</p></td>
+</tr>
+</tbody>
+</table>
+</dd>
+</dl>
+</section>
+<section id="what-the-sampler-returns">
+<h2>What The Sampler Returns<a class="headerlink" href="#what-the-sampler-returns" title="Link to this heading"></a></h2>
+<p>If uncertainty or another selection criterion triggers, the returned
+<code class="docutils literal notranslate"><span class="pre">MoleculesObject</span></code> keeps its atoms. ALF then passes that structure to the QM
+task queue for labeling.</p>
+<p>If sampling completes without selecting a configuration, the sampler sets the
+atoms to <code class="docutils literal notranslate"><span class="pre">None</span></code> on the returned <code class="docutils literal notranslate"><span class="pre">MoleculesObject</span></code>. ALF treats this as a
+successful sampling attempt that does not need QM labeling.</p>
+<p>Sampler metadata records the relevant diagnostics, including uncertainty
+values, temperature and density schedule history, distance checks, selection
+flags, final positions, and cell information. MLMD metadata is commonly written
+to files such as <code class="docutils literal notranslate"><span class="pre">sampling/metadata-&lt;moleculeid&gt;.p</span></code> when <code class="docutils literal notranslate"><span class="pre">meta_dir</span></code> or a
+compatible metadata path is configured.</p>
+</section>
+<section id="related-examples">
+<h2>Related Examples<a class="headerlink" href="#related-examples" title="Link to this heading"></a></h2>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 30.0%" />
+<col style="width: 45.0%" />
+<col style="width: 25.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Example</p></th>
+<th class="head"><p>Sampler task</p></th>
+<th class="head"><p>Notes</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">examples/simple_water</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">alframework.samplers.mlmd_sampling.simple_mlmd_sampling_task</span></code></p></td>
+<td><p>HIPPYNN ensemble MLMD sampling.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">examples/simple_water_multi_builder</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">alframework.samplers.mlmd_sampling.simple_mlmd_sampling_task</span></code></p></td>
+<td><p>Same sampler as simple water; builder throughput changes.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">examples/molten_salt</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">alframework.samplers.mlmd_sampling.simple_mlmd_sampling_task</span></code></p></td>
+<td><p>MLMD sampling for periodic ionic systems.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">examples/UO2</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">alframework.samplers.mlmd_sampling.simple_mlmd_sampling_task</span></code></p></td>
+<td><p>Uses <code class="docutils literal notranslate"><span class="pre">use_potential_specific_code:</span> <span class="pre">&quot;neurochem&quot;</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">examples/IL</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">alframework.samplers.mlmd_sampling.simple_mlmd_sampling_task</span></code></p></td>
+<td><p>MLMD sampling for ionic-liquid style mixtures.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">examples/reactive_sampling</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">alframework.samplers.reactive_sampler.reactive_sampling</span></code></p></td>
+<td><p>NEB/dimer-style reaction-pathway sampling.</p></td>
+</tr>
+<tr class="row-even"><td><p>UDD workflows</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">alframework.samplers.udd_sampling.simple_udd_sampling_task</span></code></p></td>
+<td><p>Biased MLMD sampling toward high ensemble energy uncertainty.</p></td>
+</tr>
+</tbody>
+</table>
 </section>
 <section id="sampler-api-links">
-<h2>Sampler API links<a class="headerlink" href="#sampler-api-links" title="Link to this heading"></a></h2>
+<h2>Sampler API Links<a class="headerlink" href="#sampler-api-links" title="Link to this heading"></a></h2>
 <p>You can link from this guide directly to API pages:</p>
 <ul class="simple">
 <li><p><a class="reference internal" href="../api_documentation/alframework.samplers.html"><span class="doc">Samplers package API</span></a></p></li>
 <li><p><a class="reference internal" href="../api_documentation/alframework.samplers.mlmd_sampling.html"><span class="doc">MLMD sampling module</span></a></p></li>
 <li><p><a class="reference internal" href="../api_documentation/alframework.samplers.reactive_sampler.html"><span class="doc">Reactive sampler module</span></a></p></li>
+<li><p><a class="reference internal" href="../api_documentation/alframework.samplers.ASE_ensemble_constructor.html"><span class="doc">ASE ensemble calculator module</span></a></p></li>
 </ul>
-</section>
-<section id="related-examples">
-<h2>Related examples<a class="headerlink" href="#related-examples" title="Link to this heading"></a></h2>
-<p>See <a class="reference internal" href="../examples/simple_water.html"><span class="doc">Simple Water Example</span></a> and <a class="reference internal" href="../examples/molten_salt.html"><span class="doc">Molten Salt Example</span></a> for
-MLMD-style sampling, and <a class="reference internal" href="../examples/reactive_sampling.html"><span class="doc">Reactive Sampling Example</span></a> for reaction-path
-sampling.</p>
 </section>
 </section>
 

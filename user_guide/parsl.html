@@ -1,0 +1,633 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Parsl And HPC Execution &mdash; ALF 0.0.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=eaec28dc" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=5c79bd3c"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Simple Water Example" href="../examples/simple_water.html" />
+    <link rel="prev" title="QM Interfaces" href="qm_interfaces.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            ALF
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started/what_is_alf.html">What Is ALF</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started/installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started/quickstart.html">Quickstart</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="builders.html">Builders</a></li>
+<li class="toctree-l1"><a class="reference internal" href="samplers.html">Samplers</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ml_interfaces.html">ML Interfaces</a></li>
+<li class="toctree-l1"><a class="reference internal" href="qm_interfaces.html">QM Interfaces</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Parsl And HPC Execution</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#how-alf-uses-parsl">How ALF Uses Parsl</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#minimal-single-node-debug-config">Minimal Single-Node Debug Config</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#one-qm-job-per-allocation">One QM Job Per Allocation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#mpi-based-dft-codes">MPI-Based DFT Codes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#separate-gpu-executors-for-ml-and-sampling">Separate GPU Executors For ML And Sampling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#generic-cpu-gpu-template-pattern">Generic CPU/GPU Template Pattern</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#configuration-knobs">Configuration Knobs</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Examples</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../examples/simple_water.html">Simple Water Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/seeded_active_learning.html">Seeded Active Learning Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/fine_tuning.html">Fine-Tuning Existing Model Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/molten_salt.html">Molten Salt Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/il.html">Ionic Liquid Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/uo2.html">UO2 Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/reactive_sampling.html">Reactive Sampling Example</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../api_documentation/modules.html">alframework</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../license.html">License</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">ALF</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Parsl And HPC Execution</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/user_guide/parsl.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul><div class="rst-breadcrumbs-buttons" role="navigation" aria-label="Sequential page navigation">
+        <a href="qm_interfaces.html" class="btn btn-neutral float-left" title="QM Interfaces" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../examples/simple_water.html" class="btn btn-neutral float-right" title="Simple Water Example" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+  </div>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="parsl-and-hpc-execution">
+<h1>Parsl And HPC Execution<a class="headerlink" href="#parsl-and-hpc-execution" title="Link to this heading"></a></h1>
+<p>ALF uses <a class="reference external" href="https://parsl-project.org/">Parsl</a> to submit and track workflow
+tasks. Parsl does not change the scientific work ALF performs; it decides where
+builder, sampler, QM, and ML tasks run, how many tasks may run concurrently, and
+which scheduler allocation is requested for each task type.</p>
+<p>This page is a practical guide for adapting ALF to a new local workstation or
+HPC cluster.</p>
+<section id="how-alf-uses-parsl">
+<h2>How ALF Uses Parsl<a class="headerlink" href="#how-alf-uses-parsl" title="Link to this heading"></a></h2>
+<p>ALF task functions are decorated with Parsl app definitions. Each app has one
+or more executor labels. The Parsl configuration provides executors with those
+labels and maps them onto local workers or scheduler allocations.</p>
+<p>The common executor labels are:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 34.0%" />
+<col style="width: 66.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Executor label</p></th>
+<th class="head"><p>Typical role</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">alf_QM_executor</span></code></p></td>
+<td><p>Runs QM labeling tasks, such as ORCA, QChem, or VASP jobs.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">alf_QM_standby_executor</span></code></p></td>
+<td><p>Optional lower-priority or shorter-walltime QM executor. ALF adds this
+standby label automatically when it exists.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">alf_ML_executor</span></code></p></td>
+<td><p>Runs model training tasks.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">alf_sampler_executor</span></code></p></td>
+<td><p>Runs ML-driven sampling tasks.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">alf_sampler_standby_executor</span></code></p></td>
+<td><p>Optional standby sampler executor.</p></td>
+</tr>
+</tbody>
+</table>
+<p>In <code class="docutils literal notranslate"><span class="pre">master_config.json</span></code>, these fields select the Parsl configuration:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;parsl_configuration&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;parsl_configs.config_1node&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;parsl_debug_configuration&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;parsl_configs.config_debug&quot;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>Normal runs use <code class="docutils literal notranslate"><span class="pre">parsl_configuration</span></code>. Stage checks such as <code class="docutils literal notranslate"><span class="pre">--test_builder</span></code>
+and <code class="docutils literal notranslate"><span class="pre">--test_qm</span></code> use <code class="docutils literal notranslate"><span class="pre">parsl_debug_configuration</span></code> when it is present.
+In the example directories, <code class="docutils literal notranslate"><span class="pre">parsl_configs.py</span></code> is a template for Parsl
+executor, Slurm partition, account, walltime, module, and launcher settings.
+The placeholders in those files must be replaced for your cluster before a
+full run.</p>
+</section>
+<section id="minimal-single-node-debug-config">
+<h2>Minimal Single-Node Debug Config<a class="headerlink" href="#minimal-single-node-debug-config" title="Link to this heading"></a></h2>
+<p>Use a small debug config first. It should request short walltime, few blocks,
+and enough workers to run one or two tasks while you validate imports, paths,
+and external executables.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">parsl.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">Config</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">parsl.executors</span><span class="w"> </span><span class="kn">import</span> <span class="n">HighThroughputExecutor</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">parsl.providers</span><span class="w"> </span><span class="kn">import</span> <span class="n">SlurmProvider</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">parsl.launchers</span><span class="w"> </span><span class="kn">import</span> <span class="n">SimpleLauncher</span>
+
+<span class="n">config_debug</span> <span class="o">=</span> <span class="n">Config</span><span class="p">(</span>
+    <span class="n">executors</span><span class="o">=</span><span class="p">[</span>
+        <span class="n">HighThroughputExecutor</span><span class="p">(</span>
+            <span class="n">label</span><span class="o">=</span><span class="s2">&quot;alf_QM_executor&quot;</span><span class="p">,</span>
+            <span class="n">max_workers_per_node</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+            <span class="n">provider</span><span class="o">=</span><span class="n">SlurmProvider</span><span class="p">(</span>
+                <span class="n">partition</span><span class="o">=</span><span class="s2">&quot;debug&quot;</span><span class="p">,</span>
+                <span class="n">account</span><span class="o">=</span><span class="s2">&quot;your_account&quot;</span><span class="p">,</span>
+                <span class="n">nodes_per_block</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                <span class="n">init_blocks</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                <span class="n">min_blocks</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                <span class="n">max_blocks</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                <span class="n">walltime</span><span class="o">=</span><span class="s2">&quot;00:30:00&quot;</span><span class="p">,</span>
+                <span class="n">scheduler_options</span><span class="o">=</span><span class="s2">&quot;#SBATCH --ntasks-per-node=1&quot;</span><span class="p">,</span>
+                <span class="n">worker_init</span><span class="o">=</span><span class="s2">&quot;module load orca&quot;</span><span class="p">,</span>
+                <span class="n">launcher</span><span class="o">=</span><span class="n">SimpleLauncher</span><span class="p">(),</span>
+            <span class="p">),</span>
+        <span class="p">),</span>
+    <span class="p">]</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>This pattern is useful for <code class="docutils literal notranslate"><span class="pre">--test_qm</span></code> and other bring-up checks. Replace the
+partition, account, module commands, and walltime for your cluster.</p>
+</section>
+<section id="one-qm-job-per-allocation">
+<h2>One QM Job Per Allocation<a class="headerlink" href="#one-qm-job-per-allocation" title="Link to this heading"></a></h2>
+<p>Many QM engines are themselves parallel programs. In that case, configure Parsl
+to run one ALF QM task per allocation and let the QM command use the cores or
+MPI ranks inside that allocation.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">HighThroughputExecutor</span><span class="p">(</span>
+    <span class="n">label</span><span class="o">=</span><span class="s2">&quot;alf_QM_executor&quot;</span><span class="p">,</span>
+    <span class="n">max_workers_per_node</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+    <span class="n">provider</span><span class="o">=</span><span class="n">SlurmProvider</span><span class="p">(</span>
+        <span class="n">partition</span><span class="o">=</span><span class="s2">&quot;standard&quot;</span><span class="p">,</span>
+        <span class="n">account</span><span class="o">=</span><span class="s2">&quot;your_account&quot;</span><span class="p">,</span>
+        <span class="n">nodes_per_block</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+        <span class="n">init_blocks</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+        <span class="n">min_blocks</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+        <span class="n">max_blocks</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span>
+        <span class="n">walltime</span><span class="o">=</span><span class="s2">&quot;06:00:00&quot;</span><span class="p">,</span>
+        <span class="n">scheduler_options</span><span class="o">=</span><span class="s2">&quot;#SBATCH --nodes=1 --ntasks-per-node=36&quot;</span><span class="p">,</span>
+        <span class="n">worker_init</span><span class="o">=</span><span class="s2">&quot;module load orca&quot;</span><span class="p">,</span>
+        <span class="n">launcher</span><span class="o">=</span><span class="n">SimpleLauncher</span><span class="p">(),</span>
+    <span class="p">),</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>The important point is that <code class="docutils literal notranslate"><span class="pre">max_workers_per_node=1</span></code> prevents multiple QM
+tasks from landing on the same node when each QM task expects the whole node.</p>
+</section>
+<section id="mpi-based-dft-codes">
+<h2>MPI-Based DFT Codes<a class="headerlink" href="#mpi-based-dft-codes" title="Link to this heading"></a></h2>
+<p>For MPI-based DFT codes, the launch command usually belongs in the QM config
+that ALF passes to the QM interface, while Parsl requests the allocation.</p>
+<p>For example, a VASP-style QM config may use a command like:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;QM_run_command&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;srun -n 128 vasp_std&quot;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>The matching Parsl executor should request resources consistent with that
+command:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">HighThroughputExecutor</span><span class="p">(</span>
+    <span class="n">label</span><span class="o">=</span><span class="s2">&quot;alf_QM_executor&quot;</span><span class="p">,</span>
+    <span class="n">max_workers_per_node</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+    <span class="n">provider</span><span class="o">=</span><span class="n">SlurmProvider</span><span class="p">(</span>
+        <span class="n">partition</span><span class="o">=</span><span class="s2">&quot;standard&quot;</span><span class="p">,</span>
+        <span class="n">account</span><span class="o">=</span><span class="s2">&quot;your_account&quot;</span><span class="p">,</span>
+        <span class="n">nodes_per_block</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
+        <span class="n">init_blocks</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+        <span class="n">min_blocks</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+        <span class="n">max_blocks</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
+        <span class="n">walltime</span><span class="o">=</span><span class="s2">&quot;12:00:00&quot;</span><span class="p">,</span>
+        <span class="n">scheduler_options</span><span class="o">=</span><span class="s2">&quot;#SBATCH --nodes=4 --ntasks-per-node=32&quot;</span><span class="p">,</span>
+        <span class="n">worker_init</span><span class="o">=</span><span class="s2">&quot;module load vasp&quot;</span><span class="p">,</span>
+        <span class="n">launcher</span><span class="o">=</span><span class="n">SimpleLauncher</span><span class="p">(),</span>
+    <span class="p">),</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>Different clusters use different launchers and MPI integration. The resource request and QM command should agree
+on node count, rank count, thread count, and environment modules.</p>
+</section>
+<section id="separate-gpu-executors-for-ml-and-sampling">
+<h2>Separate GPU Executors For ML And Sampling<a class="headerlink" href="#separate-gpu-executors-for-ml-and-sampling" title="Link to this heading"></a></h2>
+<p>ML training and MLMD sampling tasks typically need GPUs. Use separate executors so
+these tasks do not compete with CPU-only (e.g., QM) jobs. Below is an example parsl config
+for GPU execution of ML and sampling tasks.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">parsl.launchers</span><span class="w"> </span><span class="kn">import</span> <span class="n">SingleNodeLauncher</span>
+
+<span class="n">HighThroughputExecutor</span><span class="p">(</span>
+    <span class="n">label</span><span class="o">=</span><span class="s2">&quot;alf_ML_executor&quot;</span><span class="p">,</span>
+    <span class="n">max_workers_per_node</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+    <span class="n">provider</span><span class="o">=</span><span class="n">SlurmProvider</span><span class="p">(</span>
+        <span class="n">partition</span><span class="o">=</span><span class="s2">&quot;gpu&quot;</span><span class="p">,</span>
+        <span class="n">account</span><span class="o">=</span><span class="s2">&quot;your_gpu_account&quot;</span><span class="p">,</span>
+        <span class="n">nodes_per_block</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+        <span class="n">init_blocks</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+        <span class="n">min_blocks</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+        <span class="n">max_blocks</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+        <span class="n">walltime</span><span class="o">=</span><span class="s2">&quot;04:00:00&quot;</span><span class="p">,</span>
+        <span class="n">scheduler_options</span><span class="o">=</span><span class="s2">&quot;#SBATCH --nodes=1 --gres=gpu:1&quot;</span><span class="p">,</span>
+        <span class="n">worker_init</span><span class="o">=</span><span class="s2">&quot;module load cuda&quot;</span><span class="p">,</span>
+        <span class="n">launcher</span><span class="o">=</span><span class="n">SingleNodeLauncher</span><span class="p">(),</span>
+    <span class="p">),</span>
+<span class="p">)</span>
+
+<span class="n">HighThroughputExecutor</span><span class="p">(</span>
+    <span class="n">label</span><span class="o">=</span><span class="s2">&quot;alf_sampler_executor&quot;</span><span class="p">,</span>
+    <span class="n">max_workers_per_node</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
+    <span class="n">provider</span><span class="o">=</span><span class="n">SlurmProvider</span><span class="p">(</span>
+        <span class="n">partition</span><span class="o">=</span><span class="s2">&quot;gpu&quot;</span><span class="p">,</span>
+        <span class="n">account</span><span class="o">=</span><span class="s2">&quot;your_gpu_account&quot;</span><span class="p">,</span>
+        <span class="n">nodes_per_block</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+        <span class="n">init_blocks</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+        <span class="n">min_blocks</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+        <span class="n">max_blocks</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+        <span class="n">walltime</span><span class="o">=</span><span class="s2">&quot;04:00:00&quot;</span><span class="p">,</span>
+        <span class="n">scheduler_options</span><span class="o">=</span><span class="s2">&quot;#SBATCH --nodes=1 --gres=gpu:4&quot;</span><span class="p">,</span>
+        <span class="n">worker_init</span><span class="o">=</span><span class="s2">&quot;module load cuda&quot;</span><span class="p">,</span>
+        <span class="n">launcher</span><span class="o">=</span><span class="n">SingleNodeLauncher</span><span class="p">(),</span>
+    <span class="p">),</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>ALF also uses <code class="docutils literal notranslate"><span class="pre">gpus_per_node</span></code> from the master configuration to assign visible
+GPU ids inside sampler tasks.</p>
+</section>
+<section id="generic-cpu-gpu-template-pattern">
+<h2>Generic CPU/GPU Template Pattern<a class="headerlink" href="#generic-cpu-gpu-template-pattern" title="Link to this heading"></a></h2>
+<p>The simple-water example includes a generic Slurm template in
+<code class="docutils literal notranslate"><span class="pre">examples/simple_water/parsl_configs.py</span></code>. The pattern below mirrors that file:
+CPU resources are used for QM labeling, GPU resources are used for ML training
+and sampling, and a smaller debug configuration is available for staged test
+commands.</p>
+<p>This is still a template. Replace partition names, accounts, QoS values,
+<code class="docutils literal notranslate"><span class="pre">#SBATCH</span></code> resource lines, module loads, launchers, and walltimes with values
+that match cluster.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">parsl.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">Config</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">parsl.executors</span><span class="w"> </span><span class="kn">import</span> <span class="n">HighThroughputExecutor</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">parsl.launchers</span><span class="w"> </span><span class="kn">import</span> <span class="n">SimpleLauncher</span><span class="p">,</span> <span class="n">SingleNodeLauncher</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">parsl.providers</span><span class="w"> </span><span class="kn">import</span> <span class="n">SlurmProvider</span>
+
+<span class="n">CPU_PARTITION</span> <span class="o">=</span> <span class="s2">&quot;your_cpu_partition&quot;</span>
+<span class="n">GPU_PARTITION</span> <span class="o">=</span> <span class="s2">&quot;your_gpu_partition&quot;</span>
+<span class="n">DEBUG_PARTITION</span> <span class="o">=</span> <span class="s2">&quot;your_debug_partition&quot;</span>
+
+<span class="n">CPU_ACCOUNT</span> <span class="o">=</span> <span class="s2">&quot;your_cpu_account&quot;</span>
+<span class="n">GPU_ACCOUNT</span> <span class="o">=</span> <span class="s2">&quot;your_gpu_account&quot;</span>
+<span class="n">DEBUG_ACCOUNT</span> <span class="o">=</span> <span class="s2">&quot;your_debug_account&quot;</span>
+
+<span class="n">CPU_QOS</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="n">GPU_QOS</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="n">DEBUG_QOS</span> <span class="o">=</span> <span class="kc">None</span>
+
+<span class="n">CPU_RESOURCE_OPTIONS</span> <span class="o">=</span> <span class="s2">&quot;#SBATCH --nodes=1</span><span class="se">\n</span><span class="s2">#SBATCH --ntasks-per-node=36&quot;</span>
+<span class="n">GPU_TRAINING_RESOURCE_OPTIONS</span> <span class="o">=</span> <span class="s2">&quot;#SBATCH --nodes=1</span><span class="se">\n</span><span class="s2">#SBATCH --gres=gpu:4&quot;</span>
+<span class="n">GPU_SAMPLER_RESOURCE_OPTIONS</span> <span class="o">=</span> <span class="s2">&quot;#SBATCH --nodes=1</span><span class="se">\n</span><span class="s2">#SBATCH --gres=gpu:4&quot;</span>
+<span class="n">DEBUG_CPU_RESOURCE_OPTIONS</span> <span class="o">=</span> <span class="s2">&quot;#SBATCH --nodes=1</span><span class="se">\n</span><span class="s2">#SBATCH --ntasks-per-node=36&quot;</span>
+<span class="n">DEBUG_GPU_RESOURCE_OPTIONS</span> <span class="o">=</span> <span class="s2">&quot;#SBATCH --nodes=1</span><span class="se">\n</span><span class="s2">#SBATCH --gres=gpu:4&quot;</span>
+
+<span class="n">CPU_WORKER_INIT</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+<span class="n">GPU_WORKER_INIT</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">slurm_options</span><span class="p">(</span><span class="n">extra_options</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="n">account</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="n">lines</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">if</span> <span class="n">account</span><span class="p">:</span>
+        <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;#SBATCH --account=</span><span class="si">{</span><span class="n">account</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">extra_options</span><span class="p">:</span>
+        <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">extra_options</span><span class="p">)</span>
+    <span class="k">return</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">lines</span><span class="p">)</span>
+
+<span class="n">config_1node</span> <span class="o">=</span> <span class="n">Config</span><span class="p">(</span>
+    <span class="n">executors</span><span class="o">=</span><span class="p">[</span>
+        <span class="n">HighThroughputExecutor</span><span class="p">(</span>
+            <span class="n">label</span><span class="o">=</span><span class="s2">&quot;alf_QM_executor&quot;</span><span class="p">,</span>
+            <span class="n">max_workers_per_node</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+            <span class="n">provider</span><span class="o">=</span><span class="n">SlurmProvider</span><span class="p">(</span>
+                <span class="n">partition</span><span class="o">=</span><span class="n">CPU_PARTITION</span><span class="p">,</span>
+                <span class="n">init_blocks</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                <span class="n">min_blocks</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                <span class="n">max_blocks</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+                <span class="n">nodes_per_block</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                <span class="n">scheduler_options</span><span class="o">=</span><span class="n">slurm_options</span><span class="p">(</span>
+                    <span class="n">CPU_RESOURCE_OPTIONS</span><span class="p">,</span>
+                    <span class="n">account</span><span class="o">=</span><span class="n">CPU_ACCOUNT</span><span class="p">,</span>
+                    <span class="n">qos</span><span class="o">=</span><span class="n">CPU_QOS</span><span class="p">,</span>
+                <span class="p">),</span>
+                <span class="n">worker_init</span><span class="o">=</span><span class="n">CPU_WORKER_INIT</span><span class="p">,</span>
+                <span class="n">launcher</span><span class="o">=</span><span class="n">SimpleLauncher</span><span class="p">(),</span>
+                <span class="n">walltime</span><span class="o">=</span><span class="s2">&quot;6:00:00&quot;</span><span class="p">,</span>
+                <span class="n">cmd_timeout</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span>
+            <span class="p">),</span>
+        <span class="p">),</span>
+        <span class="n">HighThroughputExecutor</span><span class="p">(</span>
+            <span class="n">label</span><span class="o">=</span><span class="s2">&quot;alf_QM_standby_executor&quot;</span><span class="p">,</span>
+            <span class="n">max_workers_per_node</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+            <span class="n">provider</span><span class="o">=</span><span class="n">SlurmProvider</span><span class="p">(</span>
+                <span class="n">partition</span><span class="o">=</span><span class="n">CPU_PARTITION</span><span class="p">,</span>
+                <span class="n">init_blocks</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                <span class="n">min_blocks</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                <span class="n">max_blocks</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+                <span class="n">nodes_per_block</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                <span class="n">scheduler_options</span><span class="o">=</span><span class="n">slurm_options</span><span class="p">(</span>
+                    <span class="n">CPU_RESOURCE_OPTIONS</span><span class="p">,</span>
+                    <span class="n">account</span><span class="o">=</span><span class="n">CPU_ACCOUNT</span><span class="p">,</span>
+                    <span class="n">qos</span><span class="o">=</span><span class="n">CPU_QOS</span><span class="p">,</span>
+                <span class="p">),</span>
+                <span class="n">worker_init</span><span class="o">=</span><span class="n">CPU_WORKER_INIT</span><span class="p">,</span>
+                <span class="n">launcher</span><span class="o">=</span><span class="n">SimpleLauncher</span><span class="p">(),</span>
+                <span class="n">walltime</span><span class="o">=</span><span class="s2">&quot;1:00:00&quot;</span><span class="p">,</span>
+                <span class="n">cmd_timeout</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span>
+            <span class="p">),</span>
+        <span class="p">),</span>
+        <span class="n">HighThroughputExecutor</span><span class="p">(</span>
+            <span class="n">label</span><span class="o">=</span><span class="s2">&quot;alf_ML_executor&quot;</span><span class="p">,</span>
+            <span class="n">max_workers_per_node</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+            <span class="n">provider</span><span class="o">=</span><span class="n">SlurmProvider</span><span class="p">(</span>
+                <span class="n">partition</span><span class="o">=</span><span class="n">GPU_PARTITION</span><span class="p">,</span>
+                <span class="n">init_blocks</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                <span class="n">min_blocks</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                <span class="n">max_blocks</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                <span class="n">nodes_per_block</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                <span class="n">scheduler_options</span><span class="o">=</span><span class="n">slurm_options</span><span class="p">(</span>
+                    <span class="n">GPU_TRAINING_RESOURCE_OPTIONS</span><span class="p">,</span>
+                    <span class="n">account</span><span class="o">=</span><span class="n">GPU_ACCOUNT</span><span class="p">,</span>
+                    <span class="n">qos</span><span class="o">=</span><span class="n">GPU_QOS</span><span class="p">,</span>
+                <span class="p">),</span>
+                <span class="n">worker_init</span><span class="o">=</span><span class="n">GPU_WORKER_INIT</span><span class="p">,</span>
+                <span class="n">launcher</span><span class="o">=</span><span class="n">SingleNodeLauncher</span><span class="p">(),</span>
+                <span class="n">walltime</span><span class="o">=</span><span class="s2">&quot;16:00:00&quot;</span><span class="p">,</span>
+                <span class="n">cmd_timeout</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span>
+            <span class="p">),</span>
+        <span class="p">),</span>
+        <span class="n">HighThroughputExecutor</span><span class="p">(</span>
+            <span class="n">label</span><span class="o">=</span><span class="s2">&quot;alf_sampler_executor&quot;</span><span class="p">,</span>
+            <span class="n">max_workers_per_node</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
+            <span class="n">provider</span><span class="o">=</span><span class="n">SlurmProvider</span><span class="p">(</span>
+                <span class="n">partition</span><span class="o">=</span><span class="n">GPU_PARTITION</span><span class="p">,</span>
+                <span class="n">init_blocks</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                <span class="n">min_blocks</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                <span class="n">max_blocks</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+                <span class="n">nodes_per_block</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                <span class="n">scheduler_options</span><span class="o">=</span><span class="n">slurm_options</span><span class="p">(</span>
+                    <span class="n">GPU_SAMPLER_RESOURCE_OPTIONS</span><span class="p">,</span>
+                    <span class="n">account</span><span class="o">=</span><span class="n">GPU_ACCOUNT</span><span class="p">,</span>
+                    <span class="n">qos</span><span class="o">=</span><span class="n">GPU_QOS</span><span class="p">,</span>
+                <span class="p">),</span>
+                <span class="n">worker_init</span><span class="o">=</span><span class="n">GPU_WORKER_INIT</span><span class="p">,</span>
+                <span class="n">launcher</span><span class="o">=</span><span class="n">SingleNodeLauncher</span><span class="p">(),</span>
+                <span class="n">walltime</span><span class="o">=</span><span class="s2">&quot;4:00:00&quot;</span><span class="p">,</span>
+                <span class="n">cmd_timeout</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span>
+            <span class="p">),</span>
+        <span class="p">),</span>
+        <span class="n">HighThroughputExecutor</span><span class="p">(</span>
+            <span class="n">label</span><span class="o">=</span><span class="s2">&quot;alf_sampler_standby_executor&quot;</span><span class="p">,</span>
+            <span class="n">max_workers_per_node</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
+            <span class="n">provider</span><span class="o">=</span><span class="n">SlurmProvider</span><span class="p">(</span>
+                <span class="n">partition</span><span class="o">=</span><span class="n">GPU_PARTITION</span><span class="p">,</span>
+                <span class="n">init_blocks</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                <span class="n">min_blocks</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                <span class="n">max_blocks</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+                <span class="n">nodes_per_block</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                <span class="n">scheduler_options</span><span class="o">=</span><span class="n">slurm_options</span><span class="p">(</span>
+                    <span class="n">GPU_SAMPLER_RESOURCE_OPTIONS</span><span class="p">,</span>
+                    <span class="n">account</span><span class="o">=</span><span class="n">GPU_ACCOUNT</span><span class="p">,</span>
+                    <span class="n">qos</span><span class="o">=</span><span class="n">GPU_QOS</span><span class="p">,</span>
+                <span class="p">),</span>
+                <span class="n">worker_init</span><span class="o">=</span><span class="n">GPU_WORKER_INIT</span><span class="p">,</span>
+                <span class="n">launcher</span><span class="o">=</span><span class="n">SingleNodeLauncher</span><span class="p">(),</span>
+                <span class="n">walltime</span><span class="o">=</span><span class="s2">&quot;4:00:00&quot;</span><span class="p">,</span>
+                <span class="n">cmd_timeout</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span>
+            <span class="p">),</span>
+        <span class="p">),</span>
+    <span class="p">]</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>Production executors in this template have separate roles. <code class="docutils literal notranslate"><span class="pre">alf_QM_executor</span></code>
+runs CPU QM labeling tasks with one ALF worker per node. The optional
+<code class="docutils literal notranslate"><span class="pre">alf_QM_standby_executor</span></code> can target lower-priority or shorter-walltime CPU
+resources. <code class="docutils literal notranslate"><span class="pre">alf_ML_executor</span></code> runs one ML training task per GPU allocation.
+<code class="docutils literal notranslate"><span class="pre">alf_sampler_executor</span></code> runs MLMD or reactive sampling tasks on GPU resources,
+and <code class="docutils literal notranslate"><span class="pre">alf_sampler_standby_executor</span></code> is the optional standby version of that
+sampler pool.</p>
+<p>The debug configuration should be smaller and faster. The <code class="docutils literal notranslate"><span class="pre">--test_builder</span></code>,
+<code class="docutils literal notranslate"><span class="pre">--test_qm</span></code>, <code class="docutils literal notranslate"><span class="pre">--test_ml</span></code>, and <code class="docutils literal notranslate"><span class="pre">--test_sampler</span></code> commands use it when
+<code class="docutils literal notranslate"><span class="pre">parsl_debug_configuration</span></code> is set in <code class="docutils literal notranslate"><span class="pre">master_config.json</span></code>.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">config_debug</span> <span class="o">=</span> <span class="n">Config</span><span class="p">(</span>
+    <span class="n">executors</span><span class="o">=</span><span class="p">[</span>
+        <span class="n">HighThroughputExecutor</span><span class="p">(</span>
+            <span class="n">label</span><span class="o">=</span><span class="s2">&quot;alf_QM_executor&quot;</span><span class="p">,</span>
+            <span class="n">max_workers_per_node</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+            <span class="n">provider</span><span class="o">=</span><span class="n">SlurmProvider</span><span class="p">(</span>
+                <span class="n">partition</span><span class="o">=</span><span class="n">DEBUG_PARTITION</span><span class="p">,</span>
+                <span class="n">init_blocks</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                <span class="n">min_blocks</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                <span class="n">max_blocks</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                <span class="n">nodes_per_block</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                <span class="n">scheduler_options</span><span class="o">=</span><span class="n">slurm_options</span><span class="p">(</span>
+                    <span class="n">DEBUG_CPU_RESOURCE_OPTIONS</span><span class="p">,</span>
+                    <span class="n">account</span><span class="o">=</span><span class="n">DEBUG_ACCOUNT</span><span class="p">,</span>
+                    <span class="n">qos</span><span class="o">=</span><span class="n">DEBUG_QOS</span><span class="p">,</span>
+                <span class="p">),</span>
+                <span class="n">worker_init</span><span class="o">=</span><span class="n">CPU_WORKER_INIT</span><span class="p">,</span>
+                <span class="n">launcher</span><span class="o">=</span><span class="n">SimpleLauncher</span><span class="p">(),</span>
+                <span class="n">walltime</span><span class="o">=</span><span class="s2">&quot;2:00:00&quot;</span><span class="p">,</span>
+                <span class="n">cmd_timeout</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span>
+            <span class="p">),</span>
+        <span class="p">),</span>
+        <span class="n">HighThroughputExecutor</span><span class="p">(</span>
+            <span class="n">label</span><span class="o">=</span><span class="s2">&quot;alf_ML_executor&quot;</span><span class="p">,</span>
+            <span class="n">max_workers_per_node</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+            <span class="n">provider</span><span class="o">=</span><span class="n">SlurmProvider</span><span class="p">(</span>
+                <span class="n">partition</span><span class="o">=</span><span class="n">DEBUG_PARTITION</span><span class="p">,</span>
+                <span class="n">init_blocks</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                <span class="n">min_blocks</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                <span class="n">max_blocks</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                <span class="n">nodes_per_block</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                <span class="n">scheduler_options</span><span class="o">=</span><span class="n">slurm_options</span><span class="p">(</span>
+                    <span class="n">DEBUG_GPU_RESOURCE_OPTIONS</span><span class="p">,</span>
+                    <span class="n">account</span><span class="o">=</span><span class="n">GPU_ACCOUNT</span><span class="p">,</span>
+                    <span class="n">qos</span><span class="o">=</span><span class="n">DEBUG_QOS</span><span class="p">,</span>
+                <span class="p">),</span>
+                <span class="n">worker_init</span><span class="o">=</span><span class="n">GPU_WORKER_INIT</span><span class="p">,</span>
+                <span class="n">launcher</span><span class="o">=</span><span class="n">SingleNodeLauncher</span><span class="p">(),</span>
+                <span class="n">walltime</span><span class="o">=</span><span class="s2">&quot;1:00:00&quot;</span><span class="p">,</span>
+                <span class="n">cmd_timeout</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span>
+            <span class="p">),</span>
+        <span class="p">),</span>
+        <span class="n">HighThroughputExecutor</span><span class="p">(</span>
+            <span class="n">label</span><span class="o">=</span><span class="s2">&quot;alf_sampler_executor&quot;</span><span class="p">,</span>
+            <span class="n">max_workers_per_node</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
+            <span class="n">provider</span><span class="o">=</span><span class="n">SlurmProvider</span><span class="p">(</span>
+                <span class="n">partition</span><span class="o">=</span><span class="n">DEBUG_PARTITION</span><span class="p">,</span>
+                <span class="n">init_blocks</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                <span class="n">min_blocks</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                <span class="n">max_blocks</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                <span class="n">nodes_per_block</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+                <span class="n">scheduler_options</span><span class="o">=</span><span class="n">slurm_options</span><span class="p">(</span>
+                    <span class="n">DEBUG_GPU_RESOURCE_OPTIONS</span><span class="p">,</span>
+                    <span class="n">account</span><span class="o">=</span><span class="n">GPU_ACCOUNT</span><span class="p">,</span>
+                    <span class="n">qos</span><span class="o">=</span><span class="n">DEBUG_QOS</span><span class="p">,</span>
+                <span class="p">),</span>
+                <span class="n">worker_init</span><span class="o">=</span><span class="n">GPU_WORKER_INIT</span><span class="p">,</span>
+                <span class="n">launcher</span><span class="o">=</span><span class="n">SingleNodeLauncher</span><span class="p">(),</span>
+                <span class="n">walltime</span><span class="o">=</span><span class="s2">&quot;1:00:00&quot;</span><span class="p">,</span>
+                <span class="n">cmd_timeout</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span>
+            <span class="p">),</span>
+        <span class="p">),</span>
+    <span class="p">]</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>In these patterns, a Parsl block is one scheduler allocation. For each
+executor, <code class="docutils literal notranslate"><span class="pre">nodes_per_block</span> <span class="pre">*</span> <span class="pre">max_blocks</span></code> controls the maximum node footprint
+Parsl may request, while <code class="docutils literal notranslate"><span class="pre">max_workers_per_node</span></code> controls how many ALF tasks
+can run on each allocated node. ALF settings such as <code class="docutils literal notranslate"><span class="pre">parallel_samplers</span></code> and
+<code class="docutils literal notranslate"><span class="pre">target_queued_QM</span></code> are queue-depth targets; they do not directly request
+nodes. For sampler tasks, make sure <code class="docutils literal notranslate"><span class="pre">gpus_per_node</span></code> matches the number of
+sampler workers you expect to place on each GPU node.</p>
+</section>
+<section id="configuration-knobs">
+<h2>Configuration Knobs<a class="headerlink" href="#configuration-knobs" title="Link to this heading"></a></h2>
+<p>These are the Parsl settings most users need to edit.</p>
+<p>In Parsl, a block is one scheduler allocation. For one executor, the largest
+node footprint Parsl may request is <code class="docutils literal notranslate"><span class="pre">max_blocks</span> <span class="pre">*</span> <span class="pre">nodes_per_block</span></code>. The
+worker setting then controls how many ALF tasks can run inside those allocated
+resources.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 30.0%" />
+<col style="width: 70.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Setting</p></th>
+<th class="head"><p>What to check</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">partition</span></code> / <code class="docutils literal notranslate"><span class="pre">account</span></code></p></td>
+<td><p>Queue, partition, project, or allocation name required by the scheduler.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">walltime</span></code></p></td>
+<td><p>Maximum runtime for the scheduler allocation.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">nodes_per_block</span></code></p></td>
+<td><p>Number of nodes requested for one Parsl block.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">max_blocks</span></code></p></td>
+<td><p>Maximum number of scheduler allocations Parsl may request for that
+executor.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">max_workers_per_node</span></code> or <code class="docutils literal notranslate"><span class="pre">max_workers</span></code></p></td>
+<td><p>How many ALF tasks may execute on the allocated resources.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">scheduler_options</span></code></p></td>
+<td><p>Extra <code class="docutils literal notranslate"><span class="pre">#SBATCH</span></code> lines, such as node counts, task counts, GPUs, QoS, or
+account overrides.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">worker_init</span></code></p></td>
+<td><p>Commands run before Parsl workers start, such as <code class="docutils literal notranslate"><span class="pre">module</span> <span class="pre">load</span></code> or
+environment activation.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">launcher</span></code></p></td>
+<td><p>How Parsl starts workers inside an allocation. Common choices in ALF
+examples include <code class="docutils literal notranslate"><span class="pre">SimpleLauncher</span></code> and <code class="docutils literal notranslate"><span class="pre">SingleNodeLauncher</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">address</span></code></p></td>
+<td><p>Network interface or hostname used when compute nodes must connect back
+to the submit process.</p></td>
+</tr>
+</tbody>
+</table>
+<p>The existing files in <code class="docutils literal notranslate"><span class="pre">alframework/parsl_resource_configs</span></code> and
+<code class="docutils literal notranslate"><span class="pre">examples/*/parsl_configs.py</span></code> show the expected structure, but cluster
+partition names, accounts, modules, walltimes, and launcher choices must be
+adapted for the resources you plan to use.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="qm_interfaces.html" class="btn btn-neutral float-left" title="QM Interfaces" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../examples/simple_water.html" class="btn btn-neutral float-right" title="Simple Water Example" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023, ALF Team.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

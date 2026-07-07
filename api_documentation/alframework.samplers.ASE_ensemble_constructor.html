@@ -9,6 +9,7 @@
   <title>alframework.samplers.ASE_ensemble_constructor module &mdash; ALF 0.0.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=eaec28dc" />
 
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
@@ -55,11 +56,16 @@
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/samplers.html">Samplers</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/ml_interfaces.html">ML Interfaces</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/qm_interfaces.html">QM Interfaces</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/parsl.html">Parsl And HPC Execution</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../examples/simple_water.html">Simple Water Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/seeded_active_learning.html">Seeded Active Learning Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/fine_tuning.html">Fine-Tuning Existing Model Example</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../examples/molten_salt.html">Molten Salt Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/il.html">Ionic Liquid Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/uo2.html">UO2 Example</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../examples/reactive_sampling.html">Reactive Sampling Example</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
@@ -87,6 +93,7 @@
 <li class="toctree-l6"><a class="reference internal" href="alframework.samplers.ml_driven_md_sampling.html">alframework.samplers.ml_driven_md_sampling module</a></li>
 <li class="toctree-l6"><a class="reference internal" href="alframework.samplers.mlmd_sampling.html">alframework.samplers.mlmd_sampling module</a></li>
 <li class="toctree-l6"><a class="reference internal" href="alframework.samplers.reactive_sampler.html">alframework.samplers.reactive_sampler module</a></li>
+<li class="toctree-l6"><a class="reference internal" href="alframework.samplers.udd_sampling.html">alframework.samplers.udd_sampling module</a></li>
 </ul>
 </li>
 </ul>
@@ -135,7 +142,7 @@
 <span id="alframework-samplers-ase-ensemble-constructor-module"></span><h1>alframework.samplers.ASE_ensemble_constructor module<a class="headerlink" href="#module-alframework.samplers.ASE_ensemble_constructor" title="Link to this heading"></a></h1>
 <dl class="py class">
 <dt class="sig sig-object py" id="alframework.samplers.ASE_ensemble_constructor.MLMD_calculator">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">MLMD_calculator</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">models</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">well_params</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">debug_print</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/samplers/ASE_ensemble_constructor.html#MLMD_calculator"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.samplers.ASE_ensemble_constructor.MLMD_calculator" title="Link to this definition"></a></dt>
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">MLMD_calculator</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">models</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">well_params</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">debug_print</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">udd_bias_weight</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">udd_bias_eps</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1e-12</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/samplers/ASE_ensemble_constructor.html#MLMD_calculator"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.samplers.ASE_ensemble_constructor.MLMD_calculator" title="Link to this definition"></a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Calculator</span></code></p>
 <p>This is a calculator that enables MLMD sampling with an ensemble of ML potentials</p>
 <dl class="py method">

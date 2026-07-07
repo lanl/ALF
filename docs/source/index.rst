@@ -47,6 +47,8 @@ pieces to a concrete run.
    :caption: Examples
 
    examples/simple_water
+   examples/seeded_active_learning
+   examples/fine_tuning
    examples/molten_salt
    examples/il
    examples/uo2

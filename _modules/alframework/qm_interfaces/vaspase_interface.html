@@ -168,6 +168,12 @@
 <span class="sd">    pseudopotential path, and any module/environment setup from the caller or</span>
 <span class="sd">    Parsl worker initialization. This class no longer constructs LANL-specific</span>
 <span class="sd">    commands or relies on MPI/GPU globals.</span>
+
+<span class="sd">    The legacy helper applies ALF-specific defaults before merging user</span>
+<span class="sd">    ``vasp_options``: ``xc=&#39;pbe&#39;``, ``prec=&#39;Accurate&#39;``, ``ncore=1``,</span>
+<span class="sd">    ``lreal=&#39;Auto&#39;``, ``nelm=120``, and ``ivdw=0``. These are compatibility</span>
+<span class="sd">    defaults, not recommended settings for every VASP workflow. In particular,</span>
+<span class="sd">    review ``lreal`` when migrating old calculations or comparing forces.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>

@@ -146,6 +146,15 @@ calculation, and return labeled data for storage in ALF’s HDF5 training sets.<
 usually the easiest integration route. Write a small QM config that identifies
 the ASE calculator class, command, and calculator options, then let ASE handle
 input writing, execution, and result extraction.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>New VASP configurations should use
+<code class="docutils literal notranslate"><span class="pre">alframework.qm_interfaces.ase_calculator_interface.VASP_ase_calculator_task</span></code>.
+The older <code class="docutils literal notranslate"><span class="pre">alframework.qm_interfaces.vaspase_interface.VASPGenerator</span></code> helper
+is deprecated and kept only for backward compatibility. For custom VASP-style
+workflows, prefer the generic <code class="docutils literal notranslate"><span class="pre">ase_calculator_task</span></code> whenever the engine can
+be represented as an ASE calculator.</p>
+</div>
 </section>
 <section id="how-alf-uses-qm-interfaces">
 <span id="qm-interface-extension-points"></span><h2>How ALF Uses QM Interfaces<a class="headerlink" href="#how-alf-uses-qm-interfaces" title="Link to this heading"></a></h2>
@@ -235,16 +244,71 @@ are written.</p></td>
 </table>
 </dd>
 </dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>ALF does not choose a universally appropriate QM method, basis set,
+pseudopotential, dispersion correction, or charge / spin state setting for a
+workflow. These choices should be made explicitly in the engine-specific QM
+configuration and checked against the intended chemistry. For ORCA and
+Q-Chem, the method, basis, and property requests come from the configured
+input/rem blocks, while the current task wrappers call the generators as
+neutral singlets unless customized. For VASP through the current ASE
+interface, INCAR-style settings come from <code class="docutils literal notranslate"><span class="pre">QM_config[&quot;input&quot;]</span></code> and ASE’s
+VASP calculator behavior. The deprecated legacy VASP helper is the exception
+with ALF compatibility defaults documented further below.</p>
+</div>
 <p>For HPC runs, the QM command and Parsl resource configuration must agree. For
 example, an MPI VASP command such as <code class="docutils literal notranslate"><span class="pre">srun</span> <span class="pre">-n</span> <span class="pre">128</span> <span class="pre">vasp_std</span></code> should be paired
 with an <code class="docutils literal notranslate"><span class="pre">alf_QM_executor</span></code> configuration that requests the matching nodes,
 tasks, walltime, modules, and launcher behavior. See <a class="reference internal" href="parsl.html"><span class="doc">Parsl And HPC Execution</span></a> for
 practical resource examples.</p>
-<dl class="simple">
+<dl>
 <dt>Legacy VASP helper</dt><dd><p><code class="docutils literal notranslate"><span class="pre">alframework.qm_interfaces.vaspase_interface.VASPGenerator</span></code> is deprecated
-and kept only for older imports. New VASP workflows should use
+and kept only for older imports. Do not start new configuration files from
+<code class="docutils literal notranslate"><span class="pre">vaspase_interface.py</span></code>. Existing imports may continue to work temporarily,
+but should be migrated to
 <code class="docutils literal notranslate"><span class="pre">alframework.qm_interfaces.ase_calculator_interface.VASP_ase_calculator_task</span></code>
-or the generic <code class="docutils literal notranslate"><span class="pre">ase_calculator_task</span></code>.</p>
+or the generic <code class="docutils literal notranslate"><span class="pre">ase_calculator_task</span></code> described above.</p>
+<p>The legacy helper also applies ALF-specific VASP defaults before merging
+user-provided <code class="docutils literal notranslate"><span class="pre">vasp_options</span></code>:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 30.0%" />
+<col style="width: 70.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>VASP setting</p></th>
+<th class="head"><p>Legacy default</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">xc</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;pbe&quot;</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">prec</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;Accurate&quot;</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ncore</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">1</span></code> unless <code class="docutils literal notranslate"><span class="pre">vasp_options[&quot;ncore&quot;]</span></code> is provided.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">lreal</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">&quot;Auto&quot;</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">nelm</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">120</span></code> unless <code class="docutils literal notranslate"><span class="pre">vasp_options[&quot;nelm&quot;]</span></code> is provided.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ivdw</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">0</span></code> unless <code class="docutils literal notranslate"><span class="pre">vasp_options[&quot;ivdw&quot;]</span></code> is provided.</p></td>
+</tr>
+</tbody>
+</table>
+<p>These are compatibility defaults from the old helper, not universal
+recommendations for VASP calculations. In particular, users should be aware
+that the legacy path sets <code class="docutils literal notranslate"><span class="pre">LREAL</span> <span class="pre">=</span> <span class="pre">Auto</span></code> by default; review this setting
+when reproducing old calculations, comparing force labels, or migrating to
+the ASE calculator interface. The old helper also maps <code class="docutils literal notranslate"><span class="pre">vasp_options[&quot;kpoints&quot;]</span></code>
+to ASE’s <code class="docutils literal notranslate"><span class="pre">kpts</span></code> option and falls back to atomic-number magnetic moments
+unless <code class="docutils literal notranslate"><span class="pre">magmom</span></code> is provided.</p>
 </dd>
 </dl>
 </section>

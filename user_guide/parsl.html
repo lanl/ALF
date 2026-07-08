@@ -318,8 +318,7 @@ the ALF executor labels such as <code class="docutils literal notranslate"><span
 provide different resources, or for users who do not have a local scheduler.</p>
 <p>The Parsl documentation includes a
 <a class="reference external" href="https://parsl.readthedocs.io/en/stable/userguide/configuration/examples.html#globus-compute-multisite">Globus Compute multisite example</a>
-with additional endpoint setup details. A compact ALF-style configuration can
-look like this:</p>
+with additional endpoint setup details. Below is a bare-bones Parsl configuration for using ALF with Globus Compute.</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">globus_compute_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="n">Executor</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">parsl.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">Config</span>

@@ -158,6 +158,11 @@ especially <code class="docutils literal notranslate"><span class="pre">VASP_ase
 pseudopotential path, and any module/environment setup from the caller or
 Parsl worker initialization. This class no longer constructs LANL-specific
 commands or relies on MPI/GPU globals.</p>
+<p>The legacy helper applies ALF-specific defaults before merging user
+<code class="docutils literal notranslate"><span class="pre">vasp_options</span></code>: <code class="docutils literal notranslate"><span class="pre">xc='pbe'</span></code>, <code class="docutils literal notranslate"><span class="pre">prec='Accurate'</span></code>, <code class="docutils literal notranslate"><span class="pre">ncore=1</span></code>,
+<code class="docutils literal notranslate"><span class="pre">lreal='Auto'</span></code>, <code class="docutils literal notranslate"><span class="pre">nelm=120</span></code>, and <code class="docutils literal notranslate"><span class="pre">ivdw=0</span></code>. These are compatibility
+defaults, not recommended settings for every VASP workflow. In particular,
+review <code class="docutils literal notranslate"><span class="pre">lreal</span></code> when migrating old calculations or comparing forces.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="alframework.qm_interfaces.vaspase_interface.VASPGenerator.get_magmom">
 <span class="sig-name descname"><span class="pre">get_magmom</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">atomic_no</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/qm_interfaces/vaspase_interface.html#VASPGenerator.get_magmom"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.qm_interfaces.vaspase_interface.VASPGenerator.get_magmom" title="Link to this definition"></a></dt>

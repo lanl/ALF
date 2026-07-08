@@ -39,6 +39,13 @@ This reads the HDF5 store and writes the adapted ensemble to the next model
 slot, usually `models/model-0001`, without launching builders, samplers, or QM
 labeling.
 
+The fine-tuning task stages filtered HDF5 copies inside each output
+`model-XX/staged_h5/` directory before HIPPYNN loads the data. When `cell_key`
+is `null`, unused `cell` datasets are dropped from those staged copies so new
+periodic sampler output can be combined with older non-periodic HDF5 batches.
+The original files in `h5store/` are not modified. If `cell_key` is set, every
+HDF5 group must contain that dataset.
+
 If `status.txt` is absent and `models/model-0000` exists, ALF will detect the
 seed model and use it for sampling. New labels are written to `h5store/`, and
 the fine-tuned ensemble is written to `models/model-0001`.
@@ -52,6 +59,11 @@ best_checkpoint.pt
 
 inside each `models/model-0000/model-XX/` directory. On later ALF training
 rounds, it fine-tunes from the current model id and writes the next model id.
+
+Confirm that fine-tuning actually ran by checking each
+`models/model-0001/model-XX/training_log.txt` for training epochs and
+`Training complete`; the new `best_model.pt` and `best_checkpoint.pt` should be
+written during that run.
 
 Run staged checks from this directory:
 

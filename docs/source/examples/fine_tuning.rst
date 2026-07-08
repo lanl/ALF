@@ -120,6 +120,22 @@ run's HDF5 store:
 The fine-tuning task reads the HDF5 directory, so those batches can be included
 when ALF trains the next ensemble.
 
+HDF5 Schema Compatibility
+-------------------------
+
+The example-local fine-tuning task stages filtered copies of the HDF5 batches
+inside each output model-member directory before loading them with HIPPYNN. This
+keeps training data compatible with the loaded checkpoint graph. For example,
+when ``cell_key`` is ``null`` in ``hippynn_config.json``, unused ``cell``
+datasets written by periodic sampled structures are omitted from the staged
+copies so they do not conflict with older non-periodic HDF5 batches. The
+original files in ``h5store/`` are not modified.
+
+If you set ``cell_key`` to train a periodic HIPPYNN model, every HDF5 group in
+the training store must contain that dataset. The fine-tuning task will stop
+with a file/group-specific error if any batch is missing the configured
+``cell_key``.
+
 Fine-Tune Only From Existing Data
 ---------------------------------
 
@@ -173,6 +189,12 @@ The task creates a fresh Adam optimizer for the target data and writes the
 adapted ensemble to ``models/model-0001``. Later active-learning rounds
 fine-tune from the latest accepted model and write the next model id.
 
+To confirm that fine-tuning actually updated the model, inspect each
+``models/model-0001/model-XX/training_log.txt`` for training epochs and
+``Training complete``. The new ``best_model.pt`` and ``best_checkpoint.pt``
+files in ``models/model-0001`` are written from that training run and should
+differ from the seed artifacts under ``models/model-0000``.
+
 For a single-model starting point, the recommended sequence is:
 
 1. Copy the model into ``models/model-0000/model-00`` through
@@ -220,7 +242,8 @@ During a fine-tuning run, ALF writes the standard outputs:
    * - ``h5store/data-*.h5``
      - Newly labeled data batches, plus any optional prior data you provided.
    * - ``models/model-0001``
-     - First ensemble fine-tuned from the seed model.
+     - First ensemble fine-tuned from the seed model, including updated
+       ``best_model.pt``, ``best_checkpoint.pt``, metrics, and training logs.
    * - ``sampling/metadata-*.p``
      - MLMD sampling metadata and uncertainty diagnostics.
    * - ``qm_scratch/``

@@ -1,6 +1,7 @@
 import multiprocessing
 import os
 import re
+import shutil
 
 import numpy as np
 from parsl import python_app
@@ -20,6 +21,80 @@ def _source_model_dir(ML_config, model_path, current_model_id, ensemble_index):
     return os.path.join(model_path.format(source_model_id), "model-{:02d}".format(ensemble_index))
 
 
+def _required_h5_keys(db_info, energy_key, coordinates_key, species_key, force_key=None, cell_key=None, quadrupole_key=None):
+    keys = set(db_info.get("inputs", [])) | set(db_info.get("targets", []))
+    keys.update(key for key in [energy_key, coordinates_key, species_key, force_key, cell_key, quadrupole_key] if key)
+    keys.add("_id")
+    return keys
+
+
+def _stage_h5_training_data(
+    h5_train_dir,
+    stage_dir,
+    db_info,
+    energy_key,
+    coordinates_key,
+    species_key,
+    force_key=None,
+    cell_key=None,
+    quadrupole_key=None,
+):
+    """Copy training HDF5 files with a schema compatible with the loaded model."""
+    import h5py
+
+    h5_files = sorted(name for name in os.listdir(h5_train_dir) if name.endswith(".h5"))
+    if not h5_files:
+        raise FileNotFoundError(f"No HDF5 training files found in {h5_train_dir}")
+
+    if os.path.exists(stage_dir):
+        shutil.rmtree(stage_dir)
+    os.makedirs(stage_dir, exist_ok=True)
+
+    keep_keys = _required_h5_keys(
+        db_info,
+        energy_key,
+        coordinates_key,
+        species_key,
+        force_key=force_key,
+        cell_key=cell_key,
+        quadrupole_key=quadrupole_key,
+    )
+    missing_cell = []
+
+    for filename in h5_files:
+        source_path = os.path.join(h5_train_dir, filename)
+        staged_path = os.path.join(stage_dir, filename)
+        with h5py.File(source_path, "r") as source, h5py.File(staged_path, "w") as staged:
+            for key, value in source.attrs.items():
+                staged.attrs[key] = value
+
+            for group_name, source_group in source.items():
+                if cell_key is not None and cell_key not in source_group:
+                    missing_cell.append(f"{filename}:{group_name}")
+                    continue
+
+                staged_group = staged.create_group(group_name)
+                for key, value in source_group.attrs.items():
+                    staged_group.attrs[key] = value
+
+                for dataset_name in source_group:
+                    if dataset_name == "cell" and cell_key is None:
+                        continue
+                    if dataset_name in keep_keys:
+                        source_group.copy(dataset_name, staged_group, name=dataset_name)
+
+    if missing_cell:
+        missing_preview = ", ".join(missing_cell[:10])
+        if len(missing_cell) > 10:
+            missing_preview += ", ..."
+        raise RuntimeError(
+            f"cell_key={cell_key!r} requires every HDF5 group to contain that dataset. "
+            f"Missing in: {missing_preview}"
+        )
+
+    return stage_dir
+
+
 def _prepare_database(
     h5_train_dir,
     db_info,
@@ -35,10 +110,24 @@ def _prepare_database(
     remove_high_energy_std=None,
     remove_high_forces_cut=None,
     remove_high_forces_std=None,
+    staged_h5_dir=None,
 ):
     import torch
     from hippynn.databases.h5_pyanitools import PyAniDirectoryDB
     from hippynn.databases.database import prettyprint_arrays
+
+    if staged_h5_dir is not None:
+        h5_train_dir = _stage_h5_training_data(
+            h5_train_dir,
+            staged_h5_dir,
+            db_info,
+            energy_key,
+            coordinates_key,
+            species_key,
+            force_key=force_key,
+            cell_key=cell_key,
+            quadrupole_key=quadrupole_key,
+        )
 
     database = PyAniDirectoryDB(
         directory=h5_train_dir,
@@ -199,6 +288,7 @@ def fine_tune_HIPNN_model(
                 remove_high_energy_std=remove_high_energy_std,
                 remove_high_forces_cut=remove_high_forces_cut,
                 remove_high_forces_std=remove_high_forces_std,
+                staged_h5_dir=os.path.join(model_dir, "staged_h5"),
             )
 
             optimizer = torch.optim.Adam(training_modules.model.parameters(), lr=learning_rate)

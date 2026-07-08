@@ -71,6 +71,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#hdf5-schema-compatibility">HDF5 Schema Compatibility</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#fine-tune-only-from-existing-data">Fine-Tune Only From Existing Data</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#fine-tuning-task">Fine-Tuning Task</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#hippynn-restart-semantics">HIPPYNN Restart Semantics</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#recommended-bring-up-commands">Recommended Bring-Up Commands</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#expected-outputs">Expected Outputs</a></li>
 </ul>
@@ -286,6 +287,28 @@ models/model-0000/model-01/best_checkpoint.pt
 <p>The task creates a fresh Adam optimizer for the target data and writes the
 adapted ensemble to <code class="docutils literal notranslate"><span class="pre">models/model-0001</span></code>. Later active-learning rounds
 fine-tune from the latest accepted model and write the next model id.</p>
+</section>
+<section id="hippynn-restart-semantics">
+<h2>HIPPYNN Restart Semantics<a class="headerlink" href="#hippynn-restart-semantics" title="Link to this heading"></a></h2>
+<p>This example uses HIPPYNN checkpoint files for weight initialization, but it is
+not a full HIPPYNN training restart. Each model member loads the saved graph and
+weights from <code class="docutils literal notranslate"><span class="pre">experiment_structure.pt</span></code> and <code class="docutils literal notranslate"><span class="pre">best_checkpoint.pt</span></code>. ALF then
+creates a fresh optimizer/controller for target-domain training and rebuilds
+the database from the current <code class="docutils literal notranslate"><span class="pre">h5store/</span></code> contents.</p>
+<p>The task intentionally loads checkpoints with <code class="docutils literal notranslate"><span class="pre">restart_db=False</span></code>. The target
+training data comes from ALF’s current HDF5 store, while the loaded checkpoint’s
+evaluator <code class="docutils literal notranslate"><span class="pre">db_info</span></code> defines the expected database inputs and targets. Before
+HIPPYNN reads the data, the task stages filtered HDF5 copies so the current data
+matches the loaded checkpoint graph.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>HIPPYNN checkpoint loading uses PyTorch serialization, which can execute
+pickle data during loading. Only fine-tune from checkpoint files that you
+trust.</p>
+</div>
+<p>Related HIPPYNN documentation: <a class="reference external" href="https://lanl.github.io/hippynn/examples/restarting.html">Restarting training</a>, <a class="reference external" href="https://lanl.github.io/hippynn/user_guide/databases.html">Databases</a>, <a class="reference external" href="https://lanl.github.io/hippynn/examples/ase_calculator.html">ASE
+calculators</a>,
+and <a class="reference external" href="https://lanl.github.io/hippynn/examples/ensembles.html">Ensembling models</a>.</p>
 <p>To confirm that fine-tuning actually updated the model, inspect each
 <code class="docutils literal notranslate"><span class="pre">models/model-0001/model-XX/training_log.txt</span></code> for training epochs and
 <code class="docutils literal notranslate"><span class="pre">Training</span> <span class="pre">complete</span></code>. The new <code class="docutils literal notranslate"><span class="pre">best_model.pt</span></code> and <code class="docutils literal notranslate"><span class="pre">best_checkpoint.pt</span></code>

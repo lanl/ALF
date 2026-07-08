@@ -68,6 +68,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#workflow-pattern">Workflow Pattern</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#seed-the-model">Seed The Model</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#initial-ensemble-disagreement">Initial Ensemble Disagreement</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#fine-tune-only-from-existing-data">Fine-Tune Only From Existing Data</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#fine-tuning-task">Fine-Tuning Task</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#recommended-bring-up-commands">Recommended Bring-Up Commands</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#expected-outputs">Expected Outputs</a></li>
@@ -227,6 +228,25 @@ h5store/data-0001.h5
 </div>
 <p>The fine-tuning task reads the HDF5 directory, so those batches can be included
 when ALF trains the next ensemble.</p>
+</section>
+<section id="fine-tune-only-from-existing-data">
+<h2>Fine-Tune Only From Existing Data<a class="headerlink" href="#fine-tune-only-from-existing-data" title="Link to this heading"></a></h2>
+<p>You can fine-tune existing checkpoints on existing labeled data without running
+MLMD. Place the seed checkpoints under <code class="docutils literal notranslate"><span class="pre">models/model-0000</span></code>, place ALF/HIPPYNN
+HDF5 batches under <code class="docutils literal notranslate"><span class="pre">h5store/</span></code>, start without a pre-existing <code class="docutils literal notranslate"><span class="pre">status.txt</span></code>,
+and run only the ML stage:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json<span class="w"> </span>--test_ml
+</pre></div>
+</div>
+<p>This supervised fine-tuning step loads the current seed model, reads the HDF5
+store, and writes the adapted ensemble to the next model slot, usually
+<code class="docutils literal notranslate"><span class="pre">models/model-0001</span></code>. It does not launch builders, MLMD samplers, or QM
+labeling. After that model exists, you can either inspect it as a standalone
+fine-tuned ensemble or start the full ALF loop to continue MLMD-driven active
+learning:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json
+</pre></div>
+</div>
 <p>If you do not have seed labels, the copied model can still run deterministic
 MLMD, but uncertainty-triggered QM selection may not fire. In that case, first
 collect a seed set using bootstrap QM labels, MD snapshots, or manual structure selection. After

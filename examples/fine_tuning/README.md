@@ -28,6 +28,17 @@ h5store/data-0001.h5
 ...
 ```
 
+To fine-tune existing checkpoints on existing labeled data without running
+MLMD, start without `status.txt` and run only the ML stage:
+
+```bash
+python -m alframework --master master_config.json --test_ml
+```
+
+This reads the HDF5 store and writes the adapted ensemble to the next model
+slot, usually `models/model-0001`, without launching builders, samplers, or QM
+labeling.
+
 If `status.txt` is absent and `models/model-0000` exists, ALF will detect the
 seed model and use it for sampling. New labels are written to `h5store/`, and
 the fine-tuned ensemble is written to `models/model-0001`.

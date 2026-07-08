@@ -120,6 +120,29 @@ run's HDF5 store:
 The fine-tuning task reads the HDF5 directory, so those batches can be included
 when ALF trains the next ensemble.
 
+Fine-Tune Only From Existing Data
+---------------------------------
+
+You can fine-tune existing checkpoints on existing labeled data without running
+MLMD. Place the seed checkpoints under ``models/model-0000``, place ALF/HIPPYNN
+HDF5 batches under ``h5store/``, start without a pre-existing ``status.txt``,
+and run only the ML stage:
+
+.. code-block:: bash
+
+   python -m alframework --master master_config.json --test_ml
+
+This supervised fine-tuning step loads the current seed model, reads the HDF5
+store, and writes the adapted ensemble to the next model slot, usually
+``models/model-0001``. It does not launch builders, MLMD samplers, or QM
+labeling. After that model exists, you can either inspect it as a standalone
+fine-tuned ensemble or start the full ALF loop to continue MLMD-driven active
+learning:
+
+.. code-block:: bash
+
+   python -m alframework --master master_config.json
+
 If you do not have seed labels, the copied model can still run deterministic
 MLMD, but uncertainty-triggered QM selection may not fire. In that case, first
 collect a seed set using bootstrap QM labels, MD snapshots, or manual structure selection. After

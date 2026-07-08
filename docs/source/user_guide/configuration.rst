@@ -178,6 +178,45 @@ Parsl resource config
    for normal runs and optionally ``parsl_debug_configuration`` for stage
    checks. See :doc:`parsl` for executor labels and cluster templates.
 
+Stage Test Commands
+-------------------
+
+The ``--test_*`` flags run selected workflow stages through the normal ALF entry
+point. They are useful during bring-up and for deliberate one-stage work.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 24 46 30
+
+   * - Command
+     - What it runs
+     - Common use
+   * - ``--test_builder``
+     - Runs the configured builder task once and prints the returned
+       ``MoleculesObject``.
+     - Check structure loading/building, or generate one builder output for
+       inspection.
+   * - ``--test_sampler``
+     - Runs the builder once, then runs the configured sampler task once using
+       the current model id.
+     - Check ML model loading and sampler behavior, or run one sampler job
+       without entering the full loop.
+   * - ``--test_qm``
+     - Runs the builder once, then runs the configured QM task once and writes
+       ``qm_test.h5``.
+     - Check QM execution, parsing, unit conversion, and HDF5 property names on
+       one structure.
+   * - ``--test_ml``
+     - Runs the configured ML task once using the current HDF5/model state.
+     - Train or fine-tune one model ensemble job, or check ML data/model
+       settings before a full run.
+
+All stage-test commands create or update ``status.txt`` because they enter
+through the main ALF process. ``--test_ml`` can also create a real model
+directory and advance the current training/model ids when training succeeds.
+When ``parsl_debug_configuration`` is present in ``master_config.json``, these
+commands use it instead of the normal ``parsl_configuration``.
+
 Practical Tips
 --------------
 
@@ -192,6 +231,9 @@ Practical Tips
      python -m alframework --master master_config.json --test_qm
      python -m alframework --master master_config.json --test_ml
      python -m alframework --master master_config.json --test_sampler
+
+  These commands run individual workflow stages through the main ALF entry
+  point; see `Stage Test Commands`_ for behavior and side effects.
 
 * Archive or remove old ``status.txt``, ``h5store/``, ``models/``, sampler
   metadata, and QM scratch directories before starting a new independent run.

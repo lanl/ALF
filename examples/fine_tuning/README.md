@@ -7,7 +7,17 @@ fine-tune that ensemble on new ALF data. The example contains a local custom
 Here, fine-tuning means the common MLIP pattern: load pretrained model weights,
 continue supervised training on new target data with a smaller learning rate,
 and write the adapted model as the next ALF ensemble. It does not reuse the old
-optimizer state.
+optimizer state. This is not a full HIPPYNN training restart: ALF reuses the
+checkpoint graph and weights, creates a fresh optimizer/controller, and rebuilds
+the training database from the current `h5store/`.
+
+The local task intentionally loads checkpoints with `restart_db=False`. The
+checkpoint evaluator's `db_info` defines the expected HDF5 inputs and targets,
+and the staged HDF5 copies are filtered to match that loaded graph. HIPPYNN
+checkpoint loading uses PyTorch serialization, so only fine-tune from checkpoint
+files that you trust. For the upstream restart behavior this example builds on,
+see the HIPPYNN restart documentation:
+https://lanl.github.io/hippynn/examples/restarting.html.
 
 If you only want to bring your own structures or HDF5 data without starting
 from model weights, use `examples/seeded_active_learning`.

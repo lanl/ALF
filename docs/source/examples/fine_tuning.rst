@@ -189,6 +189,33 @@ The task creates a fresh Adam optimizer for the target data and writes the
 adapted ensemble to ``models/model-0001``. Later active-learning rounds
 fine-tune from the latest accepted model and write the next model id.
 
+HIPPYNN Restart Semantics
+-------------------------
+
+This example uses HIPPYNN checkpoint files for weight initialization, but it is
+not a full HIPPYNN training restart. Each model member loads the saved graph and
+weights from ``experiment_structure.pt`` and ``best_checkpoint.pt``. ALF then
+creates a fresh optimizer/controller for target-domain training and rebuilds
+the database from the current ``h5store/`` contents.
+
+The task intentionally loads checkpoints with ``restart_db=False``. The target
+training data comes from ALF's current HDF5 store, while the loaded checkpoint's
+evaluator ``db_info`` defines the expected database inputs and targets. Before
+HIPPYNN reads the data, the task stages filtered HDF5 copies so the current data
+matches the loaded checkpoint graph.
+
+.. warning::
+
+   HIPPYNN checkpoint loading uses PyTorch serialization, which can execute
+   pickle data during loading. Only fine-tune from checkpoint files that you
+   trust.
+
+Related HIPPYNN documentation: `Restarting training
+<https://lanl.github.io/hippynn/examples/restarting.html>`__, `Databases
+<https://lanl.github.io/hippynn/user_guide/databases.html>`__, `ASE
+calculators <https://lanl.github.io/hippynn/examples/ase_calculator.html>`__,
+and `Ensembling models <https://lanl.github.io/hippynn/examples/ensembles.html>`__.
+
 To confirm that fine-tuning actually updated the model, inspect each
 ``models/model-0001/model-XX/training_log.txt`` for training epochs and
 ``Training complete``. The new ``best_model.pt`` and ``best_checkpoint.pt``

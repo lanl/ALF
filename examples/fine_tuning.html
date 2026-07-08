@@ -68,6 +68,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#workflow-pattern">Workflow Pattern</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#seed-the-model">Seed The Model</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#initial-ensemble-disagreement">Initial Ensemble Disagreement</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#hdf5-schema-compatibility">HDF5 Schema Compatibility</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#fine-tune-only-from-existing-data">Fine-Tune Only From Existing Data</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#fine-tuning-task">Fine-Tuning Task</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#recommended-bring-up-commands">Recommended Bring-Up Commands</a></li>
@@ -229,6 +230,20 @@ h5store/data-0001.h5
 <p>The fine-tuning task reads the HDF5 directory, so those batches can be included
 when ALF trains the next ensemble.</p>
 </section>
+<section id="hdf5-schema-compatibility">
+<h2>HDF5 Schema Compatibility<a class="headerlink" href="#hdf5-schema-compatibility" title="Link to this heading"></a></h2>
+<p>The example-local fine-tuning task stages filtered copies of the HDF5 batches
+inside each output model-member directory before loading them with HIPPYNN. This
+keeps training data compatible with the loaded checkpoint graph. For example,
+when <code class="docutils literal notranslate"><span class="pre">cell_key</span></code> is <code class="docutils literal notranslate"><span class="pre">null</span></code> in <code class="docutils literal notranslate"><span class="pre">hippynn_config.json</span></code>, unused <code class="docutils literal notranslate"><span class="pre">cell</span></code>
+datasets written by periodic sampled structures are omitted from the staged
+copies so they do not conflict with older non-periodic HDF5 batches. The
+original files in <code class="docutils literal notranslate"><span class="pre">h5store/</span></code> are not modified.</p>
+<p>If you set <code class="docutils literal notranslate"><span class="pre">cell_key</span></code> to train a periodic HIPPYNN model, every HDF5 group in
+the training store must contain that dataset. The fine-tuning task will stop
+with a file/group-specific error if any batch is missing the configured
+<code class="docutils literal notranslate"><span class="pre">cell_key</span></code>.</p>
+</section>
 <section id="fine-tune-only-from-existing-data">
 <h2>Fine-Tune Only From Existing Data<a class="headerlink" href="#fine-tune-only-from-existing-data" title="Link to this heading"></a></h2>
 <p>You can fine-tune existing checkpoints on existing labeled data without running
@@ -271,6 +286,11 @@ models/model-0000/model-01/best_checkpoint.pt
 <p>The task creates a fresh Adam optimizer for the target data and writes the
 adapted ensemble to <code class="docutils literal notranslate"><span class="pre">models/model-0001</span></code>. Later active-learning rounds
 fine-tune from the latest accepted model and write the next model id.</p>
+<p>To confirm that fine-tuning actually updated the model, inspect each
+<code class="docutils literal notranslate"><span class="pre">models/model-0001/model-XX/training_log.txt</span></code> for training epochs and
+<code class="docutils literal notranslate"><span class="pre">Training</span> <span class="pre">complete</span></code>. The new <code class="docutils literal notranslate"><span class="pre">best_model.pt</span></code> and <code class="docutils literal notranslate"><span class="pre">best_checkpoint.pt</span></code>
+files in <code class="docutils literal notranslate"><span class="pre">models/model-0001</span></code> are written from that training run and should
+differ from the seed artifacts under <code class="docutils literal notranslate"><span class="pre">models/model-0000</span></code>.</p>
 <p>For a single-model starting point, the recommended sequence is:</p>
 <ol class="arabic simple">
 <li><p>Copy the model into <code class="docutils literal notranslate"><span class="pre">models/model-0000/model-00</span></code> through
@@ -319,7 +339,8 @@ HIPPYNN data keys match that data.</p>
 <td><p>Newly labeled data batches, plus any optional prior data you provided.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">models/model-0001</span></code></p></td>
-<td><p>First ensemble fine-tuned from the seed model.</p></td>
+<td><p>First ensemble fine-tuned from the seed model, including updated
+<code class="docutils literal notranslate"><span class="pre">best_model.pt</span></code>, <code class="docutils literal notranslate"><span class="pre">best_checkpoint.pt</span></code>, metrics, and training logs.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">sampling/metadata-*.p</span></code></p></td>
 <td><p>MLMD sampling metadata and uncertainty diagnostics.</p></td>

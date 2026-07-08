@@ -64,6 +64,12 @@ class VASPGenerator:
     pseudopotential path, and any module/environment setup from the caller or
     Parsl worker initialization. This class no longer constructs LANL-specific
     commands or relies on MPI/GPU globals.
+
+    The legacy helper applies ALF-specific defaults before merging user
+    ``vasp_options``: ``xc='pbe'``, ``prec='Accurate'``, ``ncore=1``,
+    ``lreal='Auto'``, ``nelm=120``, and ``ivdw=0``. These are compatibility
+    defaults, not recommended settings for every VASP workflow. In particular,
+    review ``lreal`` when migrating old calculations or comparing forces.
     """
 
     def __init__(

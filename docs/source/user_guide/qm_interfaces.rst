@@ -28,6 +28,15 @@ usually the easiest integration route. Write a small QM config that identifies
 the ASE calculator class, command, and calculator options, then let ASE handle
 input writing, execution, and result extraction.
 
+.. note::
+
+   New VASP configurations should use
+   ``alframework.qm_interfaces.ase_calculator_interface.VASP_ase_calculator_task``.
+   The older ``alframework.qm_interfaces.vaspase_interface.VASPGenerator`` helper
+   is deprecated and kept only for backward compatibility. For custom VASP-style
+   workflows, prefer the generic ``ase_calculator_task`` whenever the engine can
+   be represented as an ASE calculator.
+
 .. _qm-interface-extension-points:
 
 How ALF Uses QM Interfaces
@@ -101,6 +110,18 @@ QM configuration
         - Backend-specific controls for where input, output, and restart files
           are written.
 
+.. note::
+   ALF does not choose a universally appropriate QM method, basis set,
+   pseudopotential, dispersion correction, or charge / spin state setting for a
+   workflow. These choices should be made explicitly in the engine-specific QM
+   configuration and checked against the intended chemistry. For ORCA and
+   Q-Chem, the method, basis, and property requests come from the configured
+   input/rem blocks, while the current task wrappers call the generators as
+   neutral singlets unless customized. For VASP through the current ASE
+   interface, INCAR-style settings come from ``QM_config["input"]`` and ASE's
+   VASP calculator behavior. The deprecated legacy VASP helper is the exception
+   with ALF compatibility defaults documented further below.
+
 For HPC runs, the QM command and Parsl resource configuration must agree. For
 example, an MPI VASP command such as ``srun -n 128 vasp_std`` should be paired
 with an ``alf_QM_executor`` configuration that requests the matching nodes,
@@ -109,9 +130,41 @@ practical resource examples.
 
 Legacy VASP helper
    ``alframework.qm_interfaces.vaspase_interface.VASPGenerator`` is deprecated
-   and kept only for older imports. New VASP workflows should use
+   and kept only for older imports. Do not start new configuration files from
+   ``vaspase_interface.py``. Existing imports may continue to work temporarily,
+   but should be migrated to
    ``alframework.qm_interfaces.ase_calculator_interface.VASP_ase_calculator_task``
-   or the generic ``ase_calculator_task``.
+   or the generic ``ase_calculator_task`` described above.
+
+   The legacy helper also applies ALF-specific VASP defaults before merging
+   user-provided ``vasp_options``:
+
+   .. list-table::
+      :header-rows: 1
+      :widths: 30 70
+
+      * - VASP setting
+        - Legacy default
+      * - ``xc``
+        - ``"pbe"``
+      * - ``prec``
+        - ``"Accurate"``
+      * - ``ncore``
+        - ``1`` unless ``vasp_options["ncore"]`` is provided.
+      * - ``lreal``
+        - ``"Auto"``
+      * - ``nelm``
+        - ``120`` unless ``vasp_options["nelm"]`` is provided.
+      * - ``ivdw``
+        - ``0`` unless ``vasp_options["ivdw"]`` is provided.
+
+   These are compatibility defaults from the old helper, not universal
+   recommendations for VASP calculations. In particular, users should be aware
+   that the legacy path sets ``LREAL = Auto`` by default; review this setting
+   when reproducing old calculations, comparing force labels, or migrating to
+   the ASE calculator interface. The old helper also maps ``vasp_options["kpoints"]``
+   to ASE's ``kpts`` option and falls back to atomic-number magnetic moments
+   unless ``magmom`` is provided.
 
 .. _qm-interface-new-engine-template:
 

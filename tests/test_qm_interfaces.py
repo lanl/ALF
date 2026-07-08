@@ -105,6 +105,13 @@ def test_orca_parser_applies_unit_conversion(tmp_path, unit, energy_scale, force
     np.testing.assert_allclose(parsed["forces"], -np.array([[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]) * force_scale)
 
 
+def test_orca_check_normal_termination_rejects_incomplete_log(tmp_path):
+    log = tmp_path / "orca.log"
+    log.write_text("SCF CONVERGED AFTER 6 CYCLES\n")
+
+    assert not orcaGenerator().check_normal_termination(str(log))
+
+
 def test_qchem_input_writer(tmp_path):
     atoms = Atoms("OH2", positions=[[0.0, 0.0, 0.0], [0.0, 0.7, 0.7], [0.0, -0.7, 0.7]])
     generator = qchemGenerator(scratch_path=str(tmp_path), qcheminput="JOBTYPE FORCE", qchemblocks="$pcm\n$end")

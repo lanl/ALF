@@ -21,6 +21,37 @@ def test_well_potential():
     np.testing.assert_allclose(calc.results["forces"], [[0.0, 0.0, 0.0], [-2.0, 0.0, 0.0]])
 
 
+def test_well_potential_defaults_to_mass_weighted_forces():
+    atoms = Atoms("HeH", positions=[[2.0, 0.0, 0.0], [3.0, 0.0, 0.0]])
+    calc = Well_Potential(r_start=1.0, force=1.0, origin=[0.0, 0.0, 0.0])
+
+    calc.calculate(atoms, properties=["energy", "forces"])
+
+    masses = atoms.get_masses()
+    np.testing.assert_allclose(calc.results["forces"][:, 0], -masses)
+
+
+def test_well_potential_zero_properties_excludes_core_properties():
+    atoms = Atoms("H", positions=[[2.0, 0.0, 0.0]])
+    calc = Well_Potential(
+        r_start=1.0,
+        force=2.0,
+        origin=[0.0, 0.0, 0.0],
+        zero_properties=["energy", "potential_energy", "forces", "stress"],
+    )
+
+    calc.calculate(atoms, properties=["energy", "forces", "stress"])
+
+    assert calc.zero_properties == ["stress"]
+    assert "energy" in calc.implemented_properties
+    assert "potential_energy" in calc.implemented_properties
+    assert "forces" in calc.implemented_properties
+    assert "stress" in calc.implemented_properties
+    assert calc.results["energy"] == 2.0 * atoms.get_masses()[0]
+    np.testing.assert_allclose(calc.results["forces"], [[-2.0 * atoms.get_masses()[0], 0.0, 0.0]])
+    assert calc.results["stress"] == 0
+
+
 def test_mlmd_calculator_reports_ensemble_means_and_uncertainties(fixed_calculator_factory):
     atoms = Atoms("H2", positions=[[0.0, 0.0, 0.0], [0.0, 0.0, 0.7]])
     model_a = fixed_calculator_factory(energy=1.0, forces=[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
@@ -34,6 +65,20 @@ def test_mlmd_calculator_reports_ensemble_means_and_uncertainties(fixed_calculat
     assert calc.results["energy_stdev"] == 1.0
     assert calc.results["forces_stdev_max"] == 1.0
     assert calc.results["forces_stdev_mean"] == 1.0 / 3.0
+
+
+def test_mlmd_calculator_single_model_has_zero_uncertainty(fixed_calculator_factory):
+    atoms = Atoms("H", positions=[[0.0, 0.0, 0.0]])
+    model = fixed_calculator_factory(energy=1.5, forces=[[0.1, 0.2, 0.3]])
+    calc = MLMD_calculator([model])
+
+    calc.calculate(atoms, ["energy", "forces", "energy_stdev", "forces_stdev_mean", "forces_stdev_max"])
+
+    assert calc.results["energy"] == 1.5
+    np.testing.assert_allclose(calc.results["forces"], [[0.1, 0.2, 0.3]])
+    assert calc.results["energy_stdev"] == 0.0
+    assert calc.results["forces_stdev_mean"] == 0.0
+    assert calc.results["forces_stdev_max"] == 0.0
 
 
 def test_mlmd_calculator_without_udd(fixed_calculator_factory):
@@ -67,6 +112,21 @@ def test_mlmd_calculator_applies_udd_energy_and_force_bias(fixed_calculator_fact
     np.testing.assert_allclose(calc.results["forces"], [[2.5, 0.0, 0.0], [0.0, 2.5, 0.0]])
 
 
+def test_mlmd_calculator_udd_zero_disagreement_has_no_bias(fixed_calculator_factory):
+    atoms = Atoms("H", positions=[[0.0, 0.0, 0.0]])
+    model_a = fixed_calculator_factory(energy=1.5, forces=[[0.1, 0.2, 0.3]])
+    model_b = fixed_calculator_factory(energy=1.5, forces=[[0.1, 0.2, 0.3]])
+    calc = MLMD_calculator([model_a, model_b], udd_bias_weight=0.5)
+
+    calc.calculate(atoms, ["energy", "forces"])
+
+    assert calc.results["energy_stdev"] == 0.0
+    assert calc.results["E_en_bias"] == 0.0
+    np.testing.assert_allclose(calc.results["F_en_bias"], [[0.0, 0.0, 0.0]])
+    assert calc.results["energy"] == calc.results["unbiased_energy"]
+    np.testing.assert_allclose(calc.results["forces"], calc.results["unbiased_forces"])
+
+
 def test_mlmd_calculator_udd_ignores_well_potential(fixed_calculator_factory):
     atoms = Atoms("H2", positions=[[0.2, 0.0, 0.0], [0.0, 0.0, 0.7]])
     model_a = fixed_calculator_factory(energy=1.0, forces=[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
@@ -85,7 +145,7 @@ def test_mlmd_calculator_udd_ignores_well_potential(fixed_calculator_factory):
     assert calc.results["unbiased_energy"] > 2.0
 
 
-def test_mlmd_sampling_rescales_cell(monkeypatch):
+def test_mlmd_sampling_updates_density_and_cell_volume(monkeypatch):
     mlmd_sampling_module = importlib.import_module("alframework.samplers.mlmd_sampling")
 
     monkeypatch.setattr(mlmd_sampling_module, "Langevin", FakeLangevin)

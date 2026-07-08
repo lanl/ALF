@@ -218,8 +218,7 @@ provide different resources, or for users who do not have a local scheduler.
 
 The Parsl documentation includes a
 `Globus Compute multisite example <https://parsl.readthedocs.io/en/stable/userguide/configuration/examples.html#globus-compute-multisite>`_
-with additional endpoint setup details. A compact ALF-style configuration can
-look like this:
+with additional endpoint setup details. Below is a bare-bones Parsl configuration for using ALF with Globus Compute.
 
 .. code-block:: python
 

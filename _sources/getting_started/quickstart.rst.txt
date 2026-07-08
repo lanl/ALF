@@ -116,8 +116,13 @@ Run the stages one at a time before starting the full active-learning loop:
    python -m alframework --master master_config.json --test_ml
    python -m alframework --master master_config.json --test_sampler
 
-These checks make it easier to isolate setup problems in structure building,
-ORCA execution, HIPPYNN training, or MLMD sampling before a long run is queued.
+These stage commands make it easier to isolate setup problems in structure
+building, ORCA execution, HIPPYNN training, or MLMD sampling before a long run
+is queued. They can also be useful outside initial bring-up when you want to run
+one stage deliberately. For example, ``--test_ml`` submits the configured ML
+task once against the current HDF5/model state, so for ensemble ML tasks it can
+complete one ensemble training or fine-tuning job without starting the full
+active-learning loop.
 
 Start The Workflow
 ------------------

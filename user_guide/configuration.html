@@ -58,6 +58,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#output-and-restart-files">Output And Restart Files</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#common-run-lifecycle">Common Run Lifecycle</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#stage-config-files">Stage Config Files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#stage-test-commands">Stage Test Commands</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#practical-tips">Practical Tips</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#related-examples">Related Examples</a></li>
 </ul>
@@ -319,6 +320,54 @@ checks. See <a class="reference internal" href="parsl.html"><span class="doc">Pa
 </dd>
 </dl>
 </section>
+<section id="stage-test-commands">
+<h2>Stage Test Commands<a class="headerlink" href="#stage-test-commands" title="Link to this heading"></a></h2>
+<p>The <code class="docutils literal notranslate"><span class="pre">--test_*</span></code> flags run selected workflow stages through the normal ALF entry
+point. They are useful during bring-up and for deliberate one-stage work.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 24.0%" />
+<col style="width: 46.0%" />
+<col style="width: 30.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Command</p></th>
+<th class="head"><p>What it runs</p></th>
+<th class="head"><p>Common use</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--test_builder</span></code></p></td>
+<td><p>Runs the configured builder task once and prints the returned
+<code class="docutils literal notranslate"><span class="pre">MoleculesObject</span></code>.</p></td>
+<td><p>Check structure loading/building, or generate one builder output for
+inspection.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--test_sampler</span></code></p></td>
+<td><p>Runs the builder once, then runs the configured sampler task once using
+the current model id.</p></td>
+<td><p>Check ML model loading and sampler behavior, or run one sampler job
+without entering the full loop.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--test_qm</span></code></p></td>
+<td><p>Runs the builder once, then runs the configured QM task once and writes
+<code class="docutils literal notranslate"><span class="pre">qm_test.h5</span></code>.</p></td>
+<td><p>Check QM execution, parsing, unit conversion, and HDF5 property names on
+one structure.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--test_ml</span></code></p></td>
+<td><p>Runs the configured ML task once using the current HDF5/model state.</p></td>
+<td><p>Train or fine-tune one model ensemble job, or check ML data/model
+settings before a full run.</p></td>
+</tr>
+</tbody>
+</table>
+<p>All stage-test commands create or update <code class="docutils literal notranslate"><span class="pre">status.txt</span></code> because they enter
+through the main ALF process. <code class="docutils literal notranslate"><span class="pre">--test_ml</span></code> can also create a real model
+directory and advance the current training/model ids when training succeeds.
+When <code class="docutils literal notranslate"><span class="pre">parsl_debug_configuration</span></code> is present in <code class="docutils literal notranslate"><span class="pre">master_config.json</span></code>, these
+commands use it instead of the normal <code class="docutils literal notranslate"><span class="pre">parsl_configuration</span></code>.</p>
+</section>
 <section id="practical-tips">
 <h2>Practical Tips<a class="headerlink" href="#practical-tips" title="Link to this heading"></a></h2>
 <ul>
@@ -332,6 +381,8 @@ python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="
 python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json<span class="w"> </span>--test_sampler
 </pre></div>
 </div>
+<p>These commands run individual workflow stages through the main ALF entry
+point; see <a class="reference internal" href="#stage-test-commands">Stage Test Commands</a> for behavior and side effects.</p>
 </li>
 <li><p>Archive or remove old <code class="docutils literal notranslate"><span class="pre">status.txt</span></code>, <code class="docutils literal notranslate"><span class="pre">h5store/</span></code>, <code class="docutils literal notranslate"><span class="pre">models/</span></code>, sampler
 metadata, and QM scratch directories before starting a new independent run.</p></li>

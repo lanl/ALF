@@ -245,7 +245,10 @@ From ``examples/fine_tuning``:
 
 Run ``--test_sampler`` only after the seed ensemble has been placed under
 ``models/model-0000``. Run ``--test_ml`` when prior HDF5 data exists and the
-HIPPYNN data keys match that data.
+HIPPYNN data keys match that data. In fine-tuning workflows, ``--test_ml`` is
+also a useful way to submit one supervised ensemble fine-tuning job from
+existing HDF5 data and checkpoints before starting the full active-learning
+loop.
 
 After the stage checks pass, start ALF:
 

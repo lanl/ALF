@@ -335,7 +335,10 @@ python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="
 </div>
 <p>Run <code class="docutils literal notranslate"><span class="pre">--test_sampler</span></code> only after the seed ensemble has been placed under
 <code class="docutils literal notranslate"><span class="pre">models/model-0000</span></code>. Run <code class="docutils literal notranslate"><span class="pre">--test_ml</span></code> when prior HDF5 data exists and the
-HIPPYNN data keys match that data.</p>
+HIPPYNN data keys match that data. In fine-tuning workflows, <code class="docutils literal notranslate"><span class="pre">--test_ml</span></code> is
+also a useful way to submit one supervised ensemble fine-tuning job from
+existing HDF5 data and checkpoints before starting the full active-learning
+loop.</p>
 <p>After the stage checks pass, start ALF:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json
 </pre></div>

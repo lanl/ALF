@@ -265,7 +265,7 @@ class parsl_task_queue():
         results_list = []
         failed_number = 0
         for taski,task in reversed(list(enumerate(self.task_list))):
-            if not is_final(task):
+            if not is_final_task(task):
                 continue
             task_status = task.task_status()
             if task_status in ('exec_done','memo_done'):
@@ -327,15 +327,16 @@ def find_empty_directory(pattern):
     return curI
 
 
-# Throughout this code individual systems are passed around as three element lists
-# element 1: metadata: this is required to include moleculeid,  but may also include sampling and other metadata
-# element 2: an ASE atoms object.
-# element 3: Evaluated QM properties
+# Throughout this code individual systems are passed around as MoleculesObject-s
+# these are backward-compatible with a three element list:
+# - element 0: metadata: this is required to include moleculeid,  but may also include sampling and other metadata
+# - element 1: an ASE atoms object.
+# - element 2: Evaluated QM properties
 def system_checker(system, kill_on_fail=True, print_error=True):
     """Checks if the system returned by the builder meets all requeriments.
 
     Args:
-        system (list): A list containing three elements. The first is a dict containing metadata of the system,
+        system (MoleculesObject/list): A list containing three elements. The first is a dict containing metadata of the system,
                        and one of its keys must be 'moleculeid' whose value is a unique identifier of the system.
                        The second element is an ASE Atoms object. The third element is a dict that stores the
                        desired properties from the QM calculation (e.g. forces and energies).
@@ -347,8 +348,9 @@ def system_checker(system, kill_on_fail=True, print_error=True):
 
     """
     try: 
-        assert isinstance(system, list) or isinstance(system, tuple)
-        assert len(system) == 3
+        assert isinstance(system, (list, tuple, MoleculesObject))
+        if isinstance(system, (list, tuple)):
+            assert len(system) == 3
         assert isinstance(system[0], dict)
         assert isinstance(system[0]['moleculeid'], str)
         assert isinstance(system[1], Atoms)

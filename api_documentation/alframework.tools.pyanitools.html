@@ -9,7 +9,6 @@
   <title>alframework.tools.pyanitools module &mdash; ALF 0.0.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
-      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=eaec28dc" />
 
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
@@ -52,22 +51,16 @@
 <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/configuration.html">Configuration</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../user_guide/units.html">Units And Property Conversion</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/builders.html">Builders</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/samplers.html">Samplers</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/ml_interfaces.html">ML Interfaces</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/qm_interfaces.html">QM Interfaces</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../user_guide/parsl.html">Parsl And HPC Execution</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../examples/simple_water.html">Simple Water</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/seeded_active_learning.html">Seeded Active Learning</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/fine_tuning.html">Fine-Tuning Existing Models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/molten_salt.html">Molten Salts</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/il.html">Ionic Liquids</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/uo2.html">Periodic Solids (UO2)</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/reactive_sampling.html">Reactive Sampling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/simple_water.html">Simple Water Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/molten_salt.html">Molten Salt Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/reactive_sampling.html">Reactive Sampling Example</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
 <ul class="current">
@@ -84,6 +77,7 @@
 <li class="toctree-l6"><a class="reference internal" href="alframework.tools.molecules_class.html">alframework.tools.molecules_class module</a></li>
 <li class="toctree-l6"><a class="reference internal" href="alframework.tools.plotting.html">alframework.tools.plotting module</a></li>
 <li class="toctree-l6 current"><a class="current reference internal" href="#">alframework.tools.pyanitools module</a><ul>
+<li class="toctree-l7"><a class="reference internal" href="#alframework.tools.pyanitools.PY_VERSION"><code class="docutils literal notranslate"><span class="pre">PY_VERSION</span></code></a></li>
 <li class="toctree-l7"><a class="reference internal" href="#alframework.tools.pyanitools.anidataloader"><code class="docutils literal notranslate"><span class="pre">anidataloader</span></code></a><ul>
 <li class="toctree-l8"><a class="reference internal" href="#alframework.tools.pyanitools.anidataloader.cleanup"><code class="docutils literal notranslate"><span class="pre">anidataloader.cleanup()</span></code></a></li>
 <li class="toctree-l8"><a class="reference internal" href="#alframework.tools.pyanitools.anidataloader.get_data"><code class="docutils literal notranslate"><span class="pre">anidataloader.get_data()</span></code></a></li>
@@ -147,6 +141,13 @@
              
   <section id="module-alframework.tools.pyanitools">
 <span id="alframework-tools-pyanitools-module"></span><h1>alframework.tools.pyanitools module<a class="headerlink" href="#module-alframework.tools.pyanitools" title="Link to this heading"></a></h1>
+<dl class="py data">
+<dt class="sig sig-object py" id="alframework.tools.pyanitools.PY_VERSION">
+<span class="sig-name descname"><span class="pre">PY_VERSION</span></span><span class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></span><a class="headerlink" href="#alframework.tools.pyanitools.PY_VERSION" title="Link to this definition"></a></dt>
+<dd><p>ANI data packer class
+Class for storing data supplied as a dictionary.</p>
+</dd></dl>
+
 <dl class="py class">
 <dt class="sig sig-object py" id="alframework.tools.pyanitools.anidataloader">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">anidataloader</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">store_file</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/tools/pyanitools.html#anidataloader"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.pyanitools.anidataloader" title="Link to this definition"></a></dt>

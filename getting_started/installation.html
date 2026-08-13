@@ -9,7 +9,6 @@
   <title>Installation &mdash; ALF 0.0.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
-      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=eaec28dc" />
 
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
@@ -46,37 +45,22 @@
               <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
 <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="what_is_alf.html">What Is ALF</a></li>
-<li class="toctree-l1 current"><a class="current reference internal" href="#">Installation</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#prerequisites">Prerequisites</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#basic-install">Basic Install</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#testing-install">Testing Install</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#documentation-install">Documentation Install</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#optional-scientific-backends">Optional Scientific Backends</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#hpc-and-parsl-setup">HPC And Parsl Setup</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#next-steps">Next Steps</a></li>
-</ul>
-</li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="quickstart.html">Quickstart</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/configuration.html">Configuration</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../user_guide/units.html">Units And Property Conversion</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/builders.html">Builders</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/samplers.html">Samplers</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/ml_interfaces.html">ML Interfaces</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/qm_interfaces.html">QM Interfaces</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../user_guide/parsl.html">Parsl And HPC Execution</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../examples/simple_water.html">Simple Water</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/seeded_active_learning.html">Seeded Active Learning</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/fine_tuning.html">Fine-Tuning Existing Models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/molten_salt.html">Molten Salts</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/il.html">Ionic Liquids</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/uo2.html">Periodic Solids (UO2)</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/reactive_sampling.html">Reactive Sampling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/simple_water.html">Simple Water Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/molten_salt.html">Molten Salt Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/reactive_sampling.html">Reactive Sampling Example</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
 <ul>
@@ -113,85 +97,12 @@
              
   <section id="installation">
 <h1>Installation<a class="headerlink" href="#installation" title="Link to this heading"></a></h1>
-<p>ALF is installed as a Python package, but a complete production workflow also
-depends on the external QM, ML, scheduler, MPI, and GPU software required.</p>
-<section id="prerequisites">
-<h2>Prerequisites<a class="headerlink" href="#prerequisites" title="Link to this heading"></a></h2>
-<p>Before installing ALF, use an environment with Python <code class="docutils literal notranslate"><span class="pre">&gt;3.9</span></code>. A fresh virtual
-environment or conda environment is recommended so ALF’s Python dependencies do
-not conflict with other scientific software stacks.</p>
-<p>The Python install includes ALF’s core Python dependencies, including Parsl and
-ASE. It does not install external executables or site-specific software such as
-ORCA, VASP, Q-Chem, scheduler modules, MPI launchers, CUDA/ROCm drivers, or
-cluster resource configuration.</p>
-</section>
-<section id="basic-install">
-<h2>Basic Install<a class="headerlink" href="#basic-install" title="Link to this heading"></a></h2>
-<p>Clone the repository and install ALF in editable mode:</p>
+<p>Clone the repository and install ALF in editable mode.</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/lanl/ALF.git
 <span class="nb">cd</span><span class="w"> </span>ALF
-python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.
+pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.
 </pre></div>
 </div>
-<p>For a quick import check:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;import alframework; print(&#39;ALF import OK&#39;)&quot;</span>
-</pre></div>
-</div>
-</section>
-<section id="testing-install">
-<h2>Testing Install<a class="headerlink" href="#testing-install" title="Link to this heading"></a></h2>
-<p>Install the lightweight unit-test dependencies with the <code class="docutils literal notranslate"><span class="pre">tests</span></code> extra:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[tests]&quot;</span>
-python<span class="w"> </span>-m<span class="w"> </span>pytest
-</pre></div>
-</div>
-<p>These tests are intended to run without external QM executables, trained ML
-models, GPUs, or Parsl executors.</p>
-</section>
-<section id="documentation-install">
-<h2>Documentation Install<a class="headerlink" href="#documentation-install" title="Link to this heading"></a></h2>
-<p>Install the documentation dependencies with the <code class="docutils literal notranslate"><span class="pre">docs</span></code> extra:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[docs]&quot;</span>
-sphinx-build<span class="w"> </span>-b<span class="w"> </span>html<span class="w"> </span>docs/source<span class="w"> </span>docs/_autobuild/html
-</pre></div>
-</div>
-<p>The generated HTML pages are written to <code class="docutils literal notranslate"><span class="pre">docs/_autobuild/html</span></code>.</p>
-</section>
-<section id="optional-scientific-backends">
-<h2>Optional Scientific Backends<a class="headerlink" href="#optional-scientific-backends" title="Link to this heading"></a></h2>
-<p>Some workflows need additional packages or external programs. The optional
-<code class="docutils literal notranslate"><span class="pre">full</span></code> extra currently installs <code class="docutils literal notranslate"><span class="pre">pyscf</span></code> and <code class="docutils literal notranslate"><span class="pre">hippynn</span></code>:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;.[full]&quot;</span>
-</pre></div>
-</div>
-<p>This is not required for every user and does not cover every supported backend.
-HIPPYNN, NeuroChem/ANI, ORCA, VASP, Q-Chem, RDKit, MPI, and GPU toolchains are
-workflow-specific. ASE-supported QM engines can still require separately
-installed executables, environment variables, pseudopotential paths, and license
-or module setup.</p>
-<p>See <a class="reference internal" href="../user_guide/ml_interfaces.html"><span class="doc">ML Interfaces</span></a>, <a class="reference internal" href="../user_guide/qm_interfaces.html"><span class="doc">QM Interfaces</span></a>, and
-<a class="reference internal" href="../user_guide/builders.html"><span class="doc">Builders</span></a> for backend-specific configuration patterns.</p>
-</section>
-<section id="hpc-and-parsl-setup">
-<h2>HPC And Parsl Setup<a class="headerlink" href="#hpc-and-parsl-setup" title="Link to this heading"></a></h2>
-<p>ALF installs Parsl as a Python dependency, but users still need to adapt the
-Parsl configuration for the machine where ALF will run. In the example
-directories, <code class="docutils literal notranslate"><span class="pre">parsl_configs.py</span></code> controls scheduler partitions, accounts, QoS,
-walltime, worker initialization, launchers, CPU resources, and GPU resources.</p>
-<p>See <a class="reference internal" href="../user_guide/parsl.html"><span class="doc">Parsl And HPC Execution</span></a> for the executor labels ALF expects and for
-templates covering common Slurm CPU/GPU layouts.</p>
-</section>
-<section id="next-steps">
-<h2>Next Steps<a class="headerlink" href="#next-steps" title="Link to this heading"></a></h2>
-<ul class="simple">
-<li><p><a class="reference internal" href="quickstart.html"><span class="doc">Quickstart</span></a> for the recommended first run.</p></li>
-<li><p><a class="reference internal" href="../examples/simple_water.html"><span class="doc">Simple Water</span></a> for the full simple-water walkthrough.</p></li>
-<li><p><a class="reference internal" href="../user_guide/parsl.html"><span class="doc">Parsl And HPC Execution</span></a> for cluster and executor setup.</p></li>
-<li><p><a class="reference internal" href="../user_guide/ml_interfaces.html"><span class="doc">ML Interfaces</span></a> for HIPPYNN and ML backend setup.</p></li>
-<li><p><a class="reference internal" href="../user_guide/qm_interfaces.html"><span class="doc">QM Interfaces</span></a> for ORCA, VASP, Q-Chem, and ASE-backed QM
-setup.</p></li>
-</ul>
-</section>
 </section>
 
 

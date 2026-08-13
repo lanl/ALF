@@ -9,7 +9,6 @@
   <title>QM Interfaces &mdash; ALF 0.0.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
-      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=eaec28dc" />
 
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
@@ -20,7 +19,7 @@
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Parsl And HPC Execution" href="parsl.html" />
+    <link rel="next" title="Simple Water Example" href="../examples/simple_water.html" />
     <link rel="prev" title="ML Interfaces" href="ml_interfaces.html" /> 
 </head>
 
@@ -52,30 +51,22 @@
 <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
 <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration</a></li>
-<li class="toctree-l1"><a class="reference internal" href="units.html">Units And Property Conversion</a></li>
 <li class="toctree-l1"><a class="reference internal" href="builders.html">Builders</a></li>
 <li class="toctree-l1"><a class="reference internal" href="samplers.html">Samplers</a></li>
 <li class="toctree-l1"><a class="reference internal" href="ml_interfaces.html">ML Interfaces</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">QM Interfaces</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#supported-qm-packages">Supported QM Packages</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#how-alf-uses-qm-interfaces">How ALF Uses QM Interfaces</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#common-configuration-fields">Common Configuration Fields</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#adding-new-qm-engines">Adding New QM Engines</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#qm-interface-api-links">QM Interface API Links</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#related-examples">Related Examples</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#available-qm-interface-modules">Available QM interface modules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#choosing-a-qm-interface">Choosing a QM interface</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#qm-interface-api-links">QM interface API links</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#related-examples">Related examples</a></li>
 </ul>
 </li>
-<li class="toctree-l1"><a class="reference internal" href="parsl.html">Parsl And HPC Execution</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../examples/simple_water.html">Simple Water</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/seeded_active_learning.html">Seeded Active Learning</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/fine_tuning.html">Fine-Tuning Existing Models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/molten_salt.html">Molten Salts</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/il.html">Ionic Liquids</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/uo2.html">Periodic Solids (UO2)</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/reactive_sampling.html">Reactive Sampling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/simple_water.html">Simple Water Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/molten_salt.html">Molten Salt Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/reactive_sampling.html">Reactive Sampling Example</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
 <ul>
@@ -103,7 +94,7 @@
       </li>
   </ul><div class="rst-breadcrumbs-buttons" role="navigation" aria-label="Sequential page navigation">
         <a href="ml_interfaces.html" class="btn btn-neutral float-left" title="ML Interfaces" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="parsl.html" class="btn btn-neutral float-right" title="Parsl And HPC Execution" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="../examples/simple_water.html" class="btn btn-neutral float-right" title="Simple Water Example" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
   </div>
   <hr/>
 </div>
@@ -112,294 +103,43 @@
              
   <section id="qm-interfaces">
 <h1>QM Interfaces<a class="headerlink" href="#qm-interfaces" title="Link to this heading"></a></h1>
-<p>QM interfaces connect ALF to electronic structure engines. They receive
-candidate structures from the sampler, run or parse a quantum-mechanical
-calculation, and return labeled data for storage in ALF’s HDF5 training sets.</p>
-<section id="supported-qm-packages">
-<h2>Supported QM Packages<a class="headerlink" href="#supported-qm-packages" title="Link to this heading"></a></h2>
-<table class="docutils align-default">
-<colgroup>
-<col style="width: 28.0%" />
-<col style="width: 72.0%" />
-</colgroup>
-<thead>
-<tr class="row-odd"><th class="head"><p>Package</p></th>
-<th class="head"><p>Associated interface</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><a class="reference external" href="https://www.faccts.de/orca/">ORCA</a></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">alframework.qm_interfaces.orca5_interface.orca_calculator_task</span></code></p></td>
-</tr>
-<tr class="row-odd"><td><p><a class="reference external" href="https://vasp.at/">VASP</a></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">alframework.qm_interfaces.ase_calculator_interface.VASP_ase_calculator_task</span></code></p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference external" href="https://www.q-chem.com/">Q-Chem</a></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">alframework.qm_interfaces.qchem_DFT_interface.qchem_dft_calculator_task</span></code></p></td>
-</tr>
-<tr class="row-odd"><td><p><a class="reference external" href="https://docs.ase-lib.org/ase/calculators/calculators.html#supported-calculators">ASE-supported calculators</a></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">alframework.qm_interfaces.ase_calculator_interface.ase_calculator_task</span></code></p></td>
-</tr>
-</tbody>
-</table>
-<p>When a QM engine already has a reliable ASE calculator, the generic ASE task is
-usually the easiest integration route. Write a small QM config that identifies
-the ASE calculator class, command, and calculator options, then let ASE handle
-input writing, execution, and result extraction.</p>
-<div class="admonition note">
-<p class="admonition-title">Note</p>
-<p>New VASP configurations should use
-<code class="docutils literal notranslate"><span class="pre">alframework.qm_interfaces.ase_calculator_interface.VASP_ase_calculator_task</span></code>.
-The older <code class="docutils literal notranslate"><span class="pre">alframework.qm_interfaces.vaspase_interface.VASPGenerator</span></code> helper
-is deprecated and kept only for backward compatibility. For custom VASP-style
-workflows, prefer the generic <code class="docutils literal notranslate"><span class="pre">ase_calculator_task</span></code> whenever the engine can
-be represented as an ASE calculator.</p>
-</div>
+<p>QM interfaces connect ALF to electronic structure engines.</p>
+<section id="available-qm-interface-modules">
+<h2>Available QM interface modules<a class="headerlink" href="#available-qm-interface-modules" title="Link to this heading"></a></h2>
+<p>ALF currently includes several QM interface modules:</p>
+<ol class="arabic simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">alframework.qm_interfaces.ase_calculator_interface</span></code>
+Generic QM task wrappers for use with ASE calculators.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">alframework.qm_interfaces.orca5_interface</span></code>
+Interface for ORCA, including task and parsing utilities for single-point calculations and
+property extraction.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">alframework.qm_interfaces.vaspase_interface</span></code>
+Interface for the Vienna ab initio Simulation Package (VASP) plane-wave electronic structure code.</p></li>
+</ol>
 </section>
-<section id="how-alf-uses-qm-interfaces">
-<span id="qm-interface-extension-points"></span><h2>How ALF Uses QM Interfaces<a class="headerlink" href="#how-alf-uses-qm-interfaces" title="Link to this heading"></a></h2>
-<p>ALF uses QM code through a small set of master-configuration hooks:</p>
-<dl class="simple">
-<dt>QM task</dt><dd><p>The <code class="docutils literal notranslate"><span class="pre">QM_task</span></code> field in <code class="docutils literal notranslate"><span class="pre">master_config.json</span></code> is an import string for the
-labeling task. ALF submits this task through Parsl on the
-<code class="docutils literal notranslate"><span class="pre">alf_QM_executor</span></code> executor.</p>
-</dd>
-<dt>QM configuration</dt><dd><p>The <code class="docutils literal notranslate"><span class="pre">QM_config_path</span></code> field points to an engine-specific JSON file. This
-file usually contains the executable command, method settings, CPU count,
-input blocks, and any engine-specific options.</p>
-</dd>
-<dt>Scratch directory</dt><dd><p>The <code class="docutils literal notranslate"><span class="pre">QM_scratch_dir</span></code> field controls where per-structure calculation
-directories are created. QM tasks typically create one subdirectory per
-<code class="docutils literal notranslate"><span class="pre">MoleculesObject</span></code> id.</p>
-</dd>
-<dt>Properties</dt><dd><p>The <code class="docutils literal notranslate"><span class="pre">properties_list</span></code> field defines which properties ALF requests and how
-those properties are written to HDF5. It also records whether each property
-is system-level or atom-level and includes the unit conversion used when
-storing data. See <a class="reference internal" href="units.html"><span class="doc">Units And Property Conversion</span></a> for how these multipliers are applied.</p>
-</dd>
-</dl>
-</section>
-<section id="common-configuration-fields">
-<h2>Common Configuration Fields<a class="headerlink" href="#common-configuration-fields" title="Link to this heading"></a></h2>
-<dl>
-<dt>Master configuration</dt><dd><p>These fields connect the ALF active-learning loop to a QM engine.</p>
-<table class="docutils align-default">
-<colgroup>
-<col style="width: 30.0%" />
-<col style="width: 70.0%" />
-</colgroup>
-<thead>
-<tr class="row-odd"><th class="head"><p>Field</p></th>
-<th class="head"><p>Meaning</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">QM_task</span></code></p></td>
-<td><p>Import string for the labeling task.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">QM_config_path</span></code></p></td>
-<td><p>JSON file containing engine-specific QM settings.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">QM_scratch_dir</span></code></p></td>
-<td><p>Directory for per-structure QM input, output, and scratch files.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">properties_list</span></code></p></td>
-<td><p>Requested properties, HDF5 dataset names, property scope, and unit
-conversion factors.</p></td>
-</tr>
-</tbody>
-</table>
-</dd>
-<dt>QM configuration</dt><dd><p>Exact fields differ by backend, but QM config files commonly include:</p>
-<table class="docutils align-default">
-<colgroup>
-<col style="width: 30.0%" />
-<col style="width: 70.0%" />
-</colgroup>
-<thead>
-<tr class="row-odd"><th class="head"><p>Field</p></th>
-<th class="head"><p>Meaning</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">QM_run_command</span></code></p></td>
-<td><p>Executable or launch command used by the QM task.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ncpu</span></code></p></td>
-<td><p>CPU count passed to engines or input writers when supported.</p></td>
-</tr>
-<tr class="row-even"><td><p>environment file</p></td>
-<td><p>Optional shell setup file, such as <code class="docutils literal notranslate"><span class="pre">orca_env_file</span></code> or
-<code class="docutils literal notranslate"><span class="pre">qchem_env_file</span></code>.</p></td>
-</tr>
-<tr class="row-odd"><td><p>method/input blocks</p></td>
-<td><p>Engine-specific method, basis, SCF, memory, k-point, and property
-settings.</p></td>
-</tr>
-<tr class="row-even"><td><p>scratch/output paths</p></td>
-<td><p>Backend-specific controls for where input, output, and restart files
-are written.</p></td>
-</tr>
-</tbody>
-</table>
-</dd>
-</dl>
-<div class="admonition note">
-<p class="admonition-title">Note</p>
-<p>ALF does not choose a universally appropriate QM method, basis set,
-pseudopotential, dispersion correction, or charge / spin state setting for a
-workflow. These choices should be made explicitly in the engine-specific QM
-configuration and checked against the intended chemistry. For ORCA and
-Q-Chem, the method, basis, and property requests come from the configured
-input/rem blocks, while the current task wrappers call the generators as
-neutral singlets unless customized. For VASP through the current ASE
-interface, INCAR-style settings come from <code class="docutils literal notranslate"><span class="pre">QM_config[&quot;input&quot;]</span></code> and ASE’s
-VASP calculator behavior. The deprecated legacy VASP helper is the exception
-with ALF compatibility defaults documented further below.</p>
-</div>
-<p>For HPC runs, the QM command and Parsl resource configuration must agree. For
-example, an MPI VASP command such as <code class="docutils literal notranslate"><span class="pre">srun</span> <span class="pre">-n</span> <span class="pre">128</span> <span class="pre">vasp_std</span></code> should be paired
-with an <code class="docutils literal notranslate"><span class="pre">alf_QM_executor</span></code> configuration that requests the matching nodes,
-tasks, walltime, modules, and launcher behavior. See <a class="reference internal" href="parsl.html"><span class="doc">Parsl And HPC Execution</span></a> for
-practical resource examples.</p>
-<dl>
-<dt>Legacy VASP helper</dt><dd><p><code class="docutils literal notranslate"><span class="pre">alframework.qm_interfaces.vaspase_interface.VASPGenerator</span></code> is deprecated
-and kept only for older imports. Do not start new configuration files from
-<code class="docutils literal notranslate"><span class="pre">vaspase_interface.py</span></code>. Existing imports may continue to work temporarily,
-but should be migrated to
-<code class="docutils literal notranslate"><span class="pre">alframework.qm_interfaces.ase_calculator_interface.VASP_ase_calculator_task</span></code>
-or the generic <code class="docutils literal notranslate"><span class="pre">ase_calculator_task</span></code> described above.</p>
-<p>The legacy helper also applies ALF-specific VASP defaults before merging
-user-provided <code class="docutils literal notranslate"><span class="pre">vasp_options</span></code>:</p>
-<table class="docutils align-default">
-<colgroup>
-<col style="width: 30.0%" />
-<col style="width: 70.0%" />
-</colgroup>
-<thead>
-<tr class="row-odd"><th class="head"><p>VASP setting</p></th>
-<th class="head"><p>Legacy default</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">xc</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">&quot;pbe&quot;</span></code></p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">prec</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">&quot;Accurate&quot;</span></code></p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ncore</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">1</span></code> unless <code class="docutils literal notranslate"><span class="pre">vasp_options[&quot;ncore&quot;]</span></code> is provided.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">lreal</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">&quot;Auto&quot;</span></code></p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">nelm</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">120</span></code> unless <code class="docutils literal notranslate"><span class="pre">vasp_options[&quot;nelm&quot;]</span></code> is provided.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ivdw</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">0</span></code> unless <code class="docutils literal notranslate"><span class="pre">vasp_options[&quot;ivdw&quot;]</span></code> is provided.</p></td>
-</tr>
-</tbody>
-</table>
-<p>These are compatibility defaults from the old helper, not universal
-recommendations for VASP calculations. In particular, users should be aware
-that the legacy path sets <code class="docutils literal notranslate"><span class="pre">LREAL</span> <span class="pre">=</span> <span class="pre">Auto</span></code> by default; review this setting
-when reproducing old calculations, comparing force labels, or migrating to
-the ASE calculator interface. The old helper also maps <code class="docutils literal notranslate"><span class="pre">vasp_options[&quot;kpoints&quot;]</span></code>
-to ASE’s <code class="docutils literal notranslate"><span class="pre">kpts</span></code> option and falls back to atomic-number magnetic moments
-unless <code class="docutils literal notranslate"><span class="pre">magmom</span></code> is provided.</p>
-</dd>
-</dl>
-</section>
-<section id="adding-new-qm-engines">
-<span id="qm-interface-new-engine-template"></span><h2>Adding New QM Engines<a class="headerlink" href="#adding-new-qm-engines" title="Link to this heading"></a></h2>
-<dl>
-<dt>Preferred ASE route</dt><dd><p>Use this path when ASE already provides a calculator for the engine.
-Configure <code class="docutils literal notranslate"><span class="pre">ase_calculator_task</span></code> as the QM task and include an
-<code class="docutils literal notranslate"><span class="pre">ASE_calculator</span></code> import string in the QM config:</p>
-<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;QM_task&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;alframework.qm_interfaces.ase_calculator_interface.ase_calculator_task&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;QM_config_path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;my_qm_config.json&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;QM_scratch_dir&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;qm_scratch/&quot;</span>
-<span class="p">}</span>
-</pre></div>
-</div>
-<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">  </span><span class="nt">&quot;ASE_calculator&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ase.calculators.mycode.MyCode&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;QM_run_command&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;mycode_executable&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;xc&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;PBE&quot;</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">&quot;basis&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;def2-SVP&quot;</span>
-<span class="p">}</span>
-</pre></div>
-</div>
-<p>The generic task loads the ASE calculator class, creates a
-molecule-specific scratch directory, runs <code class="docutils literal notranslate"><span class="pre">calc.calculate(...)</span></code>, stores
-<code class="docutils literal notranslate"><span class="pre">calc.results</span></code>, sets the convergence flag from <code class="docutils literal notranslate"><span class="pre">calc.converged</span></code>, and
-returns the updated <code class="docutils literal notranslate"><span class="pre">MoleculesObject</span></code>.</p>
-</dd>
-<dt>Custom parser route</dt><dd><p>Use this path when ASE does not support the engine or when ALF needs
-backend-specific parsing and convergence checks. Define a Parsl task with
-the ALF QM task signature:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">parsl</span><span class="w"> </span><span class="kn">import</span> <span class="n">python_app</span>
-
-
-<span class="nd">@python_app</span><span class="p">(</span><span class="n">executors</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;alf_QM_executor&quot;</span><span class="p">])</span>
-<span class="k">def</span><span class="w"> </span><span class="nf">my_qm_task</span><span class="p">(</span><span class="n">molecule_object</span><span class="p">,</span> <span class="n">QM_config</span><span class="p">,</span> <span class="n">QM_scratch_dir</span><span class="p">,</span> <span class="n">properties_list</span><span class="p">):</span>
-    <span class="n">molecule_id</span> <span class="o">=</span> <span class="n">molecule_object</span><span class="o">.</span><span class="n">get_moleculeid</span><span class="p">()</span>
-    <span class="n">directory</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">QM_scratch_dir</span><span class="p">,</span> <span class="n">molecule_id</span><span class="p">)</span>
-    <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="n">directory</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-
-    <span class="n">atoms</span> <span class="o">=</span> <span class="n">molecule_object</span><span class="o">.</span><span class="n">get_atoms</span><span class="p">()</span>
-    <span class="n">requested_properties</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">properties_list</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
-
-    <span class="n">write_mycode_input</span><span class="p">(</span><span class="n">atoms</span><span class="p">,</span> <span class="n">QM_config</span><span class="p">,</span> <span class="n">directory</span><span class="p">,</span> <span class="n">requested_properties</span><span class="p">)</span>
-    <span class="n">run_mycode</span><span class="p">(</span><span class="n">QM_config</span><span class="p">[</span><span class="s2">&quot;QM_run_command&quot;</span><span class="p">],</span> <span class="n">directory</span><span class="p">)</span>
-
-    <span class="n">results</span> <span class="o">=</span> <span class="n">parse_mycode_output</span><span class="p">(</span><span class="n">directory</span><span class="p">,</span> <span class="n">requested_properties</span><span class="p">)</span>
-    <span class="n">converged</span> <span class="o">=</span> <span class="n">parse_mycode_convergence</span><span class="p">(</span><span class="n">directory</span><span class="p">)</span>
-
-    <span class="n">molecule_object</span><span class="o">.</span><span class="n">store_results</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>
-    <span class="n">molecule_object</span><span class="o">.</span><span class="n">set_converged_flag</span><span class="p">(</span><span class="n">converged</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">molecule_object</span>
-</pre></div>
-</div>
-<p>The <code class="docutils literal notranslate"><span class="pre">results</span></code> dictionary should use the same property names requested in
-<code class="docutils literal notranslate"><span class="pre">properties_list</span></code>. Custom tasks should document the units they place in
-<code class="docutils literal notranslate"><span class="pre">MoleculesObject.results</span></code> so the master configuration can apply the
-correct HDF5 conversion factor.</p>
-</dd>
-<dt>Implementation checklist</dt><dd><p>Before using a new QM backend in production, check that:</p>
-<ul class="simple">
-<li><p>The QM task runs on <code class="docutils literal notranslate"><span class="pre">alf_QM_executor</span></code> without requiring ML/GPU imports.</p></li>
-<li><p>The scratch directory is unique for each <code class="docutils literal notranslate"><span class="pre">MoleculesObject</span></code> id.</p></li>
-<li><p>Requested properties match the keys in <code class="docutils literal notranslate"><span class="pre">properties_list</span></code>.</p></li>
-<li><p>Convergence is set explicitly with <code class="docutils literal notranslate"><span class="pre">set_converged_flag</span></code>.</p></li>
-<li><p>Failed or incomplete calculations return a non-converged
-<code class="docutils literal notranslate"><span class="pre">MoleculesObject</span></code> or raise an error that ALF can record.</p></li>
-<li><p>The launch command matches the Parsl resource allocation, especially for
-MPI engines.</p></li>
-</ul>
-</dd>
-</dl>
+<section id="choosing-a-qm-interface">
+<h2>Choosing a QM interface<a class="headerlink" href="#choosing-a-qm-interface" title="Link to this heading"></a></h2>
+<p>Use <code class="docutils literal notranslate"><span class="pre">ase_calculator_interface</span></code> when your QM engine is exposed through an ASE
+calculator and you want a general integration path.</p>
+<p>Use <code class="docutils literal notranslate"><span class="pre">orca5_interface</span></code> when your workflow is built around ORCA input blocks
+and ORCA-specific output parsing.</p>
+<p>Use <code class="docutils literal notranslate"><span class="pre">vaspase_interface</span></code> when your workflow requires VASP-specific controls
+and file handling beyond the generic ASE path.</p>
 </section>
 <section id="qm-interface-api-links">
-<h2>QM Interface API Links<a class="headerlink" href="#qm-interface-api-links" title="Link to this heading"></a></h2>
+<h2>QM interface API links<a class="headerlink" href="#qm-interface-api-links" title="Link to this heading"></a></h2>
 <p>You can link from this guide directly to API pages:</p>
 <ul class="simple">
 <li><p><a class="reference internal" href="../api_documentation/alframework.qm_interfaces.html"><span class="doc">QM interfaces package API</span></a></p></li>
 <li><p><a class="reference internal" href="../api_documentation/alframework.qm_interfaces.ase_calculator_interface.html"><span class="doc">ASE calculator interface module</span></a></p></li>
 <li><p><a class="reference internal" href="../api_documentation/alframework.qm_interfaces.orca5_interface.html"><span class="doc">ORCA interface module</span></a></p></li>
-<li><p><a class="reference internal" href="../api_documentation/alframework.qm_interfaces.qchem_DFT_interface.html"><span class="doc">QChem interface module</span></a></p></li>
-<li><p><a class="reference internal" href="../api_documentation/alframework.qm_interfaces.vaspase_interface.html"><span class="doc">Legacy VASP interface module</span></a></p></li>
-<li><p><a class="reference internal" href="parsl.html"><span class="doc">Parsl execution guide</span></a></p></li>
+<li><p><a class="reference internal" href="../api_documentation/alframework.qm_interfaces.vaspase_interface.html"><span class="doc">VASP interface module</span></a></p></li>
 </ul>
 </section>
 <section id="related-examples">
-<h2>Related Examples<a class="headerlink" href="#related-examples" title="Link to this heading"></a></h2>
-<p>See <a class="reference internal" href="../examples/simple_water.html"><span class="doc">Simple Water</span></a> and <a class="reference internal" href="../examples/reactive_sampling.html"><span class="doc">Reactive Sampling</span></a>
-for ORCA-backed workflows, and <a class="reference internal" href="../examples/molten_salt.html"><span class="doc">Molten Salts</span></a> for a
+<h2>Related examples<a class="headerlink" href="#related-examples" title="Link to this heading"></a></h2>
+<p>See <a class="reference internal" href="../examples/simple_water.html"><span class="doc">Simple Water Example</span></a> and <a class="reference internal" href="../examples/reactive_sampling.html"><span class="doc">Reactive Sampling Example</span></a>
+for ORCA-backed workflows, and <a class="reference internal" href="../examples/molten_salt.html"><span class="doc">Molten Salt Example</span></a> for a
 VASP-backed workflow.</p>
 </section>
 </section>
@@ -409,7 +149,7 @@ VASP-backed workflow.</p>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="ml_interfaces.html" class="btn btn-neutral float-left" title="ML Interfaces" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="parsl.html" class="btn btn-neutral float-right" title="Parsl And HPC Execution" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="../examples/simple_water.html" class="btn btn-neutral float-right" title="Simple Water Example" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

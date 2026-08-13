@@ -9,7 +9,6 @@
   <title>Welcome to ALF’s documentation! &mdash; ALF 0.0.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
-      <link rel="stylesheet" type="text/css" href="_static/custom.css?v=eaec28dc" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
@@ -51,22 +50,16 @@
 <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="user_guide/configuration.html">Configuration</a></li>
-<li class="toctree-l1"><a class="reference internal" href="user_guide/units.html">Units And Property Conversion</a></li>
 <li class="toctree-l1"><a class="reference internal" href="user_guide/builders.html">Builders</a></li>
 <li class="toctree-l1"><a class="reference internal" href="user_guide/samplers.html">Samplers</a></li>
 <li class="toctree-l1"><a class="reference internal" href="user_guide/ml_interfaces.html">ML Interfaces</a></li>
 <li class="toctree-l1"><a class="reference internal" href="user_guide/qm_interfaces.html">QM Interfaces</a></li>
-<li class="toctree-l1"><a class="reference internal" href="user_guide/parsl.html">Parsl And HPC Execution</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="examples/simple_water.html">Simple Water</a></li>
-<li class="toctree-l1"><a class="reference internal" href="examples/seeded_active_learning.html">Seeded Active Learning</a></li>
-<li class="toctree-l1"><a class="reference internal" href="examples/fine_tuning.html">Fine-Tuning Existing Models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="examples/molten_salt.html">Molten Salts</a></li>
-<li class="toctree-l1"><a class="reference internal" href="examples/il.html">Ionic Liquids</a></li>
-<li class="toctree-l1"><a class="reference internal" href="examples/uo2.html">Periodic Solids (UO2)</a></li>
-<li class="toctree-l1"><a class="reference internal" href="examples/reactive_sampling.html">Reactive Sampling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples/simple_water.html">Simple Water Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples/molten_salt.html">Molten Salt Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples/reactive_sampling.html">Reactive Sampling Example</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
 <ul>
@@ -124,100 +117,51 @@ pieces to a concrete run.</p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="getting_started/what_is_alf.html">What Is ALF</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="getting_started/what_is_alf.html#overview-of-the-workflow">Overview of the workflow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="getting_started/what_is_alf.html#how-each-iteration-works">How each iteration works</a></li>
 <li class="toctree-l2"><a class="reference internal" href="getting_started/what_is_alf.html#execution-model">Execution model</a></li>
 <li class="toctree-l2"><a class="reference internal" href="getting_started/what_is_alf.html#testing-individual-stages">Testing individual stages</a></li>
 </ul>
 </li>
-<li class="toctree-l1"><a class="reference internal" href="getting_started/installation.html">Installation</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="getting_started/installation.html#prerequisites">Prerequisites</a></li>
-<li class="toctree-l2"><a class="reference internal" href="getting_started/installation.html#basic-install">Basic Install</a></li>
-<li class="toctree-l2"><a class="reference internal" href="getting_started/installation.html#testing-install">Testing Install</a></li>
-<li class="toctree-l2"><a class="reference internal" href="getting_started/installation.html#documentation-install">Documentation Install</a></li>
-<li class="toctree-l2"><a class="reference internal" href="getting_started/installation.html#optional-scientific-backends">Optional Scientific Backends</a></li>
-<li class="toctree-l2"><a class="reference internal" href="getting_started/installation.html#hpc-and-parsl-setup">HPC And Parsl Setup</a></li>
-<li class="toctree-l2"><a class="reference internal" href="getting_started/installation.html#next-steps">Next Steps</a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="getting_started/quickstart.html">Quickstart</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="getting_started/quickstart.html#prerequisites">Prerequisites</a></li>
-<li class="toctree-l2"><a class="reference internal" href="getting_started/quickstart.html#pick-an-example">Pick An Example</a></li>
-<li class="toctree-l2"><a class="reference internal" href="getting_started/quickstart.html#which-example-should-i-use">Which Example Should I Use?</a></li>
-<li class="toctree-l2"><a class="reference internal" href="getting_started/quickstart.html#check-the-config-files">Check The Config Files</a></li>
-<li class="toctree-l2"><a class="reference internal" href="getting_started/quickstart.html#edit-machine-specific-settings">Edit Machine-Specific Settings</a></li>
-<li class="toctree-l2"><a class="reference internal" href="getting_started/quickstart.html#run-stage-checks">Run Stage Checks</a></li>
-<li class="toctree-l2"><a class="reference internal" href="getting_started/quickstart.html#start-the-workflow">Start The Workflow</a></li>
-<li class="toctree-l2"><a class="reference internal" href="getting_started/quickstart.html#know-the-outputs">Know The Outputs</a></li>
-<li class="toctree-l2"><a class="reference internal" href="getting_started/quickstart.html#what-to-read-next">What To Read Next</a></li>
-</ul>
-</li>
+<li class="toctree-l1"><a class="reference internal" href="getting_started/installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="getting_started/quickstart.html">Quickstart</a></li>
 </ul>
 </div>
 <div class="toctree-wrapper compound">
 <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="user_guide/configuration.html">Configuration</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/configuration.html#how-alf-uses-these-files">How ALF Uses These Files</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/configuration.html#master-configuration">Master Configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/configuration.html#path-conventions">Path Conventions</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/configuration.html#output-and-restart-files">Output And Restart Files</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/configuration.html#common-run-lifecycle">Common Run Lifecycle</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/configuration.html#stage-config-files">Stage Config Files</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/configuration.html#stage-test-commands">Stage Test Commands</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/configuration.html#practical-tips">Practical Tips</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/configuration.html#related-examples">Related Examples</a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="user_guide/units.html">Units And Property Conversion</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/units.html#alf-data-path">ALF Data Path</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/units.html#properties-list-format"><code class="docutils literal notranslate"><span class="pre">properties_list</span></code> Format</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/units.html#practical-checks">Practical Checks</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/units.html#related-pages">Related Pages</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide/configuration.html#how-configuration-is-organized">How configuration is organized</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide/configuration.html#how-alf-uses-these-files">How ALF uses these files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide/configuration.html#practical-tips">Practical tips</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide/configuration.html#related-examples">Related examples</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="user_guide/builders.html">Builders</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/builders.html#supported-builder-tasks">Supported Builder Tasks</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/builders.html#choosing-a-builder">Choosing A Builder</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/builders.html#common-configuration-fields">Common Configuration Fields</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/builders.html#related-examples">Related Examples</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/builders.html#builder-api-links">Builder API Links</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide/builders.html#available-builder-modules">Available builder modules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide/builders.html#choosing-a-builder">Choosing a builder</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide/builders.html#builder-api-links">Builder API links</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide/builders.html#related-examples">Related examples</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="user_guide/samplers.html">Samplers</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/samplers.html#supported-sampler-tasks">Supported Sampler Tasks</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/samplers.html#common-configuration-fields">Common Configuration Fields</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/samplers.html#what-the-sampler-returns">What The Sampler Returns</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/samplers.html#related-examples">Related Examples</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/samplers.html#sampler-api-links">Sampler API Links</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide/samplers.html#available-sampler-modules">Available sampler modules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide/samplers.html#choosing-a-sampler">Choosing a sampler</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide/samplers.html#sampler-api-links">Sampler API links</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide/samplers.html#related-examples">Related examples</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="user_guide/ml_interfaces.html">ML Interfaces</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/ml_interfaces.html#supported-mlip-packages">Supported MLIP Packages</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/ml_interfaces.html#how-alf-uses-ml-interfaces">How ALF Uses ML Interfaces</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/ml_interfaces.html#common-configuration-fields">Common Configuration Fields</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/ml_interfaces.html#hippynn-interface">HIPPYNN Interface</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/ml_interfaces.html#adding-new-ml-architectures">Adding New ML Architectures</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/ml_interfaces.html#ml-interface-api-links">ML Interface API Links</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/ml_interfaces.html#related-examples">Related Examples</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide/ml_interfaces.html#available-ml-interface-modules">Available ML interface modules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide/ml_interfaces.html#choosing-an-ml-interface">Choosing an ML interface</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide/ml_interfaces.html#ml-interface-api-links">ML interface API links</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide/ml_interfaces.html#related-examples">Related examples</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="user_guide/qm_interfaces.html">QM Interfaces</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/qm_interfaces.html#supported-qm-packages">Supported QM Packages</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/qm_interfaces.html#how-alf-uses-qm-interfaces">How ALF Uses QM Interfaces</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/qm_interfaces.html#common-configuration-fields">Common Configuration Fields</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/qm_interfaces.html#adding-new-qm-engines">Adding New QM Engines</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/qm_interfaces.html#qm-interface-api-links">QM Interface API Links</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/qm_interfaces.html#related-examples">Related Examples</a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="user_guide/parsl.html">Parsl And HPC Execution</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/parsl.html#how-alf-uses-parsl">How ALF Uses Parsl</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/parsl.html#minimal-single-node-debug-config">Minimal Single-Node Debug Config</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/parsl.html#one-qm-job-per-allocation">One QM Job Per Allocation</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/parsl.html#mpi-based-dft-codes">MPI-Based DFT Codes</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/parsl.html#separate-gpu-executors-for-ml-and-sampling">Separate GPU Executors For ML And Sampling</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/parsl.html#globus-compute-endpoints">Globus Compute Endpoints</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/parsl.html#generic-cpu-gpu-template-pattern">Generic CPU/GPU Template Pattern</a></li>
-<li class="toctree-l2"><a class="reference internal" href="user_guide/parsl.html#configuration-knobs">Configuration Knobs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide/qm_interfaces.html#available-qm-interface-modules">Available QM interface modules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide/qm_interfaces.html#choosing-a-qm-interface">Choosing a QM interface</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide/qm_interfaces.html#qm-interface-api-links">QM interface API links</a></li>
+<li class="toctree-l2"><a class="reference internal" href="user_guide/qm_interfaces.html#related-examples">Related examples</a></li>
 </ul>
 </li>
 </ul>
@@ -225,72 +169,19 @@ pieces to a concrete run.</p>
 <div class="toctree-wrapper compound">
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="examples/simple_water.html">Simple Water</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="examples/simple_water.html#before-you-run">Before You Run</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/simple_water.html#workflow-pattern">Workflow Pattern</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/simple_water.html#recommended-bring-up-commands">Recommended Bring-Up Commands</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/simple_water.html#batched-builder-variant">Batched Builder Variant</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/simple_water.html#expected-outputs">Expected Outputs</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/simple_water.html#master-configuration">Master Configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/simple_water.html#queue-depth-and-resource-concurrency">Queue Depth And Resource Concurrency</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/simple_water.html#builder-configuration">Builder Configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/simple_water.html#sampler-configuration">Sampler Configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/simple_water.html#orca-configuration">ORCA Configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/simple_water.html#hippynn-configuration">HIPPYNN Configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/simple_water.html#adapting-the-example">Adapting The Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples/simple_water.html">Simple Water Example</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="examples/simple_water.html#what-it-demonstrates">What it demonstrates</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples/simple_water.html#relevant-files">Relevant files</a></li>
 </ul>
 </li>
-<li class="toctree-l1"><a class="reference internal" href="examples/seeded_active_learning.html">Seeded Active Learning</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="examples/seeded_active_learning.html#before-you-run">Before You Run</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/seeded_active_learning.html#workflow-pattern">Workflow Pattern</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/seeded_active_learning.html#seed-the-run">Seed The Run</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/seeded_active_learning.html#recommended-bring-up-commands">Recommended Bring-Up Commands</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/seeded_active_learning.html#expected-outputs">Expected Outputs</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples/molten_salt.html">Molten Salt Example</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="examples/molten_salt.html#what-it-demonstrates">What it demonstrates</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples/molten_salt.html#relevant-files">Relevant files</a></li>
 </ul>
 </li>
-<li class="toctree-l1"><a class="reference internal" href="examples/fine_tuning.html">Fine-Tuning Existing Models</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="examples/fine_tuning.html#before-you-run">Before You Run</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/fine_tuning.html#workflow-pattern">Workflow Pattern</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/fine_tuning.html#seed-the-model">Seed The Model</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/fine_tuning.html#initial-ensemble-disagreement">Initial Ensemble Disagreement</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/fine_tuning.html#hdf5-schema-compatibility">HDF5 Schema Compatibility</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/fine_tuning.html#fine-tune-only-from-existing-data">Fine-Tune Only From Existing Data</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/fine_tuning.html#fine-tuning-task">Fine-Tuning Task</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/fine_tuning.html#hippynn-restart-semantics">HIPPYNN Restart Semantics</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/fine_tuning.html#recommended-bring-up-commands">Recommended Bring-Up Commands</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/fine_tuning.html#expected-outputs">Expected Outputs</a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="examples/molten_salt.html">Molten Salts</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="examples/molten_salt.html#before-you-run">Before You Run</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/molten_salt.html#workflow-pattern">Workflow Pattern</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/molten_salt.html#recommended-bring-up-commands">Recommended Bring-Up Commands</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/molten_salt.html#expected-outputs">Expected Outputs</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/molten_salt.html#configuration-files">Configuration Files</a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="examples/il.html">Ionic Liquids</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="examples/il.html#before-you-run">Before You Run</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/il.html#workflow-pattern">Workflow Pattern</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/il.html#recommended-bring-up-commands">Recommended Bring-Up Commands</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/il.html#configuration-files">Configuration Files</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/il.html#expected-outputs">Expected Outputs</a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="examples/uo2.html">Periodic Solids (UO2)</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="examples/uo2.html#before-you-run">Before You Run</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/uo2.html#workflow-pattern">Workflow Pattern</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/uo2.html#recommended-bring-up-commands">Recommended Bring-Up Commands</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/uo2.html#configuration-files">Configuration Files</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/uo2.html#expected-outputs">Expected Outputs</a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="examples/reactive_sampling.html">Reactive Sampling</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="examples/reactive_sampling.html#before-you-run">Before You Run</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/reactive_sampling.html#workflow-pattern">Workflow Pattern</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/reactive_sampling.html#recommended-bring-up-commands">Recommended Bring-Up Commands</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/reactive_sampling.html#expected-outputs">Expected Outputs</a></li>
-<li class="toctree-l2"><a class="reference internal" href="examples/reactive_sampling.html#configuration-files">Configuration Files</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples/reactive_sampling.html">Reactive Sampling Example</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="examples/reactive_sampling.html#what-it-demonstrates">What it demonstrates</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples/reactive_sampling.html#relevant-files">Relevant files</a></li>
 </ul>
 </li>
 </ul>

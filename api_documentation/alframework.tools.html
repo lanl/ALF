@@ -9,7 +9,6 @@
   <title>alframework.tools package &mdash; ALF 0.0.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
-      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=eaec28dc" />
 
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
@@ -21,7 +20,7 @@
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="alframework.tools.molecules_class module" href="alframework.tools.molecules_class.html" />
-    <link rel="prev" title="alframework.samplers.udd_sampling module" href="alframework.samplers.udd_sampling.html" /> 
+    <link rel="prev" title="alframework.samplers.reactive_sampler module" href="alframework.samplers.reactive_sampler.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -52,22 +51,16 @@
 <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/configuration.html">Configuration</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../user_guide/units.html">Units And Property Conversion</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/builders.html">Builders</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/samplers.html">Samplers</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/ml_interfaces.html">ML Interfaces</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/qm_interfaces.html">QM Interfaces</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../user_guide/parsl.html">Parsl And HPC Execution</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../examples/simple_water.html">Simple Water</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/seeded_active_learning.html">Seeded Active Learning</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/fine_tuning.html">Fine-Tuning Existing Models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/molten_salt.html">Molten Salts</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/il.html">Ionic Liquids</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/uo2.html">Periodic Solids (UO2)</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/reactive_sampling.html">Reactive Sampling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/simple_water.html">Simple Water Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/molten_salt.html">Molten Salt Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/reactive_sampling.html">Reactive Sampling Example</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
 <ul class="current">
@@ -119,7 +112,7 @@
             <a href="../_sources/api_documentation/alframework.tools.rst.txt" rel="nofollow"> View page source</a>
       </li>
   </ul><div class="rst-breadcrumbs-buttons" role="navigation" aria-label="Sequential page navigation">
-        <a href="alframework.samplers.udd_sampling.html" class="btn btn-neutral float-left" title="alframework.samplers.udd_sampling module" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="alframework.samplers.reactive_sampler.html" class="btn btn-neutral float-left" title="alframework.samplers.reactive_sampler module" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
         <a href="alframework.tools.molecules_class.html" class="btn btn-neutral float-right" title="alframework.tools.molecules_class module" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
   </div>
   <hr/>
@@ -157,6 +150,7 @@
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="alframework.tools.pyanitools.html">alframework.tools.pyanitools module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="alframework.tools.pyanitools.html#alframework.tools.pyanitools.PY_VERSION"><code class="docutils literal notranslate"><span class="pre">PY_VERSION</span></code></a></li>
 <li class="toctree-l2"><a class="reference internal" href="alframework.tools.pyanitools.html#alframework.tools.pyanitools.anidataloader"><code class="docutils literal notranslate"><span class="pre">anidataloader</span></code></a><ul>
 <li class="toctree-l3"><a class="reference internal" href="alframework.tools.pyanitools.html#alframework.tools.pyanitools.anidataloader.cleanup"><code class="docutils literal notranslate"><span class="pre">anidataloader.cleanup()</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="alframework.tools.pyanitools.html#alframework.tools.pyanitools.anidataloader.get_data"><code class="docutils literal notranslate"><span class="pre">anidataloader.get_data()</span></code></a></li>
@@ -210,7 +204,7 @@
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="alframework.samplers.udd_sampling.html" class="btn btn-neutral float-left" title="alframework.samplers.udd_sampling module" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="alframework.samplers.reactive_sampler.html" class="btn btn-neutral float-left" title="alframework.samplers.reactive_sampler module" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
         <a href="alframework.tools.molecules_class.html" class="btn btn-neutral float-right" title="alframework.tools.molecules_class module" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 

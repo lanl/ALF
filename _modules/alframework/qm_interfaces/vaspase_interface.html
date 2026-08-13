@@ -8,7 +8,6 @@
   <title>alframework.qm_interfaces.vaspase_interface &mdash; ALF 0.0.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=9edc463e" />
-      <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=eaec28dc" />
 
   
       <script src="../../../_static/jquery.js?v=5d32c60e"></script>
@@ -49,22 +48,16 @@
 <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../../user_guide/configuration.html">Configuration</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../user_guide/units.html">Units And Property Conversion</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../user_guide/builders.html">Builders</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../user_guide/samplers.html">Samplers</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../user_guide/ml_interfaces.html">ML Interfaces</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../user_guide/qm_interfaces.html">QM Interfaces</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../user_guide/parsl.html">Parsl And HPC Execution</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../../../examples/simple_water.html">Simple Water</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../examples/seeded_active_learning.html">Seeded Active Learning</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../examples/fine_tuning.html">Fine-Tuning Existing Models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../examples/molten_salt.html">Molten Salts</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../examples/il.html">Ionic Liquids</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../examples/uo2.html">Periodic Solids (UO2)</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../examples/reactive_sampling.html">Reactive Sampling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../examples/simple_water.html">Simple Water Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../examples/molten_salt.html">Molten Salt Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../examples/reactive_sampling.html">Reactive Sampling Example</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
 <ul>
@@ -97,197 +90,210 @@
            <div itemprop="articleBody">
              
   <h1>Source code for alframework.qm_interfaces.vaspase_interface</h1><div class="highlight"><pre>
-<span></span><span class="sd">&quot;&quot;&quot;Deprecated legacy VASP ASE interface.</span>
+<span></span><span class="c1">#TODO: the whole file needs refactoring and cleanup.</span>
 
-<span class="sd">This module is kept for compatibility with older imports. New ALF workflows</span>
-<span class="sd">should use ``alframework.qm_interfaces.ase_calculator_interface`` instead,</span>
-<span class="sd">especially ``VASP_ase_calculator_task`` for VASP calculations through ASE.</span>
+<span class="c1"># -*- coding: utf-8 -*-</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">@author: Ziyan</span>
 <span class="sd">&quot;&quot;&quot;</span>
 
-<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">pickle</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pkl</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">shutil</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">contextlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">contextmanager</span>
-
-<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">ase</span><span class="w"> </span><span class="kn">import</span> <span class="n">Atoms</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ase</span><span class="w"> </span><span class="kn">import</span> <span class="n">Atoms</span><span class="p">,</span> <span class="n">Atom</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ase.calculators.vasp</span><span class="w"> </span><span class="kn">import</span> <span class="n">Vasp</span>
 
+<span class="kn">from</span><span class="w"> </span><span class="nn">ase</span><span class="w"> </span><span class="kn">import</span> <span class="n">units</span>
+
+<span class="c1">#VASP should handle MPI things</span>
+<span class="c1">#from mpi4py import MPI</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">shutil</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pickle</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pkl</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 
 <div class="viewcode-block" id="SCFConvergenceFailure">
 <a class="viewcode-back" href="../../../api_documentation/alframework.qm_interfaces.vaspase_interface.html#alframework.qm_interfaces.vaspase_interface.SCFConvergenceFailure">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">SCFConvergenceFailure</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Raised when a VASP calculation finishes without SCF convergence.&quot;&quot;&quot;</span></div>
-
-
-
-<span class="nd">@contextmanager</span>
-<span class="k">def</span><span class="w"> </span><span class="nf">_temporary_environment</span><span class="p">(</span><span class="n">updates</span><span class="p">):</span>
-    <span class="n">old_values</span> <span class="o">=</span> <span class="p">{}</span>
-    <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">updates</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-        <span class="n">old_values</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
-        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
-    <span class="k">try</span><span class="p">:</span>
-        <span class="k">yield</span>
-    <span class="k">finally</span><span class="p">:</span>
-        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">old_values</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-            <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-                <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
-            <span class="k">else</span><span class="p">:</span>
-                <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
-
-
-<span class="k">def</span><span class="w"> </span><span class="nf">_atoms_from_input</span><span class="p">(</span><span class="n">molecule</span><span class="p">):</span>
-    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">molecule</span><span class="p">,</span> <span class="n">Atoms</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">molecule</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
-    <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">molecule</span><span class="p">,</span> <span class="s2">&quot;get_atoms&quot;</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">molecule</span><span class="o">.</span><span class="n">get_atoms</span><span class="p">()</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
-    <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">molecule</span><span class="p">,</span> <span class="s2">&quot;S&quot;</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">molecule</span><span class="p">,</span> <span class="s2">&quot;X&quot;</span><span class="p">):</span>
-        <span class="n">cell</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">molecule</span><span class="p">,</span> <span class="s2">&quot;C&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
-        <span class="n">pbc</span> <span class="o">=</span> <span class="n">cell</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
-        <span class="k">return</span> <span class="n">Atoms</span><span class="p">(</span><span class="n">molecule</span><span class="o">.</span><span class="n">S</span><span class="p">,</span> <span class="n">positions</span><span class="o">=</span><span class="n">molecule</span><span class="o">.</span><span class="n">X</span><span class="p">,</span> <span class="n">cell</span><span class="o">=</span><span class="n">cell</span><span class="p">,</span> <span class="n">pbc</span><span class="o">=</span><span class="n">pbc</span><span class="p">)</span>
-    <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;molecule must be an ase.Atoms, MoleculesObject, or legacy object with S/X attributes&quot;</span><span class="p">)</span>
-
-
-<span class="k">def</span><span class="w"> </span><span class="nf">_molecule_id</span><span class="p">(</span><span class="n">molecule</span><span class="p">):</span>
-    <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">molecule</span><span class="p">,</span> <span class="s2">&quot;get_moleculeid&quot;</span><span class="p">):</span>
-        <span class="k">return</span> <span class="n">molecule</span><span class="o">.</span><span class="n">get_moleculeid</span><span class="p">()</span>
-    <span class="k">return</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">molecule</span><span class="p">,</span> <span class="s2">&quot;ids&quot;</span><span class="p">,</span> <span class="s2">&quot;vasp&quot;</span><span class="p">)</span>
+    <span class="k">pass</span></div>
 
 
 <div class="viewcode-block" id="VASPGenerator">
 <a class="viewcode-back" href="../../../api_documentation/alframework.qm_interfaces.vaspase_interface.html#alframework.qm_interfaces.vaspase_interface.VASPGenerator">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">VASPGenerator</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Deprecated VASP single-point helper.</span>
 
-<span class="sd">    Parameters are intentionally site-neutral. Provide the VASP launch command,</span>
-<span class="sd">    pseudopotential path, and any module/environment setup from the caller or</span>
-<span class="sd">    Parsl worker initialization. This class no longer constructs LANL-specific</span>
-<span class="sd">    commands or relies on MPI/GPU globals.</span>
-
-<span class="sd">    The legacy helper applies ALF-specific defaults before merging user</span>
-<span class="sd">    ``vasp_options``: ``xc=&#39;pbe&#39;``, ``prec=&#39;Accurate&#39;``, ``ncore=1``,</span>
-<span class="sd">    ``lreal=&#39;Auto&#39;``, ``nelm=120``, and ``ivdw=0``. These are compatibility</span>
-<span class="sd">    defaults, not recommended settings for every VASP workflow. In particular,</span>
-<span class="sd">    review ``lreal`` when migrating old calculations or comparing forces.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-
-    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
-        <span class="bp">self</span><span class="p">,</span>
-        <span class="n">vasp_options</span><span class="p">,</span>
-        <span class="n">vasp_command</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-        <span class="n">scratch</span><span class="o">=</span><span class="s2">&quot;./&quot;</span><span class="p">,</span>
-        <span class="n">output_store</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-        <span class="n">rm_scratch</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
-        <span class="n">vasp_pp_path</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-        <span class="n">environment</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-        <span class="n">omp_num_threads</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-    <span class="p">):</span>
-        <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
-            <span class="s2">&quot;VASPGenerator is deprecated. Use &quot;</span>
-            <span class="s2">&quot;alframework.qm_interfaces.ase_calculator_interface.VASP_ase_calculator_task &quot;</span>
-            <span class="s2">&quot;or ase_calculator_task for new ALF workflows.&quot;</span><span class="p">,</span>
-            <span class="ne">DeprecationWarning</span><span class="p">,</span>
-            <span class="n">stacklevel</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
-        <span class="p">)</span>
-
-        <span class="bp">self</span><span class="o">.</span><span class="n">vasp_options</span> <span class="o">=</span> <span class="n">vasp_options</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">vasp_command</span> <span class="o">=</span> <span class="n">vasp_command</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">vasp_options</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;command&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+    <span class="c1"># Constructor</span>
+    <span class="c1"># This will need to be more complicated for ad hoc cluster</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">vasp_options</span><span class="p">,</span> <span class="n">vasp_command</span><span class="p">,</span> <span class="n">scratch</span><span class="o">=</span><span class="s1">&#39;./&#39;</span><span class="p">,</span> <span class="n">output_store</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span><span class="n">rm_scratch</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="c1"># Store variables</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">vasp_options</span> <span class="o">=</span> <span class="n">vasp_options</span> <span class="c1">###RAM: Ziyan had commented this out. But I think it is useful</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">vasp_command</span> <span class="o">=</span> <span class="n">vasp_command</span> <span class="c1">#Command sequence to run VASP</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">working_dir</span> <span class="o">=</span> <span class="n">scratch</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">output_store</span> <span class="o">=</span> <span class="n">output_store</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">rm_scratch</span> <span class="o">=</span> <span class="n">rm_scratch</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">environment</span> <span class="o">=</span> <span class="p">{}</span> <span class="k">if</span> <span class="n">environment</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">environment</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">vasp_command</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">environment</span><span class="p">[</span><span class="s2">&quot;VASP_COMMAND&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">vasp_command</span>
-        <span class="k">if</span> <span class="n">vasp_pp_path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">environment</span><span class="p">[</span><span class="s2">&quot;VASP_PP_PATH&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">vasp_pp_path</span>
-        <span class="k">if</span> <span class="n">omp_num_threads</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">environment</span><span class="p">[</span><span class="s2">&quot;OMP_NUM_THREADS&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">omp_num_threads</span>
 
-        <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">working_dir</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">output_store</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">output_store</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="c1"># Check for existing calculations</span>
+        <span class="c1">#self.existing_pkls = np.array([f for f in os.listdir(output_store) if f[-2:] == &#39;.p&#39;])</span>
 
-        <span class="bp">self</span><span class="o">.</span><span class="n">settings</span> <span class="o">=</span> <span class="p">{</span>
-            <span class="s2">&quot;xc&quot;</span><span class="p">:</span> <span class="s2">&quot;pbe&quot;</span><span class="p">,</span>
-            <span class="s2">&quot;prec&quot;</span><span class="p">:</span> <span class="s2">&quot;Accurate&quot;</span><span class="p">,</span>
-            <span class="s2">&quot;ncore&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">vasp_options</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;ncore&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>
-            <span class="s2">&quot;lreal&quot;</span><span class="p">:</span> <span class="s2">&quot;Auto&quot;</span><span class="p">,</span>
-            <span class="s2">&quot;nelm&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">vasp_options</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;nelm&quot;</span><span class="p">,</span> <span class="mi">120</span><span class="p">),</span>
-            <span class="s2">&quot;ivdw&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">vasp_options</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;ivdw&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span>
-        <span class="p">}</span>
-        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">val</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">vasp_options</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-            <span class="k">if</span> <span class="n">key</span> <span class="o">==</span> <span class="s2">&quot;kpoints&quot;</span><span class="p">:</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">settings</span><span class="p">[</span><span class="s2">&quot;kpts&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">val</span>
-            <span class="k">elif</span> <span class="n">key</span> <span class="o">!=</span> <span class="s2">&quot;command&quot;</span><span class="p">:</span>
+        <span class="c1"># Create rank working dir</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">isdir</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">working_dir</span><span class="p">):</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">working_dir</span><span class="p">)</span>
+
+        <span class="c1"># Change current dir</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">os</span><span class="o">.</span><span class="n">chdir</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">working_dir</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">NotADirectoryError</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Error: working dir not found.&#39;</span><span class="p">)</span>
+            <span class="n">exit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">PermissionError</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Error: permission error.&#39;</span><span class="p">)</span>
+            <span class="n">exit</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+
+        <span class="c1"># Prepare and save vasp command</span>
+        <span class="k">if</span> <span class="s1">&#39;mpirun&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">VASP_COMMAND</span> <span class="ow">and</span> <span class="s1">&#39;two-step&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">VASP_COMMAND</span><span class="p">:</span> <span class="c1">###Accepts two different forms of command</span>
+            <span class="n">prepared_vasp_command</span> <span class="o">=</span> <span class="s2">&quot;module purge; source /usr/projects/ml4chem/Programs/vasp.6.2.1/vaspExports.bash; /projects/darwin-nv/centos8/x86_64/packages/nvhpc/Linux_x86_64/21.11/comm_libs/mpi/bin/mpirun -n 1 -host &quot;</span> <span class="o">+</span> <span class="n">MPI</span><span class="o">.</span><span class="n">Get_processor_name</span><span class="p">()</span> <span class="o">+</span> <span class="s1">&#39; &#39;</span> <span class="o">+</span> <span class="n">VASP_COMMAND</span> <span class="c1">###RAM: 1/11</span>
+        <span class="k">elif</span> <span class="s1">&#39;two-step&#39;</span> <span class="ow">in</span> <span class="n">VASP_COMMAND</span><span class="p">:</span>
+            <span class="c1">###RAM: VASP calculation designed to fail immediately by removing the POTCAR</span>
+            <span class="c1">###RAM: Changed to the new VASP compile 11/04/22</span>
+            <span class="n">prepared_vasp_command</span> <span class="o">=</span> <span class="s2">&quot;module purge; source /usr/projects/t1vasp/vasp.6.3.2/vaspExports.bash; rm POTCAR; sed -i s/&#39;ISPIN = .*&#39;/&#39;ISPIN = 1&#39;/ INCAR; sed -i s/&#39;NELM = .*&#39;/&#39;NELM = 1&#39;/ INCAR; /projects/darwin-nv/rhel8/x86_64/packages/nvhpc/Linux_x86_64/22.9/comm_libs/mpi/bin/mpirun -n 1 -host &quot;</span> <span class="o">+</span> <span class="n">MPI</span><span class="o">.</span><span class="n">Get_processor_name</span><span class="p">()</span> <span class="o">+</span> <span class="s1">&#39; &#39;</span> <span class="o">+</span> <span class="s1">&#39;/usr/projects/t1vasp/vasp.6.3.2/bin/vasp_std&#39;</span>
+        <span class="k">elif</span> <span class="s1">&#39;mpirun&#39;</span> <span class="o">==</span> <span class="n">VASP_COMMAND</span><span class="p">[:</span><span class="mi">6</span><span class="p">]:</span>
+            <span class="n">prepared_vasp_command</span> <span class="o">=</span> <span class="s2">&quot;mpirun -host &quot;</span> <span class="o">+</span> <span class="n">MPI</span><span class="o">.</span><span class="n">Get_processor_name</span><span class="p">()</span> <span class="o">+</span> <span class="s1">&#39; &#39;</span> <span class="o">+</span> <span class="n">VASP_COMMAND</span><span class="p">[</span><span class="mi">6</span><span class="p">:]</span> <span class="c1">###RAM: Remove the mpirun portion</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Prepared VASP Command:&#39;</span><span class="p">,</span><span class="n">prepared_vasp_command</span><span class="p">)</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s1">&#39;VASP_COMMAND&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">prepared_vasp_command</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s1">&#39;VASP_PP_PATH&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">VASP_PP_PATH</span>
+
+        <span class="c1"># Set cuda device and number of OMP threads</span>
+        <span class="k">if</span> <span class="n">gpuid</span><span class="p">:</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s1">&#39;CUDA_VISIBLE_DEVICES&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">gpuid</span><span class="p">)</span> <span class="c1">###RAM: Only set if using GPU</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s1">&#39;OMP_NUM_THREADS&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">num_threads</span><span class="p">)</span>
+       
+        <span class="c1"># Define VASP settings</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">settings</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">xc</span><span class="o">=</span><span class="s1">&#39;pbe&#39;</span><span class="p">,</span> <span class="n">prec</span><span class="o">=</span><span class="s1">&#39;Accurate&#39;</span><span class="p">,</span>
+        <span class="c1">#self.settings = dict(prec=&#39;Accurate&#39;,</span>
+                             <span class="n">ncore</span><span class="o">=</span><span class="n">vasp_options</span><span class="p">[</span><span class="s1">&#39;ncore&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="s1">&#39;ncore&#39;</span> <span class="ow">in</span> <span class="n">vasp_options</span> <span class="k">else</span> <span class="mi">1</span><span class="p">,</span>
+                             <span class="n">lreal</span><span class="o">=</span><span class="s1">&#39;Auto&#39;</span><span class="p">,</span>
+                             <span class="n">nelm</span><span class="o">=</span><span class="n">vasp_options</span><span class="p">[</span><span class="s1">&#39;nelm&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="s1">&#39;nelm&#39;</span> <span class="ow">in</span> <span class="n">vasp_options</span> <span class="k">else</span> <span class="mi">120</span><span class="p">,</span>
+                             <span class="n">ivdw</span><span class="o">=</span><span class="n">vasp_options</span><span class="p">[</span><span class="s1">&#39;ivdw&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="s1">&#39;ivdw&#39;</span> <span class="ow">in</span> <span class="n">vasp_options</span> <span class="k">else</span> <span class="mi">0</span><span class="p">,</span>
+                             <span class="n">ispin</span><span class="o">=</span><span class="n">vasp_options</span><span class="p">[</span><span class="s1">&#39;ispin&#39;</span><span class="p">]</span>
+                             <span class="p">)</span>
+        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">val</span> <span class="ow">in</span> <span class="n">vasp_options</span><span class="o">.</span><span class="n">items</span><span class="p">():</span> 
+            <span class="k">if</span> <span class="n">key</span> <span class="o">==</span> <span class="s1">&#39;kpoints&#39;</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">settings</span><span class="p">[</span><span class="s1">&#39;kpts&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">val</span>
+            <span class="k">else</span><span class="p">:</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">settings</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">val</span>
+      
 
+   
 <div class="viewcode-block" id="VASPGenerator.get_magmom">
 <a class="viewcode-back" href="../../../api_documentation/alframework.qm_interfaces.vaspase_interface.html#alframework.qm_interfaces.vaspase_interface.VASPGenerator.get_magmom">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">get_magmom</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atomic_no</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return configured magnetic moments or a simple atomic-number default.&quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="s2">&quot;magmom&quot;</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">vasp_options</span><span class="p">:</span>
-            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">vasp_options</span><span class="p">[</span><span class="s2">&quot;magmom&quot;</span><span class="p">]</span>
-        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">atomic_no</span><span class="p">)</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span></div>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_magmom</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span><span class="n">atomic_no</span><span class="p">):</span>
+
+        <span class="c1">###RAM: Allows the user to directly set magmom</span>
+        <span class="k">if</span> <span class="s1">&#39;magmom&#39;</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">vasp_options</span><span class="p">:</span> <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">vasp_options</span><span class="p">[</span><span class="s1">&#39;magmom&#39;</span><span class="p">]</span>
+
+        <span class="n">magmom</span> <span class="o">=</span> <span class="n">atomic_no</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span> 
+
+        <span class="k">return</span> <span class="n">magmom</span></div>
 
 
+    <span class="c1">#</span>
+    <span class="c1"># Function for obtaining a single point calculation</span>
+    <span class="c1">#</span>
 <div class="viewcode-block" id="VASPGenerator.single_point">
 <a class="viewcode-back" href="../../../api_documentation/alframework.qm_interfaces.vaspase_interface.html#alframework.qm_interfaces.vaspase_interface.VASPGenerator.single_point">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">single_point</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">molecule</span><span class="p">,</span> <span class="n">force_calculation</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">output_file</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Run one VASP calculation through ASE.</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">single_point</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">molecule</span><span class="p">,</span> <span class="n">force_calculation</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">output_file</span><span class="o">=</span><span class="s1">&#39;output.opt&#39;</span><span class="p">):</span>
 
-<span class="sd">        :param molecule: ``ase.Atoms``, ``MoleculesObject``, or legacy object</span>
-<span class="sd">            with ``S`` and ``X`` attributes.</span>
-<span class="sd">        :param force_calculation: If True, include forces in the returned</span>
-<span class="sd">            properties.</span>
-<span class="sd">        :param output_file: Kept for legacy call compatibility. It is not used.</span>
-<span class="sd">        :returns: ``(atoms, properties)`` where ``atoms`` is the final</span>
-<span class="sd">            ``ase.Atoms`` object and ``properties`` contains ASE-unit results.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">del</span> <span class="n">output_file</span>
+        <span class="n">calc</span> <span class="o">=</span> <span class="n">Vasp</span><span class="p">(</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">settings</span><span class="p">)</span> 
 
-        <span class="n">atoms</span> <span class="o">=</span> <span class="n">_atoms_from_input</span><span class="p">(</span><span class="n">molecule</span><span class="p">)</span>
-        <span class="n">molecule_id</span> <span class="o">=</span> <span class="n">_molecule_id</span><span class="p">(</span><span class="n">molecule</span><span class="p">)</span>
-        <span class="n">run_dir</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">working_dir</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">molecule_id</span><span class="p">))</span>
-        <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="n">run_dir</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-
-        <span class="n">calc</span> <span class="o">=</span> <span class="n">Vasp</span><span class="p">(</span><span class="n">directory</span><span class="o">=</span><span class="n">run_dir</span><span class="p">,</span> <span class="n">command</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">vasp_command</span><span class="p">,</span> <span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">settings</span><span class="p">)</span>
-        <span class="n">atoms</span><span class="o">.</span><span class="n">calc</span> <span class="o">=</span> <span class="n">calc</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">existing_pkls</span><span class="o">.</span><span class="n">size</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">compute</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">existing_pkls</span> <span class="o">==</span> <span class="s1">&#39;data-&#39;</span><span class="o">+</span><span class="n">molecule</span><span class="o">.</span><span class="n">ids</span><span class="o">+</span><span class="s1">&#39;.p&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">0</span>
+        <span class="k">else</span><span class="p">:</span> 
+            <span class="n">compute</span> <span class="o">=</span> <span class="kc">True</span>
 
         <span class="n">properties</span> <span class="o">=</span> <span class="p">{}</span>
-        <span class="k">with</span> <span class="n">_temporary_environment</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">environment</span><span class="p">):</span>
-            <span class="n">properties</span><span class="p">[</span><span class="s2">&quot;energy&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">()</span>
-            <span class="n">properties</span><span class="p">[</span><span class="s2">&quot;stress&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_stress</span><span class="p">(</span><span class="n">voigt</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-            <span class="k">if</span> <span class="n">force_calculation</span><span class="p">:</span>
-                <span class="n">properties</span><span class="p">[</span><span class="s2">&quot;forces&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_forces</span><span class="p">()</span>
 
-        <span class="k">if</span> <span class="ow">not</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">calc</span><span class="p">,</span> <span class="s2">&quot;converged&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">):</span>
-            <span class="k">raise</span> <span class="n">SCFConvergenceFailure</span><span class="p">(</span><span class="s2">&quot;VASP calculation did not converge&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">compute</span><span class="p">:</span>
+            <span class="c1"># Define ASE Atoms object and set the calculator</span>
+            <span class="n">atoms</span> <span class="o">=</span> <span class="n">Atoms</span><span class="p">(</span><span class="n">molecule</span><span class="o">.</span><span class="n">S</span><span class="p">,</span> <span class="n">positions</span><span class="o">=</span><span class="n">molecule</span><span class="o">.</span><span class="n">X</span><span class="p">,</span> <span class="n">cell</span><span class="o">=</span><span class="n">molecule</span><span class="o">.</span><span class="n">C</span><span class="p">,</span> <span class="n">pbc</span><span class="o">=</span><span class="p">(</span><span class="kc">True</span><span class="p">,</span><span class="kc">True</span><span class="p">,</span><span class="kc">True</span><span class="p">))</span>
+            <span class="c1">#if vasp_options[&#39;ispin&#39;] == 2:</span>
+            <span class="n">atomic_no</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_atomic_numbers</span><span class="p">())</span>
 
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">output_store</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_copy_outputs</span><span class="p">(</span><span class="n">run_dir</span><span class="p">,</span> <span class="n">molecule_id</span><span class="p">)</span>
-            <span class="n">pkl</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span>
-                <span class="p">{</span><span class="s2">&quot;atoms&quot;</span><span class="p">:</span> <span class="n">atoms</span><span class="o">.</span><span class="n">copy</span><span class="p">(),</span> <span class="s2">&quot;props&quot;</span><span class="p">:</span> <span class="n">properties</span><span class="p">},</span>
-                <span class="nb">open</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">output_store</span><span class="p">,</span> <span class="s2">&quot;data-&quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">molecule_id</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;.p&quot;</span><span class="p">),</span> <span class="s2">&quot;wb&quot;</span><span class="p">),</span>
-            <span class="p">)</span>
+            <span class="n">atoms</span><span class="o">.</span><span class="n">set_calculator</span><span class="p">(</span><span class="n">calc</span><span class="p">)</span>
 
-        <span class="n">atoms</span><span class="o">.</span><span class="n">calc</span> <span class="o">=</span> <span class="kc">None</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">rm_scratch</span><span class="p">:</span>
-            <span class="n">shutil</span><span class="o">.</span><span class="n">rmtree</span><span class="p">(</span><span class="n">run_dir</span><span class="p">,</span> <span class="n">ignore_errors</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">atoms</span><span class="p">,</span> <span class="n">properties</span></div>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="c1"># Attempt to compute energies</span>
+                <span class="n">properties</span><span class="p">[</span><span class="s1">&#39;energy&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="mf">1.0</span><span class="o">/</span><span class="n">units</span><span class="o">.</span><span class="n">Hartree</span><span class="p">)</span><span class="o">*</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_potential_energy</span><span class="p">()</span>
+                
+                <span class="c1"># Attempt to compute stress tensor: (xx, yy, zz, yz, xz, xy) or a 3x3 matrix</span>
+                <span class="n">properties</span><span class="p">[</span><span class="s1">&#39;stress&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">atoms</span><span class="o">.</span><span class="n">get_stress</span><span class="p">(</span><span class="n">voigt</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
 
+                <span class="c1"># Attempt to compute magnetic moment</span>
+                <span class="c1">#properties[&#39;magnetic_moment&#39;] = atoms.get_magnetic_moment()</span>
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">_copy_outputs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">run_dir</span><span class="p">,</span> <span class="n">molecule_id</span><span class="p">):</span>
-        <span class="k">for</span> <span class="n">filename</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;OUTCAR&quot;</span><span class="p">,</span> <span class="s2">&quot;POSCAR&quot;</span><span class="p">,</span> <span class="s2">&quot;CONTCAR&quot;</span><span class="p">):</span>
-            <span class="n">src</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">run_dir</span><span class="p">,</span> <span class="n">filename</span><span class="p">)</span>
-            <span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">src</span><span class="p">):</span>
-                <span class="n">dst</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">output_store</span><span class="p">,</span> <span class="s2">&quot;data-&quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">molecule_id</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;.&quot;</span> <span class="o">+</span> <span class="n">filename</span><span class="p">)</span>
-                <span class="n">shutil</span><span class="o">.</span><span class="n">copyfile</span><span class="p">(</span><span class="n">src</span><span class="p">,</span> <span class="n">dst</span><span class="p">)</span></div>
+                <span class="c1"># Attempt to compute forces</span>
+                <span class="k">if</span> <span class="n">force_calculation</span><span class="p">:</span>
+                    <span class="n">properties</span><span class="p">[</span><span class="s1">&#39;forces&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="mf">1.0</span><span class="o">/</span><span class="n">units</span><span class="o">.</span><span class="n">Hartree</span><span class="p">)</span><span class="o">*</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_forces</span><span class="p">()</span>
 
+                <span class="c1">#print(&#39;SCF CHECK:&#39;,atoms.calc.converged)</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">atoms</span><span class="o">.</span><span class="n">calc</span><span class="o">.</span><span class="n">converged</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="n">SCFConvergenceFailure</span><span class="p">()</span>
+        
+                <span class="c1"># Define new system</span>
+                <span class="n">molecule</span> <span class="o">=</span> <span class="n">Molecule</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()),</span><span class="n">molecule</span><span class="o">.</span><span class="n">S</span><span class="p">,</span><span class="n">molecule</span><span class="o">.</span><span class="n">Q</span><span class="p">,</span><span class="n">molecule</span><span class="o">.</span><span class="n">M</span><span class="p">,</span><span class="n">molecule</span><span class="o">.</span><span class="n">ids</span><span class="p">,</span><span class="n">C</span><span class="o">=</span><span class="n">molecule</span><span class="o">.</span><span class="n">C</span><span class="p">)</span>
+                
+                <span class="c1"># Move the success OUTCAR</span>
+                <span class="n">output_data</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">working_dir</span><span class="o">+</span><span class="s2">&quot;/&quot;</span><span class="o">+</span><span class="s2">&quot;OUTCAR&quot;</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+                <span class="n">output_file</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">output_store</span><span class="o">+</span><span class="s2">&quot;data-&quot;</span><span class="o">+</span><span class="n">molecule</span><span class="o">.</span><span class="n">ids</span><span class="o">+</span><span class="s1">&#39;.OUTCAR&#39;</span><span class="p">,</span><span class="s2">&quot;w&quot;</span><span class="p">)</span>
+                <span class="n">output_file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">output_data</span><span class="p">)</span>
+                <span class="n">output_file</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+                
+                <span class="n">output_data</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">working_dir</span><span class="o">+</span><span class="s2">&quot;/&quot;</span><span class="o">+</span><span class="s2">&quot;POSCAR&quot;</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+                <span class="n">output_file</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">output_store</span><span class="o">+</span><span class="s2">&quot;data-&quot;</span><span class="o">+</span><span class="n">molecule</span><span class="o">.</span><span class="n">ids</span><span class="o">+</span><span class="s1">&#39;.POSCAR&#39;</span><span class="p">,</span><span class="s2">&quot;w&quot;</span><span class="p">)</span>
+                <span class="n">output_file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">output_data</span><span class="p">)</span>
+                <span class="n">output_file</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+                
+                <span class="n">output_data</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">working_dir</span><span class="o">+</span><span class="s2">&quot;/&quot;</span><span class="o">+</span><span class="s2">&quot;CONTCAR&quot;</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+                <span class="n">output_file</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">output_store</span><span class="o">+</span><span class="s2">&quot;data-&quot;</span><span class="o">+</span><span class="n">molecule</span><span class="o">.</span><span class="n">ids</span><span class="o">+</span><span class="s1">&#39;.CONTCAR&#39;</span><span class="p">,</span><span class="s2">&quot;w&quot;</span><span class="p">)</span>
+                <span class="n">output_file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">output_data</span><span class="p">)</span>
+                <span class="n">output_file</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+                
+                <span class="c1"># Store the calculation in pkl format</span>
+                <span class="n">pkl</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span> <span class="p">{</span><span class="s2">&quot;molec&quot;</span><span class="p">:</span><span class="n">molecule</span><span class="p">,</span><span class="s2">&quot;props&quot;</span><span class="p">:</span><span class="n">properties</span><span class="p">},</span> <span class="nb">open</span><span class="p">(</span> <span class="bp">self</span><span class="o">.</span><span class="n">output_store</span><span class="o">+</span><span class="s2">&quot;/data-&quot;</span><span class="o">+</span><span class="n">molecule</span><span class="o">.</span><span class="n">ids</span><span class="o">+</span><span class="s1">&#39;.p&#39;</span><span class="p">,</span> <span class="s2">&quot;wb&quot;</span> <span class="p">)</span> <span class="p">)</span>
+
+                <span class="c1"># Remove working files</span>
+                <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">listdir</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">working_dir</span><span class="p">):</span>
+                    <span class="n">os</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">working_dir</span><span class="o">+</span><span class="s1">&#39;/&#39;</span><span class="o">+</span><span class="n">f</span><span class="p">)</span>
+                
+                <span class="c1"># Return data</span>
+                <span class="k">return</span> <span class="n">molecule</span><span class="p">,</span> <span class="n">properties</span>
+            <span class="k">except</span><span class="p">:</span>
+                <span class="c1"># Obtain and print error out</span>
+                <span class="n">e</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">exc_info</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;!!ERROR!!:&#39;</span><span class="p">,</span><span class="s1">&#39;data-&#39;</span><span class="o">+</span><span class="n">molecule</span><span class="o">.</span><span class="n">ids</span><span class="o">+</span><span class="s1">&#39;.failed-OUTCAR</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">,</span><span class="n">e</span><span class="p">)</span>
+
+                <span class="c1"># Move the failed OUTCAR</span>
+                <span class="n">output_data</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">working_dir</span><span class="o">+</span><span class="s2">&quot;/&quot;</span><span class="o">+</span><span class="s2">&quot;OUTCAR&quot;</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>    
+                <span class="n">output_file</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">output_store</span><span class="o">+</span><span class="s2">&quot;data-&quot;</span><span class="o">+</span><span class="n">molecule</span><span class="o">.</span><span class="n">ids</span><span class="o">+</span><span class="s1">&#39;.failed-OUTCAR&#39;</span><span class="p">,</span><span class="s2">&quot;w&quot;</span><span class="p">)</span>
+                <span class="n">output_file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">output_data</span><span class="p">)</span>
+                <span class="n">output_file</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+                 
+                <span class="n">output_data</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">working_dir</span><span class="o">+</span><span class="s2">&quot;/&quot;</span><span class="o">+</span><span class="s2">&quot;POSCAR&quot;</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+                <span class="n">output_file</span> <span class="o">=</span> <span class="nb">open</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">output_store</span><span class="o">+</span><span class="s2">&quot;data-&quot;</span><span class="o">+</span><span class="n">molecule</span><span class="o">.</span><span class="n">ids</span><span class="o">+</span><span class="s1">&#39;.failed-POSCAR&#39;</span><span class="p">,</span><span class="s2">&quot;w&quot;</span><span class="p">)</span>
+                <span class="n">output_file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">output_data</span><span class="p">)</span>
+                <span class="n">output_file</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+                
+                <span class="c1"># Remove working files</span>
+                <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">listdir</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">working_dir</span><span class="p">):</span>
+                    <span class="n">os</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">working_dir</span><span class="o">+</span><span class="s1">&#39;/&#39;</span><span class="o">+</span><span class="n">f</span><span class="p">)</span>
+
+                <span class="c1"># Return failed data</span>
+                <span class="k">return</span> <span class="n">Molecule</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()),</span><span class="n">molecule</span><span class="o">.</span><span class="n">S</span><span class="p">,</span><span class="n">molecule</span><span class="o">.</span><span class="n">Q</span><span class="p">,</span><span class="n">molecule</span><span class="o">.</span><span class="n">M</span><span class="p">,</span><span class="n">molecule</span><span class="o">.</span><span class="n">ids</span><span class="p">,</span><span class="n">C</span><span class="o">=</span><span class="n">molecule</span><span class="o">.</span><span class="n">C</span><span class="p">,</span><span class="n">failed</span><span class="o">=</span><span class="kc">True</span><span class="p">),</span> <span class="n">properties</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">loaded_data</span> <span class="o">=</span> <span class="n">pkl</span><span class="o">.</span><span class="n">load</span><span class="p">(</span> <span class="nb">open</span><span class="p">(</span> <span class="bp">self</span><span class="o">.</span><span class="n">output_store</span><span class="o">+</span><span class="s2">&quot;/data-&quot;</span><span class="o">+</span><span class="n">molecule</span><span class="o">.</span><span class="n">ids</span><span class="o">+</span><span class="s1">&#39;.p&#39;</span><span class="p">,</span> <span class="s2">&quot;rb&quot;</span> <span class="p">)</span> <span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;DATA LOADED FROM FILE:&quot;</span><span class="p">,</span><span class="n">molecule</span><span class="o">.</span><span class="n">ids</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">loaded_data</span><span class="p">[</span><span class="s2">&quot;molec&quot;</span><span class="p">],</span> <span class="n">loaded_data</span><span class="p">[</span><span class="s2">&quot;props&quot;</span><span class="p">]</span></div>
+</div>
+
+            
+        
 </pre></div>
 
            </div>

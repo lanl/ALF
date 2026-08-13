@@ -9,7 +9,6 @@
   <title>alframework package &mdash; ALF 0.0.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
-      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=eaec28dc" />
 
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
@@ -52,22 +51,16 @@
 <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/configuration.html">Configuration</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../user_guide/units.html">Units And Property Conversion</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/builders.html">Builders</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/samplers.html">Samplers</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/ml_interfaces.html">ML Interfaces</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/qm_interfaces.html">QM Interfaces</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../user_guide/parsl.html">Parsl And HPC Execution</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../examples/simple_water.html">Simple Water</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/seeded_active_learning.html">Seeded Active Learning</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/fine_tuning.html">Fine-Tuning Existing Models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/molten_salt.html">Molten Salts</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/il.html">Ionic Liquids</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/uo2.html">Periodic Solids (UO2)</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/reactive_sampling.html">Reactive Sampling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/simple_water.html">Simple Water Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/molten_salt.html">Molten Salt Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/reactive_sampling.html">Reactive Sampling Example</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
 <ul class="current">
@@ -139,6 +132,11 @@
 <li class="toctree-l4"><a class="reference internal" href="alframework.builders.builders.html#alframework.builders.builders.to_mic"><code class="docutils literal notranslate"><span class="pre">to_mic()</span></code></a></li>
 </ul>
 </li>
+<li class="toctree-l3"><a class="reference internal" href="alframework.builders.defect_crystal_builder.html">alframework.builders.defect_crystal_builder module</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="alframework.builders.defect_crystal_builder.html#alframework.builders.defect_crystal_builder.builder"><code class="docutils literal notranslate"><span class="pre">builder()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="alframework.builders.defect_crystal_builder.html#alframework.builders.defect_crystal_builder.defect_cell_builder_task"><code class="docutils literal notranslate"><span class="pre">defect_cell_builder_task()</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="alframework.builders.moltensalt_builder.html">alframework.builders.moltensalt_builder module</a><ul>
 <li class="toctree-l4"><a class="reference internal" href="alframework.builders.moltensalt_builder.html#alframework.builders.moltensalt_builder.atomic_system_builder"><code class="docutils literal notranslate"><span class="pre">atomic_system_builder()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="alframework.builders.moltensalt_builder.html#alframework.builders.moltensalt_builder.construct_simulation_box"><code class="docutils literal notranslate"><span class="pre">construct_simulation_box()</span></code></a></li>
@@ -149,10 +147,7 @@
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="alframework.builders.rdkit_condensed_phase.html">alframework.builders.rdkit_condensed_phase module</a></li>
-<li class="toctree-l3"><a class="reference internal" href="alframework.builders.reactive_builder.html">alframework.builders.reactive_builder module</a><ul>
-<li class="toctree-l4"><a class="reference internal" href="alframework.builders.reactive_builder.html#alframework.builders.reactive_builder.load_reactive_task"><code class="docutils literal notranslate"><span class="pre">load_reactive_task()</span></code></a></li>
-</ul>
-</li>
+<li class="toctree-l3"><a class="reference internal" href="alframework.builders.reactive_builder.html">alframework.builders.reactive_builder module</a></li>
 </ul>
 </li>
 </ul>
@@ -246,7 +241,6 @@
 <li class="toctree-l4"><a class="reference internal" href="alframework.samplers.reactive_sampler.html#alframework.samplers.reactive_sampler.neb_sampler"><code class="docutils literal notranslate"><span class="pre">neb_sampler()</span></code></a></li>
 </ul>
 </li>
-<li class="toctree-l3"><a class="reference internal" href="alframework.samplers.udd_sampling.html">alframework.samplers.udd_sampling module</a></li>
 </ul>
 </li>
 </ul>
@@ -277,6 +271,7 @@
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="alframework.tools.pyanitools.html">alframework.tools.pyanitools module</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="alframework.tools.pyanitools.html#alframework.tools.pyanitools.PY_VERSION"><code class="docutils literal notranslate"><span class="pre">PY_VERSION</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="alframework.tools.pyanitools.html#alframework.tools.pyanitools.anidataloader"><code class="docutils literal notranslate"><span class="pre">anidataloader</span></code></a><ul>
 <li class="toctree-l5"><a class="reference internal" href="alframework.tools.pyanitools.html#alframework.tools.pyanitools.anidataloader.cleanup"><code class="docutils literal notranslate"><span class="pre">anidataloader.cleanup()</span></code></a></li>
 <li class="toctree-l5"><a class="reference internal" href="alframework.tools.pyanitools.html#alframework.tools.pyanitools.anidataloader.get_data"><code class="docutils literal notranslate"><span class="pre">anidataloader.get_data()</span></code></a></li>

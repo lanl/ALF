@@ -1,0 +1,7 @@
+alframework.builders.defect\_crystal\_builder module
+====================================================
+
+.. automodule:: alframework.builders.defect_crystal_builder
+   :members:
+   :show-inheritance:
+   :undoc-members:

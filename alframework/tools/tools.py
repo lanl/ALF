@@ -336,8 +336,7 @@ def system_checker(system, kill_on_fail=True, print_error=True):
     """Checks if the system returned by the builder meets all requeriments.
 
     Args:
-        system (MoleculesObject/list): A list containing three elements. The first is a dict containing metadata of the system,
-                       and one of its keys must be 'moleculeid' whose value is a unique identifier of the system.
+        system (MoleculesObject/list): A list containing three elements. The first is its 'moleculeid' -- a str uniquely identifying the system.
                        The second element is an ASE Atoms object. The third element is a dict that stores the
                        desired properties from the QM calculation (e.g. forces and energies).
         kill_on_fail (bool): Kills the process if something goes wrong.
@@ -351,8 +350,7 @@ def system_checker(system, kill_on_fail=True, print_error=True):
         assert isinstance(system, (list, tuple, MoleculesObject))
         if isinstance(system, (list, tuple)):
             assert len(system) == 3
-        assert isinstance(system[0], dict)
-        assert isinstance(system[0]['moleculeid'], str)
+        assert isinstance(system[0], str)
         assert isinstance(system[1], Atoms)
         assert isinstance(system[2], dict)
         

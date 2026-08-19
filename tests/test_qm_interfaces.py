@@ -28,7 +28,7 @@ The current gradient in Eh/bohr
 TOTAL RUN TIME: 0 days
 HIRSHFELD ANALYSIS
 header
-SPIN  
+SPIN\x20\x20
   0 H 0.10 0.01
   1 H 0.20 0.02
 TOTAL

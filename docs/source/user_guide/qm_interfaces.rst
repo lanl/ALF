@@ -131,8 +131,9 @@ practical resource examples.
 Legacy VASP helper
    ``alframework.qm_interfaces.vaspase_interface.VASPGenerator`` is deprecated
    and kept only for older imports. Do not start new configuration files from
-   ``vaspase_interface.py``. Existing imports may continue to work temporarily,
-   but should be migrated to
+   ``vaspase_interface.py``. This compatibility helper is not covered by the
+   current integration tests and is unsupported for new workflows. Existing
+   users should migrate to
    ``alframework.qm_interfaces.ase_calculator_interface.VASP_ase_calculator_task``
    or the generic ``ase_calculator_task`` described above.
 

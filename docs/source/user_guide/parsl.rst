@@ -162,7 +162,7 @@ Separate GPU Executors For ML And Sampling
 ------------------------------------------
 
 ML training and MLMD sampling tasks typically need GPUs. Use separate executors so
-these tasks do not compete with CPU-only (e.g., QM) jobs. Below is an example parsl config 
+these tasks do not compete with CPU-only (e.g., QM) jobs. Below is an example Parsl config
 for GPU execution of ML and sampling tasks.
 
 .. code-block:: python
@@ -213,7 +213,7 @@ ALF can also target `Globus Compute <https://www.globus.org/compute>`_
 endpoints through Parsl. In this pattern, ``parsl_configs.py`` uses Parsl's
 ``GlobusComputeExecutor`` instead of a scheduler-backed executor, while keeping
 the ALF executor labels such as ``alf_QM_executor``, ``alf_ML_executor``, or
-``alf_sampler_executor``. This can useful for multisite runs where different endpoints 
+``alf_sampler_executor``. This can be useful for multisite runs where different endpoints
 provide different resources, or for users who do not have a local scheduler.
 
 The Parsl documentation includes a
@@ -241,7 +241,7 @@ with additional endpoint setup details. Below is a bare-bones Parsl configuratio
 For multisite runs, add more ``GlobusComputeExecutor`` entries with different
 endpoint UUIDs and the ALF labels for the work each endpoint should receive.
 For example, one endpoint could provide ``alf_QM_executor`` while another
-provides ``alf_ML_executor`` or ``alf_sampler_executor``. Node that the Globus Compute 
+provides ``alf_ML_executor`` or ``alf_sampler_executor``. Note that the Globus Compute
 SDK must be installed in the Python environment that runs ALF to use this pattern functionality.
 
 Generic CPU/GPU Template Pattern

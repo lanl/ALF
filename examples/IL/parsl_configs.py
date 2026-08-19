@@ -79,11 +79,11 @@ config_1node = Config(
             provider=SlurmProvider(
                 partition=CPU_PARTITION,
                 # Start with no allocation and scale up on demand. With
-                # nodes_per_block=1 and max_blocks=2, this executor may request
-                # at most two CPU nodes at the same time.
+                # nodes_per_block=1 and max_blocks=1, this executor requests
+                # at most one CPU node at a time.
                 init_blocks=0,
                 min_blocks=0,
-                max_blocks=2,
+                max_blocks=1,
                 nodes_per_block=1,
                 scheduler_options=slurm_options(
                     CPU_RESOURCE_OPTIONS,
@@ -106,7 +106,7 @@ config_1node = Config(
                 partition=CPU_PARTITION,
                 init_blocks=0,
                 min_blocks=0,
-                max_blocks=2,
+                max_blocks=1,
                 nodes_per_block=1,
                 scheduler_options=slurm_options(
                     CPU_RESOURCE_OPTIONS,
@@ -154,7 +154,7 @@ config_1node = Config(
                 min_blocks=0,
                 # Increase max_blocks only when you want Parsl to request more
                 # simultaneous GPU allocations for sampling.
-                max_blocks=2,
+                max_blocks=1,
                 nodes_per_block=1,
                 scheduler_options=slurm_options(
                     GPU_SAMPLER_RESOURCE_OPTIONS,
@@ -176,7 +176,7 @@ config_1node = Config(
                 partition=GPU_PARTITION,
                 init_blocks=0,
                 min_blocks=0,
-                max_blocks=2,
+                max_blocks=1,
                 nodes_per_block=1,
                 scheduler_options=slurm_options(
                     GPU_SAMPLER_RESOURCE_OPTIONS,

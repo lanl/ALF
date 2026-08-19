@@ -9,6 +9,11 @@ to avoid a random bootstrap stage.
 The files needed to run the example are located in
 ``examples/seeded_active_learning``.
 
+The checked-in configuration is intentionally modest for initial bring-up: it
+uses four ensemble members, caps training at 200 epochs, and limits the active
+learning queues to 25 items. Increase these values only after the staged checks
+work on the target machine.
+
 Before You Run
 --------------
 

@@ -8,6 +8,7 @@
   <title>alframework.samplers.mlmd_sampling &mdash; ALF 0.0.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=eaec28dc" />
 
   
       <script src="../../../_static/jquery.js?v=5d32c60e"></script>
@@ -48,16 +49,22 @@
 <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../../user_guide/configuration.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../user_guide/units.html">Units And Property Conversion</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../user_guide/builders.html">Builders</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../user_guide/samplers.html">Samplers</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../user_guide/ml_interfaces.html">ML Interfaces</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../user_guide/qm_interfaces.html">QM Interfaces</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../user_guide/parsl.html">Parsl And HPC Execution</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../../../examples/simple_water.html">Simple Water Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../examples/molten_salt.html">Molten Salt Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../examples/reactive_sampling.html">Reactive Sampling Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../examples/simple_water.html">Simple Water</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../examples/seeded_active_learning.html">Seeded Active Learning</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../examples/fine_tuning.html">Fine-Tuning Existing Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../examples/molten_salt.html">Molten Salts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../examples/il.html">Ionic Liquids</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../examples/uo2.html">Periodic Solids (UO2)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../examples/reactive_sampling.html">Reactive Sampling</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
 <ul>
@@ -114,9 +121,9 @@
 <a class="viewcode-back" href="../../../api_documentation/alframework.samplers.mlmd_sampling.html#alframework.samplers.mlmd_sampling.mlmd_sampling">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">mlmd_sampling</span><span class="p">(</span><span class="n">molecule_object</span><span class="p">,</span> <span class="n">ase_calculator</span><span class="p">,</span> <span class="n">dt</span><span class="p">,</span> <span class="n">maxt</span><span class="p">,</span> <span class="n">Escut</span><span class="p">,</span> <span class="n">Fscut</span><span class="p">,</span> <span class="n">Ncheck</span><span class="p">,</span> <span class="n">Tamp</span><span class="p">,</span> <span class="n">Tper</span><span class="p">,</span> <span class="n">Tsrt</span><span class="p">,</span> <span class="n">Tend</span><span class="p">,</span> <span class="n">Ramp</span><span class="p">,</span> <span class="n">Rper</span><span class="p">,</span>
                   <span class="n">Rend</span><span class="p">,</span> <span class="n">meta_dir</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">use_potential_specific_code</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">trajectory_interval</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">distcut</span><span class="o">=</span><span class="mf">1.2</span><span class="p">,</span> <span class="n">min_time</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Uncertainty based MD sampling.</span>
+<span class="w">    </span><span class="sd">"""Uncertainty based MD sampling.</span>
 
-<span class="sd">    The idea is that if the MD fails because the NNPs didn&#39;t agree on the energies and forces, then this function</span>
+<span class="sd">    The idea is that if the MD fails because the NNPs didn't agree on the energies and forces, then this function</span>
 <span class="sd">    returns an ase.Atoms object containing the failed configuration in order to properly evaluate its energy</span>
 <span class="sd">    and forces using the QM code. The disagreement between the NNPs are quantified by the standard deviation of</span>
 <span class="sd">    the energy and forces output by all NNs in the ensemble.</span>
@@ -128,7 +135,7 @@
 <span class="sd">        maxt (float): Total simulation time [ps].</span>
 <span class="sd">        Escut (float): Maximum tolerated energy standard deviation before calling QM evaluation.</span>
 <span class="sd">        Fscut (float): Maximum tolareted mean standard deviation of the forces before calling QM evaluation.</span>
-<span class="sd">        Ncheck (int): Uncertainty evaluation is performed at each &#39;Ncheck&#39; MD steps.</span>
+<span class="sd">        Ncheck (int): Uncertainty evaluation is performed at each 'Ncheck' MD steps.</span>
 <span class="sd">        Tamp (float): Amplitude of the temperature fluctuation.</span>
 <span class="sd">        Tper (float): Period of the temperature fluctuation.</span>
 <span class="sd">        Tsrt (float): Initial temperature.</span>
@@ -138,7 +145,7 @@
 <span class="sd">        Rend (float): Final density.</span>
 <span class="sd">        meta_dir (str): Path of the directory containing the metadata.</span>
 <span class="sd">        use_potential_specific_code (str): Determines whether to use a specific interatomic potential code.</span>
-<span class="sd">        trajectory_interval (int): Write the trajectory at every &#39;trajectory_interval&#39; steps.</span>
+<span class="sd">        trajectory_interval (int): Write the trajectory at every 'trajectory_interval' steps.</span>
 <span class="sd">        distcut (float): Minimum allowed distance between two atoms in [Angstrom]</span>
 <span class="sd">        min_time (float): Minimum simulation time before checking for uncertanties in [ps]</span>
 
@@ -146,8 +153,8 @@
 <span class="sd">        (MoleculesObject): A MoleculesObject containing the results of the QM calculations. If the std deviation of</span>
 <span class="sd">                           the energy or forces are above the established threshold, molecule_object.atoms will store</span>
 <span class="sd">                           the failed configuration, otherwise it will store None.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">molecule_object</span><span class="p">,</span> <span class="n">MoleculesObject</span><span class="p">),</span> <span class="s1">&#39;molecule_object must be an instance of MoleculesObject&#39;</span>
+<span class="sd">    """</span>
+    <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">molecule_object</span><span class="p">,</span> <span class="n">MoleculesObject</span><span class="p">),</span> <span class="s1">'molecule_object must be an instance of MoleculesObject'</span>
 
     <span class="n">ase_atoms</span> <span class="o">=</span> <span class="n">molecule_object</span><span class="o">.</span><span class="n">get_atoms</span><span class="p">()</span>
     <span class="n">T</span> <span class="o">=</span> <span class="n">annealing_schedule</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">maxt</span><span class="p">,</span> <span class="n">Tamp</span><span class="p">,</span> <span class="n">Tper</span><span class="p">,</span> <span class="n">Tsrt</span><span class="p">,</span> <span class="n">Tend</span><span class="p">)</span>
@@ -167,7 +174,7 @@
     <span class="c1"># Define thermostat</span>
     <span class="n">dyn</span> <span class="o">=</span> <span class="n">Langevin</span><span class="p">(</span><span class="n">ase_atoms</span><span class="p">,</span> <span class="n">dt</span> <span class="o">*</span> <span class="n">units</span><span class="o">.</span><span class="n">fs</span><span class="p">,</span> <span class="n">friction</span><span class="o">=</span><span class="mf">0.02</span><span class="p">,</span> <span class="n">temperature_K</span><span class="o">=</span><span class="n">T</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">trajectory_interval</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">trajob</span> <span class="o">=</span> <span class="n">Trajectory</span><span class="p">(</span><span class="n">meta_dir</span> <span class="o">+</span> <span class="s2">&quot;/metadata-&quot;</span> <span class="o">+</span> <span class="n">molecule_object</span><span class="o">.</span><span class="n">get_moleculeid</span><span class="p">()</span> <span class="o">+</span> <span class="s1">&#39;.traj&#39;</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s1">&#39;w&#39;</span><span class="p">,</span> <span class="n">atoms</span><span class="o">=</span><span class="n">ase_atoms</span><span class="p">)</span>
+        <span class="n">trajob</span> <span class="o">=</span> <span class="n">Trajectory</span><span class="p">(</span><span class="n">meta_dir</span> <span class="o">+</span> <span class="s2">"/metadata-"</span> <span class="o">+</span> <span class="n">molecule_object</span><span class="o">.</span><span class="n">get_moleculeid</span><span class="p">()</span> <span class="o">+</span> <span class="s1">'.traj'</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s1">'w'</span><span class="p">,</span> <span class="n">atoms</span><span class="o">=</span><span class="n">ase_atoms</span><span class="p">)</span>
         <span class="n">dyn</span><span class="o">.</span><span class="n">attach</span><span class="p">(</span><span class="n">trajob</span><span class="o">.</span><span class="n">write</span><span class="p">,</span> <span class="n">interval</span><span class="o">=</span><span class="n">trajectory_interval</span><span class="p">)</span>
 
     <span class="c1"># Iterate MD</span>
@@ -184,12 +191,12 @@
 
         <span class="c1"># Check if MD should be ran</span>
         <span class="k">if</span> <span class="n">use_potential_specific_code</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">ase_atoms</span><span class="o">.</span><span class="n">calc</span><span class="o">.</span><span class="n">calculate</span><span class="p">(</span><span class="n">ase_atoms</span><span class="p">,</span> <span class="n">properties</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;energy_stdev&#39;</span><span class="p">,</span> <span class="s1">&#39;forces_stdev_mean&#39;</span><span class="p">,</span> <span class="s1">&#39;forces_stdev_max&#39;</span><span class="p">])</span>
-            <span class="n">Es</span> <span class="o">=</span> <span class="n">ase_atoms</span><span class="o">.</span><span class="n">calc</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;energy_stdev&#39;</span><span class="p">]</span>
-            <span class="n">Fs</span> <span class="o">=</span> <span class="n">ase_atoms</span><span class="o">.</span><span class="n">calc</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;forces_stdev_mean&#39;</span><span class="p">]</span>
-            <span class="n">Fsmax</span> <span class="o">=</span> <span class="n">ase_atoms</span><span class="o">.</span><span class="n">calc</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;forces_stdev_max&#39;</span><span class="p">]</span>
+            <span class="n">ase_atoms</span><span class="o">.</span><span class="n">calc</span><span class="o">.</span><span class="n">calculate</span><span class="p">(</span><span class="n">ase_atoms</span><span class="p">,</span> <span class="n">properties</span><span class="o">=</span><span class="p">[</span><span class="s1">'energy_stdev'</span><span class="p">,</span> <span class="s1">'forces_stdev_mean'</span><span class="p">,</span> <span class="s1">'forces_stdev_max'</span><span class="p">])</span>
+            <span class="n">Es</span> <span class="o">=</span> <span class="n">ase_atoms</span><span class="o">.</span><span class="n">calc</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">'energy_stdev'</span><span class="p">]</span>
+            <span class="n">Fs</span> <span class="o">=</span> <span class="n">ase_atoms</span><span class="o">.</span><span class="n">calc</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">'forces_stdev_mean'</span><span class="p">]</span>
+            <span class="n">Fsmax</span> <span class="o">=</span> <span class="n">ase_atoms</span><span class="o">.</span><span class="n">calc</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">'forces_stdev_max'</span><span class="p">]</span>
         	
-        <span class="k">elif</span> <span class="n">use_potential_specific_code</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">&#39;neurochem&#39;</span><span class="p">:</span>
+        <span class="k">elif</span> <span class="n">use_potential_specific_code</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span> <span class="o">==</span> <span class="s1">'neurochem'</span><span class="p">:</span>
             <span class="n">Es</span> <span class="o">=</span> <span class="n">ase_atoms</span><span class="o">.</span><span class="n">calc</span><span class="o">.</span><span class="n">Estddev</span> <span class="o">*</span> <span class="mi">1000</span>
             <span class="n">Fs</span><span class="p">,</span> <span class="n">Fsmax</span> <span class="o">=</span> <span class="n">ase_atoms</span><span class="o">.</span><span class="n">calc</span><span class="o">.</span><span class="n">get_Fstddev</span><span class="p">()</span>
 
@@ -201,7 +208,7 @@
 
         <span class="k">if</span> <span class="p">(</span><span class="n">i</span><span class="o">*</span><span class="n">Ncheck</span><span class="o">*</span><span class="n">dt</span><span class="o">/</span><span class="mi">1000</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">min_time</span><span class="p">:</span>
             <span class="k">if</span> <span class="n">Ecrit</span> <span class="ow">or</span> <span class="n">Fcrit</span> <span class="ow">or</span> <span class="n">Fmcrit</span> <span class="ow">or</span> <span class="n">distcrit</span><span class="p">:</span>
-                <span class="c1"># print(&#39;MD FAIL (&#39;,model_id,&#39;,&#39;,self.counter,&#39;,&#39;,&quot;{0:.4f}&quot;.format(time.time()-self.str_time),&#39;) -- Uncertainty:&#39;, &quot;{0:.4f}&quot;.format(Es), &quot;{0:.4f}&quot;.format(Fs), &quot;{0:.4f}&quot;.format(Fsmax), (i*Ncheck*dt)/1000)</span>
+                <span class="c1"># print('MD FAIL (',model_id,',',self.counter,',',"{0:.4f}".format(time.time()-self.str_time),') -- Uncertainty:', "{0:.4f}".format(Es), "{0:.4f}".format(Fs), "{0:.4f}".format(Fsmax), (i*Ncheck*dt)/1000)</span>
                 <span class="c1"># last_bad = Atoms(ase_atoms.get_chemical_symbols(), positions=ase_atoms.get_positions(wrap=True),</span>
                 <span class="c1">#                  cell=ase_atoms.get_cell(), pbc=ase_atoms.get_pbc())</span>
                 <span class="n">failed</span> <span class="o">=</span> <span class="kc">True</span>
@@ -225,36 +232,36 @@
         <span class="c1"># Run MD</span>
         <span class="n">dyn</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">Ncheck</span><span class="p">)</span>
 
-    <span class="n">meta_dict</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;realtime_simulation&quot;</span> <span class="p">:</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">sim_start_time</span><span class="p">,</span>
-                    <span class="s2">&quot;Es&quot;</span>    <span class="p">:</span> <span class="n">Es</span><span class="p">,</span>
-                    <span class="s2">&quot;Fs&quot;</span>    <span class="p">:</span> <span class="n">Fs</span><span class="p">,</span>
-                    <span class="s2">&quot;Fsmax&quot;</span> <span class="p">:</span> <span class="n">Fsmax</span><span class="p">,</span>
-                    <span class="s2">&quot;distmin&quot;</span><span class="p">:</span> <span class="n">dist_min</span><span class="p">,</span>
-                    <span class="s2">&quot;simulationtime&quot;</span> <span class="p">:</span> <span class="p">(</span><span class="n">i</span> <span class="o">*</span> <span class="n">Ncheck</span> <span class="o">*</span> <span class="n">dt</span><span class="p">)</span><span class="o">/</span><span class="mi">1000</span><span class="p">,</span>
-                    <span class="s2">&quot;temps&quot;</span> <span class="p">:</span> <span class="n">temps</span><span class="p">,</span>
-                    <span class="s2">&quot;denss&quot;</span> <span class="p">:</span> <span class="n">denss</span><span class="p">,</span>
-                    <span class="s2">&quot;system_comp&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">ase_atoms</span><span class="o">.</span><span class="n">get_chemical_symbols</span><span class="p">(),</span> <span class="n">return_counts</span><span class="o">=</span><span class="kc">True</span><span class="p">),</span>
-                    <span class="s2">&quot;Tamp&quot;</span> <span class="p">:</span> <span class="n">Tamp</span><span class="p">,</span>
-                    <span class="s2">&quot;Tper&quot;</span> <span class="p">:</span> <span class="n">Tper</span><span class="p">,</span>
-                    <span class="s2">&quot;Tsrt&quot;</span> <span class="p">:</span> <span class="n">Tsrt</span><span class="p">,</span>
-                    <span class="s2">&quot;Tend&quot;</span> <span class="p">:</span> <span class="n">Tend</span><span class="p">,</span>
-                    <span class="s2">&quot;Ramp&quot;</span> <span class="p">:</span> <span class="n">Ramp</span><span class="p">,</span>
-                    <span class="s2">&quot;Rper&quot;</span> <span class="p">:</span> <span class="n">Rper</span><span class="p">,</span>
-                    <span class="s2">&quot;Rsrt&quot;</span> <span class="p">:</span> <span class="n">str_Rvalue</span><span class="p">,</span>
-                    <span class="s2">&quot;Rend&quot;</span> <span class="p">:</span> <span class="n">Rend</span><span class="p">,</span>
-                    <span class="s2">&quot;Ecrit&quot;</span> <span class="p">:</span> <span class="n">Ecrit</span><span class="p">,</span>
-                    <span class="s2">&quot;Fcrit&quot;</span> <span class="p">:</span> <span class="n">Fcrit</span><span class="p">,</span>
-                    <span class="s2">&quot;Fmcrit&quot;</span> <span class="p">:</span> <span class="n">Fmcrit</span><span class="p">,</span>
-                    <span class="s2">&quot;distcrit&quot;</span><span class="p">:</span> <span class="n">distcrit</span><span class="p">,</span>
-                    <span class="s2">&quot;chemical_symbols&quot;</span> <span class="p">:</span> <span class="n">ase_atoms</span><span class="o">.</span><span class="n">get_chemical_symbols</span><span class="p">(),</span>
-                    <span class="s2">&quot;positions&quot;</span> <span class="p">:</span> <span class="n">ase_atoms</span><span class="o">.</span><span class="n">get_positions</span><span class="p">(</span><span class="n">wrap</span><span class="o">=</span><span class="kc">True</span><span class="p">),</span>
-                    <span class="s2">&quot;cell&quot;</span> <span class="p">:</span> <span class="n">ase_atoms</span><span class="o">.</span><span class="n">get_cell</span><span class="p">()</span>
+    <span class="n">meta_dict</span> <span class="o">=</span> <span class="p">{</span><span class="s2">"realtime_simulation"</span> <span class="p">:</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">sim_start_time</span><span class="p">,</span>
+                    <span class="s2">"Es"</span>    <span class="p">:</span> <span class="n">Es</span><span class="p">,</span>
+                    <span class="s2">"Fs"</span>    <span class="p">:</span> <span class="n">Fs</span><span class="p">,</span>
+                    <span class="s2">"Fsmax"</span> <span class="p">:</span> <span class="n">Fsmax</span><span class="p">,</span>
+                    <span class="s2">"distmin"</span><span class="p">:</span> <span class="n">dist_min</span><span class="p">,</span>
+                    <span class="s2">"simulationtime"</span> <span class="p">:</span> <span class="p">(</span><span class="n">i</span> <span class="o">*</span> <span class="n">Ncheck</span> <span class="o">*</span> <span class="n">dt</span><span class="p">)</span><span class="o">/</span><span class="mi">1000</span><span class="p">,</span>
+                    <span class="s2">"temps"</span> <span class="p">:</span> <span class="n">temps</span><span class="p">,</span>
+                    <span class="s2">"denss"</span> <span class="p">:</span> <span class="n">denss</span><span class="p">,</span>
+                    <span class="s2">"system_comp"</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">ase_atoms</span><span class="o">.</span><span class="n">get_chemical_symbols</span><span class="p">(),</span> <span class="n">return_counts</span><span class="o">=</span><span class="kc">True</span><span class="p">),</span>
+                    <span class="s2">"Tamp"</span> <span class="p">:</span> <span class="n">Tamp</span><span class="p">,</span>
+                    <span class="s2">"Tper"</span> <span class="p">:</span> <span class="n">Tper</span><span class="p">,</span>
+                    <span class="s2">"Tsrt"</span> <span class="p">:</span> <span class="n">Tsrt</span><span class="p">,</span>
+                    <span class="s2">"Tend"</span> <span class="p">:</span> <span class="n">Tend</span><span class="p">,</span>
+                    <span class="s2">"Ramp"</span> <span class="p">:</span> <span class="n">Ramp</span><span class="p">,</span>
+                    <span class="s2">"Rper"</span> <span class="p">:</span> <span class="n">Rper</span><span class="p">,</span>
+                    <span class="s2">"Rsrt"</span> <span class="p">:</span> <span class="n">str_Rvalue</span><span class="p">,</span>
+                    <span class="s2">"Rend"</span> <span class="p">:</span> <span class="n">Rend</span><span class="p">,</span>
+                    <span class="s2">"Ecrit"</span> <span class="p">:</span> <span class="n">Ecrit</span><span class="p">,</span>
+                    <span class="s2">"Fcrit"</span> <span class="p">:</span> <span class="n">Fcrit</span><span class="p">,</span>
+                    <span class="s2">"Fmcrit"</span> <span class="p">:</span> <span class="n">Fmcrit</span><span class="p">,</span>
+                    <span class="s2">"distcrit"</span><span class="p">:</span> <span class="n">distcrit</span><span class="p">,</span>
+                    <span class="s2">"chemical_symbols"</span> <span class="p">:</span> <span class="n">ase_atoms</span><span class="o">.</span><span class="n">get_chemical_symbols</span><span class="p">(),</span>
+                    <span class="s2">"positions"</span> <span class="p">:</span> <span class="n">ase_atoms</span><span class="o">.</span><span class="n">get_positions</span><span class="p">(</span><span class="n">wrap</span><span class="o">=</span><span class="kc">True</span><span class="p">),</span>
+                    <span class="s2">"cell"</span> <span class="p">:</span> <span class="n">ase_atoms</span><span class="o">.</span><span class="n">get_cell</span><span class="p">()</span>
                 <span class="p">}</span>
 
     <span class="n">meta_dict</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">molecule_object</span><span class="o">.</span><span class="n">get_metadata</span><span class="p">())</span>
 
     <span class="k">if</span> <span class="n">meta_dir</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">pkl</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">meta_dict</span><span class="p">,</span> <span class="nb">open</span><span class="p">(</span><span class="n">meta_dir</span> <span class="o">+</span> <span class="s2">&quot;/metadata-&quot;</span> <span class="o">+</span> <span class="n">molecule_object</span><span class="o">.</span><span class="n">get_moleculeid</span><span class="p">()</span> <span class="o">+</span> <span class="s1">&#39;.p&#39;</span><span class="p">,</span> <span class="s2">&quot;wb&quot;</span><span class="p">))</span>
+        <span class="n">pkl</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">meta_dict</span><span class="p">,</span> <span class="nb">open</span><span class="p">(</span><span class="n">meta_dir</span> <span class="o">+</span> <span class="s2">"/metadata-"</span> <span class="o">+</span> <span class="n">molecule_object</span><span class="o">.</span><span class="n">get_moleculeid</span><span class="p">()</span> <span class="o">+</span> <span class="s1">'.p'</span><span class="p">,</span> <span class="s2">"wb"</span><span class="p">))</span>
     
     <span class="n">ase_atoms</span><span class="o">.</span><span class="n">calc</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># replace calculator for return</span>
 
@@ -264,15 +271,15 @@
         <span class="n">molecule_object</span><span class="o">.</span><span class="n">update_atoms</span><span class="p">(</span><span class="n">ase_atoms</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">molecule_object</span>
     <span class="k">else</span><span class="p">:</span>
-        <span class="c1"># print(&#39;MD SUCCESS&#39;, self.counter)</span>
+        <span class="c1"># print('MD SUCCESS', self.counter)</span>
         <span class="n">molecule_object</span><span class="o">.</span><span class="n">update_atoms</span><span class="p">(</span><span class="kc">None</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">molecule_object</span></div>
 
 
 
-<span class="nd">@python_app</span><span class="p">(</span><span class="n">executors</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;alf_sampler_executor&#39;</span><span class="p">])</span>
+<span class="nd">@python_app</span><span class="p">(</span><span class="n">executors</span><span class="o">=</span><span class="p">[</span><span class="s1">'alf_sampler_executor'</span><span class="p">])</span>
 <span class="k">def</span><span class="w"> </span><span class="nf">simple_mlmd_sampling_task</span><span class="p">(</span><span class="n">molecule_object</span><span class="p">,</span> <span class="n">sampler_config</span><span class="p">,</span> <span class="n">model_path</span><span class="p">,</span> <span class="n">current_model_id</span><span class="p">,</span> <span class="n">gpus_per_node</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot; A simple implementation of uncertanty based MD sampling.</span>
+<span class="w">    </span><span class="sd">""" A simple implementation of uncertanty based MD sampling.</span>
 
 <span class="sd">    Args:</span>
 <span class="sd">        molecule_object (MoleculesObject): An object from the class MoleculesObject.</span>
@@ -281,7 +288,7 @@
 <span class="sd">                               maxt (int): Total MD simulation time in [ps]</span>
 <span class="sd">                               Escut (float): Energy standard deviation threshold for capturing frame</span>
 <span class="sd">                               Fscut (float): Force standard deviation threshold for capturing frame</span>
-<span class="sd">                               Ncheck (int): Every &#39;N&#39; steps perform uncertanty checking</span>
+<span class="sd">                               Ncheck (int): Every 'N' steps perform uncertanty checking</span>
 <span class="sd">                               srt_temp (list): [min, max] for starting temperature</span>
 <span class="sd">                               end_temp (list): [min, max] for ending temperature</span>
 <span class="sd">                               amp_temp (list): [min, max] for temperature fluctuations</span>
@@ -291,9 +298,9 @@
 <span class="sd">                               per_dens (list): [min, max] pressure amplitude range</span>
 <span class="sd">                               meta_dir (list): path to store sampling statistics.</span>
 <span class="sd">                               trajectory_frequency (float): Frequency of creating trajectory files of the MD simulation.</span>
-<span class="sd">                               trajectory_interval (int): Writes trajectory file each &#39;trajectory_interval&#39; steps.</span>
+<span class="sd">                               trajectory_interval (int): Writes trajectory file each 'trajectory_interval' steps.</span>
 <span class="sd">        model_path (str): Path to current ML model as specified in the master_config.json file.</span>
-<span class="sd">        current_model_id (int): An integer that identifies the current ML model in &#39;model_path&#39;.</span>
+<span class="sd">        current_model_id (int): An integer that identifies the current ML model in 'model_path'.</span>
 <span class="sd">        gpus_per_node (int): Number of GPUs per node set by the master_config.json file.</span>
 
 <span class="sd">    Returns:</span>
@@ -301,58 +308,58 @@
 <span class="sd">                           the energy or forces are above the established threshold, molecule_object.atoms will store</span>
 <span class="sd">                           the failed configuration, otherwise it will store None.</span>
 <span class="sd">    </span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">molecule_object</span><span class="p">,</span> <span class="n">MoleculesObject</span><span class="p">),</span> <span class="s1">&#39;molecule_object must be an instance of MoleculesObject&#39;</span>
+<span class="sd">    """</span>
+    <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">molecule_object</span><span class="p">,</span> <span class="n">MoleculesObject</span><span class="p">),</span> <span class="s1">'molecule_object must be an instance of MoleculesObject'</span>
 
-    <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">&quot;CUDA_VISIBLE_DEVICES&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;PARSL_WORKER_RANK&#39;</span><span class="p">))</span> <span class="o">%</span> <span class="n">gpus_per_node</span><span class="p">)</span>
-    <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">&quot;ROCR_VISIBLE_DEVICES&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;PARSL_WORKER_RANK&#39;</span><span class="p">))</span><span class="o">%</span><span class="n">gpus_per_node</span><span class="p">)</span>
+    <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">"CUDA_VISIBLE_DEVICES"</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'PARSL_WORKER_RANK'</span><span class="p">))</span> <span class="o">%</span> <span class="n">gpus_per_node</span><span class="p">)</span>
+    <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">"ROCR_VISIBLE_DEVICES"</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'PARSL_WORKER_RANK'</span><span class="p">))</span><span class="o">%</span><span class="n">gpus_per_node</span><span class="p">)</span>
     <span class="n">feed_parameters</span> <span class="o">=</span> <span class="p">{}</span>
 
     <span class="c1"># Setup T</span>
-    <span class="n">feed_parameters</span><span class="p">[</span><span class="s1">&#39;Tamp&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">sampler_config</span><span class="p">[</span><span class="s1">&#39;amp_temp&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span> <span class="n">sampler_config</span><span class="p">[</span><span class="s1">&#39;amp_temp&#39;</span><span class="p">][</span><span class="mi">1</span><span class="p">])</span>
-    <span class="n">feed_parameters</span><span class="p">[</span><span class="s1">&#39;Tper&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">sampler_config</span><span class="p">[</span><span class="s1">&#39;per_temp&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span> <span class="n">sampler_config</span><span class="p">[</span><span class="s1">&#39;per_temp&#39;</span><span class="p">][</span><span class="mi">1</span><span class="p">])</span>
-    <span class="n">feed_parameters</span><span class="p">[</span><span class="s1">&#39;Tsrt&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">sampler_config</span><span class="p">[</span><span class="s1">&#39;srt_temp&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span> <span class="n">sampler_config</span><span class="p">[</span><span class="s1">&#39;srt_temp&#39;</span><span class="p">][</span><span class="mi">1</span><span class="p">])</span>
-    <span class="n">feed_parameters</span><span class="p">[</span><span class="s1">&#39;Tend&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">sampler_config</span><span class="p">[</span><span class="s1">&#39;end_temp&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span> <span class="n">sampler_config</span><span class="p">[</span><span class="s1">&#39;end_temp&#39;</span><span class="p">][</span><span class="mi">1</span><span class="p">])</span>
+    <span class="n">feed_parameters</span><span class="p">[</span><span class="s1">'Tamp'</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">sampler_config</span><span class="p">[</span><span class="s1">'amp_temp'</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span> <span class="n">sampler_config</span><span class="p">[</span><span class="s1">'amp_temp'</span><span class="p">][</span><span class="mi">1</span><span class="p">])</span>
+    <span class="n">feed_parameters</span><span class="p">[</span><span class="s1">'Tper'</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">sampler_config</span><span class="p">[</span><span class="s1">'per_temp'</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span> <span class="n">sampler_config</span><span class="p">[</span><span class="s1">'per_temp'</span><span class="p">][</span><span class="mi">1</span><span class="p">])</span>
+    <span class="n">feed_parameters</span><span class="p">[</span><span class="s1">'Tsrt'</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">sampler_config</span><span class="p">[</span><span class="s1">'srt_temp'</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span> <span class="n">sampler_config</span><span class="p">[</span><span class="s1">'srt_temp'</span><span class="p">][</span><span class="mi">1</span><span class="p">])</span>
+    <span class="n">feed_parameters</span><span class="p">[</span><span class="s1">'Tend'</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">sampler_config</span><span class="p">[</span><span class="s1">'end_temp'</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span> <span class="n">sampler_config</span><span class="p">[</span><span class="s1">'end_temp'</span><span class="p">][</span><span class="mi">1</span><span class="p">])</span>
     
-    <span class="k">if</span> <span class="n">sampler_config</span><span class="p">[</span><span class="s1">&#39;amp_dens&#39;</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">feed_parameters</span><span class="p">[</span><span class="s1">&#39;Ramp&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">sampler_config</span><span class="p">[</span><span class="s1">'amp_dens'</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">feed_parameters</span><span class="p">[</span><span class="s1">'Ramp'</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="k">else</span><span class="p">:</span> 
-        <span class="n">feed_parameters</span><span class="p">[</span><span class="s1">&#39;Ramp&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">sampler_config</span><span class="p">[</span><span class="s1">&#39;amp_dens&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span> <span class="n">sampler_config</span><span class="p">[</span><span class="s1">&#39;amp_dens&#39;</span><span class="p">][</span><span class="mi">1</span><span class="p">])</span>
+        <span class="n">feed_parameters</span><span class="p">[</span><span class="s1">'Ramp'</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">sampler_config</span><span class="p">[</span><span class="s1">'amp_dens'</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span> <span class="n">sampler_config</span><span class="p">[</span><span class="s1">'amp_dens'</span><span class="p">][</span><span class="mi">1</span><span class="p">])</span>
 
-    <span class="k">if</span> <span class="n">sampler_config</span><span class="p">[</span><span class="s1">&#39;per_dens&#39;</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">feed_parameters</span><span class="p">[</span><span class="s1">&#39;Rper&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">sampler_config</span><span class="p">[</span><span class="s1">'per_dens'</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">feed_parameters</span><span class="p">[</span><span class="s1">'Rper'</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="k">else</span><span class="p">:</span>
-        <span class="n">feed_parameters</span><span class="p">[</span><span class="s1">&#39;Rper&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">sampler_config</span><span class="p">[</span><span class="s1">&#39;per_dens&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span> <span class="n">sampler_config</span><span class="p">[</span><span class="s1">&#39;per_dens&#39;</span><span class="p">][</span><span class="mi">1</span><span class="p">])</span>
+        <span class="n">feed_parameters</span><span class="p">[</span><span class="s1">'Rper'</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">sampler_config</span><span class="p">[</span><span class="s1">'per_dens'</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span> <span class="n">sampler_config</span><span class="p">[</span><span class="s1">'per_dens'</span><span class="p">][</span><span class="mi">1</span><span class="p">])</span>
 
-    <span class="k">if</span> <span class="n">sampler_config</span><span class="p">[</span><span class="s1">&#39;end_dens&#39;</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">feed_parameters</span><span class="p">[</span><span class="s1">&#39;Rend&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">sampler_config</span><span class="p">[</span><span class="s1">'end_dens'</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">feed_parameters</span><span class="p">[</span><span class="s1">'Rend'</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="k">else</span><span class="p">:</span>
-        <span class="n">feed_parameters</span><span class="p">[</span><span class="s1">&#39;Rend&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">sampler_config</span><span class="p">[</span><span class="s1">&#39;end_dens&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span> <span class="n">sampler_config</span><span class="p">[</span><span class="s1">&#39;end_dens&#39;</span><span class="p">][</span><span class="mi">1</span><span class="p">])</span>
+        <span class="n">feed_parameters</span><span class="p">[</span><span class="s1">'Rend'</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">sampler_config</span><span class="p">[</span><span class="s1">'end_dens'</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span> <span class="n">sampler_config</span><span class="p">[</span><span class="s1">'end_dens'</span><span class="p">][</span><span class="mi">1</span><span class="p">])</span>
         
-    <span class="n">calc_class</span> <span class="o">=</span> <span class="n">load_module_from_config</span><span class="p">(</span><span class="n">sampler_config</span><span class="p">,</span> <span class="s1">&#39;ase_calculator&#39;</span><span class="p">)</span>
+    <span class="n">calc_class</span> <span class="o">=</span> <span class="n">load_module_from_config</span><span class="p">(</span><span class="n">sampler_config</span><span class="p">,</span> <span class="s1">'ase_calculator'</span><span class="p">)</span>
     
-    <span class="k">if</span> <span class="n">sampler_config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;use_potential_specific_code&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="o">==</span> <span class="s1">&#39;neurochem&#39;</span><span class="p">:</span>
-        <span class="n">model_info</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;model_path&#39;</span><span class="p">:</span> <span class="n">model_path</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">current_model_id</span><span class="p">)</span> <span class="o">+</span> <span class="s1">&#39;/&#39;</span><span class="p">,</span>
-                      <span class="s1">&#39;Nn&#39;</span><span class="p">:</span> <span class="mi">8</span><span class="p">,</span>
-                      <span class="s1">&#39;gpu&#39;</span><span class="p">:</span> <span class="s1">&#39;0&#39;</span><span class="p">}</span>
+    <span class="k">if</span> <span class="n">sampler_config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"use_potential_specific_code"</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span> <span class="o">==</span> <span class="s1">'neurochem'</span><span class="p">:</span>
+        <span class="n">model_info</span> <span class="o">=</span> <span class="p">{</span><span class="s1">'model_path'</span><span class="p">:</span> <span class="n">model_path</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">current_model_id</span><span class="p">)</span> <span class="o">+</span> <span class="s1">'/'</span><span class="p">,</span>
+                      <span class="s1">'Nn'</span><span class="p">:</span> <span class="mi">8</span><span class="p">,</span>
+                      <span class="s1">'gpu'</span><span class="p">:</span> <span class="s1">'0'</span><span class="p">}</span>
 
-        <span class="c1"># os.environ.get(&#39;PARSL_WORKER_RANK&#39;) now using cuda visible devices</span>
+        <span class="c1"># os.environ.get('PARSL_WORKER_RANK') now using cuda visible devices</span>
         <span class="n">ase_calculator</span> <span class="o">=</span> <span class="n">calc_class</span><span class="p">(</span><span class="n">model_info</span><span class="p">)</span>
             
     <span class="k">else</span><span class="p">:</span>
-        <span class="n">gpu</span> <span class="o">=</span> <span class="s1">&#39;0&#39;</span> <span class="c1"># os.environ.get(&#39;PARSL_WORKER_RANK&#39;) now using cuda visible devices</span>
-        <span class="n">calculator_list</span> <span class="o">=</span> <span class="n">calc_class</span><span class="p">(</span><span class="n">model_path</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">current_model_id</span><span class="p">)</span> <span class="o">+</span> <span class="s1">&#39;/&#39;</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">&#39;cuda:&#39;</span> <span class="o">+</span> <span class="n">gpu</span><span class="p">)</span>
-        <span class="n">ase_calculator</span> <span class="o">=</span> <span class="n">MLMD_calculator</span><span class="p">(</span><span class="n">calculator_list</span><span class="p">,</span> <span class="o">**</span><span class="n">sampler_config</span><span class="p">[</span><span class="s1">&#39;MLMD_calculator_options&#39;</span><span class="p">])</span>
+        <span class="n">gpu</span> <span class="o">=</span> <span class="s1">'0'</span> <span class="c1"># os.environ.get('PARSL_WORKER_RANK') now using cuda visible devices</span>
+        <span class="n">calculator_list</span> <span class="o">=</span> <span class="n">calc_class</span><span class="p">(</span><span class="n">model_path</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">current_model_id</span><span class="p">)</span> <span class="o">+</span> <span class="s1">'/'</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s1">'cuda:'</span> <span class="o">+</span> <span class="n">gpu</span><span class="p">)</span>
+        <span class="n">ase_calculator</span> <span class="o">=</span> <span class="n">MLMD_calculator</span><span class="p">(</span><span class="n">calculator_list</span><span class="p">,</span> <span class="o">**</span><span class="n">sampler_config</span><span class="p">[</span><span class="s1">'MLMD_calculator_options'</span><span class="p">])</span>
         
-    <span class="k">if</span> <span class="n">sampler_config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;translate_to_center&#39;</span><span class="p">,</span> <span class="kc">False</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">sampler_config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'translate_to_center'</span><span class="p">,</span> <span class="kc">False</span><span class="p">):</span>
         <span class="n">molecule_object</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">set_positions</span><span class="p">(</span><span class="n">molecule_object</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()</span> <span class="o">-</span> <span class="n">molecule_object</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_center_of_mass</span><span class="p">())</span>
     
     <span class="c1"># build_input_dict will check for trajectory_frequency from feed_parameters first.</span>
-    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">&gt;</span> <span class="n">sampler_config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;trajectory_frequency&#39;</span><span class="p">,</span> <span class="mi">0</span><span class="p">):</span>
-        <span class="n">sampler_config</span><span class="p">[</span><span class="s1">&#39;trajectory_interval&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>  
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">&gt;</span> <span class="n">sampler_config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">'trajectory_frequency'</span><span class="p">,</span> <span class="mi">0</span><span class="p">):</span>
+        <span class="n">sampler_config</span><span class="p">[</span><span class="s1">'trajectory_interval'</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>  
     
-    <span class="n">feed_parameters</span><span class="p">[</span><span class="s1">&#39;molecule_object&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">molecule_object</span>
-    <span class="n">feed_parameters</span><span class="p">[</span><span class="s1">&#39;ase_calculator&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">ase_calculator</span>
+    <span class="n">feed_parameters</span><span class="p">[</span><span class="s1">'molecule_object'</span><span class="p">]</span> <span class="o">=</span> <span class="n">molecule_object</span>
+    <span class="n">feed_parameters</span><span class="p">[</span><span class="s1">'ase_calculator'</span><span class="p">]</span> <span class="o">=</span> <span class="n">ase_calculator</span>
     <span class="n">function_input</span> <span class="o">=</span> <span class="n">build_input_dict</span><span class="p">(</span><span class="n">mlmd_sampling</span><span class="p">,</span> <span class="p">[</span><span class="n">feed_parameters</span><span class="p">,</span> <span class="n">sampler_config</span><span class="p">])</span>
     
     <span class="n">molecule_output</span> <span class="o">=</span> <span class="n">mlmd_sampling</span><span class="p">(</span><span class="o">**</span><span class="n">function_input</span><span class="p">)</span>

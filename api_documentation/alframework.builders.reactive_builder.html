@@ -9,6 +9,7 @@
   <title>alframework.builders.reactive_builder module &mdash; ALF 0.0.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=eaec28dc" />
 
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
@@ -51,16 +52,22 @@
 <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/configuration.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/units.html">Units And Property Conversion</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/builders.html">Builders</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/samplers.html">Samplers</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/ml_interfaces.html">ML Interfaces</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/qm_interfaces.html">QM Interfaces</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/parsl.html">Parsl And HPC Execution</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../examples/simple_water.html">Simple Water Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/molten_salt.html">Molten Salt Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/reactive_sampling.html">Reactive Sampling Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/simple_water.html">Simple Water</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/seeded_active_learning.html">Seeded Active Learning</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/fine_tuning.html">Fine-Tuning Existing Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/molten_salt.html">Molten Salts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/il.html">Ionic Liquids</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/uo2.html">Periodic Solids (UO2)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/reactive_sampling.html">Reactive Sampling</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
 <ul class="current">
@@ -70,10 +77,12 @@
 <li class="toctree-l4 current"><a class="reference internal" href="alframework.builders.html">alframework.builders package</a><ul class="current">
 <li class="toctree-l5 current"><a class="reference internal" href="alframework.builders.html#submodules">Submodules</a><ul class="current">
 <li class="toctree-l6"><a class="reference internal" href="alframework.builders.builders.html">alframework.builders.builders module</a></li>
-<li class="toctree-l6"><a class="reference internal" href="alframework.builders.defect_crystal_builder.html">alframework.builders.defect_crystal_builder module</a></li>
 <li class="toctree-l6"><a class="reference internal" href="alframework.builders.moltensalt_builder.html">alframework.builders.moltensalt_builder module</a></li>
 <li class="toctree-l6"><a class="reference internal" href="alframework.builders.rdkit_condensed_phase.html">alframework.builders.rdkit_condensed_phase module</a></li>
-<li class="toctree-l6 current"><a class="current reference internal" href="#">alframework.builders.reactive_builder module</a></li>
+<li class="toctree-l6 current"><a class="current reference internal" href="#">alframework.builders.reactive_builder module</a><ul>
+<li class="toctree-l7"><a class="reference internal" href="#alframework.builders.reactive_builder.load_reactive_task"><code class="docutils literal notranslate"><span class="pre">load_reactive_task()</span></code></a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
@@ -124,6 +133,20 @@
              
   <section id="module-alframework.builders.reactive_builder">
 <span id="alframework-builders-reactive-builder-module"></span><h1>alframework.builders.reactive_builder module<a class="headerlink" href="#module-alframework.builders.reactive_builder" title="Link to this heading"></a></h1>
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.builders.reactive_builder.load_reactive_task">
+<span class="sig-name descname"><span class="pre">load_reactive_task</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">moleculeid</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">builder_config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rattle</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#alframework.builders.reactive_builder.load_reactive_task" title="Link to this definition"></a></dt>
+<dd><p>Loads atomic configurations for reactions from files to be used by the sampler.</p>
+<dl class="simple">
+<dt>Args:</dt><dd><p>moleculeid (str): System unique identifier in the database.
+builder_config (dict): Dictionary containing the builder parameters.
+ratttle(bool): If structures are perturbed slightly</p>
+</dd>
+<dt>Returns:</dt><dd><p>(MoleculesObject): A MoleculesObject representing the system.</p>
+</dd>
+</dl>
+</dd></dl>
+
 </section>
 
 

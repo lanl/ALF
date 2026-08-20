@@ -8,6 +8,7 @@
   <title>alframework.samplers.ASE_ensemble_constructor &mdash; ALF 0.0.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=eaec28dc" />
 
   
       <script src="../../../_static/jquery.js?v=5d32c60e"></script>
@@ -48,16 +49,22 @@
 <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../../user_guide/configuration.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../user_guide/units.html">Units And Property Conversion</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../user_guide/builders.html">Builders</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../user_guide/samplers.html">Samplers</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../user_guide/ml_interfaces.html">ML Interfaces</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../user_guide/qm_interfaces.html">QM Interfaces</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../user_guide/parsl.html">Parsl And HPC Execution</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../../../examples/simple_water.html">Simple Water Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../examples/molten_salt.html">Molten Salt Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../../examples/reactive_sampling.html">Reactive Sampling Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../examples/simple_water.html">Simple Water</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../examples/seeded_active_learning.html">Seeded Active Learning</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../examples/fine_tuning.html">Fine-Tuning Existing Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../examples/molten_salt.html">Molten Salts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../examples/il.html">Ionic Liquids</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../examples/uo2.html">Periodic Solids (UO2)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../examples/reactive_sampling.html">Reactive Sampling</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
 <ul>
@@ -99,43 +106,43 @@
 <div class="viewcode-block" id="Well_Potential">
 <a class="viewcode-back" href="../../../api_documentation/alframework.samplers.ASE_ensemble_constructor.html#alframework.samplers.ASE_ensemble_constructor.Well_Potential">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">Well_Potential</span><span class="p">(</span><span class="n">Calculator</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot; This calculator applies a restoring force to constrain a series of particles.</span>
+<span class="w">    </span><span class="sd">""" This calculator applies a restoring force to constrain a series of particles.</span>
 
 <span class="sd">    This is useful for cluster simulations.</span>
 
 <span class="sd">    #TODO: Add cos()**2 switching function.</span>
 <span class="sd">    #TODO: Add drag term when in the potential to prevent orbits. </span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">r_start</span><span class="p">,</span> <span class="n">force</span><span class="p">,</span> <span class="n">origin</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">,</span><span class="mi">0</span><span class="p">],</span> <span class="n">zero_properties</span><span class="o">=</span><span class="p">[],</span> <span class="n">mass_weighted</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Args:</span>
 <span class="sd">            r_start (float): Distance from origin where the potential starts [Angstroms].</span>
 <span class="sd">            force (float): Magnitude of the restoring force [ev/Angstrom].</span>
 <span class="sd">            origin (list): Center point [x0, y0, z0] of the spherical well potential.</span>
 <span class="sd">            zero_properties (list): In order to mix this calculator with other calculators, it must have the same</span>
 <span class="sd">                                    implemented properties list. This calculator will imitate those properties and</span>
-<span class="sd">                                    return np.array(0) which shouldn&#39;t change other properties mixed with the Mixer.</span>
+<span class="sd">                                    return np.array(0) which shouldn't change other properties mixed with the Mixer.</span>
 <span class="sd">            mass_weighted (bool): Flag to configure if forces applied to atoms should be mass weighted. Default is</span>
 <span class="sd">                                  True to make each atom experience the same acceleration (keeping molecules together).</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="n">Calculator</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">r_start</span> <span class="o">=</span> <span class="n">r_start</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">force</span> <span class="o">=</span> <span class="n">force</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">origin</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">origin</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">mass_weighted</span> <span class="o">=</span> <span class="n">mass_weighted</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">zero_properties</span> <span class="o">=</span> <span class="n">zero_properties</span>
-        <span class="k">if</span> <span class="s1">&#39;energy&#39;</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">zero_properties</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">zero_properties</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s1">&#39;energy&#39;</span><span class="p">)</span>
-        <span class="k">if</span> <span class="s1">&#39;forces&#39;</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">zero_properties</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">zero_properties</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s1">&#39;potential_energy&#39;</span><span class="p">)</span>
-        <span class="k">if</span> <span class="s1">&#39;forces&#39;</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">zero_properties</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">zero_properties</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s1">&#39;forces&#39;</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">implemented_properties</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;energy&#39;</span><span class="p">,</span> <span class="s1">&#39;forces&#39;</span><span class="p">,</span> <span class="s1">&#39;potential_energy&#39;</span><span class="p">]</span> <span class="o">+</span> <span class="n">zero_properties</span>
+        <span class="k">if</span> <span class="s1">'energy'</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">zero_properties</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">zero_properties</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s1">'energy'</span><span class="p">)</span>
+        <span class="k">if</span> <span class="s1">'potential_energy'</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">zero_properties</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">zero_properties</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s1">'potential_energy'</span><span class="p">)</span>
+        <span class="k">if</span> <span class="s1">'forces'</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">zero_properties</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">zero_properties</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s1">'forces'</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">implemented_properties</span> <span class="o">=</span> <span class="p">[</span><span class="s1">'energy'</span><span class="p">,</span> <span class="s1">'forces'</span><span class="p">,</span> <span class="s1">'potential_energy'</span><span class="p">]</span> <span class="o">+</span> <span class="n">zero_properties</span>
     
 <div class="viewcode-block" id="Well_Potential.calculate">
 <a class="viewcode-back" href="../../../api_documentation/alframework.samplers.ASE_ensemble_constructor.html#alframework.samplers.ASE_ensemble_constructor.Well_Potential.calculate">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">calculate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">properties</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;energy&#39;</span><span class="p">],</span> <span class="n">system_changes</span><span class="o">=</span><span class="n">all_changes</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Run the calculation with the added well potential.</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">calculate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">properties</span><span class="o">=</span><span class="p">[</span><span class="s1">'energy'</span><span class="p">],</span> <span class="n">system_changes</span><span class="o">=</span><span class="n">all_changes</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""Run the calculation with the added well potential.</span>
 
 <span class="sd">        Args:</span>
 <span class="sd">            atoms (ase.Atoms): Atoms object representing the system.</span>
@@ -145,7 +152,7 @@
 <span class="sd">        Returns:</span>
 <span class="sd">            (None)</span>
 
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="n">Calculator</span><span class="o">.</span><span class="n">calculate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="p">,</span> <span class="n">properties</span><span class="p">,</span> <span class="n">system_changes</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span> <span class="o">=</span> <span class="n">atoms</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
         <span class="n">relative_positions</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span><span class="o">.</span><span class="n">get_positions</span><span class="p">()</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">origin</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">]</span>
@@ -160,8 +167,8 @@
         <span class="n">in_hole</span> <span class="o">=</span> <span class="n">depth</span><span class="o">&lt;</span><span class="mi">0</span>
         <span class="n">depth</span><span class="p">[</span><span class="n">depth</span><span class="o">&lt;</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
         <span class="n">unit_vectors</span> <span class="o">=</span> <span class="p">(</span><span class="n">relative_positions</span><span class="o">.</span><span class="n">T</span> <span class="o">/</span> <span class="p">(</span><span class="mf">1e-4</span><span class="o">*</span><span class="n">in_hole</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">relative_positions</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)))</span><span class="o">.</span><span class="n">T</span> <span class="c1"># Unit vectors not perfectly normalized for atoms in the flat piece of well</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;energy&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">mass_vector</span> <span class="o">*</span> <span class="n">depth</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">force</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;forces&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span><span class="o">*</span><span class="p">(</span><span class="n">unit_vectors</span><span class="o">.</span><span class="n">T</span> <span class="o">*</span> <span class="n">in_potential</span> <span class="o">*</span> <span class="n">mass_vector</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">force</span><span class="p">)</span><span class="o">.</span><span class="n">T</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">'energy'</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">mass_vector</span> <span class="o">*</span> <span class="n">depth</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">force</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">'forces'</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span><span class="o">*</span><span class="p">(</span><span class="n">unit_vectors</span><span class="o">.</span><span class="n">T</span> <span class="o">*</span> <span class="n">in_potential</span> <span class="o">*</span> <span class="n">mass_vector</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">force</span><span class="p">)</span><span class="o">.</span><span class="n">T</span>
         <span class="k">for</span> <span class="n">current_property</span> <span class="ow">in</span> <span class="n">properties</span><span class="p">:</span>
             <span class="k">if</span> <span class="n">current_property</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">zero_properties</span><span class="p">:</span>
                 <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="n">current_property</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span></div>
@@ -171,47 +178,53 @@
 <div class="viewcode-block" id="MLMD_calculator">
 <a class="viewcode-back" href="../../../api_documentation/alframework.samplers.ASE_ensemble_constructor.html#alframework.samplers.ASE_ensemble_constructor.MLMD_calculator">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">MLMD_calculator</span><span class="p">(</span><span class="n">Calculator</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;This is a calculator that enables MLMD sampling with an ensemble of ML potentials&quot;&quot;&quot;</span>
-    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">models</span><span class="p">,</span> <span class="n">well_params</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">debug_print</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""This is a calculator that enables MLMD sampling with an ensemble of ML potentials"""</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">models</span><span class="p">,</span> <span class="n">well_params</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">debug_print</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">udd_bias_weight</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">udd_bias_eps</span><span class="o">=</span><span class="mf">1e-12</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Args:</span>
 <span class="sd">            models (list): A list of ASE calculators that are joined to perform MD.</span>
 <span class="sd">            well_params (dict): Inputs for the well potential which enables constrained MD simulations.</span>
 <span class="sd">            debug_print (bool): Print debug information if true.</span>
+<span class="sd">            udd_bias_weight (float): Optional weight for uncertainty-driven dynamics energy bias.</span>
+<span class="sd">            udd_bias_eps (float): Minimum energy standard deviation used before the UDD force bias is zeroed.</span>
 
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="n">Calculator</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">debug_print</span> <span class="o">=</span> <span class="n">debug_print</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">N_models</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">models</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">models</span> <span class="o">=</span> <span class="n">models</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">weights</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="o">/</span><span class="bp">self</span><span class="o">.</span><span class="n">N_models</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">N_models</span><span class="p">)]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">udd_bias_weight</span> <span class="o">=</span> <span class="n">udd_bias_weight</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">udd_bias_eps</span> <span class="o">=</span> <span class="n">udd_bias_eps</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">calculator_properties</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">set</span><span class="o">.</span><span class="n">intersection</span><span class="p">(</span><span class="o">*</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">calc</span><span class="o">.</span><span class="n">implemented_properties</span><span class="p">)</span> <span class="k">for</span> <span class="n">calc</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">models</span><span class="p">)))</span>
         <span class="k">if</span> <span class="n">debug_print</span><span class="p">:</span>
-            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;calculator properties:&quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">calculator_properties</span><span class="p">))</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">"calculator properties:"</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">calculator_properties</span><span class="p">))</span>
             <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
         <span class="c1">#self.implemented_properties = self.calculator_properties.copy()</span>
         
         <span class="k">if</span> <span class="n">well_params</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="k">if</span> <span class="s1">&#39;zero_properties&#39;</span> <span class="ow">in</span> <span class="n">well_params</span><span class="p">:</span>
-                <span class="n">well_params</span><span class="p">[</span><span class="s1">&#39;zero_properties&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">set</span><span class="o">.</span><span class="n">union</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">well_params</span><span class="p">[</span><span class="s1">&#39;zero_properties&#39;</span><span class="p">]),</span> <span class="nb">set</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">calculator_properties</span><span class="p">)))</span>
+            <span class="k">if</span> <span class="s1">'zero_properties'</span> <span class="ow">in</span> <span class="n">well_params</span><span class="p">:</span>
+                <span class="n">well_params</span><span class="p">[</span><span class="s1">'zero_properties'</span><span class="p">]</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">set</span><span class="o">.</span><span class="n">union</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">well_params</span><span class="p">[</span><span class="s1">'zero_properties'</span><span class="p">]),</span> <span class="nb">set</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">calculator_properties</span><span class="p">)))</span>
             <span class="k">else</span><span class="p">:</span> 
-                <span class="n">well_params</span><span class="p">[</span><span class="s1">&#39;zero_properties&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">calculator_properties</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+                <span class="n">well_params</span><span class="p">[</span><span class="s1">'zero_properties'</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">calculator_properties</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">models</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Well_Potential</span><span class="p">(</span><span class="o">**</span><span class="n">well_params</span><span class="p">))</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">weights</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="mf">1.0</span><span class="p">)</span>
         
         <span class="bp">self</span><span class="o">.</span><span class="n">mixer</span> <span class="o">=</span> <span class="n">Mixer</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">models</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">weights</span><span class="p">))</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">implemented_properties</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mixer</span><span class="o">.</span><span class="n">implemented_properties</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
             
-        <span class="k">if</span> <span class="s1">&#39;energy&#39;</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">implemented_properties</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">implemented_properties</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;energy_stdev&#39;</span><span class="p">)</span>
-        <span class="k">if</span> <span class="s1">&#39;forces&#39;</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">implemented_properties</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">implemented_properties</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;forces_stdev_mean&#39;</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">implemented_properties</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">&#39;forces_stdev_max&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="s1">'energy'</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">implemented_properties</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">implemented_properties</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">'energy_stdev'</span><span class="p">)</span>
+        <span class="k">if</span> <span class="s1">'forces'</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">implemented_properties</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">implemented_properties</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">'forces_stdev_mean'</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">implemented_properties</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s1">'forces_stdev_max'</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">udd_bias_weight</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">implemented_properties</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="s1">'E_en_bias'</span><span class="p">,</span> <span class="s1">'F_en_bias'</span><span class="p">,</span> <span class="s1">'unbiased_energy'</span><span class="p">,</span> <span class="s1">'unbiased_forces'</span><span class="p">])</span>
 
 <div class="viewcode-block" id="MLMD_calculator.calculate">
 <a class="viewcode-back" href="../../../api_documentation/alframework.samplers.ASE_ensemble_constructor.html#alframework.samplers.ASE_ensemble_constructor.MLMD_calculator.calculate">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">calculate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="p">,</span> <span class="n">properties</span><span class="p">,</span> <span class="n">system_changes</span><span class="o">=</span><span class="n">all_changes</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Run the MLMD ensemble calculation.</span>
+<span class="w">        </span><span class="sd">"""Run the MLMD ensemble calculation.</span>
 
 <span class="sd">        Args:</span>
 <span class="sd">            atoms (ase.Atoms): Atoms object representing the system.</span>
@@ -221,29 +234,60 @@
 <span class="sd">        Returns:</span>
 <span class="sd">            (None)</span>
 
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="n">Calculator</span><span class="o">.</span><span class="n">calculate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">atoms</span><span class="p">,</span> <span class="n">properties</span><span class="p">,</span> <span class="n">system_changes</span><span class="p">)</span>
         <span class="n">add_properties</span> <span class="o">=</span> <span class="n">properties</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
 
-        <span class="k">if</span> <span class="s1">&#39;energy_stdev&#39;</span> <span class="ow">in</span> <span class="n">add_properties</span><span class="p">:</span>
-            <span class="n">add_properties</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;energy&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="s1">'energy_stdev'</span> <span class="ow">in</span> <span class="n">add_properties</span><span class="p">:</span>
+            <span class="n">add_properties</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">"energy"</span><span class="p">)</span>
 
-        <span class="k">if</span> <span class="s1">&#39;forces_stdev_max&#39;</span> <span class="ow">in</span> <span class="n">add_properties</span> <span class="ow">or</span> <span class="s1">&#39;forces_stdev_mean&#39;</span> <span class="ow">in</span> <span class="n">add_properties</span><span class="p">:</span>
-            <span class="n">add_properties</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;forces&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="s1">'forces_stdev_max'</span> <span class="ow">in</span> <span class="n">add_properties</span> <span class="ow">or</span> <span class="s1">'forces_stdev_mean'</span> <span class="ow">in</span> <span class="n">add_properties</span><span class="p">:</span>
+            <span class="n">add_properties</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">"forces"</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">udd_bias_weight</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">add_properties</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="s2">"energy"</span><span class="p">,</span> <span class="s2">"forces"</span><span class="p">])</span>
 
         <span class="n">run_properties</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">set</span><span class="o">.</span><span class="n">intersection</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">calculator_properties</span><span class="p">),</span> <span class="nb">set</span><span class="p">(</span><span class="n">add_properties</span><span class="p">)))</span>
         <span class="c1"># Not good practice, all attributes should be initialized inside __init__, even if as None or {}.</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">atoms</span> <span class="o">=</span> <span class="n">atoms</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">results</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">mixer</span><span class="o">.</span><span class="n">get_properties</span><span class="p">(</span><span class="n">run_properties</span><span class="p">,</span> <span class="n">atoms</span><span class="p">)</span>
 
-        <span class="k">if</span> <span class="s1">&#39;energy_stdev&#39;</span> <span class="ow">in</span> <span class="n">properties</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;energy_stdev&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;energy_contributions&#39;</span><span class="p">][:</span><span class="bp">self</span><span class="o">.</span><span class="n">N_models</span><span class="p">])</span>
+        <span class="k">if</span> <span class="s1">'energy_stdev'</span> <span class="ow">in</span> <span class="n">properties</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">udd_bias_weight</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">'energy_stdev'</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">'energy_contributions'</span><span class="p">][:</span><span class="bp">self</span><span class="o">.</span><span class="n">N_models</span><span class="p">])</span>
 
-        <span class="k">if</span> <span class="s1">&#39;forces_stdev_mean&#39;</span> <span class="ow">in</span> <span class="n">properties</span> <span class="ow">or</span> <span class="s1">&#39;forces_stdev_max&#39;</span> <span class="ow">in</span> <span class="n">properties</span><span class="p">:</span>
-            <span class="n">force_stdev</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;forces_contributions&#39;</span><span class="p">][:</span><span class="bp">self</span><span class="o">.</span><span class="n">N_models</span><span class="p">]),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;forces_stdev_mean&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">force_stdev</span><span class="p">))</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;forces_stdev_max&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">force_stdev</span><span class="p">))</span></div>
-</div>
+        <span class="k">if</span> <span class="s1">'forces_stdev_mean'</span> <span class="ow">in</span> <span class="n">properties</span> <span class="ow">or</span> <span class="s1">'forces_stdev_max'</span> <span class="ow">in</span> <span class="n">properties</span><span class="p">:</span>
+            <span class="n">force_stdev</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">'forces_contributions'</span><span class="p">][:</span><span class="bp">self</span><span class="o">.</span><span class="n">N_models</span><span class="p">]),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">'forces_stdev_mean'</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">force_stdev</span><span class="p">))</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">'forces_stdev_max'</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">force_stdev</span><span class="p">))</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">udd_bias_weight</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_apply_udd_bias</span><span class="p">()</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_apply_udd_bias</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">energy_stdev</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">'energy_stdev'</span><span class="p">]</span>
+        <span class="n">energy_contributions</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">'energy_contributions'</span><span class="p">][:</span><span class="bp">self</span><span class="o">.</span><span class="n">N_models</span><span class="p">])</span>
+        <span class="n">force_contributions</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">'forces_contributions'</span><span class="p">][:</span><span class="bp">self</span><span class="o">.</span><span class="n">N_models</span><span class="p">])</span>
+        <span class="n">unbiased_energy</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">'energy'</span><span class="p">]</span>
+        <span class="n">unbiased_forces</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">'forces'</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+        <span class="n">energy_bias</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">udd_bias_weight</span> <span class="o">*</span> <span class="n">energy_stdev</span>
+        <span class="k">if</span> <span class="n">energy_stdev</span> <span class="o">&lt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">udd_bias_eps</span><span class="p">:</span>
+            <span class="n">force_bias</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">unbiased_forces</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">energy_deviations</span> <span class="o">=</span> <span class="n">energy_contributions</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">energy_contributions</span><span class="p">)</span>
+            <span class="n">force_deviations</span> <span class="o">=</span> <span class="n">force_contributions</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">force_contributions</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+            <span class="n">force_bias</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">udd_bias_weight</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span>
+                <span class="n">energy_deviations</span><span class="p">[:,</span> <span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">]</span> <span class="o">*</span> <span class="n">force_deviations</span><span class="p">,</span>
+                <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+            <span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">N_models</span> <span class="o">*</span> <span class="n">energy_stdev</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">'unbiased_energy'</span><span class="p">]</span> <span class="o">=</span> <span class="n">unbiased_energy</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">'unbiased_forces'</span><span class="p">]</span> <span class="o">=</span> <span class="n">unbiased_forces</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">'E_en_bias'</span><span class="p">]</span> <span class="o">=</span> <span class="n">energy_bias</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">'F_en_bias'</span><span class="p">]</span> <span class="o">=</span> <span class="n">force_bias</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">'energy'</span><span class="p">]</span> <span class="o">=</span> <span class="n">unbiased_energy</span> <span class="o">+</span> <span class="n">energy_bias</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">'forces'</span><span class="p">]</span> <span class="o">=</span> <span class="n">unbiased_forces</span> <span class="o">+</span> <span class="n">force_bias</span></div>
 
         
 </pre></div>

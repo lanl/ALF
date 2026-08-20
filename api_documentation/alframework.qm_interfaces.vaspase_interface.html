@@ -9,6 +9,7 @@
   <title>alframework.qm_interfaces.vaspase_interface module &mdash; ALF 0.0.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=eaec28dc" />
 
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
@@ -51,16 +52,22 @@
 <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/configuration.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/units.html">Units And Property Conversion</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/builders.html">Builders</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/samplers.html">Samplers</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/ml_interfaces.html">ML Interfaces</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/qm_interfaces.html">QM Interfaces</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/parsl.html">Parsl And HPC Execution</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../examples/simple_water.html">Simple Water Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/molten_salt.html">Molten Salt Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/reactive_sampling.html">Reactive Sampling Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/simple_water.html">Simple Water</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/seeded_active_learning.html">Seeded Active Learning</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/fine_tuning.html">Fine-Tuning Existing Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/molten_salt.html">Molten Salts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/il.html">Ionic Liquids</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/uo2.html">Periodic Solids (UO2)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/reactive_sampling.html">Reactive Sampling</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
 <ul class="current">
@@ -131,26 +138,57 @@
              
   <section id="module-alframework.qm_interfaces.vaspase_interface">
 <span id="alframework-qm-interfaces-vaspase-interface-module"></span><h1>alframework.qm_interfaces.vaspase_interface module<a class="headerlink" href="#module-alframework.qm_interfaces.vaspase_interface" title="Link to this heading"></a></h1>
-<p>&#64;author: Ziyan</p>
+<p>Deprecated legacy VASP ASE interface.</p>
+<p>This module is kept for compatibility with older imports. New ALF workflows
+should use <code class="docutils literal notranslate"><span class="pre">alframework.qm_interfaces.ase_calculator_interface</span></code> instead,
+especially <code class="docutils literal notranslate"><span class="pre">VASP_ase_calculator_task</span></code> for VASP calculations through ASE.</p>
 <dl class="py exception">
 <dt class="sig sig-object py" id="alframework.qm_interfaces.vaspase_interface.SCFConvergenceFailure">
 <span class="property"><span class="k"><span class="pre">exception</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">SCFConvergenceFailure</span></span><a class="reference internal" href="../_modules/alframework/qm_interfaces/vaspase_interface.html#SCFConvergenceFailure"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.qm_interfaces.vaspase_interface.SCFConvergenceFailure" title="Link to this definition"></a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Exception</span></code></p>
+<p>Raised when a VASP calculation finishes without SCF convergence.</p>
 </dd></dl>
 
 <dl class="py class">
 <dt class="sig sig-object py" id="alframework.qm_interfaces.vaspase_interface.VASPGenerator">
-<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">VASPGenerator</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vasp_options</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vasp_command</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scratch</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'./'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_store</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rm_scratch</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/qm_interfaces/vaspase_interface.html#VASPGenerator"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.qm_interfaces.vaspase_interface.VASPGenerator" title="Link to this definition"></a></dt>
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-name descname"><span class="pre">VASPGenerator</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">vasp_options</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vasp_command</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scratch</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'./'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_store</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rm_scratch</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vasp_pp_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">environment</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">omp_num_threads</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/qm_interfaces/vaspase_interface.html#VASPGenerator"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.qm_interfaces.vaspase_interface.VASPGenerator" title="Link to this definition"></a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Deprecated VASP single-point helper.</p>
+<p>Parameters are intentionally site-neutral. Provide the VASP launch command,
+pseudopotential path, and any module/environment setup from the caller or
+Parsl worker initialization. This class no longer constructs LANL-specific
+commands or relies on MPI/GPU globals.</p>
+<p>The legacy helper applies ALF-specific defaults before merging user
+<code class="docutils literal notranslate"><span class="pre">vasp_options</span></code>: <code class="docutils literal notranslate"><span class="pre">xc='pbe'</span></code>, <code class="docutils literal notranslate"><span class="pre">prec='Accurate'</span></code>, <code class="docutils literal notranslate"><span class="pre">ncore=1</span></code>,
+<code class="docutils literal notranslate"><span class="pre">lreal='Auto'</span></code>, <code class="docutils literal notranslate"><span class="pre">nelm=120</span></code>, and <code class="docutils literal notranslate"><span class="pre">ivdw=0</span></code>. These are compatibility
+defaults, not recommended settings for every VASP workflow. In particular,
+review <code class="docutils literal notranslate"><span class="pre">lreal</span></code> when migrating old calculations or comparing forces.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="alframework.qm_interfaces.vaspase_interface.VASPGenerator.get_magmom">
 <span class="sig-name descname"><span class="pre">get_magmom</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">atomic_no</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/qm_interfaces/vaspase_interface.html#VASPGenerator.get_magmom"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.qm_interfaces.vaspase_interface.VASPGenerator.get_magmom" title="Link to this definition"></a></dt>
-<dd></dd></dl>
+<dd><p>Return configured magnetic moments or a simple atomic-number default.</p>
+</dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="alframework.qm_interfaces.vaspase_interface.VASPGenerator.single_point">
-<span class="sig-name descname"><span class="pre">single_point</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">molecule</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_calculation</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_file</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'output.opt'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/qm_interfaces/vaspase_interface.html#VASPGenerator.single_point"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.qm_interfaces.vaspase_interface.VASPGenerator.single_point" title="Link to this definition"></a></dt>
-<dd></dd></dl>
+<span class="sig-name descname"><span class="pre">single_point</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">molecule</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_calculation</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_file</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/qm_interfaces/vaspase_interface.html#VASPGenerator.single_point"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.qm_interfaces.vaspase_interface.VASPGenerator.single_point" title="Link to this definition"></a></dt>
+<dd><p>Run one VASP calculation through ASE.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>molecule</strong> – <code class="docutils literal notranslate"><span class="pre">ase.Atoms</span></code>, <code class="docutils literal notranslate"><span class="pre">MoleculesObject</span></code>, or legacy object
+with <code class="docutils literal notranslate"><span class="pre">S</span></code> and <code class="docutils literal notranslate"><span class="pre">X</span></code> attributes.</p></li>
+<li><p><strong>force_calculation</strong> – If True, include forces in the returned
+properties.</p></li>
+<li><p><strong>output_file</strong> – Kept for legacy call compatibility. It is not used.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">(atoms,</span> <span class="pre">properties)</span></code> where <code class="docutils literal notranslate"><span class="pre">atoms</span></code> is the final
+<code class="docutils literal notranslate"><span class="pre">ase.Atoms</span></code> object and <code class="docutils literal notranslate"><span class="pre">properties</span></code> contains ASE-unit results.</p>
+</dd>
+</dl>
+</dd></dl>
 
 </dd></dl>
 

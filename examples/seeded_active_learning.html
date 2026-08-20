@@ -1,0 +1,280 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Seeded Active Learning &mdash; ALF 0.0.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=eaec28dc" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=5c79bd3c"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Fine-Tuning Existing Models" href="fine_tuning.html" />
+    <link rel="prev" title="Simple Water" href="simple_water.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            ALF
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started/what_is_alf.html">What Is ALF</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started/installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started/quickstart.html">Quickstart</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/configuration.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/units.html">Units And Property Conversion</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/builders.html">Builders</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/samplers.html">Samplers</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/ml_interfaces.html">ML Interfaces</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/qm_interfaces.html">QM Interfaces</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/parsl.html">Parsl And HPC Execution</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Examples</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="simple_water.html">Simple Water</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Seeded Active Learning</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#before-you-run">Before You Run</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#workflow-pattern">Workflow Pattern</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#seed-the-run">Seed The Run</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#recommended-bring-up-commands">Recommended Bring-Up Commands</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#expected-outputs">Expected Outputs</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="fine_tuning.html">Fine-Tuning Existing Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="molten_salt.html">Molten Salts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="il.html">Ionic Liquids</a></li>
+<li class="toctree-l1"><a class="reference internal" href="uo2.html">Periodic Solids (UO2)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="reactive_sampling.html">Reactive Sampling</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../api_documentation/modules.html">alframework</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../license.html">License</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">ALF</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Seeded Active Learning</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/examples/seeded_active_learning.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul><div class="rst-breadcrumbs-buttons" role="navigation" aria-label="Sequential page navigation">
+        <a href="simple_water.html" class="btn btn-neutral float-left" title="Simple Water" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="fine_tuning.html" class="btn btn-neutral float-right" title="Fine-Tuning Existing Models" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+  </div>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="seeded-active-learning">
+<h1>Seeded Active Learning<a class="headerlink" href="#seeded-active-learning" title="Link to this heading"></a></h1>
+<p>The seeded active learning example shows how to start ALF from user-provided
+structures and optional existing labeled data. Use this when you already have
+reasonable starting configurations, a small labeled dataset, or both, and want
+to avoid a random bootstrap stage.</p>
+<p>The files needed to run the example are located in
+<code class="docutils literal notranslate"><span class="pre">examples/seeded_active_learning</span></code>.</p>
+<p>The checked-in configuration is intentionally modest for initial bring-up: it
+uses four ensemble members, caps training at 200 epochs, and limits the active
+learning queues to 25 items. Increase these values only after the staged checks
+work on the target machine.</p>
+<section id="before-you-run">
+<h2>Before You Run<a class="headerlink" href="#before-you-run" title="Link to this heading"></a></h2>
+<p>This example assumes you can provide starting structures, prior HDF5 data, or
+both.</p>
+<ul class="simple">
+<li><p>Convert starting structures to ASE-readable <code class="docutils literal notranslate"><span class="pre">.cfg</span></code> files and place them in
+<code class="docutils literal notranslate"><span class="pre">fragment_library</span></code>.</p></li>
+<li><p>Place optional prior labeled data in <code class="docutils literal notranslate"><span class="pre">h5store</span></code> using ALF/HIPPYNN HDF5
+format.</p></li>
+<li><p>Edit <code class="docutils literal notranslate"><span class="pre">hippynn_config.json</span></code> so architecture, species, and data keys match
+the provided HDF5 data.</p></li>
+<li><p>Edit <code class="docutils literal notranslate"><span class="pre">orca_config.json</span></code> so <code class="docutils literal notranslate"><span class="pre">QM_run_command</span></code> points to the local ORCA
+executable.</p></li>
+<li><p>Edit <code class="docutils literal notranslate"><span class="pre">parsl_configs.py</span></code> for the target machine.</p></li>
+</ul>
+</section>
+<section id="workflow-pattern">
+<h2>Workflow Pattern<a class="headerlink" href="#workflow-pattern" title="Link to this heading"></a></h2>
+<p>This example uses ALF’s standard tasks:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 35.0%" />
+<col style="width: 65.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Stage</p></th>
+<th class="head"><p>Task</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Builder</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">alframework.builders.builders.simple_cfg_loader_task</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>Sampler</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">alframework.samplers.mlmd_sampling.simple_mlmd_sampling_task</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>QM</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">alframework.qm_interfaces.orca5_interface.orca_calculator_task</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>ML</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">alframework.ml_interfaces.hippynn_interface.train_HIPPYNN_ensemble_task</span></code></p></td>
+</tr>
+</tbody>
+</table>
+<p>The builder reads <code class="docutils literal notranslate"><span class="pre">.cfg</span></code> structures from <code class="docutils literal notranslate"><span class="pre">fragment_library</span></code>. The ML task is
+the normal HIPPYNN ensemble training task, so this example does not require a
+pretrained model or a custom task.</p>
+</section>
+<section id="seed-the-run">
+<h2>Seed The Run<a class="headerlink" href="#seed-the-run" title="Link to this heading"></a></h2>
+<p>Place starting structures in the fragment library:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>fragment_library/water_seed.cfg
+fragment_library/your_structure.cfg
+...
+</pre></div>
+</div>
+<p>Set <code class="docutils literal notranslate"><span class="pre">shake</span></code> in <code class="docutils literal notranslate"><span class="pre">builder_config.json</span></code> to <code class="docutils literal notranslate"><span class="pre">0.0</span></code> to reuse those structures
+exactly, or to a small value such as <code class="docutils literal notranslate"><span class="pre">0.05</span></code> to perturb each loaded structure
+before sampling.</p>
+<p>If you already have labeled data in ALF/HIPPYNN HDF5 format, place it in the
+run’s HDF5 store:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>h5store/data-0000.h5
+h5store/data-0001.h5
+...
+</pre></div>
+</div>
+<p>When <code class="docutils literal notranslate"><span class="pre">status.txt</span></code> is absent and <code class="docutils literal notranslate"><span class="pre">h5store/data-0000.h5</span></code> exists, ALF detects
+the existing HDF5 store. Because labeled data already exists, ALF skips the
+random bootstrap-labeling stage and trains <code class="docutils literal notranslate"><span class="pre">models/model-0000</span></code> from the
+provided data before starting ML-driven sampling.</p>
+</section>
+<section id="recommended-bring-up-commands">
+<h2>Recommended Bring-Up Commands<a class="headerlink" href="#recommended-bring-up-commands" title="Link to this heading"></a></h2>
+<p>From <code class="docutils literal notranslate"><span class="pre">examples/seeded_active_learning</span></code>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json<span class="w"> </span>--test_builder
+python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json<span class="w"> </span>--test_ml
+python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json<span class="w"> </span>--test_sampler
+python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json<span class="w"> </span>--test_qm
+</pre></div>
+</div>
+<p>Run <code class="docutils literal notranslate"><span class="pre">--test_ml</span></code> only after at least one HDF5 file exists in <code class="docutils literal notranslate"><span class="pre">h5store</span></code>. Run
+<code class="docutils literal notranslate"><span class="pre">--test_sampler</span></code> after <code class="docutils literal notranslate"><span class="pre">models/model-0000</span></code> has been trained or placed under
+<code class="docutils literal notranslate"><span class="pre">models/</span></code>.</p>
+<p>After the stage checks pass, start ALF:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json
+</pre></div>
+</div>
+</section>
+<section id="expected-outputs">
+<h2>Expected Outputs<a class="headerlink" href="#expected-outputs" title="Link to this heading"></a></h2>
+<p>During a seeded run, ALF writes the standard outputs:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 30.0%" />
+<col style="width: 70.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Path</p></th>
+<th class="head"><p>Purpose</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">status.txt</span></code></p></td>
+<td><p>Restart state, including current HDF5 and model ids.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">models/model-0000</span></code></p></td>
+<td><p>First ensemble trained from the provided HDF5 data.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">h5store/data-*.h5</span></code></p></td>
+<td><p>Existing and newly labeled data batches.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">sampling/metadata-*.p</span></code></p></td>
+<td><p>MLMD sampling metadata and uncertainty diagnostics.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">qm_scratch/</span></code></p></td>
+<td><p>ORCA input, output, and scratch directories for selected structures.</p></td>
+</tr>
+</tbody>
+</table>
+<p>Use this example when you want ALF to start from your own structures or data.
+Use the fine-tuning example when you also want to initialize training from
+existing model weights.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="simple_water.html" class="btn btn-neutral float-left" title="Simple Water" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="fine_tuning.html" class="btn btn-neutral float-right" title="Fine-Tuning Existing Models" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023, ALF Team.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

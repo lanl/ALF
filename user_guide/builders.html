@@ -9,6 +9,7 @@
   <title>Builders &mdash; ALF 0.0.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=eaec28dc" />
 
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
@@ -20,7 +21,7 @@
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="Samplers" href="samplers.html" />
-    <link rel="prev" title="Configuration" href="configuration.html" /> 
+    <link rel="prev" title="Units And Property Conversion" href="units.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -51,22 +52,29 @@
 <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
 <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="units.html">Units And Property Conversion</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Builders</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#available-builder-modules">Available builder modules</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#choosing-a-builder">Choosing a builder</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#builder-api-links">Builder API links</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#related-examples">Related examples</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#supported-builder-tasks">Supported Builder Tasks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#choosing-a-builder">Choosing A Builder</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#common-configuration-fields">Common Configuration Fields</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#related-examples">Related Examples</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#builder-api-links">Builder API Links</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="samplers.html">Samplers</a></li>
 <li class="toctree-l1"><a class="reference internal" href="ml_interfaces.html">ML Interfaces</a></li>
 <li class="toctree-l1"><a class="reference internal" href="qm_interfaces.html">QM Interfaces</a></li>
+<li class="toctree-l1"><a class="reference internal" href="parsl.html">Parsl And HPC Execution</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../examples/simple_water.html">Simple Water Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/molten_salt.html">Molten Salt Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/reactive_sampling.html">Reactive Sampling Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/simple_water.html">Simple Water</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/seeded_active_learning.html">Seeded Active Learning</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/fine_tuning.html">Fine-Tuning Existing Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/molten_salt.html">Molten Salts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/il.html">Ionic Liquids</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/uo2.html">Periodic Solids (UO2)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/reactive_sampling.html">Reactive Sampling</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
 <ul>
@@ -93,7 +101,7 @@
             <a href="../_sources/user_guide/builders.rst.txt" rel="nofollow"> View page source</a>
       </li>
   </ul><div class="rst-breadcrumbs-buttons" role="navigation" aria-label="Sequential page navigation">
-        <a href="configuration.html" class="btn btn-neutral float-left" title="Configuration" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="units.html" class="btn btn-neutral float-left" title="Units And Property Conversion" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
         <a href="samplers.html" class="btn btn-neutral float-right" title="Samplers" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
   </div>
   <hr/>
@@ -103,34 +111,260 @@
              
   <section id="builders">
 <h1>Builders<a class="headerlink" href="#builders" title="Link to this heading"></a></h1>
-<p>Builders construct initial structures and simulation boxes used in active learning.</p>
-<section id="available-builder-modules">
-<h2>Available builder modules<a class="headerlink" href="#available-builder-modules" title="Link to this heading"></a></h2>
-<p>ALF currently includes three builder modules with different use cases:</p>
-<ol class="arabic simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">alframework.builders.builders</span></code>
-General-purpose builders for loading structures and creating condensed-phase
-systems. This module includes task wrappers and helper logic for common
-ALF workflows.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">alframework.builders.moltensalt_builder</span></code>
-Specialized utilities for charge-balanced atomic-system generation and box
-construction used in molten-salt-style simulations.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">alframework.builders.reactive_builder</span></code>
-Reactive-system builder utilities for loading reactant / transition-state /
-product structures and preparing them for sampling.</p></li>
-</ol>
+<p>Builders construct the initial structures that enter an ALF active-learning
+loop. A builder task typically returns a <code class="docutils literal notranslate"><span class="pre">MoleculesObject</span></code> containing an
+<code class="docutils literal notranslate"><span class="pre">ase.Atoms</span></code> object, a molecule id, and any metadata the sampler needs later.</p>
+<p>In a master configuration, the selected builder is specified with the
+<code class="docutils literal notranslate"><span class="pre">builder_task</span></code> import string:</p>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">  </span><span class="nt">"builder_task"</span><span class="p">:</span><span class="w"> </span><span class="s2">"alframework.builders.builders.simple_condensed_phase_builder_task"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"builder_config_path"</span><span class="p">:</span><span class="w"> </span><span class="s2">"builder_config.json"</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>Most builder tasks run on the <code class="docutils literal notranslate"><span class="pre">alf_sampler_executor</span></code> Parsl executor because
+they feed candidate structures into the sampler queue.</p>
+<section id="supported-builder-tasks">
+<h2>Supported Builder Tasks<a class="headerlink" href="#supported-builder-tasks" title="Link to this heading"></a></h2>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 36.0%" />
+<col style="width: 34.0%" />
+<col style="width: 30.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Builder task</p></th>
+<th class="head"><p>What it builds</p></th>
+<th class="head"><p>Typical use</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">alframework.builders.builders.simple_cfg_loader_task</span></code></p></td>
+<td><p>Loads a random <code class="docutils literal notranslate"><span class="pre">.cfg</span></code> structure from a configured library and applies
+a small coordinate perturbation.</p></td>
+<td><p>Reusing pre-generated atomic configurations, such as the UO2 example.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">alframework.builders.builders.simple_condensed_phase_builder_task</span></code></p></td>
+<td><p>Places fragment-library molecules into a simulation cell with density,
+minimum-distance, and placement controls.</p></td>
+<td><p>Standard molecular or condensed-phase workflows, including simple water
+and ionic-liquid examples.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">alframework.builders.builders.simple_multi_condensed_phase_builder_task</span></code></p></td>
+<td><p>Batched condensed-phase builder that returns multiple
+<code class="docutils literal notranslate"><span class="pre">MoleculesObject</span></code> instances from one builder task.</p></td>
+<td><p>Higher builder throughput when <code class="docutils literal notranslate"><span class="pre">maximum_builder_structures</span></code> is set in
+the master config.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">alframework.builders.builders.atomic_system_task</span></code></p></td>
+<td><p>Creates a charge-neutral random atomic system from element charge rules,
+then places atoms in a cubic periodic box.</p></td>
+<td><p>Molten salts or other ionic atomic systems.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">alframework.builders.builders.TiAl_builder_task</span></code></p></td>
+<td><p>Creates a specialized binary Ti/Al random atomic system.</p></td>
+<td><p>Ti/Al alloy-style test or demonstration systems.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">alframework.builders.reactive_builder.load_reactive_task</span></code></p></td>
+<td><p>Loads reactant, transition-state, and product structures and stores the
+reaction set in metadata.</p></td>
+<td><p>Reactive sampling workflows.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">alframework.builders.rdkit_condensed_phase.rdkit_condensed_phase_builder_task</span></code></p></td>
+<td><p>Builds molecular fragments from SMILES with RDKit, then uses
+condensed-phase placement logic.</p></td>
+<td><p>Optional SMILES-based condensed-phase workflows when RDKit is installed.</p></td>
+</tr>
+</tbody>
+</table>
 </section>
 <section id="choosing-a-builder">
-<h2>Choosing a builder<a class="headerlink" href="#choosing-a-builder" title="Link to this heading"></a></h2>
-<p>Use the general <code class="docutils literal notranslate"><span class="pre">builders</span></code> module for most workflows that start from a
-molecule library and standard condensed-phase system setup.</p>
-<p>Use <code class="docutils literal notranslate"><span class="pre">moltensalt_builder</span></code> when you need random neutral ionic systems with
-density and minimum-distance constraints.</p>
-<p>Use <code class="docutils literal notranslate"><span class="pre">reactive_builder</span></code> when your workflow is centered on known reactive
-pathways and reaction-structure sets.</p>
+<h2>Choosing A Builder<a class="headerlink" href="#choosing-a-builder" title="Link to this heading"></a></h2>
+<p>Use <code class="docutils literal notranslate"><span class="pre">simple_condensed_phase_builder_task</span></code> for most workflows that start from
+fragment files such as <code class="docutils literal notranslate"><span class="pre">.xyz</span></code> or other ASE-readable molecule files. This is
+the standard choice for molecular liquid, solvent, and mixture examples.</p>
+<p>Use <code class="docutils literal notranslate"><span class="pre">simple_multi_condensed_phase_builder_task</span></code> when builder submission
+overhead is significant or when one builder task should produce several
+independent candidates. Pair this with <code class="docutils literal notranslate"><span class="pre">maximum_builder_structures</span></code> in the
+master configuration so ALF accounts for the number of structures returned by
+each builder task.</p>
+<p>Use <code class="docutils literal notranslate"><span class="pre">atomic_system_task</span></code> when the system is described by atomic species and
+formal charges rather than molecular fragments. The task chooses a neutral
+composition near <code class="docutils literal notranslate"><span class="pre">target_num_atoms</span></code> and enforces minimum-image placement
+constraints in a cubic periodic box.</p>
+<p>Use <code class="docutils literal notranslate"><span class="pre">simple_cfg_loader_task</span></code> when useful initial structures already exist as
+<code class="docutils literal notranslate"><span class="pre">.cfg</span></code> files. This is a lightweight loader rather than a packing builder.</p>
+<p>Use <code class="docutils literal notranslate"><span class="pre">load_reactive_task</span></code> for reaction-path workflows. It loads one reactant,
+transition-state, and product triplet, chooses one structure as the current
+configuration, and stores the rest of the reaction context in metadata for the
+reactive sampler.</p>
+<p>Use <code class="docutils literal notranslate"><span class="pre">rdkit_condensed_phase_builder_task</span></code> only when RDKit is installed and
+SMILES strings are the desired source of molecular fragments. It is optional
+because RDKit is not part of the lightest ALF setup.</p>
+</section>
+<section id="common-configuration-fields">
+<h2>Common Configuration Fields<a class="headerlink" href="#common-configuration-fields" title="Link to this heading"></a></h2>
+<dl>
+<dt>Fragment and condensed-phase builders</dt><dd><p>These fields are used by <code class="docutils literal notranslate"><span class="pre">simple_condensed_phase_builder_task</span></code>,
+<code class="docutils literal notranslate"><span class="pre">simple_multi_condensed_phase_builder_task</span></code>, and related condensed-phase
+builders.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 30.0%" />
+<col style="width: 70.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">molecule_library_dir</span></code> or <code class="docutils literal notranslate"><span class="pre">molecule_library_path</span></code></p></td>
+<td><p>Directory containing molecular fragment files. Older examples may use
+either spelling depending on the builder task.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">solute_molecule_options</span></code></p></td>
+<td><p>List of possible solute fragment sets. A builder task chooses one set
+for a generated structure.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">solvent_molecules</span></code></p></td>
+<td><p>Solvent fragments, optionally with relative sampling weights.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">cell_range</span></code></p></td>
+<td><p>Per-axis simulation-cell size ranges.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Rrange</span></code></p></td>
+<td><p>Density or packing range sampled for generated structures.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">min_dist</span></code></p></td>
+<td><p>Minimum allowed interatomic distance during placement.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">max_patience</span></code></p></td>
+<td><p>Number of failed placement attempts before giving up on a structure.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">center_first_molecule</span></code></p></td>
+<td><p>Whether to center the first solute without random rotation.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">max_atoms</span></code></p></td>
+<td><p>Optional atom-count cap for generated systems.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">shake</span></code></p></td>
+<td><p>Random coordinate perturbation applied during placement or loading.</p></td>
+</tr>
+</tbody>
+</table>
+</dd>
+<dt>Atomic-system builders</dt><dd><p>These fields are used by <code class="docutils literal notranslate"><span class="pre">atomic_system_task</span></code> and related atomic box
+builders.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 30.0%" />
+<col style="width: 70.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">atom_charges</span></code></p></td>
+<td><p>Mapping from element symbol to formal charge used to choose a neutral
+composition.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">target_num_atoms</span></code></p></td>
+<td><p>Target system size. The final count may differ slightly so the system
+can remain neutral.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">min_distance</span></code></p></td>
+<td><p>Minimum atom-atom distance in Angstroms.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">box_length_range</span></code></p></td>
+<td><p>Range from which the cubic simulation-box length is sampled.</p></td>
+</tr>
+</tbody>
+</table>
+</dd>
+<dt>Reactive builders</dt><dd><p>These fields are used by <code class="docutils literal notranslate"><span class="pre">load_reactive_task</span></code>.</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 30.0%" />
+<col style="width: 70.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">molecule_library_dir</span></code></p></td>
+<td><p>Directory containing reaction structure files.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">r_files</span></code></p></td>
+<td><p>Reactant structure file or file pattern read by ASE.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ts_files</span></code></p></td>
+<td><p>Transition-state structure file or file pattern read by ASE.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">p_files</span></code></p></td>
+<td><p>Product structure file or file pattern read by ASE.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">N_reactions</span></code></p></td>
+<td><p>Number of reaction entries available in the files.</p></td>
+</tr>
+</tbody>
+</table>
+</dd>
+<dt>Batched builders</dt><dd><p><code class="docutils literal notranslate"><span class="pre">maximum_builder_structures</span></code> belongs in the master configuration, not the
+builder configuration. It tells ALF how many candidate structures one builder
+task may return. Use it with
+<code class="docutils literal notranslate"><span class="pre">simple_multi_condensed_phase_builder_task</span></code>.</p>
+</dd>
+</dl>
+</section>
+<section id="related-examples">
+<h2>Related Examples<a class="headerlink" href="#related-examples" title="Link to this heading"></a></h2>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 28.0%" />
+<col style="width: 42.0%" />
+<col style="width: 30.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Example</p></th>
+<th class="head"><p>Builder task</p></th>
+<th class="head"><p>Notes</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">examples/simple_water</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">alframework.builders.builders.simple_condensed_phase_builder_task</span></code></p></td>
+<td><p>Single condensed-phase water candidate per builder task.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">examples/simple_water_multi_builder</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">alframework.builders.builders.simple_multi_condensed_phase_builder_task</span></code></p></td>
+<td><p>Batched version of the simple water builder.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">examples/molten_salt</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">alframework.builders.builders.atomic_system_task</span></code></p></td>
+<td><p>Charge-neutral random ionic atomic systems.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">examples/UO2</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">alframework.builders.builders.simple_cfg_loader_task</span></code></p></td>
+<td><p>Loads pre-generated <code class="docutils literal notranslate"><span class="pre">.cfg</span></code> structures.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">examples/reactive_sampling</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">alframework.builders.reactive_builder.load_reactive_task</span></code></p></td>
+<td><p>Loads reactant, transition-state, and product structures.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">examples/IL</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">alframework.builders.builders.simple_condensed_phase_builder_task</span></code></p></td>
+<td><p>Condensed-phase ionic-liquid style mixtures.</p></td>
+</tr>
+</tbody>
+</table>
 </section>
 <section id="builder-api-links">
-<h2>Builder API links<a class="headerlink" href="#builder-api-links" title="Link to this heading"></a></h2>
+<h2>Builder API Links<a class="headerlink" href="#builder-api-links" title="Link to this heading"></a></h2>
 <p>You can link from this guide directly to API pages:</p>
 <ul class="simple">
 <li><p><a class="reference internal" href="../api_documentation/alframework.builders.html"><span class="doc">Builders package API</span></a></p></li>
@@ -139,19 +373,13 @@ pathways and reaction-structure sets.</p>
 <li><p><a class="reference internal" href="../api_documentation/alframework.builders.reactive_builder.html"><span class="doc">Reactive builder module</span></a></p></li>
 </ul>
 </section>
-<section id="related-examples">
-<h2>Related examples<a class="headerlink" href="#related-examples" title="Link to this heading"></a></h2>
-<p>See <a class="reference internal" href="../examples/simple_water.html"><span class="doc">Simple Water Example</span></a> for condensed-phase construction,
-<a class="reference internal" href="../examples/molten_salt.html"><span class="doc">Molten Salt Example</span></a> for charge-balanced atomic systems, and
-<a class="reference internal" href="../examples/reactive_sampling.html"><span class="doc">Reactive Sampling Example</span></a> for reaction-structure loading.</p>
-</section>
 </section>
 
 
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="configuration.html" class="btn btn-neutral float-left" title="Configuration" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="units.html" class="btn btn-neutral float-left" title="Units And Property Conversion" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
         <a href="samplers.html" class="btn btn-neutral float-right" title="Samplers" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 

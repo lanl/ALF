@@ -8,6 +8,7 @@
   <title>Index &mdash; ALF 0.0.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/custom.css?v=eaec28dc" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
@@ -48,16 +49,22 @@
 <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="user_guide/configuration.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="user_guide/units.html">Units And Property Conversion</a></li>
 <li class="toctree-l1"><a class="reference internal" href="user_guide/builders.html">Builders</a></li>
 <li class="toctree-l1"><a class="reference internal" href="user_guide/samplers.html">Samplers</a></li>
 <li class="toctree-l1"><a class="reference internal" href="user_guide/ml_interfaces.html">ML Interfaces</a></li>
 <li class="toctree-l1"><a class="reference internal" href="user_guide/qm_interfaces.html">QM Interfaces</a></li>
+<li class="toctree-l1"><a class="reference internal" href="user_guide/parsl.html">Parsl And HPC Execution</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="examples/simple_water.html">Simple Water Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="examples/molten_salt.html">Molten Salt Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="examples/reactive_sampling.html">Reactive Sampling Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples/simple_water.html">Simple Water</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples/seeded_active_learning.html">Seeded Active Learning</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples/fine_tuning.html">Fine-Tuning Existing Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples/molten_salt.html">Molten Salts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples/il.html">Ionic Liquids</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples/uo2.html">Periodic Solids (UO2)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples/reactive_sampling.html">Reactive Sampling</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
 <ul>
@@ -141,13 +148,6 @@
 </li>
       </ul></li>
       <li>
-    alframework.builders.defect_crystal_builder
-
-      <ul>
-        <li><a href="api_documentation/alframework.builders.defect_crystal_builder.html#module-alframework.builders.defect_crystal_builder">module</a>
-</li>
-      </ul></li>
-      <li>
     alframework.builders.moltensalt_builder
 
       <ul>
@@ -224,8 +224,6 @@
         <li><a href="api_documentation/alframework.qm_interfaces.orca5_interface.html#module-alframework.qm_interfaces.orca5_interface">module</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li>
     alframework.qm_interfaces.qchem_DFT_interface
 
@@ -233,6 +231,8 @@
         <li><a href="api_documentation/alframework.qm_interfaces.qchem_DFT_interface.html#module-alframework.qm_interfaces.qchem_DFT_interface">module</a>
 </li>
       </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li>
     alframework.qm_interfaces.vaspase_interface
 
@@ -273,6 +273,13 @@
 
       <ul>
         <li><a href="api_documentation/alframework.samplers.reactive_sampler.html#module-alframework.samplers.reactive_sampler">module</a>
+</li>
+      </ul></li>
+      <li>
+    alframework.samplers.udd_sampling
+
+      <ul>
+        <li><a href="api_documentation/alframework.samplers.udd_sampling.html#module-alframework.samplers.udd_sampling">module</a>
 </li>
       </ul></li>
       <li>
@@ -338,8 +345,6 @@
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_documentation/alframework.tools.tools.html#alframework.tools.tools.build_input_dict">build_input_dict() (in module alframework.tools.tools)</a>
 </li>
-      <li><a href="api_documentation/alframework.builders.defect_crystal_builder.html#alframework.builders.defect_crystal_builder.builder">builder() (in module alframework.builders.defect_crystal_builder)</a>
-</li>
   </ul></td>
 </tr></table>
 
@@ -394,8 +399,6 @@
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="api_documentation/alframework.builders.defect_crystal_builder.html#alframework.builders.defect_crystal_builder.defect_cell_builder_task">defect_cell_builder_task() (in module alframework.builders.defect_crystal_builder)</a>
-</li>
       <li><a href="api_documentation/alframework.samplers.reactive_sampler.html#alframework.samplers.reactive_sampler.dimer_sampler">dimer_sampler() (in module alframework.samplers.reactive_sampler)</a>
 </li>
   </ul></td>
@@ -478,11 +481,13 @@
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_documentation/alframework.tools.tools.html#alframework.tools.tools.load_config_file">load_config_file() (in module alframework.tools.tools)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_documentation/alframework.tools.tools.html#alframework.tools.tools.load_module_from_config">load_module_from_config() (in module alframework.tools.tools)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api_documentation/alframework.tools.tools.html#alframework.tools.tools.load_module_from_string">load_module_from_string() (in module alframework.tools.tools)</a>
+</li>
+      <li><a href="api_documentation/alframework.builders.reactive_builder.html#alframework.builders.reactive_builder.load_reactive_task">load_reactive_task() (in module alframework.builders.reactive_builder)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -503,8 +508,6 @@
         <li><a href="api_documentation/alframework.builders.html#module-alframework.builders">alframework.builders</a>
 </li>
         <li><a href="api_documentation/alframework.builders.builders.html#module-alframework.builders.builders">alframework.builders.builders</a>
-</li>
-        <li><a href="api_documentation/alframework.builders.defect_crystal_builder.html#module-alframework.builders.defect_crystal_builder">alframework.builders.defect_crystal_builder</a>
 </li>
         <li><a href="api_documentation/alframework.builders.moltensalt_builder.html#module-alframework.builders.moltensalt_builder">alframework.builders.moltensalt_builder</a>
 </li>
@@ -541,6 +544,8 @@
         <li><a href="api_documentation/alframework.samplers.mlmd_sampling.html#module-alframework.samplers.mlmd_sampling">alframework.samplers.mlmd_sampling</a>
 </li>
         <li><a href="api_documentation/alframework.samplers.reactive_sampler.html#module-alframework.samplers.reactive_sampler">alframework.samplers.reactive_sampler</a>
+</li>
+        <li><a href="api_documentation/alframework.samplers.udd_sampling.html#module-alframework.samplers.udd_sampling">alframework.samplers.udd_sampling</a>
 </li>
         <li><a href="api_documentation/alframework.tools.html#module-alframework.tools">alframework.tools</a>
 </li>

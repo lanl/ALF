@@ -1,8 +1,8 @@
-"""Example Parsl resource configurations for the simple water workflow.
+"""Example Parsl resource configurations for an ALF workflow.
 
 This file controls only runtime resources: scheduler partitions, allocations,
 accounts, QoS, walltimes, launchers, and worker counts. It does not change the
-water system, QM method, ML model, or sampling behavior. Replace the
+modeled system, QM method, ML model, or sampling behavior. Replace the
 placeholders below with values for your site before running.
 """
 

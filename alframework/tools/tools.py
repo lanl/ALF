@@ -1,5 +1,7 @@
 import os
 import glob
+import logging
+
 from importlib import import_module
 import numpy as np
 import json
@@ -8,6 +10,8 @@ from ase import Atoms
 from alframework.tools import pyanitools as pyt
 from alframework.tools.molecules_class import MoleculesObject
 import inspect
+
+logger = logging.getLogger(__name__)
 
 def annealing_schedule(t, tmax, amp, per, srt, end):
     """Defines the overall temperature profile in the molecular dynamics simulation.
@@ -194,6 +198,12 @@ def store_current_data(h5path, system_data, properties):
         dpack.store_data(key, **data_dict[key])
     dpack.cleanup()
 
+def is_final_task(task):
+    """
+    Helper to determine if a Parsl task has reached a final state.
+    Final states are those that are no longer active (not pending, running, or launched).
+    """
+    return task.task_status() not in ("pending", "running", "launched")
 
 # Recommend creation of parsl queue object
 class parsl_task_queue():
@@ -210,7 +220,7 @@ class parsl_task_queue():
     def get_completed_number(self):
         """Get the number of completed tasks.
         """
-        task_status = [task.done() for task in self.task_list]
+        task_status = [is_final_task(task) for task in self.task_list]
         return int(np.sum(task_status))
         
     def get_running_number(self):
@@ -242,7 +252,7 @@ class parsl_task_queue():
         for taski,task in enumerate(self.task_list):
             task_status = task.task_status()
             if task_status == 'failed':
-                failed_number=failed_number+1
+                failed_number += 1
         return(failed_number)
             
     def get_task_results(self):
@@ -255,12 +265,23 @@ class parsl_task_queue():
         results_list = []
         failed_number = 0
         for taski,task in reversed(list(enumerate(self.task_list))):
+            if not is_final_task(task):
+                continue
             task_status = task.task_status()
-            if task_status == 'exec_done' and task.done:
-                results_list.append(task.result())
+            if task_status in ('exec_done','memo_done'):
+                try:
+                    results_list.append(task.result())
+                except Exception as e:
+                    logger.error("Task marked as done but raised", exc_info=True)
+                    failed_number += 1
                 del self.task_list[taski]
-            elif task_status == 'failed':
-                failed_number += failed_number
+            else: # Handle all others as failure states
+                try:
+                    results_list.append(task.result())
+                    logger.warning("Task marked as %s but did not raise", task_status)
+                except Exception as e:
+                    logger.warning("Task failed", exc_info=True)
+                failed_number += 1
                 del self.task_list[taski]
 
         return results_list, failed_number
@@ -306,16 +327,16 @@ def find_empty_directory(pattern):
     return curI
 
 
-# Throughout this code individual systems are passed around as three element lists
-# element 1: metadata: this is required to include moleculeid,  but may also include sampling and other metadata
-# element 2: an ASE atoms object.
-# element 3: Evaluated QM properties
+# Throughout this code individual systems are passed around as MoleculesObject-s
+# these are backward-compatible with a three element list:
+# - element 0: metadata: this is required to include moleculeid,  but may also include sampling and other metadata
+# - element 1: an ASE atoms object.
+# - element 2: Evaluated QM properties
 def system_checker(system, kill_on_fail=True, print_error=True):
     """Checks if the system returned by the builder meets all requeriments.
 
     Args:
-        system (list): A list containing three elements. The first is a dict containing metadata of the system,
-                       and one of its keys must be 'moleculeid' whose value is a unique identifier of the system.
+        system (MoleculesObject/list): A list containing three elements. The first is its 'moleculeid' -- a str uniquely identifying the system.
                        The second element is an ASE Atoms object. The third element is a dict that stores the
                        desired properties from the QM calculation (e.g. forces and energies).
         kill_on_fail (bool): Kills the process if something goes wrong.
@@ -326,10 +347,10 @@ def system_checker(system, kill_on_fail=True, print_error=True):
 
     """
     try: 
-        assert isinstance(system, list) or isinstance(system, tuple)
-        assert len(system) == 3
-        assert isinstance(system[0], dict)
-        assert isinstance(system[0]['moleculeid'], str)
+        assert isinstance(system, (list, tuple, MoleculesObject))
+        if isinstance(system, (list, tuple)):
+            assert len(system) == 3
+        assert isinstance(system[0], str)
         assert isinstance(system[1], Atoms)
         assert isinstance(system[2], dict)
         

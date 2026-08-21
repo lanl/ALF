@@ -96,4 +96,3 @@ def rdkit_condensed_phase_builder_task(moleculeid,builder_config,cell_range,Rran
     system = condensed_phase_builder(**input_parameters)
     system_checker(system)
     return(system)
-    

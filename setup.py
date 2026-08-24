@@ -27,7 +27,7 @@ full_requirements = [
 
 setuptools.setup(
     name="alf",
-    version="0.0.1",
+    version="0.1.0",
     author="",
     author_email="",
     python_requires=">3.9",

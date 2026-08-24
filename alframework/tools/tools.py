@@ -243,7 +243,7 @@ class parsl_task_queue():
         successful_number = 0
         for taski,task in enumerate(self.task_list):
             task_status = task.task_status()
-            if task_status == 'exec_done' and task.done:
+            if task_status == 'exec_done' and task.done():
                 successful_number=successful_number+1
         return(successful_number)
 

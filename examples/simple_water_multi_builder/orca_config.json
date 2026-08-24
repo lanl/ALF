@@ -1,5 +1,5 @@
 {
-  "QM_run_command":"/usr/projects/ml4chem/Programs/orca_5.0.4/orca",
+  "QM_run_command":"your_orca_executable",
   "ncpu":null,
   "orca_env_file":null,
   "orcasimpleinput":"engrad wB97X def2-TZVP TightSCF Float Hirshfeld",

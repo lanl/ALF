@@ -9,7 +9,6 @@
   <title>What Is ALF &mdash; ALF 0.0.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
-      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=eaec28dc" />
 
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
@@ -47,6 +46,7 @@
 <ul class="current">
 <li class="toctree-l1 current"><a class="current reference internal" href="#">What Is ALF</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#overview-of-the-workflow">Overview of the workflow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#how-each-iteration-works">How each iteration works</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#execution-model">Execution model</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#testing-individual-stages">Testing individual stages</a></li>
 </ul>
@@ -57,22 +57,16 @@
 <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/configuration.html">Configuration</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../user_guide/units.html">Units And Property Conversion</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/builders.html">Builders</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/samplers.html">Samplers</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/ml_interfaces.html">ML Interfaces</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/qm_interfaces.html">QM Interfaces</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../user_guide/parsl.html">Parsl And HPC Execution</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../examples/simple_water.html">Simple Water</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/seeded_active_learning.html">Seeded Active Learning</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/fine_tuning.html">Fine-Tuning Existing Models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/molten_salt.html">Molten Salts</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/il.html">Ionic Liquids</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/uo2.html">Periodic Solids (UO2)</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/reactive_sampling.html">Reactive Sampling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/simple_water.html">Simple Water Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/molten_salt.html">Molten Salt Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/reactive_sampling.html">Reactive Sampling Example</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
 <ul>
@@ -109,61 +103,40 @@
              
   <section id="what-is-alf">
 <h1>What Is ALF<a class="headerlink" href="#what-is-alf" title="Link to this heading"></a></h1>
-<p>The <strong>Active Learning Framework (ALF)</strong> automates the construction of structurally diverse datasets for
+<p>The Active Learning Framework (ALF) automates the construction of structurally diverse datasets for
 machine learning interatomic potentials (MLIPs) using a query by committee (QBC) active-learning approach.</p>
-<p>At a high level, ALF coordinates four core modules:</p>
-<ul class="simple">
-<li><p><strong>System construction (Builders)</strong></p></li>
-<li><p><strong>Sampling (Samplers)</strong></p></li>
-<li><p><strong>ML model training (ML interfaces)</strong></p></li>
-<li><p><strong>Electronic structure calculations (QM interfaces)</strong></p></li>
-</ul>
-<p><strong>These modules are used to perform the main ALF workflow:</strong></p>
+<p>At a high level, ALF coordinates four core stages:</p>
 <ol class="arabic simple">
-<li><p>Build initial structures (bootstrap) and label with a QM engine of choice. This step accomplishes initial sampling of the conformational/chemical space.</p></li>
-<li><p>Train an initial MLIP ensemble from the labeled data.</p></li>
-<li><p>Sample new structures with ML-driven molecular dynamics.</p></li>
-<li><p>Send selected high-uncertainty configurations to QM engine for labeling.</p></li>
-<li><p>Store labeled data in HDF5 files.</p></li>
-<li><p>Retrain ML ensemble once the number of high-uncertainty configurations exceeds a user-defined threshold. Repeat until no high-uncertainty
-frames are identified, or the number of ALF iterations is exceeded. Use final MLIP to perform down-stream production task (Not part of ALF).</p></li>
+<li><p>System construction (builders)</p></li>
+<li><p>Sampling (samplers)</p></li>
+<li><p>ML model training (ML interfaces)</p></li>
+<li><p>Electronic structure calculations (QM interfaces)</p></li>
 </ol>
-<figure class="align-center" id="id1">
-<a class="reference internal image-reference" href="../_images/alf.png"><img alt="Core ALF workflow from initial sampling (bootstrapping) to production-ready MLIP." src="../_images/alf.png" style="width: 85%;" />
-</a>
-<figcaption>
-<p><span class="caption-text">Core ALF workflow from initial sampling (bootstrapping) to production-ready MLIP.</span><a class="headerlink" href="#id1" title="Link to this image"></a></p>
-</figcaption>
-</figure>
+<section id="overview-of-the-workflow">
+<h2>Overview of the workflow<a class="headerlink" href="#overview-of-the-workflow" title="Link to this heading"></a></h2>
+<p>ALF uses a master process to orchestrate tasks and data flow between these
+stages. The process is typically launched with:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master.json
+</pre></div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">master.json</span></code> file points to the other configuration files and task
+definitions needed for each stage. In practice, ALF uses five JSON files:</p>
+<ol class="arabic simple">
+<li><p>Master configuration</p></li>
+<li><p>Builder configuration</p></li>
+<li><p>Sampler configuration</p></li>
+<li><p>ML configuration</p></li>
+<li><p>QM configuration</p></li>
+</ol>
+</section>
+<section id="how-each-iteration-works">
+<h2>How each iteration works<a class="headerlink" href="#how-each-iteration-works" title="Link to this heading"></a></h2>
 <p>During an iteration, ALF builds candidate structures, samples configurations
 using the current ML model ensemble, evaluates selected structures with QM,
-and stores the resulting data for retraining. The newly trained models are then
+and stores the resulting data for retraining. The newly trained model is then
 used in the next sampling cycle.</p>
 <p>This loop is designed to run for many iterations with minimal user
 intervention.</p>
-<section id="overview-of-the-workflow">
-<h2>Overview of the workflow<a class="headerlink" href="#overview-of-the-workflow" title="Link to this heading"></a></h2>
-<p>ALF uses a master process to orchestrate tasks and data flow between the core
-stages. The process is typically launched with:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json
-</pre></div>
-</div>
-<p>The <code class="docutils literal notranslate"><span class="pre">master_config.json</span></code> file points to the other configuration files and task
-definitions needed for each stage. In practice, ALF uses five JSON files:</p>
-<ol class="arabic simple">
-<li><p>Master configuration — <code class="docutils literal notranslate"><span class="pre">master_config.json</span></code></p></li>
-<li><p>Builder configuration — <code class="docutils literal notranslate"><span class="pre">builder_config.json</span></code></p></li>
-<li><p>Sampler configuration — <code class="docutils literal notranslate"><span class="pre">mlmd_config.json</span></code></p></li>
-<li><p>ML configuration — <code class="docutils literal notranslate"><span class="pre">ml_config.json</span></code></p></li>
-<li><p>QM configuration — <code class="docutils literal notranslate"><span class="pre">qm_config.json</span></code></p></li>
-</ol>
-<figure class="align-center" id="id2">
-<a class="reference internal image-reference" href="../_images/alf_architecture.png"><img alt="Overview of ALF's code structure." src="../_images/alf_architecture.png" style="width: 85%;" />
-</a>
-<figcaption>
-<p><span class="caption-text">Overview of ALF’s code structure.</span><a class="headerlink" href="#id2" title="Link to this image"></a></p>
-</figcaption>
-</figure>
 </section>
 <section id="execution-model">
 <h2>Execution model<a class="headerlink" href="#execution-model" title="Link to this heading"></a></h2>
@@ -175,10 +148,10 @@ can be customized for your system.</p>
 <section id="testing-individual-stages">
 <h2>Testing individual stages<a class="headerlink" href="#testing-individual-stages" title="Link to this heading"></a></h2>
 <p>Before long runs, ALF supports stage-level checks:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json<span class="w"> </span>--test_builder
-python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json<span class="w"> </span>--test_sampler
-python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json<span class="w"> </span>--test_ml
-python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json<span class="w"> </span>--test_qm
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master.json<span class="w"> </span>--test_builder
+python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master.json<span class="w"> </span>--test_sampler
+python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master.json<span class="w"> </span>--test_ml
+python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master.json<span class="w"> </span>--test_qm
 </pre></div>
 </div>
 <p>These tests validate each stage independently before running the full active

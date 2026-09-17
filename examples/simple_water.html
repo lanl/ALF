@@ -6,10 +6,9 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Simple Water &mdash; ALF 0.0.0 documentation</title>
+  <title>Simple Water Example &mdash; ALF 0.0.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
-      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=eaec28dc" />
 
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
@@ -20,8 +19,8 @@
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Seeded Active Learning" href="seeded_active_learning.html" />
-    <link rel="prev" title="Parsl And HPC Execution" href="../user_guide/parsl.html" /> 
+    <link rel="next" title="Molten Salt Example" href="molten_salt.html" />
+    <link rel="prev" title="QM Interfaces" href="../user_guide/qm_interfaces.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -52,36 +51,20 @@
 <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/configuration.html">Configuration</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../user_guide/units.html">Units And Property Conversion</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/builders.html">Builders</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/samplers.html">Samplers</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/ml_interfaces.html">ML Interfaces</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/qm_interfaces.html">QM Interfaces</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../user_guide/parsl.html">Parsl And HPC Execution</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul class="current">
-<li class="toctree-l1 current"><a class="current reference internal" href="#">Simple Water</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#before-you-run">Before You Run</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#workflow-pattern">Workflow Pattern</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#recommended-bring-up-commands">Recommended Bring-Up Commands</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#batched-builder-variant">Batched Builder Variant</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#expected-outputs">Expected Outputs</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#master-configuration">Master Configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#queue-depth-and-resource-concurrency">Queue Depth And Resource Concurrency</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#builder-configuration">Builder Configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#sampler-configuration">Sampler Configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#orca-configuration">ORCA Configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#hippynn-configuration">HIPPYNN Configuration</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#adapting-the-example">Adapting The Example</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Simple Water Example</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#what-it-demonstrates">What it demonstrates</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#relevant-files">Relevant files</a></li>
 </ul>
 </li>
-<li class="toctree-l1"><a class="reference internal" href="seeded_active_learning.html">Seeded Active Learning</a></li>
-<li class="toctree-l1"><a class="reference internal" href="fine_tuning.html">Fine-Tuning Existing Models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="molten_salt.html">Molten Salts</a></li>
-<li class="toctree-l1"><a class="reference internal" href="il.html">Ionic Liquids</a></li>
-<li class="toctree-l1"><a class="reference internal" href="uo2.html">Periodic Solids (UO2)</a></li>
-<li class="toctree-l1"><a class="reference internal" href="reactive_sampling.html">Reactive Sampling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="molten_salt.html">Molten Salt Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="reactive_sampling.html">Reactive Sampling Example</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
 <ul>
@@ -103,442 +86,47 @@
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
-      <li class="breadcrumb-item active">Simple Water</li>
+      <li class="breadcrumb-item active">Simple Water Example</li>
       <li class="wy-breadcrumbs-aside">
             <a href="../_sources/examples/simple_water.rst.txt" rel="nofollow"> View page source</a>
       </li>
   </ul><div class="rst-breadcrumbs-buttons" role="navigation" aria-label="Sequential page navigation">
-        <a href="../user_guide/parsl.html" class="btn btn-neutral float-left" title="Parsl And HPC Execution" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="seeded_active_learning.html" class="btn btn-neutral float-right" title="Seeded Active Learning" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="../user_guide/qm_interfaces.html" class="btn btn-neutral float-left" title="QM Interfaces" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="molten_salt.html" class="btn btn-neutral float-right" title="Molten Salt Example" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
   </div>
   <hr/>
 </div>
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="simple-water">
-<h1>Simple Water<a class="headerlink" href="#simple-water" title="Link to this heading"></a></h1>
-<p>The simple water example is a compact ALF workflow for a small molecular (water)
-system. It is intended as the first example to copy and adapt when setting up a
-new ALF run. The example connects all major ALF stages:</p>
-<ol class="arabic simple">
-<li><p>Build initial water-containing structures (bootstrapping)</p></li>
-<li><p>Label bootstrap structures with QM engine (ORCA)</p></li>
-<li><p>Train an initial HIPPYNN ensemble from the labeled data.</p></li>
-<li><p>Sample new structures with ML-driven molecular dynamics.</p></li>
-<li><p>Send selected high-uncertainty configurations to ORCA for QM labeling.</p></li>
-<li><p>Store labeled data in HDF5 files.</p></li>
-<li><p>Retrain a HIPPYNN ensemble once the number of high-uncertainty configurations exceeds <code class="docutils literal notranslate"><span class="pre">save_h5_threshold</span></code>.</p></li>
-</ol>
-<p>The files needed to run the example are located in <code class="docutils literal notranslate"><span class="pre">examples/simple_water</span></code>.</p>
-<figure class="align-center" id="id1">
-<a class="reference internal image-reference" href="../_images/water.png"><img alt="A cluster of randomly placed water molecules created by the Builder." src="../_images/water.png" style="width: 85%;" />
-</a>
-<figcaption>
-<p><span class="caption-text">A cluster of randomly placed water molecules created by the Builder.</span><a class="headerlink" href="#id1" title="Link to this image"></a></p>
-</figcaption>
-</figure>
-<section id="before-you-run">
-<h2>Before You Run<a class="headerlink" href="#before-you-run" title="Link to this heading"></a></h2>
-<p>Configuration files must be modified in order to run the example on your available compute.</p>
+  <section id="simple-water-example">
+<h1>Simple Water Example<a class="headerlink" href="#simple-water-example" title="Link to this heading"></a></h1>
+<p>The simple water example is a compact ALF workflow for a small molecular
+system. It is a useful starting point for checking that the builder, sampler,
+QM interface, ML interface, and Parsl resource configuration are connected
+correctly.</p>
+<section id="what-it-demonstrates">
+<h2>What it demonstrates<a class="headerlink" href="#what-it-demonstrates" title="Link to this heading"></a></h2>
+<p>This example uses:</p>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">orca_config.json</span></code> contains an ORCA executable path. Replace
-<code class="docutils literal notranslate"><span class="pre">QM_run_command</span></code> with the ORCA command available on your machine.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">master_config.json</span></code> points to a Parsl configuration named
-<code class="docutils literal notranslate"><span class="pre">parsl_configs.config_1node</span></code>. Edit <code class="docutils literal notranslate"><span class="pre">examples/simple_water/parsl_configs.py</span></code>
-or point <code class="docutils literal notranslate"><span class="pre">parsl_configuration</span></code> to a different resource config for your
-cluster. This file is a placeholder template for Parsl executor, Slurm
-partition, account, QoS, walltime, module, launcher, and worker-count
-settings; it is not a ready-to-run cluster configuration.</p></li>
-<li><p>CPU-only resources and GPU ML/sampling resources should usually be
-configured separately. In the template, ORCA/QM tasks use
-<code class="docutils literal notranslate"><span class="pre">alf_QM_executor</span></code> while HIPPYNN training and MLMD sampling use
-<code class="docutils literal notranslate"><span class="pre">alf_ML_executor</span></code> and <code class="docutils literal notranslate"><span class="pre">alf_sampler_executor</span></code>.</p></li>
-<li><p>HIPPYNN and its ML dependencies must be installed if you run ML training or
-sampling. See <a class="reference internal" href="../user_guide/ml_interfaces.html#ml-interface-common-configuration"><span class="std std-ref">Common Configuration Fields</span></a> for the ML task and
-sampler calculator settings. The builder and QM test modes can be used
-separately while bringing up the environment.</p></li>
-<li><p>Paths such as <code class="docutils literal notranslate"><span class="pre">h5store/</span></code>, <code class="docutils literal notranslate"><span class="pre">models/</span></code>, <code class="docutils literal notranslate"><span class="pre">sampling/</span></code>, and
-<code class="docutils literal notranslate"><span class="pre">orca_scratch/</span></code> are run outputs. Use a clean working directory or
-archive old output before starting a new production run.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">simple_condensed_phase_builder_task</span></code> for structure construction</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">simple_mlmd_sampling_task</span></code> for uncertainty-driven MD sampling</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">orca_calculator_task</span></code> for QM labeling</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">train_HIPPYNN_ensemble_task</span></code> for model retraining</p></li>
 </ul>
-<p>See <a class="reference internal" href="../user_guide/parsl.html"><span class="doc">Parsl And HPC Execution</span></a> for details on how Parsl resource configuration
-maps ALF tasks onto local or HPC resources.</p>
 </section>
-<section id="workflow-pattern">
-<h2>Workflow Pattern<a class="headerlink" href="#workflow-pattern" title="Link to this heading"></a></h2>
-<dl class="simple">
-<dt>Builder stage</dt><dd><p><code class="docutils literal notranslate"><span class="pre">simple_condensed_phase_builder_task</span></code> reads <code class="docutils literal notranslate"><span class="pre">builder_config.json</span></code> and
-creates clusters of water molecules using the fragment library. In this example,
-the only fragment is <code class="docutils literal notranslate"><span class="pre">fragment_library/water.xyz</span></code>.</p>
-</dd>
-<dt>Sampler stage</dt><dd><p><code class="docutils literal notranslate"><span class="pre">simple_mlmd_sampling_task</span></code> reads <code class="docutils literal notranslate"><span class="pre">mlmd_config.json</span></code> and drives
-MLMD using a HIPPYNN ensemble. Configurations are selected
-for QM if energy or force uncertainty exceeds the configured cutoffs.</p>
-</dd>
-<dt>QM stage</dt><dd><p><code class="docutils literal notranslate"><span class="pre">orca_calculator_task</span></code> reads <code class="docutils literal notranslate"><span class="pre">orca_config.json</span></code>, writes ORCA input files,
-runs ORCA, parses requested properties, and returns a labeled
-<code class="docutils literal notranslate"><span class="pre">MoleculesObject</span></code>.</p>
-</dd>
-<dt>ML stage</dt><dd><p><code class="docutils literal notranslate"><span class="pre">train_HIPPYNN_ensemble_task</span></code> reads <code class="docutils literal notranslate"><span class="pre">hippynn_config.json</span></code> and trains a
-HIPPYNN model ensemble from the HDF5 data written by ALF. See
-<a class="reference internal" href="../user_guide/ml_interfaces.html"><span class="doc">ML Interfaces</span></a> for the general ML interface pattern.</p>
-</dd>
-</dl>
-</section>
-<section id="recommended-bring-up-commands">
-<h2>Recommended Bring-Up Commands<a class="headerlink" href="#recommended-bring-up-commands" title="Link to this heading"></a></h2>
-<p>Run the stages one at a time before starting a full active-learning loop. From
-the <code class="docutils literal notranslate"><span class="pre">examples/simple_water</span></code> directory:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json<span class="w"> </span>--test_builder
-python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json<span class="w"> </span>--test_qm
-python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json<span class="w"> </span>--test_ml
-python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json<span class="w"> </span>--test_sampler
-</pre></div>
-</div>
-<p>The test modes use <code class="docutils literal notranslate"><span class="pre">parsl_debug_configuration</span></code> when it is provided in the
-master config. This lets you keep a smaller, faster Parsl configuration for
-environment checks.</p>
-<p>After the individual stages work, start the active-learning loop:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json
-</pre></div>
-</div>
-<p>ALF writes <code class="docutils literal notranslate"><span class="pre">status.txt</span></code> and then continues running the active-learning loop,
-periodically printing queue status for builder, sampler, QM, and ML tasks.</p>
-</section>
-<section id="batched-builder-variant">
-<h2>Batched Builder Variant<a class="headerlink" href="#batched-builder-variant" title="Link to this heading"></a></h2>
-<p>After the base simple water example is working, the next example to try is the
-batched-builder variant in <code class="docutils literal notranslate"><span class="pre">examples/simple_water_multi_builder</span></code>. It builds
-the same kind of condensed-phase water boxes with the same sampler, QM, ML, and
-ORCA scratch settings, but changes the builder task and how many initial
-structures each builder task returns.</p>
-<p>The base <code class="docutils literal notranslate"><span class="pre">examples/simple_water</span></code> run uses
-<code class="docutils literal notranslate"><span class="pre">simple_condensed_phase_builder_task</span></code>. Each builder task returns one generated
-water box, and ALF sends that structure to one sampler task.</p>
-<p>The <code class="docutils literal notranslate"><span class="pre">examples/simple_water_multi_builder</span></code> run uses
-<code class="docutils literal notranslate"><span class="pre">simple_multi_condensed_phase_builder_task</span></code>. Each builder task returns a list
-of generated water boxes, and ALF starts a sampler task for each structure in
-that list. In the provided config, <code class="docutils literal notranslate"><span class="pre">maximum_builder_structures</span></code> is set to
-<code class="docutils literal notranslate"><span class="pre">5</span></code>, so each builder task creates five independent initial candidates.</p>
-<p>To run the batched variant, use the same staged bring-up commands from the
-<code class="docutils literal notranslate"><span class="pre">examples/simple_water_multi_builder</span></code> directory:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json<span class="w"> </span>--test_builder
-python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json<span class="w"> </span>--test_qm
-python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json<span class="w"> </span>--test_ml
-python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json<span class="w"> </span>--test_sampler
-python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json
-</pre></div>
-</div>
-<p>This variant is useful when builder overhead is significant or when you want a
-single builder submission to feed multiple sampler tasks. It does not change the
-chemical system being built or the ORCA scratch directory; it only changes the
-builder task throughput.</p>
-</section>
-<section id="expected-outputs">
-<h2>Expected Outputs<a class="headerlink" href="#expected-outputs" title="Link to this heading"></a></h2>
-<p>During staged checks and full runs, expect these files and directories:</p>
-<table class="docutils align-default">
-<colgroup>
-<col style="width: 30.0%" />
-<col style="width: 70.0%" />
-</colgroup>
-<thead>
-<tr class="row-odd"><th class="head"><p>Path</p></th>
-<th class="head"><p>Purpose</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">status.txt</span></code></p></td>
-<td><p>Restart and progress state, including current model/data ids and failed
-task counters.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">h5store/data-*.h5</span></code></p></td>
-<td><p>Stored labeled data batches from converged QM results.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">models/model-*</span></code></p></td>
-<td><p>Directories containing trained HIPPYNN ensembles.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">sampling/metadata-*.p</span></code></p></td>
-<td><p>Per-sampling-task metadata, including uncertainty, temperature, density,
-and final structure information.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">orca_scratch/</span></code></p></td>
-<td><p>QM scratch directory containing per-molecule ORCA run directories.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">status_plots/</span></code></p></td>
-<td><p>Optional plots created by the configured plotting utility.</p></td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="master-configuration">
-<h2>Master Configuration<a class="headerlink" href="#master-configuration" title="Link to this heading"></a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">master_config.json</span></code> connects the stages and controls the active-learning
-loop.</p>
-<table class="docutils align-default">
-<colgroup>
-<col style="width: 28.0%" />
-<col style="width: 72.0%" />
-</colgroup>
-<thead>
-<tr class="row-odd"><th class="head"><p>Field</p></th>
-<th class="head"><p>Meaning</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">master_directory</span></code></p></td>
-<td><p>Base directory for relative paths. <code class="docutils literal notranslate"><span class="pre">&quot;pwd&quot;</span></code> means the directory
-containing the master config.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">*_config_path</span></code></p></td>
-<td><p>Paths to the builder, sampler, QM, and ML JSON files.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">builder_task</span></code>, <code class="docutils literal notranslate"><span class="pre">sampler_task</span></code>, <code class="docutils literal notranslate"><span class="pre">QM_task</span></code>, <code class="docutils literal notranslate"><span class="pre">ML_task</span></code></p></td>
-<td><p>Import strings for the Python task functions ALF will submit through
-Parsl.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">properties_list</span></code></p></td>
-<td><p>Maps ALF result names to HDF5 dataset names, property scope, and unit
-conversion factor. See <a class="reference internal" href="../user_guide/units.html"><span class="doc">Units And Property Conversion</span></a> for how these
-multipliers are applied.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">h5_path</span></code></p></td>
-<td><p>Output pattern for stored training data, such as
-<code class="docutils literal notranslate"><span class="pre">h5store/data-0000.h5</span></code>.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model_path</span></code></p></td>
-<td><p>Output pattern for trained models, such as <code class="docutils literal notranslate"><span class="pre">models/model-0000</span></code>.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">target_queued_QM</span></code>, <code class="docutils literal notranslate"><span class="pre">minimum_QM</span></code>, <code class="docutils literal notranslate"><span class="pre">save_h5_threshold</span></code></p></td>
-<td><p>Queue thresholds controlling when ALF launches QM tasks and stores new
-labeled data.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">parallel_samplers</span></code></p></td>
-<td><p>Target number of builder/sampler candidates ALF tries to keep active.
-This is a queue-depth target, not the number of GPUs or nodes requested.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">bootstrap_set</span></code></p></td>
-<td><p>Number of initial QM labels to collect before the first model training.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">parsl_configuration</span></code></p></td>
-<td><p>Import string for the production Parsl config.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">parsl_debug_configuration</span></code></p></td>
-<td><p>Import string for the smaller config used by stage test modes.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">QM_scratch_dir</span></code></p></td>
-<td><p>Directory for QM input, output, and scratch subdirectories.</p></td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="queue-depth-and-resource-concurrency">
-<h2>Queue Depth And Resource Concurrency<a class="headerlink" href="#queue-depth-and-resource-concurrency" title="Link to this heading"></a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">target_queued_QM</span></code> controls how much QM work ALF tries to keep queued, but
-it does not by itself request more CPU nodes. During bootstrap, ALF first has
-to generate structures with the builder; <code class="docutils literal notranslate"><span class="pre">parallel_samplers</span></code> controls how
-many builder/sampler candidates ALF tries to keep active. The QM executor in
-<code class="docutils literal notranslate"><span class="pre">parsl_configs.py</span></code> then controls how many queued QM tasks can actually run,
-through settings such as <code class="docutils literal notranslate"><span class="pre">max_blocks</span></code>, <code class="docutils literal notranslate"><span class="pre">nodes_per_block</span></code>, and
-<code class="docutils literal notranslate"><span class="pre">max_workers_per_node</span></code>.</p>
-<p>For example, if the QM executor uses <code class="docutils literal notranslate"><span class="pre">nodes_per_block=1</span></code>,
-<code class="docutils literal notranslate"><span class="pre">max_blocks=10</span></code>, and <code class="docutils literal notranslate"><span class="pre">max_workers_per_node=1</span></code>, Parsl may request up to ten
-one-node QM allocations. ALF will only fill those allocations if enough
-structures have been generated and enough QM tasks are queued. Likewise,
-<code class="docutils literal notranslate"><span class="pre">gpus_per_node</span></code> tells ALF how sampler workers map onto GPUs, while the
-sampler executor’s worker and block settings determine how many sampler tasks
-can run at once.</p>
-</section>
-<section id="builder-configuration">
-<h2>Builder Configuration<a class="headerlink" href="#builder-configuration" title="Link to this heading"></a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">builder_config.json</span></code> controls initial structure construction.</p>
-<table class="docutils align-default">
-<colgroup>
-<col style="width: 28.0%" />
-<col style="width: 72.0%" />
-</colgroup>
-<thead>
-<tr class="row-odd"><th class="head"><p>Field</p></th>
-<th class="head"><p>Meaning</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">molecule_library_path</span></code></p></td>
-<td><p>Directory containing fragment files, relative to the example directory.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">solute_molecule_options</span></code></p></td>
-<td><p>Fragment combinations that may be placed as solutes. The water example
-uses one water molecule.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">solvent_molecules</span></code></p></td>
-<td><p>Solvent fragment names and sampling weights.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">cell_range</span></code></p></td>
-<td><p>Minimum and maximum box lengths for each cell direction.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Rrange</span></code></p></td>
-<td><p>Density or packing range used by the condensed-phase builder.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">min_dist</span></code></p></td>
-<td><p>Minimum allowed distance between generated structures.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">max_patience</span></code></p></td>
-<td><p>Number of placement attempts before the builder gives up.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">center_first_molecule</span></code></p></td>
-<td><p>Whether to center the first molecule, useful for solute-centered systems.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">shake</span></code></p></td>
-<td><p>Random coordinate perturbation applied to generated structures.</p></td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="sampler-configuration">
-<h2>Sampler Configuration<a class="headerlink" href="#sampler-configuration" title="Link to this heading"></a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">mlmd_config.json</span></code> controls uncertainty-driven MD sampling.</p>
-<table class="docutils align-default">
-<colgroup>
-<col style="width: 28.0%" />
-<col style="width: 72.0%" />
-</colgroup>
-<thead>
-<tr class="row-odd"><th class="head"><p>Field</p></th>
-<th class="head"><p>Meaning</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">dt</span></code>, <code class="docutils literal notranslate"><span class="pre">maxt</span></code></p></td>
-<td><p>MD timestep in femtoseconds and maximum simulation time in picoseconds.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Escut</span></code>, <code class="docutils literal notranslate"><span class="pre">Fscut</span></code></p></td>
-<td><p>Energy and force uncertainty thresholds for selecting configurations for
-QM labeling.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Ncheck</span></code></p></td>
-<td><p>Number of MD steps between uncertainty checks.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">srt_temp</span></code>, <code class="docutils literal notranslate"><span class="pre">end_temp</span></code></p></td>
-<td><p>Ranges for starting and ending temperatures.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">amp_temp</span></code>, <code class="docutils literal notranslate"><span class="pre">per_temp</span></code></p></td>
-<td><p>Ranges for temperature fluctuation amplitude and period.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">end_dens</span></code>, <code class="docutils literal notranslate"><span class="pre">amp_dens</span></code>, <code class="docutils literal notranslate"><span class="pre">per_dens</span></code></p></td>
-<td><p>Density target and fluctuation controls. <code class="docutils literal notranslate"><span class="pre">null</span></code> disables density
-changes in this example.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">meta_dir</span></code></p></td>
-<td><p>Directory for sampler metadata files.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ase_calculator</span></code></p></td>
-<td><p>Import string for the ML ensemble calculator loader.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">MLMD_calculator_options</span></code></p></td>
-<td><p>Extra calculator options, such as the soft wall potential.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">trajectory_frequency</span></code>, <code class="docutils literal notranslate"><span class="pre">trajectory_interval</span></code></p></td>
-<td><p>Controls optional trajectory writing during sampling.</p></td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="orca-configuration">
-<h2>ORCA Configuration<a class="headerlink" href="#orca-configuration" title="Link to this heading"></a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">orca_config.json</span></code> controls QM labeling through ORCA.</p>
-<table class="docutils align-default">
-<colgroup>
-<col style="width: 28.0%" />
-<col style="width: 72.0%" />
-</colgroup>
-<thead>
-<tr class="row-odd"><th class="head"><p>Field</p></th>
-<th class="head"><p>Meaning</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">QM_run_command</span></code></p></td>
-<td><p>ORCA executable or launch command. Replace this path for your system.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">ncpu</span></code></p></td>
-<td><p>CPU count passed to the ORCA interface when applicable.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">orca_env_file</span></code></p></td>
-<td><p>Optional shell environment file sourced before ORCA execution.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">orcasimpleinput</span></code></p></td>
-<td><p>ORCA method, basis, and job keywords.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">orcablocks</span></code></p></td>
-<td><p>Additional ORCA input blocks, such as memory, SCF, and property blocks.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Ediff</span></code>, <code class="docutils literal notranslate"><span class="pre">Fdiff</span></code></p></td>
-<td><p>Thresholds used by double-calculation checks when using the double ORCA
-task.</p></td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="hippynn-configuration">
-<h2>HIPPYNN Configuration<a class="headerlink" href="#hippynn-configuration" title="Link to this heading"></a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">hippynn_config.json</span></code> controls model architecture, training, and data
-filtering. The broader HIPPYNN and new-backend configuration pattern is
-described in <a class="reference internal" href="../user_guide/ml_interfaces.html"><span class="doc">ML Interfaces</span></a>.</p>
-<table class="docutils align-default">
-<colgroup>
-<col style="width: 28.0%" />
-<col style="width: 72.0%" />
-</colgroup>
-<thead>
-<tr class="row-odd"><th class="head"><p>Field</p></th>
-<th class="head"><p>Meaning</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">n_models</span></code></p></td>
-<td><p>Number of models in the ensemble.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">energy_key</span></code>, <code class="docutils literal notranslate"><span class="pre">force_key</span></code>, <code class="docutils literal notranslate"><span class="pre">coordinates_key</span></code>, <code class="docutils literal notranslate"><span class="pre">species_key</span></code></p></td>
-<td><p>HDF5 dataset names used for training.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">network_params</span></code></p></td>
-<td><p>HIPPYNN architecture settings, including species, feature counts,
-distance cutoffs, and layer counts.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">*_loss_weight</span></code></p></td>
-<td><p>Relative weights for energy, force, and regularization losses.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">valid_size</span></code>, <code class="docutils literal notranslate"><span class="pre">test_size</span></code></p></td>
-<td><p>Fractions of data reserved for validation and test splits.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">learning_rate</span></code></p></td>
-<td><p>Initial optimizer learning rate.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">scheduler_options</span></code></p></td>
-<td><p>Learning-rate scheduler behavior, such as patience and decay factor.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">controller_options</span></code></p></td>
-<td><p>Training loop options, including batch size, maximum epochs, and early
-termination patience.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">device_string</span></code></p></td>
-<td><p>Device selection behavior for training tasks.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">remove_high_*</span></code></p></td>
-<td><p>Optional data filtering thresholds before training.</p></td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="adapting-the-example">
-<h2>Adapting The Example<a class="headerlink" href="#adapting-the-example" title="Link to this heading"></a></h2>
-<p>For a new molecular system, start by replacing the fragment library and builder
-configuration. Then update the QM method and executable path. Once the builder
-and QM tests work, tune the sampler thresholds and ML architecture for the
-target chemistry. Finally, update the Parsl configuration so the QM, ML, and
-sampler tasks request resources that match the software and hardware used on
-your cluster.</p>
+<section id="relevant-files">
+<h2>Relevant files<a class="headerlink" href="#relevant-files" title="Link to this heading"></a></h2>
+<p>The example lives in <code class="docutils literal notranslate"><span class="pre">examples/simple_water</span></code>.</p>
+<ul class="simple">
+<li><p><a class="reference external" href="https://github.com/lanl/ALF/blob/main/examples/simple_water/master_config.json">master_config.json</a></p></li>
+<li><p><a class="reference external" href="https://github.com/lanl/ALF/blob/main/examples/simple_water/builder_config.json">builder_config.json</a></p></li>
+<li><p><a class="reference external" href="https://github.com/lanl/ALF/blob/main/examples/simple_water/mlmd_config.json">mlmd_config.json</a></p></li>
+<li><p><a class="reference external" href="https://github.com/lanl/ALF/blob/main/examples/simple_water/orca_config.json">orca_config.json</a></p></li>
+<li><p><a class="reference external" href="https://github.com/lanl/ALF/blob/main/examples/simple_water/hippynn_config.json">hippynn_config.json</a></p></li>
+</ul>
+<p>Use this example when you want a small end-to-end workflow to adapt before
+moving to larger systems.</p>
 </section>
 </section>
 
@@ -546,8 +134,8 @@ your cluster.</p>
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="../user_guide/parsl.html" class="btn btn-neutral float-left" title="Parsl And HPC Execution" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="seeded_active_learning.html" class="btn btn-neutral float-right" title="Seeded Active Learning" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="../user_guide/qm_interfaces.html" class="btn btn-neutral float-left" title="QM Interfaces" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="molten_salt.html" class="btn btn-neutral float-right" title="Molten Salt Example" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

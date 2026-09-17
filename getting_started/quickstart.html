@@ -9,7 +9,6 @@
   <title>Quickstart &mdash; ALF 0.0.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
-      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=eaec28dc" />
 
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
@@ -47,38 +46,21 @@
 <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="what_is_alf.html">What Is ALF</a></li>
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
-<li class="toctree-l1 current"><a class="current reference internal" href="#">Quickstart</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#prerequisites">Prerequisites</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#pick-an-example">Pick An Example</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#which-example-should-i-use">Which Example Should I Use?</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#check-the-config-files">Check The Config Files</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#edit-machine-specific-settings">Edit Machine-Specific Settings</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#run-stage-checks">Run Stage Checks</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#start-the-workflow">Start The Workflow</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#know-the-outputs">Know The Outputs</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#what-to-read-next">What To Read Next</a></li>
-</ul>
-</li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Quickstart</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/configuration.html">Configuration</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../user_guide/units.html">Units And Property Conversion</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/builders.html">Builders</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/samplers.html">Samplers</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/ml_interfaces.html">ML Interfaces</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/qm_interfaces.html">QM Interfaces</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../user_guide/parsl.html">Parsl And HPC Execution</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../examples/simple_water.html">Simple Water</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/seeded_active_learning.html">Seeded Active Learning</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/fine_tuning.html">Fine-Tuning Existing Models</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/molten_salt.html">Molten Salts</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/il.html">Ionic Liquids</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/uo2.html">Periodic Solids (UO2)</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/reactive_sampling.html">Reactive Sampling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/simple_water.html">Simple Water Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/molten_salt.html">Molten Salt Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/reactive_sampling.html">Reactive Sampling Example</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
 <ul>
@@ -115,176 +97,11 @@
              
   <section id="quickstart">
 <h1>Quickstart<a class="headerlink" href="#quickstart" title="Link to this heading"></a></h1>
-<p>This quickstart helps get ALF up and running using <code class="docutils literal notranslate"><span class="pre">examples/simple_water</span></code>.
-It is a checklist for bringing up the workflow; the full walkthrough lives in
-<a class="reference internal" href="../examples/simple_water.html"><span class="doc">Simple Water</span></a>.</p>
-<section id="prerequisites">
-<h2>Prerequisites<a class="headerlink" href="#prerequisites" title="Link to this heading"></a></h2>
-<p>Before running ALF, make sure:</p>
-<ul class="simple">
-<li><p>ALF is installed in the Python environment you will use for the run.</p></li>
-<li><p>You are working from an example or run directory that contains the ALF config
-files.</p></li>
-<li><p>The external QM and ML software needed by the chosen example is available.
-For <code class="docutils literal notranslate"><span class="pre">examples/simple_water</span></code>, that means an ORCA executable and the HIPPYNN
-environment needed for training and sampling.</p></li>
-<li><p>The Parsl resource configuration matches the machine where you will run ALF.</p></li>
-</ul>
-</section>
-<section id="pick-an-example">
-<h2>Pick An Example<a class="headerlink" href="#pick-an-example" title="Link to this heading"></a></h2>
-<p>Start with the simple water example:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">cd</span><span class="w"> </span>examples/simple_water
+<p>After configuring input files, run ALF from the command line:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master.json
 </pre></div>
 </div>
-<p>This example is small enough to inspect quickly, but it exercises all major ALF
-stages: builder, sampler, QM labeling, ML training, data storage, and retraining.
-After it is working, use the other example pages as templates for seeded,
-periodic, reactive-sampling, and fine-tuning workflows.</p>
-</section>
-<section id="which-example-should-i-use">
-<h2>Which Example Should I Use?<a class="headerlink" href="#which-example-should-i-use" title="Link to this heading"></a></h2>
-<table class="docutils align-default">
-<colgroup>
-<col style="width: 28.0%" />
-<col style="width: 72.0%" />
-</colgroup>
-<thead>
-<tr class="row-odd"><th class="head"><p>Example</p></th>
-<th class="head"><p>Use it when…</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><a class="reference internal" href="../examples/simple_water.html"><span class="doc">Simple Water</span></a></p></td>
-<td><p>You want the recommended first full ALF run.</p></td>
-</tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="../examples/seeded_active_learning.html"><span class="doc">Seeded Active Learning</span></a></p></td>
-<td><p>You want to bring existing structures, existing ALF/HIPPYNN HDF5 data,
-or both.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="../examples/fine_tuning.html"><span class="doc">Fine-Tuning Existing Models</span></a></p></td>
-<td><p>You want to start from existing model weights and adapt the model to new
-ALF data.</p></td>
-</tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="../examples/molten_salt.html"><span class="doc">Molten Salts</span></a></p></td>
-<td><p>You need a periodic VASP workflow.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="../examples/il.html"><span class="doc">Ionic Liquids</span></a></p></td>
-<td><p>You need molecular mixtures or richer fragment libraries.</p></td>
-</tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="../examples/reactive_sampling.html"><span class="doc">Reactive Sampling</span></a></p></td>
-<td><p>You want reaction-path sampling around reactant, transition-state, and
-product structures.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="../examples/uo2.html"><span class="doc">Periodic Solids (UO2)</span></a></p></td>
-<td><p>You want a NeuroChem/ANI-style workflow.</p></td>
-</tr>
-</tbody>
-</table>
-<p>Seeded active learning and fine-tuning solve different setup problems. Seeded
-active learning starts from structures or labeled HDF5 data and trains with
-ALF’s normal ML task. Fine-tuning starts from existing model weights, then
-continues supervised training on ALF data with an example-local ML task.</p>
-</section>
-<section id="check-the-config-files">
-<h2>Check The Config Files<a class="headerlink" href="#check-the-config-files" title="Link to this heading"></a></h2>
-<p>The simple water directory contains the files ALF needs for a complete run:</p>
-<table class="docutils align-default">
-<colgroup>
-<col style="width: 32.0%" />
-<col style="width: 68.0%" />
-</colgroup>
-<thead>
-<tr class="row-odd"><th class="head"><p>File</p></th>
-<th class="head"><p>Purpose</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">master_config.json</span></code></p></td>
-<td><p>Connects all stages, task functions, output paths, queue thresholds, and
-Parsl configs.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">builder_config.json</span></code></p></td>
-<td><p>Defines how initial water structures are built.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">mlmd_config.json</span></code></p></td>
-<td><p>Defines ML-driven MD sampling and uncertainty thresholds.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">orca_config.json</span></code></p></td>
-<td><p>Defines ORCA command, CPU count, method keywords, and input blocks.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">hippynn_config.json</span></code></p></td>
-<td><p>Defines HIPPYNN ensemble, network, training, and device settings.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">parsl_configs.py</span></code></p></td>
-<td><p>Defines local or cluster executors used by ALF tasks.</p></td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="edit-machine-specific-settings">
-<h2>Edit Machine-Specific Settings<a class="headerlink" href="#edit-machine-specific-settings" title="Link to this heading"></a></h2>
-<p>Before launching a run, update the settings that depend on your machine:</p>
-<ul class="simple">
-<li><p>In <code class="docutils literal notranslate"><span class="pre">orca_config.json</span></code>, set <code class="docutils literal notranslate"><span class="pre">QM_run_command</span></code> to the ORCA executable or
-launch command available on your system.</p></li>
-<li><p>In <code class="docutils literal notranslate"><span class="pre">parsl_configs.py</span></code>, set partitions, accounts, walltimes, worker
-initialization commands, and CPU/GPU executor sizes for your local or cluster
-environment.</p></li>
-<li><p>In <code class="docutils literal notranslate"><span class="pre">hippynn_config.json</span></code>, check device and training settings before running
-ML training or MLMD sampling.</p></li>
-<li><p>In <code class="docutils literal notranslate"><span class="pre">master_config.json</span></code>, confirm output paths such as <code class="docutils literal notranslate"><span class="pre">h5_path</span></code>,
-<code class="docutils literal notranslate"><span class="pre">model_path</span></code>, <code class="docutils literal notranslate"><span class="pre">QM_scratch_dir</span></code>, and <code class="docutils literal notranslate"><span class="pre">status_path</span></code>.</p></li>
-</ul>
-</section>
-<section id="run-stage-checks">
-<h2>Run Stage Checks<a class="headerlink" href="#run-stage-checks" title="Link to this heading"></a></h2>
-<p>Run the stages one at a time before starting the full active-learning loop:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json<span class="w"> </span>--test_builder
-python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json<span class="w"> </span>--test_qm
-python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json<span class="w"> </span>--test_ml
-python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json<span class="w"> </span>--test_sampler
-</pre></div>
-</div>
-<p>These stage commands make it easier to isolate setup problems in structure
-building, ORCA execution, HIPPYNN training, or MLMD sampling before a long run
-is queued. They can also be useful outside initial bring-up when you want to run
-one stage deliberately. For example, <code class="docutils literal notranslate"><span class="pre">--test_ml</span></code> submits the configured ML
-task once against the current HDF5/model state, so for ensemble ML tasks it can
-complete one ensemble training or fine-tuning job without starting the full
-active-learning loop.</p>
-</section>
-<section id="start-the-workflow">
-<h2>Start The Workflow<a class="headerlink" href="#start-the-workflow" title="Link to this heading"></a></h2>
-<p>After the stage checks pass, start the active-learning loop:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json
-</pre></div>
-</div>
-<p>ALF writes progress to <code class="docutils literal notranslate"><span class="pre">status.txt</span></code> and prints queue status for builder,
-sampler, QM, and ML tasks while the loop is running.</p>
-</section>
-<section id="know-the-outputs">
-<h2>Know The Outputs<a class="headerlink" href="#know-the-outputs" title="Link to this heading"></a></h2>
-<p>During a run, expect these paths to appear in the working directory:</p>
-<ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">status.txt</span></code>: restart and progress state.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">h5store/</span></code>: HDF5 training-data batches.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">models/</span></code>: trained model directories.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">sampling/</span></code>: sampler metadata.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">orca_scratch/</span></code>: per-structure ORCA input, output, and scratch directories.</p></li>
-</ul>
-</section>
-<section id="what-to-read-next">
-<h2>What To Read Next<a class="headerlink" href="#what-to-read-next" title="Link to this heading"></a></h2>
-<ul class="simple">
-<li><p><a class="reference internal" href="../examples/simple_water.html"><span class="doc">Simple Water</span></a> for the full simple-water walkthrough.</p></li>
-<li><p><a class="reference internal" href="../user_guide/configuration.html"><span class="doc">Configuration</span></a> for the overall configuration model.</p></li>
-<li><p><a class="reference internal" href="../user_guide/parsl.html"><span class="doc">Parsl And HPC Execution</span></a> for adapting executors and cluster resources.</p></li>
-<li><p><a class="reference internal" href="../user_guide/qm_interfaces.html"><span class="doc">QM Interfaces</span></a> for ORCA, VASP, Q-Chem, and ASE-backed QM
-interfaces.</p></li>
-<li><p><a class="reference internal" href="../user_guide/ml_interfaces.html"><span class="doc">ML Interfaces</span></a> for HIPPYNN and new ML backend setup.</p></li>
-</ul>
-</section>
+<p>See the examples section for concrete starter configurations.</p>
 </section>
 
 

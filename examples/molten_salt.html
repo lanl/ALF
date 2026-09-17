@@ -6,10 +6,9 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Molten Salts &mdash; ALF 0.0.0 documentation</title>
+  <title>Molten Salt Example &mdash; ALF 0.0.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
-      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=eaec28dc" />
 
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
@@ -20,8 +19,8 @@
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Ionic Liquids" href="il.html" />
-    <link rel="prev" title="Fine-Tuning Existing Models" href="fine_tuning.html" /> 
+    <link rel="next" title="Reactive Sampling Example" href="reactive_sampling.html" />
+    <link rel="prev" title="Simple Water Example" href="simple_water.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -52,29 +51,20 @@
 <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/configuration.html">Configuration</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../user_guide/units.html">Units And Property Conversion</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/builders.html">Builders</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/samplers.html">Samplers</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/ml_interfaces.html">ML Interfaces</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/qm_interfaces.html">QM Interfaces</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../user_guide/parsl.html">Parsl And HPC Execution</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul class="current">
-<li class="toctree-l1"><a class="reference internal" href="simple_water.html">Simple Water</a></li>
-<li class="toctree-l1"><a class="reference internal" href="seeded_active_learning.html">Seeded Active Learning</a></li>
-<li class="toctree-l1"><a class="reference internal" href="fine_tuning.html">Fine-Tuning Existing Models</a></li>
-<li class="toctree-l1 current"><a class="current reference internal" href="#">Molten Salts</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#before-you-run">Before You Run</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#workflow-pattern">Workflow Pattern</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#recommended-bring-up-commands">Recommended Bring-Up Commands</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#expected-outputs">Expected Outputs</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#configuration-files">Configuration Files</a></li>
+<li class="toctree-l1"><a class="reference internal" href="simple_water.html">Simple Water Example</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Molten Salt Example</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#what-it-demonstrates">What it demonstrates</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#relevant-files">Relevant files</a></li>
 </ul>
 </li>
-<li class="toctree-l1"><a class="reference internal" href="il.html">Ionic Liquids</a></li>
-<li class="toctree-l1"><a class="reference internal" href="uo2.html">Periodic Solids (UO2)</a></li>
-<li class="toctree-l1"><a class="reference internal" href="reactive_sampling.html">Reactive Sampling</a></li>
+<li class="toctree-l1"><a class="reference internal" href="reactive_sampling.html">Reactive Sampling Example</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
 <ul>
@@ -96,173 +86,48 @@
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
-      <li class="breadcrumb-item active">Molten Salts</li>
+      <li class="breadcrumb-item active">Molten Salt Example</li>
       <li class="wy-breadcrumbs-aside">
             <a href="../_sources/examples/molten_salt.rst.txt" rel="nofollow"> View page source</a>
       </li>
   </ul><div class="rst-breadcrumbs-buttons" role="navigation" aria-label="Sequential page navigation">
-        <a href="fine_tuning.html" class="btn btn-neutral float-left" title="Fine-Tuning Existing Models" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="il.html" class="btn btn-neutral float-right" title="Ionic Liquids" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="simple_water.html" class="btn btn-neutral float-left" title="Simple Water Example" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="reactive_sampling.html" class="btn btn-neutral float-right" title="Reactive Sampling Example" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
   </div>
   <hr/>
 </div>
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="molten-salts">
-<h1>Molten Salts<a class="headerlink" href="#molten-salts" title="Link to this heading"></a></h1>
+  <section id="molten-salt-example">
+<h1>Molten Salt Example<a class="headerlink" href="#molten-salt-example" title="Link to this heading"></a></h1>
 <p>The molten salt example demonstrates an ALF workflow for periodic ionic
 systems. It is intended for workflows where the builder constructs
 charge-balanced atomic systems and the QM stage labels selected configurations
 with VASP.</p>
-<p>The files needed to run the example are located in <code class="docutils literal notranslate"><span class="pre">examples/molten_salt</span></code>.</p>
-<section id="before-you-run">
-<h2>Before You Run<a class="headerlink" href="#before-you-run" title="Link to this heading"></a></h2>
-<p>This example is a template for a periodic VASP + HIPPYNN workflow. Before
-running it on a new machine:</p>
+<section id="what-it-demonstrates">
+<h2>What it demonstrates<a class="headerlink" href="#what-it-demonstrates" title="Link to this heading"></a></h2>
+<p>This example uses:</p>
 <ul class="simple">
-<li><p>Edit <code class="docutils literal notranslate"><span class="pre">parsl_configs.py</span></code> for the target Slurm partition, account, QoS,
-walltime, worker initialization, and CPU/GPU resource requests. See
-<a class="reference internal" href="../user_guide/parsl.html"><span class="doc">Parsl And HPC Execution</span></a>.</p></li>
-<li><p>Edit <code class="docutils literal notranslate"><span class="pre">vasp_config.json</span></code> so <code class="docutils literal notranslate"><span class="pre">QM_run_command</span></code> and VASP input settings match
-the local installation and intended calculation.</p></li>
-<li><p>Edit <code class="docutils literal notranslate"><span class="pre">hippynn_config.json</span></code> for the elements, network size, training
-controls, and device settings for the run. See
-<a class="reference internal" href="../user_guide/ml_interfaces.html"><span class="doc">ML Interfaces</span></a>.</p></li>
-<li><p>Confirm that the requested properties in <code class="docutils literal notranslate"><span class="pre">master_config.json</span></code> match the
-VASP calculator results and HDF5 keys you want to train on.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">atomic_system_task</span></code> for charge-balanced structure generation</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">simple_mlmd_sampling_task</span></code> for uncertainty-driven MD sampling</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">VASP_ase_calculator_task</span></code> for QM labeling</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">train_HIPPYNN_ensemble_task</span></code> for model retraining</p></li>
 </ul>
 </section>
-<section id="workflow-pattern">
-<h2>Workflow Pattern<a class="headerlink" href="#workflow-pattern" title="Link to this heading"></a></h2>
-<p>This example uses:</p>
-<table class="docutils align-default">
-<colgroup>
-<col style="width: 35.0%" />
-<col style="width: 65.0%" />
-</colgroup>
-<thead>
-<tr class="row-odd"><th class="head"><p>Stage</p></th>
-<th class="head"><p>Task</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p>Builder</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">alframework.builders.builders.atomic_system_task</span></code></p></td>
-</tr>
-<tr class="row-odd"><td><p>Sampler</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">alframework.samplers.mlmd_sampling.simple_mlmd_sampling_task</span></code></p></td>
-</tr>
-<tr class="row-even"><td><p>QM</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">alframework.qm_interfaces.ase_calculator_interface.VASP_ase_calculator_task</span></code></p></td>
-</tr>
-<tr class="row-odd"><td><p>ML</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">alframework.ml_interfaces.hippynn_interface.train_HIPPYNN_ensemble_task</span></code></p></td>
-</tr>
-</tbody>
-</table>
-<p>The builder reads <code class="docutils literal notranslate"><span class="pre">builder_config.json</span></code> and creates charge-neutral random
-atomic systems from the configured <code class="docutils literal notranslate"><span class="pre">atom_charges</span></code>. The provided configuration
-targets 100 atoms, enforces a minimum interatomic distance, and samples a box
-length from <code class="docutils literal notranslate"><span class="pre">box_length_range</span></code>. This is the right builder family for molten
-salts or other ionic atomic systems that are not assembled from molecular
-fragments.</p>
-<p>The sampler reads <code class="docutils literal notranslate"><span class="pre">mlmd_config.json</span></code> and runs ML-driven MD with a HIPPYNN ASE
-calculator ensemble. In this example, density fluctuation fields are set to
-<code class="docutils literal notranslate"><span class="pre">null</span></code> so the sampler does not rescale the box during sampling.</p>
-<p>The QM stage uses ASE’s VASP calculator wrapper. This is the preferred path for
-periodic DFT engines that ASE already supports. See
-<a class="reference internal" href="../user_guide/qm_interfaces.html"><span class="doc">QM Interfaces</span></a> for the generic ASE calculator pattern.</p>
-</section>
-<section id="recommended-bring-up-commands">
-<h2>Recommended Bring-Up Commands<a class="headerlink" href="#recommended-bring-up-commands" title="Link to this heading"></a></h2>
-<p>From <code class="docutils literal notranslate"><span class="pre">examples/molten_salt</span></code>:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json<span class="w"> </span>--test_builder
-python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json<span class="w"> </span>--test_qm
-python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json<span class="w"> </span>--test_ml
-python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json<span class="w"> </span>--test_sampler
-python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json
-</pre></div>
-</div>
-<p>The test modes use <code class="docutils literal notranslate"><span class="pre">parsl_debug_configuration</span></code> from <code class="docutils literal notranslate"><span class="pre">master_config.json</span></code>.
-Use them to verify the builder, VASP command, HIPPYNN environment, and sampler
-resource mapping before launching a long active-learning run.</p>
-</section>
-<section id="expected-outputs">
-<h2>Expected Outputs<a class="headerlink" href="#expected-outputs" title="Link to this heading"></a></h2>
-<p>During a run, expect the usual ALF output structure:</p>
-<table class="docutils align-default">
-<colgroup>
-<col style="width: 30.0%" />
-<col style="width: 70.0%" />
-</colgroup>
-<thead>
-<tr class="row-odd"><th class="head"><p>Path</p></th>
-<th class="head"><p>Purpose</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">status.txt</span></code></p></td>
-<td><p>Restart and progress state.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">h5store/data-*.h5</span></code></p></td>
-<td><p>VASP-labeled training batches.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">models/model-*</span></code></p></td>
-<td><p>HIPPYNN model ensemble directories.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">sampling/metadata-*.p</span></code></p></td>
-<td><p>Sampler metadata and uncertainty records.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">vasp_calculations/</span></code></p></td>
-<td><p>Per-structure VASP scratch and output directories.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">status_plots/</span></code></p></td>
-<td><p>Optional progress plots from the configured plotting utility.</p></td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="configuration-files">
-<h2>Configuration Files<a class="headerlink" href="#configuration-files" title="Link to this heading"></a></h2>
-<table class="docutils align-default">
-<colgroup>
-<col style="width: 35.0%" />
-<col style="width: 65.0%" />
-</colgroup>
-<thead>
-<tr class="row-odd"><th class="head"><p>File</p></th>
-<th class="head"><p>Purpose</p></th>
-</tr>
-</thead>
-<tbody>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">master_config.json</span></code></p></td>
-<td><p>Connects the builder, sampler, VASP QM task, HIPPYNN training task,
-output paths, queue-depth controls, and Parsl configs.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">builder_config.json</span></code></p></td>
-<td><p>Defines element charges, target atom count, minimum distance, and box
-length range for charge-neutral atomic systems.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">mlmd_config.json</span></code></p></td>
-<td><p>Defines MD time step, maximum time, uncertainty thresholds, temperature
-schedule, optional density schedule, metadata path, and ASE model loader.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">vasp_config.json</span></code></p></td>
-<td><p>Defines the VASP command and ASE VASP calculator options.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">hippynn_config.json</span></code></p></td>
-<td><p>Defines HIPPYNN ensemble, network, species, optimizer, and training
-options.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">parsl_configs.py</span></code></p></td>
-<td><p>Generic CPU/GPU Slurm template copied from the water example.</p></td>
-</tr>
-</tbody>
-</table>
-<p>Environment setup for this example now lives in the command strings and worker
-initialization hooks that users adapt in <code class="docutils literal notranslate"><span class="pre">vasp_config.json</span></code> and
-<code class="docutils literal notranslate"><span class="pre">parsl_configs.py</span></code>.</p>
+<section id="relevant-files">
+<h2>Relevant files<a class="headerlink" href="#relevant-files" title="Link to this heading"></a></h2>
+<p>The example lives in <code class="docutils literal notranslate"><span class="pre">examples/molten_salt</span></code>.</p>
+<ul class="simple">
+<li><p><a class="reference external" href="https://github.com/lanl/ALF/blob/main/examples/molten_salt/master_config.json">master_config.json</a></p></li>
+<li><p><a class="reference external" href="https://github.com/lanl/ALF/blob/main/examples/molten_salt/builder_config.json">builder_config.json</a></p></li>
+<li><p><a class="reference external" href="https://github.com/lanl/ALF/blob/main/examples/molten_salt/mlmd_config.json">mlmd_config.json</a></p></li>
+<li><p><a class="reference external" href="https://github.com/lanl/ALF/blob/main/examples/molten_salt/vasp_config.json">vasp_config.json</a></p></li>
+<li><p><a class="reference external" href="https://github.com/lanl/ALF/blob/main/examples/molten_salt/hippynn_config.json">hippynn_config.json</a></p></li>
+<li><p><a class="reference external" href="https://github.com/lanl/ALF/blob/main/examples/molten_salt/p310-alf-load.bash">p310-alf-load.bash</a></p></li>
+</ul>
+<p>Adapt the VASP command, Parsl resource configuration, scratch paths, and module
+load script to match the target compute environment.</p>
 </section>
 </section>
 
@@ -270,8 +135,8 @@ initialization hooks that users adapt in <code class="docutils literal notransla
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="fine_tuning.html" class="btn btn-neutral float-left" title="Fine-Tuning Existing Models" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="il.html" class="btn btn-neutral float-right" title="Ionic Liquids" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="simple_water.html" class="btn btn-neutral float-left" title="Simple Water Example" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="reactive_sampling.html" class="btn btn-neutral float-right" title="Reactive Sampling Example" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

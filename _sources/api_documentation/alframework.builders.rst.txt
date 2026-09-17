@@ -13,6 +13,7 @@ Submodules
    :maxdepth: 5
 
    alframework.builders.builders
+   alframework.builders.defect_crystal_builder
    alframework.builders.moltensalt_builder
    alframework.builders.rdkit_condensed_phase
    alframework.builders.reactive_builder

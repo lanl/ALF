@@ -13,6 +13,10 @@ import inspect
 
 logger = logging.getLogger(__name__)
 
+SUCCESSFUL_TASK_STATUSES = ("exec_done", "memo_done")
+FAILED_TASK_STATUSES = ("failed", "dep_fail")
+FINAL_TASK_STATUSES = SUCCESSFUL_TASK_STATUSES + FAILED_TASK_STATUSES
+
 def annealing_schedule(t, tmax, amp, per, srt, end):
     """Defines the overall temperature profile in the molecular dynamics simulation.
 
@@ -201,9 +205,9 @@ def store_current_data(h5path, system_data, properties):
 def is_final_task(task):
     """
     Helper to determine if a Parsl task has reached a final state.
-    Final states are those that are no longer active (not pending, running, or launched).
+    Final states have either completed successfully or permanently failed.
     """
-    return task.task_status() not in ("pending", "running", "launched")
+    return task.task_status() in FINAL_TASK_STATUSES
 
 # Recommend creation of parsl queue object
 class parsl_task_queue():
@@ -251,7 +255,7 @@ class parsl_task_queue():
         failed_number = 0
         for taski,task in enumerate(self.task_list):
             task_status = task.task_status()
-            if task_status == 'failed':
+            if task_status in FAILED_TASK_STATUSES:
                 failed_number += 1
         return(failed_number)
             
@@ -268,7 +272,7 @@ class parsl_task_queue():
             if not is_final_task(task):
                 continue
             task_status = task.task_status()
-            if task_status in ('exec_done','memo_done'):
+            if task_status in SUCCESSFUL_TASK_STATUSES:
                 try:
                     results_list.append(task.result())
                 except Exception as e:
@@ -277,8 +281,8 @@ class parsl_task_queue():
                 del self.task_list[taski]
             else: # Handle all others as failure states
                 try:
-                    results_list.append(task.result())
-                    logger.warning("Task marked as %s but did not raise", task_status)
+                    task.result()
+                    logger.warning("Task marked as %s returned a result; discarding it", task_status)
                 except Exception as e:
                     logger.warning("Task failed", exc_info=True)
                 failed_number += 1
@@ -328,15 +332,16 @@ def find_empty_directory(pattern):
 
 
 # Throughout this code individual systems are passed around as MoleculesObject-s
-# these are backward-compatible with a three element list:
-# - element 0: metadata: this is required to include moleculeid,  but may also include sampling and other metadata
+# Legacy three-element lists/tuples are also supported:
+# - element 0: a moleculeid string or metadata dict containing moleculeid
 # - element 1: an ASE atoms object.
 # - element 2: Evaluated QM properties
 def system_checker(system, kill_on_fail=True, print_error=True):
     """Checks if the system returned by the builder meets all requeriments.
 
     Args:
-        system (MoleculesObject/list): A list containing three elements. The first is its 'moleculeid' -- a str uniquely identifying the system.
+        system (MoleculesObject/list/tuple): A MoleculesObject or three-element sequence whose first element
+                       is a moleculeid string or a metadata dict containing a string 'moleculeid'.
                        The second element is an ASE Atoms object. The third element is a dict that stores the
                        desired properties from the QM calculation (e.g. forces and energies).
         kill_on_fail (bool): Kills the process if something goes wrong.
@@ -346,23 +351,30 @@ def system_checker(system, kill_on_fail=True, print_error=True):
         (bool): True if 'system' meets all requirements and False otherwise.
 
     """
-    try: 
-        assert isinstance(system, (list, tuple, MoleculesObject))
-        if isinstance(system, (list, tuple)):
+    try:
+        if isinstance(system, MoleculesObject):
+            moleculeid = system.get_moleculeid()
+            atoms = system.get_atoms()
+            results = system.get_results()
+        else:
+            assert isinstance(system, (list, tuple))
             assert len(system) == 3
-        assert isinstance(system[0], str)
-        assert isinstance(system[1], Atoms)
-        assert isinstance(system[2], dict)
+            moleculeid = system[0]['moleculeid'] if isinstance(system[0], dict) else system[0]
+            atoms = system[1]
+            results = system[2]
+        assert isinstance(moleculeid, str)
+        assert isinstance(atoms, Atoms)
+        assert isinstance(results, dict)
         
         no_nan = True
-        if np.sum(np.isnan(system[1].get_positions())) > 0:
+        if np.sum(np.isnan(atoms.get_positions())) > 0:
             no_nan = False
-        if any(system[1].get_pbc()):
-            if np.sum(np.isnan(system[1].get_cell())) > 0:
+        if any(atoms.get_pbc()):
+            if np.sum(np.isnan(atoms.get_cell())) > 0:
                 no_nan = False
-        for prop in system[2]:
-            if isinstance(system[2][prop], np.ndarray):
-                if np.sum(np.isnan(system[2][prop])) > 0:
+        for prop in results:
+            if isinstance(results[prop], np.ndarray):
+                if np.sum(np.isnan(results[prop])) > 0:
                     no_nan = False
         if not no_nan:
             raise RuntimeError('NAN in system')

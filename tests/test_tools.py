@@ -42,12 +42,26 @@ def test_random_rotation_matrix():
 
 def test_system_checker_accepts_valid_system_and_rejects_bad_data():
     atoms = Atoms("H2", positions=[[0.0, 0.0, 0.0], [0.0, 0.0, 0.7]])
-    valid = [{"moleculeid": "h2"}, atoms, {"energy": np.array([-1.0])}]
-
-    assert system_checker(valid)
+    results = {"energy": np.array([-1.0])}
+    for identifier in ({"moleculeid": "h2"}, "h2"):
+        for sequence_type in (list, tuple):
+            assert system_checker(sequence_type((identifier, atoms, results)))
+    molecule_object = MoleculesObject(atoms.copy(), "h2")
+    molecule_object.store_results(results)
+    assert system_checker(molecule_object)
     assert not system_checker([{"moleculeid": "bad"}, atoms, {"forces": np.array([np.nan])}], kill_on_fail=False)
-    with pytest.raises(RuntimeError):
-        system_checker([{}, atoms, {}])
+    molecule_object.store_results({"forces": np.array([np.nan])})
+    invalid_systems = [
+        molecule_object,
+        [{}, atoms, {}],
+        [{"moleculeid": 1}, atoms, {}],
+        ["h2", None, {}],
+        ["h2", atoms, []],
+    ]
+    for system in invalid_systems:
+        assert not system_checker(system, kill_on_fail=False, print_error=False)
+        with pytest.raises(RuntimeError):
+            system_checker(system, print_error=False)
 
 
 def test_load_config_file_paths(tmp_path):

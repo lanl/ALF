@@ -76,11 +76,12 @@ class FakeLangevin:
 
 
 class FakeTask:
-    def __init__(self, status, result=None, done=True, running=False):
+    def __init__(self, status, result=None, done=True, running=False, exception=None):
         self._status = status
         self._result = result
         self._done = done
         self._running = running
+        self._exception = exception
 
     def done(self):
         return self._done
@@ -92,4 +93,6 @@ class FakeTask:
         return self._status
 
     def result(self):
+        if self._exception is not None:
+            raise self._exception
         return self._result

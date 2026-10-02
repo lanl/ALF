@@ -17,6 +17,7 @@ install_requirements=[
 doc_requirements = [
     "sphinx",
     "sphinx_rtd_theme",
+    "sphinx_autodoc_typehints",
 ]
 
 # Extra dependencies
@@ -25,14 +26,18 @@ full_requirements = [
     "hippynn",
 ]
 
+test_requirements = [
+    "pytest",
+]
+
 setuptools.setup(
     name="alf",
-    version="0.0.1",
+    version="0.1.0",
     author="",
     author_email="",
     python_requires=">3.9",
     install_requires=install_requirements,
-    extras_require={"docs": doc_requirements, "full": full_requirements},
+    extras_require={"docs": doc_requirements, "full": full_requirements, "tests": test_requirements},
     license="BSD 3-Clause License",
     classifiers=[
         "Development Status :: 3 - Alpha",
@@ -45,4 +50,3 @@ setuptools.setup(
     long_description=long_description,
     packages=setuptools.find_packages(),
 )
-

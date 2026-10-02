@@ -36,17 +36,23 @@ pieces to a concrete run.
    :caption: User Guide
 
    user_guide/configuration
+   user_guide/units
    user_guide/builders
    user_guide/samplers
    user_guide/ml_interfaces
    user_guide/qm_interfaces
+   user_guide/parsl
 
 .. toctree::
    :maxdepth: 2
    :caption: Examples
 
    examples/simple_water
+   examples/seeded_active_learning
+   examples/fine_tuning
    examples/molten_salt
+   examples/il
+   examples/uo2
    examples/reactive_sampling
 
 .. toctree::

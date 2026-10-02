@@ -32,6 +32,6 @@
 "device_string":"from_multiprocessing",
 "remove_high_energy_cut":null, 
 "remove_high_energy_std":null,
-"remove_high_forces_cut":100, 
+"remove_high_forces_cut":100,
 "remove_high_forces_std":10
 }

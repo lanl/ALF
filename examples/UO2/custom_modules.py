@@ -19,30 +19,28 @@ def ase_calculator_task(molecule_object,QM_config,QM_scratch_dir,properties_list
     
     from ase.calculators.vasp import Vasp as calc_class
     
-    directory = QM_scratch_dir + '/' + molecule_object[0]['moleculeid']
+    directory = QM_scratch_dir + '/' + molecule_object.get_moleculeid()
     properties = list(properties_list)
+    atoms = molecule_object.get_atoms()
     
     command = QM_config['QM_run_command']
     #Define the calculator
     calc = calc_class(directory=directory, command=command, **QM_config['input_list'][0])
     
     #Run the calculation
-    calc.calculate(atoms=molecule_object[1], properties=properties)
+    calc.calculate(atoms=atoms, properties=properties)
     #atoms.calc(properties=properties)
     for curF in glob.glob(directory+'/WAVECAR*'):
         os.remove(curF)
     
     calc2 = calc_class(directory=directory, command=command, **QM_config['input_list'][1])
     
-    calc2.calculate(atoms=molecule_object[1], properties=properties)
-    
-    molecule_object[2] = calc2.results
+    calc2.calculate(atoms=atoms, properties=properties)
+
+    molecule_object.store_results(calc2.results)
     
     convergedre = re.compile('aborting loop because EDIFF is reached')
     txt = open(directory + '/OUTCAR','r').read()
-    if len(convergedre.findall(txt)) == 1:
-        molecule_object[2]['converged'] = True
-    else:
-        molecule_object[2]['converged'] = False
+    molecule_object.set_converged_flag(len(convergedre.findall(txt)) == 1)
         
     return(molecule_object)

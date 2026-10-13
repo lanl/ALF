@@ -46,7 +46,7 @@ class MoleculesObject:
 
         # Checking if the atoms have equivalent coordinates
         coords1 = self.atoms.get_positions()
-        coords2 = self.atoms.get_positions()
+        coords2 = other.atoms.get_positions()
         same_coords = np.allclose(coords1, coords2, atol=0, rtol=1e-6)
 
         if same_atoms and same_coords:

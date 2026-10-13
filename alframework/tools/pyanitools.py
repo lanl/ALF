@@ -62,7 +62,7 @@ class anidataloader(object):
 
                         if type(dataset) is np.ndarray:
                             if dataset.size != 0:
-                                if type(dataset[0]) is np.bytes_:
+                                if isinstance(dataset[0], (bytes, np.bytes_)):
                                     dataset = [a.decode('ascii') for a in dataset]
 
                         data.update({k:dataset})
@@ -97,7 +97,7 @@ class anidataloader(object):
 
                 if type(dataset) is np.ndarray:
                     if dataset.size != 0:
-                        if type(dataset[0]) is np.bytes_:
+                        if isinstance(dataset[0], (bytes, np.bytes_)):
                             dataset = [a.decode('ascii') for a in dataset]
 
                 data.update({k: dataset})
@@ -117,4 +117,3 @@ class anidataloader(object):
     ''' Close the HDF5 file '''
     def cleanup(self):
         self.store.close()
-

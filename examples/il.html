@@ -1,0 +1,264 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ionic Liquids &mdash; ALF 0.0.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=eaec28dc" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=5c79bd3c"></script>
+      <script src="../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Periodic Solids (UO2)" href="uo2.html" />
+    <link rel="prev" title="Molten Salts" href="molten_salt.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            ALF
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started/what_is_alf.html">What Is ALF</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started/installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started/quickstart.html">Quickstart</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/configuration.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/units.html">Units And Property Conversion</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/builders.html">Builders</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/samplers.html">Samplers</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/ml_interfaces.html">ML Interfaces</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/qm_interfaces.html">QM Interfaces</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/parsl.html">Parsl And HPC Execution</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Examples</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="simple_water.html">Simple Water</a></li>
+<li class="toctree-l1"><a class="reference internal" href="seeded_active_learning.html">Seeded Active Learning</a></li>
+<li class="toctree-l1"><a class="reference internal" href="fine_tuning.html">Fine-Tuning Existing Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="molten_salt.html">Molten Salts</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Ionic Liquids</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#before-you-run">Before You Run</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#workflow-pattern">Workflow Pattern</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#recommended-bring-up-commands">Recommended Bring-Up Commands</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#configuration-files">Configuration Files</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#expected-outputs">Expected Outputs</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="uo2.html">Periodic Solids (UO2)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="reactive_sampling.html">Reactive Sampling</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../api_documentation/modules.html">alframework</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../license.html">License</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">ALF</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Ionic Liquids</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/examples/il.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul><div class="rst-breadcrumbs-buttons" role="navigation" aria-label="Sequential page navigation">
+        <a href="molten_salt.html" class="btn btn-neutral float-left" title="Molten Salts" accesskey="p"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="uo2.html" class="btn btn-neutral float-right" title="Periodic Solids (UO2)" accesskey="n">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+  </div>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="ionic-liquids">
+<h1>Ionic Liquids<a class="headerlink" href="#ionic-liquids" title="Link to this heading"></a></h1>
+<p>The ionic liquid example demonstrates a molecular condensed-phase ALF workflow
+with a richer fragment library than the simple water example. It is intended as
+a starting point for mixtures containing solvent molecules, cations, anions,
+and small organic fragments.</p>
+<p>The files needed to run the example are located in <code class="docutils literal notranslate"><span class="pre">examples/IL</span></code>.</p>
+<section id="before-you-run">
+<h2>Before You Run<a class="headerlink" href="#before-you-run" title="Link to this heading"></a></h2>
+<p>This example is a template, not a ready-to-run cluster job.</p>
+<ul class="simple">
+<li><p>Edit <code class="docutils literal notranslate"><span class="pre">parsl_configs.py</span></code> for the target Slurm partitions, accounts, QoS,
+walltimes, worker initialization commands, and GPU resource requests.</p></li>
+<li><p>Edit <code class="docutils literal notranslate"><span class="pre">orca_config.json</span></code> so <code class="docutils literal notranslate"><span class="pre">QM_run_command</span></code> points to the local ORCA
+executable and requested output includes the properties in
+<code class="docutils literal notranslate"><span class="pre">properties_list</span></code>.</p></li>
+<li><p>Edit <code class="docutils literal notranslate"><span class="pre">hippynn_config.json</span></code> for the desired species, network, training, and
+device settings.</p></li>
+<li><p>Review <code class="docutils literal notranslate"><span class="pre">builder_config.json</span></code> before changing the fragment library. The
+builder expects fragment names to match files in <code class="docutils literal notranslate"><span class="pre">fragment_library</span></code>.</p></li>
+</ul>
+</section>
+<section id="workflow-pattern">
+<h2>Workflow Pattern<a class="headerlink" href="#workflow-pattern" title="Link to this heading"></a></h2>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 35.0%" />
+<col style="width: 65.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Stage</p></th>
+<th class="head"><p>Task</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Builder</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">alframework.builders.builders.simple_condensed_phase_builder_task</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>Sampler</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">alframework.samplers.mlmd_sampling.simple_mlmd_sampling_task</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>QM</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">alframework.qm_interfaces.orca5_interface.orca_double_calculator_task</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>ML</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">alframework.ml_interfaces.hippynn_interface.train_HIPPYNN_ensemble_task</span></code></p></td>
+</tr>
+</tbody>
+</table>
+<p>The builder assembles systems from <code class="docutils literal notranslate"><span class="pre">fragment_library</span></code> using
+<code class="docutils literal notranslate"><span class="pre">solute_molecule_options</span></code> and <code class="docutils literal notranslate"><span class="pre">solvent_molecules</span></code>. This is useful when the
+active-learning space includes multiple possible cation/anion combinations or
+solvent environments.</p>
+<p>The sampler uses HIPPYNN models through <code class="docutils literal notranslate"><span class="pre">HIPNN_ASE_load_ensemble</span></code>. Unlike the
+simple water example, this sampler config includes temperature and density
+fluctuation ranges, so ALF can explore both thermal and box-size variation
+during MLMD.</p>
+<p>The QM task uses the ORCA double-check interface, which is useful when the
+workflow should validate a first calculation with a second ORCA input before
+accepting the label.</p>
+</section>
+<section id="recommended-bring-up-commands">
+<h2>Recommended Bring-Up Commands<a class="headerlink" href="#recommended-bring-up-commands" title="Link to this heading"></a></h2>
+<p>From <code class="docutils literal notranslate"><span class="pre">examples/IL</span></code>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json<span class="w"> </span>--test_builder
+python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json<span class="w"> </span>--test_qm
+python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json<span class="w"> </span>--test_ml
+python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json<span class="w"> </span>--test_sampler
+python<span class="w"> </span>-m<span class="w"> </span>alframework<span class="w"> </span>--master<span class="w"> </span>master_config.json
+</pre></div>
+</div>
+</section>
+<section id="configuration-files">
+<h2>Configuration Files<a class="headerlink" href="#configuration-files" title="Link to this heading"></a></h2>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 35.0%" />
+<col style="width: 65.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>File</p></th>
+<th class="head"><p>Purpose</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">master_config.json</span></code></p></td>
+<td><p>Connects the condensed-phase builder, MLMD sampler, ORCA double-check
+task, HIPPYNN training task, queue controls, outputs, and Parsl configs.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">builder_config.json</span></code></p></td>
+<td><p>Defines fragment-library choices, solvent probabilities, cell ranges,
+radius scaling, minimum distance, maximum atom count, and coordinate
+shaking.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">mlmd_config.json</span></code></p></td>
+<td><p>Defines MD time step, maximum time, uncertainty thresholds, temperature
+and density schedules, trajectory output, and ML calculator options.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">orca_config.json</span></code></p></td>
+<td><p>Defines ORCA commands and input blocks.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">hippynn_config.json</span></code></p></td>
+<td><p>Defines HIPPYNN ensemble and training settings.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">parsl_configs.py</span></code></p></td>
+<td><p>Generic CPU/GPU Slurm template copied from the water example.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="expected-outputs">
+<h2>Expected Outputs<a class="headerlink" href="#expected-outputs" title="Link to this heading"></a></h2>
+<p>The run writes the standard ALF outputs: <code class="docutils literal notranslate"><span class="pre">status.txt</span></code>, <code class="docutils literal notranslate"><span class="pre">h5store/data-*.h5</span></code>,
+<code class="docutils literal notranslate"><span class="pre">models/model-*</span></code>, <code class="docutils literal notranslate"><span class="pre">sampling/metadata-*.p</span></code>, ORCA scratch directories under
+<code class="docutils literal notranslate"><span class="pre">QM_scratch_dir</span></code>, and optional <code class="docutils literal notranslate"><span class="pre">status_plots/</span></code> output.</p>
+<p>See <a class="reference internal" href="../user_guide/builders.html"><span class="doc">Builders</span></a> for condensed-phase builder settings,
+<a class="reference internal" href="../user_guide/samplers.html"><span class="doc">Samplers</span></a> for MLMD and density fluctuation controls, and
+<a class="reference internal" href="../user_guide/parsl.html"><span class="doc">Parsl And HPC Execution</span></a> for adapting the copied Parsl template.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="molten_salt.html" class="btn btn-neutral float-left" title="Molten Salts" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="uo2.html" class="btn btn-neutral float-right" title="Periodic Solids (UO2)" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023, ALF Team.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

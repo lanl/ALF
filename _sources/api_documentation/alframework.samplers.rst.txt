@@ -16,3 +16,4 @@ Submodules
    alframework.samplers.ml_driven_md_sampling
    alframework.samplers.mlmd_sampling
    alframework.samplers.reactive_sampler
+   alframework.samplers.udd_sampling

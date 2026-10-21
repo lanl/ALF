@@ -9,6 +9,7 @@
   <title>alframework.tools.tools module &mdash; ALF 0.0.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=eaec28dc" />
 
   
       <script src="../_static/jquery.js?v=5d32c60e"></script>
@@ -51,16 +52,22 @@
 <p class="caption" role="heading"><span class="caption-text">User Guide</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/configuration.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/units.html">Units And Property Conversion</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/builders.html">Builders</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/samplers.html">Samplers</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/ml_interfaces.html">ML Interfaces</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../user_guide/qm_interfaces.html">QM Interfaces</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/parsl.html">Parsl And HPC Execution</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../examples/simple_water.html">Simple Water Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/molten_salt.html">Molten Salt Example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/reactive_sampling.html">Reactive Sampling Example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/simple_water.html">Simple Water</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/seeded_active_learning.html">Seeded Active Learning</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/fine_tuning.html">Fine-Tuning Existing Models</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/molten_salt.html">Molten Salts</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/il.html">Ionic Liquids</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/uo2.html">Periodic Solids (UO2)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../examples/reactive_sampling.html">Reactive Sampling</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">API Documentation</span></p>
 <ul class="current">
@@ -83,6 +90,7 @@
 <li class="toctree-l7"><a class="reference internal" href="#alframework.tools.tools.build_input_dict"><code class="docutils literal notranslate"><span class="pre">build_input_dict()</span></code></a></li>
 <li class="toctree-l7"><a class="reference internal" href="#alframework.tools.tools.compute_empirical_formula"><code class="docutils literal notranslate"><span class="pre">compute_empirical_formula()</span></code></a></li>
 <li class="toctree-l7"><a class="reference internal" href="#alframework.tools.tools.find_empty_directory"><code class="docutils literal notranslate"><span class="pre">find_empty_directory()</span></code></a></li>
+<li class="toctree-l7"><a class="reference internal" href="#alframework.tools.tools.is_final_task"><code class="docutils literal notranslate"><span class="pre">is_final_task()</span></code></a></li>
 <li class="toctree-l7"><a class="reference internal" href="#alframework.tools.tools.load_config_file"><code class="docutils literal notranslate"><span class="pre">load_config_file()</span></code></a></li>
 <li class="toctree-l7"><a class="reference internal" href="#alframework.tools.tools.load_module_from_config"><code class="docutils literal notranslate"><span class="pre">load_module_from_config()</span></code></a></li>
 <li class="toctree-l7"><a class="reference internal" href="#alframework.tools.tools.load_module_from_string"><code class="docutils literal notranslate"><span class="pre">load_module_from_string()</span></code></a></li>
@@ -215,6 +223,13 @@ raise_on_fail (bool): If True raises a value error if this function fails.</p>
 <dt>Returns:</dt><dd><p>(int): Number of the empty directory.</p>
 </dd>
 </dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="alframework.tools.tools.is_final_task">
+<span class="sig-name descname"><span class="pre">is_final_task</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">task</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/alframework/tools/tools.html#is_final_task"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#alframework.tools.tools.is_final_task" title="Link to this definition"></a></dt>
+<dd><p>Helper to determine if a Parsl task has reached a final state.
+Final states have either completed successfully or permanently failed.</p>
 </dd></dl>
 
 <dl class="py function">
@@ -366,7 +381,7 @@ properties (dict): Dictionary defined in master.json whose keys are the properti
 <dd><p>Checks if the system returned by the builder meets all requeriments.</p>
 <dl>
 <dt>Args:</dt><dd><dl class="simple">
-<dt>system (list): A list containing three elements. The first is a dict containing metadata of the system,</dt><dd><p>and one of its keys must be ‘moleculeid’ whose value is a unique identifier of the system.
+<dt>system (MoleculesObject/list/tuple): A MoleculesObject or three-element sequence whose first element</dt><dd><p>is a moleculeid string or a metadata dict containing a string ‘moleculeid’.
 The second element is an ASE Atoms object. The third element is a dict that stores the
 desired properties from the QM calculation (e.g. forces and energies).</p>
 </dd>

@@ -3,10 +3,16 @@ name: Build and Deploy Sphinx Docs for ALF
 on:
   push:
     branches:
+      - main
       - development
   pull_request:
     branches:
+      - main
       - development
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -33,7 +39,7 @@ jobs:
           sphinx-build -b html docs/source docs/_autobuild/html
 
       - name: Deploy to GitHub Pages
-        if: github.ref == 'refs/heads/development'  # deploy on development branch
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}

@@ -233,7 +233,7 @@ def simple_condensed_phase_builder_task(moleculeid, builder_config, molecule_lib
 
     cell_shape = [np.random.uniform(dim[0], dim[1]) for dim in cell_range]
 
-    empty_system = MoleculesObject(Atoms(cell=cell_shape), moleculeid)
+    empty_system = MoleculesObject(Atoms(cell=cell_shape,pbc=True), moleculeid)
 
     molecule_library, mols = readMolFiles(molecule_library_dir)
 

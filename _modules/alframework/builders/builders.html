@@ -338,7 +338,7 @@
 
     <span class="n">cell_shape</span> <span class="o">=</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">dim</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">dim</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="k">for</span> <span class="n">dim</span> <span class="ow">in</span> <span class="n">cell_range</span><span class="p">]</span>
 
-    <span class="n">empty_system</span> <span class="o">=</span> <span class="n">MoleculesObject</span><span class="p">(</span><span class="n">Atoms</span><span class="p">(</span><span class="n">cell</span><span class="o">=</span><span class="n">cell_shape</span><span class="p">),</span> <span class="n">moleculeid</span><span class="p">)</span>
+    <span class="n">empty_system</span> <span class="o">=</span> <span class="n">MoleculesObject</span><span class="p">(</span><span class="n">Atoms</span><span class="p">(</span><span class="n">cell</span><span class="o">=</span><span class="n">cell_shape</span><span class="p">,</span><span class="n">pbc</span><span class="o">=</span><span class="kc">True</span><span class="p">),</span> <span class="n">moleculeid</span><span class="p">)</span>
 
     <span class="n">molecule_library</span><span class="p">,</span> <span class="n">mols</span> <span class="o">=</span> <span class="n">readMolFiles</span><span class="p">(</span><span class="n">molecule_library_dir</span><span class="p">)</span>
 

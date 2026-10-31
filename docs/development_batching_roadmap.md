@@ -1,6 +1,6 @@
 # Living roadmap for integration into ALF development
 
-Last updated: October 31, 2026 (Increments 0–2 done locally).
+Last updated: October 31, 2026 (Increments 0–3 done locally).
 
 This is the shared plan for gradually bringing the fork's intended capabilities
 into `lanl/ALF:development`. It is separate from ongoing implementation on
@@ -64,8 +64,8 @@ official `lanl/ALF:development`). No increment is merged yet.
 | 0. Roadmap and baseline | done locally | Publish this document, synchronize development with main, and record existing-example/test behavior. | Baseline results and unavailable dependencies are documented. |
 | 1. Shared batching helpers | done locally | Compatible grouping, waiting buffers, timeout submission, actual-width accounting, output normalization, and batch-builder ID preservation. | Focused tests pass; existing execution is unchanged until batching is selected. |
 | 2. Labeling coordination | done locally | Batched labeling during bootstrap and active learning; explicit sequential compatibility for existing single-structure labelers. | Actual coordinator tests cover labeling, partial batches, storage, and retraining. |
-| 3. Native PySEQM labeling | planned (next) | Ground-state batch energies/forces, adapter-local padding and atom-order restoration, and per-member convergence handling. | Native batch results agree with individual evaluations; successful labels survive partial failures. |
-| 4. Ground-state sampling and acquisition | planned | Minimal physical-inference/MLMD contracts, uncertainty and summed ranking, first-trigger returns, and an in-memory logical-cohort selector. | Shared observations produce equivalent screening, scores, stopping, and selection across execution strategies. |
+| 3. Native PySEQM labeling | done locally | Ground-state batch energies/forces, adapter-local padding and atom-order restoration, and per-member convergence handling. | Native batch results agree with individual evaluations; successful labels survive partial failures. |
+| 4. Ground-state sampling and acquisition | planned (next) | Minimal physical-inference/MLMD contracts, uncertainty and summed ranking, first-trigger returns, and an in-memory logical-cohort selector. | Shared observations produce equivalent screening, scores, stopping, and selection across execution strategies. |
 | 5. TorchSim dynamics | planned | Supported NVIDIA/AMD ground-state batched MLMD. | CPU, NVIDIA, and Darwin MI250 mechanics and integration acceptance pass. |
 | 6. ALCHEMI dynamics | planned | NVIDIA batched MLMD through the same contracts, in its separate environment. | Shared conformance tests and NVIDIA acceptance pass. |
 | 7. Combined release validation | planned | Opt-in examples and integration/performance results. | All single/batched dynamics x single/batched labeling combinations complete representative ALF workflows. |
@@ -202,6 +202,64 @@ Record each increment's commits, evidence, and limitations here as it lands.
   re-read on the in-loop config reload; waiting structures are in memory
   only. The fork's `pyseqm_interface.py` labels one molecule per task and is
   excited-state only; Increment 3 adds the ground-state native batch path.
+
+#### Increment 3 — native PySEQM labeling (done locally, 2026-10-31)
+
+- New `alframework/qm_interfaces/pyseqm_interface.py`, which is ground-state
+  only. It is written fresh rather than ported, because the fork module is
+  excited-state, one molecule per task, and runs PySEQM in a subprocess.
+  - `pyseqm_task(molecule_objects, QM_config)` runs on `alf_QM_executor`;
+    select it with `"batching": {"mode": "native", ...}`.
+  - `QM_config` keys: `method` (AM1 default), `scf_eps` (1e-8),
+    `scf_converger` ([2], Pulay DIIS), `device` (`cpu` default; set `cuda`
+    and place `alf_QM_executor` on GPU nodes for GPU labeling), and optional
+    raw `pyseqm_parameters`.
+  - Per-member `metadata['charge']` / `['mult']` are passed through
+    (default 0/1).
+- Adapter-local layout: each member is stably sorted heaviest-first (PySEQM
+  rejects other orders) and zero-padded to the batch's largest molecule.
+  Forces are restored to ALF's input order and trimmed of padding before
+  storage. Mixed sizes and compositions share a batch.
+- Units and signs: energy = PySEQM `Etot` in eV; forces = PySEQM `force` in
+  eV/Å, confirmed to be −dE/dR by finite differences. Use
+  `properties_list` factors for other units. The `heat of formation` (`Hf`)
+  is not stored.
+- Per-member failures: members flagged by PySEQM's `notconverged`, or with
+  non-finite results, are marked unconverged with
+  `metadata['labeling_error']`; their batch-mates are kept. If the batched
+  solve raises, each member is retried alone once so one bad geometry
+  cannot discard the batch. This isolates failures; it is not a retry
+  policy. Periodic inputs and `excited_states` parameters are rejected.
+- PySEQM source: `~/github/PYSEQM` at `31edd88` (`lanl/PYSEQM`). In
+  `atomistic` it is pip-installed editable, but the editable finder is
+  shadowed by a stale `site-packages/seqm/` directory that contains only
+  `MolecularDynamics.py`, so `import seqm.Molecule` fails unless
+  `~/github/PYSEQM` is on `PYTHONPATH`. In `alf_env` it is not installed.
+  Run the PySEQM tests with
+  `PYTHONPATH=/vast/home/pjlohr/github/PYSEQM`.
+- Evidence (CPU, `cn211`, float64):
+  - `tests/test_pyseqm_interface.py` has 8 tests. Six run without PySEQM:
+    sorting/padding/restoration, PBC and excited-state rejection,
+    unconverged-member retention, and failed-batch fallback with a fake
+    runner. Two use real PySEQM:
+    - A batch of [methanol, water, methanol] in non-sorted input order agrees
+      with individual evaluations (|ΔE| < 1e-6 eV, |ΔF| < 1e-5 eV/Å;
+      observed ≈ 1e-13 eV and 2e-7 eV/Å in the probe).
+    - Forces match −dE/dx by central differences for every water atom.
+  - Full suite: 80 passed in both envs with PySEQM on the path. Without it,
+    `alf_env` reports 78 passed and 2 skipped (optional-dependency
+    isolation).
+  - Real coordinator: an ALF bootstrap (`python -m alframework`, local
+    thread executors, stopped before HIPPYNN training) with a 5-wide mixed
+    water/methanol builder and native PySEQM batches of 8 (5 s timeout)
+    labeled 16/16 structures. HDF5 `data-0000.h5` had correct species
+    ordering. Re-evaluating every stored frame individually reproduced the
+    stored labels (max |ΔE| 6e-13 eV, max |ΔF| 5e-7 eV/Å). Scratch:
+    `/tmp/alf_inc3_pyseqm`.
+- Not yet done: GPU (`device: cuda`) execution and throughput/memory
+  versus batch size; this node has no GPU. Retraining with PySEQM labels
+  through HIPPYNN was not run here; storage/retraining through the
+  coordinator is covered by Increment 2's tests.
 
 ### Batching and reference labeling
 

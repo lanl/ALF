@@ -30,6 +30,7 @@ from alframework.tools.tools import load_module_from_string
 from alframework.tools.tools import build_input_dict
 from alframework.tools.pyanitools import anidataloader
 from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.labeling import LabelingCoordinator
 #import logging
 #logging.basicConfig(level=logging.DEBUG)
 
@@ -61,8 +62,7 @@ ML_config = load_config_file(master_config['ML_config_path'], master_config['mas
 # All configs
 all_configs = [master_config, builder_config, sampler_config, QM_config, ML_config]
 
-# Define queues:
-QM_task_queue = parsl_task_queue()
+# Define queues (the QM queue is created with the QM task below):
 ML_task_queue = parsl_task_queue()
 builder_task_queue = parsl_task_queue()
 sampler_task_queue = parsl_task_queue()
@@ -112,6 +112,10 @@ qm_task = load_module_from_string(master_config['QM_task'])
 for cur_Exec in qm_task.executors:
     if cur_Exec.replace('_executor', '_standby_executor') in executor_list:
         qm_task.executors.append(cur_Exec.replace('_executor', '_standby_executor'))
+# Without a 'batching' block in QM_config, labeling submits one QM task per structure as before.
+labeling = LabelingCoordinator(qm_task, master_config['QM_task'], QM_config, master_config)
+QM_task_queue = labeling.queue
+print("QM labeling: " + labeling.describe())
 
 #ML
 ml_task = load_module_from_string(master_config['ML_task'])
@@ -191,11 +195,8 @@ if args.test_sampler:
 
 #def ase_calculator_task(input_system,configuration_list,directory,command,properties=['energy','forces']):
 if args.test_qm:
-    task_input = build_input_dict(qm_task.func,
-                                  [{"molecule_object": test_configuration, "QM_config": QM_config},
-                                   *all_configs, status],
-                                  raise_on_fail=True)
-    QM_task_queue.add_task(qm_task(**task_input))
+    labeling.submit(test_configuration, [{"QM_config": QM_config}, *all_configs, status])
+    labeling.submit_ready([{"QM_config": QM_config}, *all_configs, status], flush=True)
     qm_result = QM_task_queue.task_list[0].result()
     queue_output,failed = QM_task_queue.get_task_results()
     sys.stdout.write('Job Failed: {:d}'.format(failed))
@@ -282,20 +283,13 @@ if status['current_h5_id'] == 0 and status['current_model_id'] < 0:
             for structure in builder_results:
                 #If builders return a single structure:
                 if isinstance(structure, MoleculesObject):
-                    task_input = build_input_dict(qm_task.func,
-                                                  [{"molecule_object": structure, "QM_config": QM_config},
-                                                   *all_configs, status],
-                                                  raise_on_fail=True)
-                    QM_task_queue.add_task(qm_task(**task_input))
+                    labeling.submit(structure, [{"QM_config": QM_config}, *all_configs, status])
                 elif isinstance(structure, list):
                     for substructure in structure:
                         assert isinstance(substructure, MoleculesObject), 'substructure must be a MoleculesObject instance'
-                        task_input = build_input_dict(qm_task.func,
-                                                      [{"molecule_object": substructure, "QM_config": QM_config},
-                                                       *all_configs, status],
-                                                      raise_on_fail=True)
-                        QM_task_queue.add_task(qm_task(**task_input))
-                
+                        labeling.submit(substructure, [{"QM_config": QM_config}, *all_configs, status])
+        labeling.submit_ready([{"QM_config": QM_config}, *all_configs, status])
+
         print("### Bootstraping Learning Status at: " + time.ctime() + " ###")
         print("builder status:")
         builder_task_queue.print_status()
@@ -304,8 +298,8 @@ if status['current_h5_id'] == 0 and status['current_model_id'] < 0:
     
         with open(master_config['status_path'], "w") as outfile:
             json.dump(status, outfile, indent=2)
-            
-        time.sleep(60)
+
+        time.sleep(labeling.poll_delay(60))
 
     print("Saving Bootstrap and training model")
     results_list, failed = QM_task_queue.get_task_results()
@@ -413,11 +407,8 @@ while True:
         for structure in sampler_results: #may need [0]
             assert isinstance(structure, MoleculesObject), 'structure must be a MoleculesObject instance'
             if structure.get_atoms() is not None:
-                task_input = build_input_dict(qm_task.func,
-                                              [{"molecule_object": structure, "QM_config": QM_config}, master_config,
-                                               *all_configs, status],
-                                              raise_on_fail=True)
-                QM_task_queue.add_task(qm_task(**task_input))
+                labeling.submit(structure, [{"QM_config": QM_config}, master_config, *all_configs, status])
+    labeling.submit_ready([{"QM_config": QM_config}, master_config, *all_configs, status])
 
     # Train more models
     if (QM_task_queue.get_completed_number() > master_config['save_h5_threshold']) and (ML_task_queue.get_number() < 1):
@@ -467,5 +458,5 @@ while True:
         json.dump(status, outfile, indent=2)
     
     master_loop_iter += 1
-    time.sleep(60)
+    time.sleep(labeling.poll_delay(60))
 	

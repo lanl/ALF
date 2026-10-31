@@ -1,6 +1,6 @@
 # Living roadmap for integration into ALF development
 
-Last updated: October 31, 2026 (Increments 0–1 done locally).
+Last updated: October 31, 2026 (Increments 0–2 done locally).
 
 This is the shared plan for gradually bringing the fork's intended capabilities
 into `lanl/ALF:development`. It is separate from ongoing implementation on
@@ -63,8 +63,8 @@ official `lanl/ALF:development`). No increment is merged yet.
 | --- | --- | --- | --- |
 | 0. Roadmap and baseline | done locally | Publish this document, synchronize development with main, and record existing-example/test behavior. | Baseline results and unavailable dependencies are documented. |
 | 1. Shared batching helpers | done locally | Compatible grouping, waiting buffers, timeout submission, actual-width accounting, output normalization, and batch-builder ID preservation. | Focused tests pass; existing execution is unchanged until batching is selected. |
-| 2. Labeling coordination | planned (next) | Batched labeling during bootstrap and active learning; explicit sequential compatibility for existing single-structure labelers. | Actual coordinator tests cover labeling, partial batches, storage, and retraining. |
-| 3. Native PySEQM labeling | planned | Ground-state batch energies/forces, adapter-local padding and atom-order restoration, and per-member convergence handling. | Native batch results agree with individual evaluations; successful labels survive partial failures. |
+| 2. Labeling coordination | done locally | Batched labeling during bootstrap and active learning; explicit sequential compatibility for existing single-structure labelers. | Actual coordinator tests cover labeling, partial batches, storage, and retraining. |
+| 3. Native PySEQM labeling | planned (next) | Ground-state batch energies/forces, adapter-local padding and atom-order restoration, and per-member convergence handling. | Native batch results agree with individual evaluations; successful labels survive partial failures. |
 | 4. Ground-state sampling and acquisition | planned | Minimal physical-inference/MLMD contracts, uncertainty and summed ranking, first-trigger returns, and an in-memory logical-cohort selector. | Shared observations produce equivalent screening, scores, stopping, and selection across execution strategies. |
 | 5. TorchSim dynamics | planned | Supported NVIDIA/AMD ground-state batched MLMD. | CPU, NVIDIA, and Darwin MI250 mechanics and integration acceptance pass. |
 | 6. ALCHEMI dynamics | planned | NVIDIA batched MLMD through the same contracts, in its separate environment. | Shared conformance tests and NVIDIA acceptance pass. |
@@ -143,6 +143,65 @@ Record each increment's commits, evidence, and limitations here as it lands.
   custom keys, ID preservation through regrouping, width accounting, poll
   delay). The full suite reports 61 passed in both envs. Nothing calls the
   module yet, so existing execution is unchanged.
+
+#### Increment 2 — labeling coordination (done locally, 2026-10-31)
+
+- Opt in with a `batching` block in `QM_config`. `mode` is required and
+  explicit:
+  - `native`: `QM_task` accepts `molecule_objects` and labels them in one
+    call.
+  - `sequential`: job packing for an existing single-structure `QM_task`
+    (`molecule_object`). One task on the labeler's own executors calls it per
+    member.
+  `batch_size`, `partial_policy`, and `max_wait_seconds` are shared with
+  Increment 1. The signature is checked against the mode at startup.
+  `full_only` requires `target_queued_QM >= batch_size`, because waiting
+  structures count as queued.
+- New `alframework/tools/labeling.py` (`LabelingCoordinator`,
+  `label_sequentially`). `BatchedTaskQueue` was added to `batching.py`; its
+  counts are in structures, so `bootstrap_set`, `target_queued_QM`, and
+  `save_h5_threshold` keep their per-structure meaning. It flattens batch
+  results into the ordinary `MoleculesObject` list, so `store_current_data`
+  and training are unchanged.
+- `__main__.py` changes are limited to dispatch, readiness polling, and the
+  loop sleep: QM submissions (bootstrap, active learning, `--test_qm`) go
+  through `labeling.submit`, then `labeling.submit_ready` runs each pass, and
+  `time.sleep(60)` becomes `time.sleep(labeling.poll_delay(60))`. Without
+  `batching`, `QM_task_queue` is the ordinary `parsl_task_queue`, tasks are
+  built exactly as before, and the sleep stays 60 s. Net diff: +19/−28 lines.
+- Partial failures: in `sequential` mode a member that raises is marked
+  unconverged with `metadata['labeling_error']`; its batch-mates' labels are
+  stored. `native` labelers mark failed members unconverged themselves.
+  Unconverged members are skipped by the existing storage path. A whole-task
+  failure counts once in `lifetime_failed_QM_tasks` (still in tasks);
+  `QM_task_queue.failed_structures` holds the structure count but is not yet
+  written to `status`. No retry policy was added.
+- Evidence:
+  - `tests/test_labeling_coordinator.py` (11 tests) runs the real
+    `python -m alframework` entrypoint with local Parsl thread executors and
+    mock builder/sampler/labeler/trainer tasks. It covers bootstrap → HDF5 →
+    training → MLMD → labeling → second HDF5 → retraining for unbatched,
+    sequential (width 2 and 5), and native (width 2 and 5) labeling. One
+    bootstrap structure always fails. The width-5 cases can only finish
+    through timed-out partial batches and check the shortened sleep.
+  - Unit tests cover settings, signature checks, `full_only` validation,
+    sequential partial-failure retention, and structure-based queue counts.
+  - Full suite: 72 passed in both envs; the coordinator test was stable over
+    15 repeated runs per env.
+  - Real backend: `--test_qm` with ORCA 5.0.4 (HF/def2-SVP, 1 core, local
+    thread executors on `cn211`) labeled a periodic 30-water box through
+    `sequential` mode (SCF converged, PBC retained, stored to `qm_test.h5`),
+    and again without batching. These were different random builder
+    structures, so this checks execution, not numerical agreement. Scratch:
+    `/tmp/alf_inc2_orca`.
+- Not yet done: a Slurm/Darwin run of a full AL example through the
+  coordinator with batching on and off. This is the outstanding
+  real-coordinator compatibility check, and it needs a login-node `tmux`
+  session.
+- Known limitations: batching settings are read at startup and not
+  re-read on the in-loop config reload; waiting structures are in memory
+  only. The fork's `pyseqm_interface.py` labels one molecule per task and is
+  excited-state only; Increment 3 adds the ground-state native batch path.
 
 ### Batching and reference labeling
 

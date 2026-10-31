@@ -10,10 +10,19 @@ Waiting batches are held in memory only; unfinished buffers are not restored
 after a process restart.
 """
 
+import logging
 import time
 from collections import OrderedDict
 
 from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.tools import (
+    FAILED_TASK_STATUSES,
+    SUCCESSFUL_TASK_STATUSES,
+    is_final_task,
+    parsl_task_queue,
+)
+
+logger = logging.getLogger(__name__)
 
 PARTIAL_POLICIES = ("timeout", "full_only")
 DEFAULT_MAX_WAIT_SECONDS = 5.0
@@ -208,6 +217,84 @@ class TaskWidths:
         """Forget tasks no longer present in ``tasks`` (e.g. after harvesting)."""
         live = {id(task) for task in tasks}
         self._widths = {key: value for key, value in self._widths.items() if key in live}
+
+
+class BatchedTaskQueue(parsl_task_queue):
+    """Task queue whose counts are in input structures rather than tasks.
+
+    This keeps ALF's structure-based limits (``bootstrap_set``,
+    ``target_queued_QM``, ``save_h5_threshold``, ...) meaningful when one task
+    holds several structures. Molecules waiting in ``buffer`` count as queued.
+    :meth:`get_task_results` flattens batch results into one list of
+    ``MoleculesObject`` and still reports the number of failed *tasks*;
+    :attr:`failed_structures` accumulates the structures those tasks held.
+    """
+
+    def __init__(self, buffer=None):
+        super().__init__()
+        self.buffer = buffer
+        self.widths = TaskWidths()
+        self.failed_structures = 0
+
+    def add_task(self, task, width=1):
+        self.widths.record(task, width)
+        super().add_task(task)
+
+    def get_waiting_number(self):
+        return 0 if self.buffer is None else len(self.buffer)
+
+    def get_task_number(self):
+        return len(self.task_list)
+
+    def get_number(self):
+        return self.widths.total(self.task_list) + self.get_waiting_number()
+
+    def get_completed_number(self):
+        return self.widths.total(task for task in self.task_list if is_final_task(task))
+
+    def get_running_number(self):
+        return self.widths.total(task for task in self.task_list if task.running())
+
+    def get_exec_done_number(self):
+        return self.widths.total(task for task in self.task_list
+                                 if task.task_status() == 'exec_done' and task.done())
+
+    def get_failed_number(self):
+        return self.widths.total(task for task in self.task_list
+                                 if task.task_status() in FAILED_TASK_STATUSES)
+
+    def get_task_results(self):
+        results_list = []
+        failed_number = 0
+        remaining = []
+        for task in self.task_list:
+            if not is_final_task(task):
+                remaining.append(task)
+                continue
+            if task.task_status() in SUCCESSFUL_TASK_STATUSES:
+                try:
+                    results_list.extend(flatten_molecule_output(task.result()))
+                    continue
+                except Exception:
+                    logger.error("Task marked as done but raised or returned invalid output", exc_info=True)
+            else:
+                try:
+                    task.result()
+                    logger.warning("Task marked as %s returned a result; discarding it", task.task_status())
+                except Exception:
+                    logger.warning("Task failed", exc_info=True)
+            failed_number += 1
+            self.failed_structures += self.widths.width(task)
+        self.task_list = remaining
+        self.widths.prune(self.task_list)
+        return results_list, failed_number
+
+    def print_status(self):
+        print('Total Structures: {:d} ({:d} tasks, {:d} waiting for a batch)'.format(
+            self.get_number(), self.get_task_number(), self.get_waiting_number()))
+        print('Finished Structures: {:d}'.format(self.get_completed_number()))
+        print('Finished Successfully Structures: {:d}'.format(self.get_exec_done_number()))
+        print('Finished Failed Structures: {:d}'.format(self.get_failed_number()))
 
 
 def poll_delay(default, *buffers, now=None):

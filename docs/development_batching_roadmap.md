@@ -65,7 +65,7 @@ official `lanl/ALF:development`). No increment is merged yet.
 | 1. Shared batching helpers | done locally | Compatible grouping, waiting buffers, timeout submission, actual-width accounting, output normalization, and batch-builder ID preservation. | Focused tests pass; existing execution is unchanged until batching is selected. |
 | 2. Labeling coordination | done locally | Batched labeling during bootstrap and active learning; explicit sequential compatibility for existing single-structure labelers. | Actual coordinator tests cover labeling, partial batches, storage, and retraining. |
 | 3. Native PySEQM labeling | done locally | Ground-state batch energies/forces, adapter-local padding and atom-order restoration, and per-member convergence handling. | Native batch results agree with individual evaluations; successful labels survive partial failures. |
-| 4. Ground-state sampling and acquisition | planned (next) | Minimal physical-inference/MLMD contracts, uncertainty and summed ranking, first-trigger returns, and an in-memory logical-cohort selector. | Shared observations produce equivalent screening, scores, stopping, and selection across execution strategies. |
+| 4. Ground-state sampling and acquisition | in progress (4a) | Minimal physical-inference/MLMD contracts, uncertainty and summed ranking, first-trigger returns, and an in-memory logical-cohort selector. | Shared observations produce equivalent screening, scores, stopping, and selection across execution strategies. |
 | 5. TorchSim dynamics | planned | Supported NVIDIA/AMD ground-state batched MLMD. | CPU, NVIDIA, and Darwin MI250 mechanics and integration acceptance pass. |
 | 6. ALCHEMI dynamics | planned | NVIDIA batched MLMD through the same contracts, in its separate environment. | Shared conformance tests and NVIDIA acceptance pass. |
 | 7. Combined release validation | planned | Opt-in examples and integration/performance results. | All single/batched dynamics x single/batched labeling combinations complete representative ALF workflows. |
@@ -260,6 +260,44 @@ Record each increment's commits, evidence, and limitations here as it lands.
   versus batch size; this node has no GPU. Retraining with PySEQM labels
   through HIPPYNN was not run here; storage/retraining through the
   coordinator is covered by Increment 2's tests.
+
+#### Increment 4 — ground-state sampling and acquisition (in progress)
+
+Decisions (2026-10-31, with the user):
+
+- Keep development's flat sampler configuration (`dt`, `maxt`, `Escut`,
+  `Fscut`, `Ncheck`, temperature/density ranges, `MLMD_calculator_options`,
+  ...). Add only `driver`, `acquisition`, and `batching` blocks. The fork's
+  `sampling`/`inference` schema is not adopted.
+- Defer the physical-force screen (`max_force_cutoff`) until GALF is
+  introduced. Development has no such screen, so adding one would change
+  scientific behavior.
+- Development has no ranking today; the uncertainty and summed scores come
+  from the fork. The summed score is `w_energy·Es/Escut + w_force·Fsrms/Fscut`,
+  with `w_energy` and `w_force` required and no defaults. The excited-state
+  gap term is excluded.
+- Factor Increment 2's buffer/submit/poll logic into a shared batched
+  submitter used by both labeling and sampling, so `parallel_samplers`
+  counts structures and one sleep honors both buffers' deadlines. Labeling
+  behavior and tests are unchanged.
+
+Sub-steps, each a separate commit:
+
+| Step | Status | Deliverable | Acceptance |
+| --- | --- | --- | --- |
+| 4a. Inference contract and scoring | in progress | Per-member unbiased energies/forces from a list of structures (adapter for the existing ASE ensemble); `Es`/`Fs`/`Fsmax`/`Fsrms` with `MLMD_calculator`'s population-std formulas; eligibility (existing thresholds, `min_time`, `distcut` rejection); uncertainty and summed ranking; stable frame identity and deterministic ties. No `__main__.py` change. | Parity with `MLMD_calculator` on fakes and on the trained Darwin water ensemble (CPU). |
+| 4b. Multi-trajectory MLMD, first-trigger | planned | Opt-in task taking `molecule_objects`; `driver.strategy` `single`/`batched`, `driver.engine` `ase`; minimal engine contract (step, set temperature, scale cell, freeze, state); per-trajectory seeds from molecule IDs; configurable device; shared batched submitter in the coordinator. `simple_mlmd_sampling_task` untouched. | Identical frames/metadata for single vs batched from seeded inputs; real coordinator with mocks; real-coordinator CPU run with the trained water model. |
+| 4c. In-memory cohort top-K | planned | `acquisition.selection = {mode: cohort_top_k, cohort_size, k}` and `trajectory_policy` `stop`/`continue`; incremental admission; model generation pinned per cohort; terminal outcomes per trajectory; exact global top-K with safe local pruning; handoff to labeling. No persistence. | Replay at widths 1, 2, 8, 32, 50 with reversed completion gives identical selections; ties, empty trajectories, < K candidates, cohort > capacity, failure after an eligible frame, model promotion mid-cohort. |
+
+Out of scope for Increment 4: TorchSim/ALCHEMI (Increments 5/6), native
+batched HIPPYNN inference (Increment 5), excited states/gap/LCM, plugin
+bias/force controls, and cohort persistence.
+
+Evidence available: the trained 8-member water ensemble at
+`examples/simple_water_darwin_run_test/models/model-0000` (untracked,
+July 2026) loads on CPU with `HIPNN_ASE_load_ensemble(..., device='cpu')`
+in about 9 s. `MLMD_calculator` exposes per-member contributions, followed
+by the well potential as a final extra entry.
 
 ### Batching and reference labeling
 

@@ -8,6 +8,8 @@ from alframework.builders.builders import (
     atomic_system_builder,
     construct_simulation_box,
     create_atomic_system,
+    simple_condensed_phase_builder_task,
+    simple_multi_condensed_phase_builder_task,
     to_mic,
 )
 from alframework.tools.molecules_class import MoleculesObject
@@ -90,3 +92,26 @@ def test_atomic_system_builder_returns_molecule_ready_atoms():
     assert len(molecule) == len(atoms)
     assert set(atoms.get_chemical_symbols()).issubset(atom_charges)
     assert sum(atom_charges[symbol] for symbol in atoms.get_chemical_symbols()) == 0
+
+
+def test_condensed_phase_builders_return_periodic_systems_with_requested_ids():
+    from pathlib import Path
+
+    library = str(Path(__file__).resolve().parents[1] / "examples" / "simple_water_multi_builder" / "fragment_library") + "/"
+    settings = {
+        "molecule_library_dir": library,
+        "cell_range": [[6.0, 6.0]] * 3,
+        "solute_molecule_options": [["water.xyz"]],
+        "Rrange": [0.5, 0.5],
+    }
+    builder_config = {"solvent_molecules": {"water.xyz": 1.0}, "min_dist": 1.25, "max_patience": 50}
+    random.seed(3)
+    np.random.seed(3)
+
+    single = simple_condensed_phase_builder_task.func("single-0", builder_config, **settings)
+    multi = simple_multi_condensed_phase_builder_task.func(["multi-0", "multi-1"], builder_config, **settings)
+
+    assert single.get_atoms().pbc.all()
+    assert [system.get_moleculeid() for system in multi] == ["multi-0", "multi-1"]
+    for system in multi:
+        assert system.get_atoms().pbc.all()

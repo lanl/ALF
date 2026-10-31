@@ -291,7 +291,7 @@ def simple_multi_condensed_phase_builder_task(moleculeids, builder_config, molec
     for moleculeid in moleculeids:
         cell_shape = [np.random.uniform(dim[0], dim[1]) for dim in cell_range]
 
-        empty_system = MoleculesObject(Atoms(cell=cell_shape), moleculeid)
+        empty_system = MoleculesObject(Atoms(cell=cell_shape,pbc=True), moleculeid)
 
         feed_parameters = {'solute_molecules': random.choice(solute_molecule_options),
                            'density': np.random.uniform(Rrange[0], Rrange[1])}

@@ -1,6 +1,6 @@
 # Living roadmap for integration into ALF development
 
-Last updated: October 31, 2026 (Increments 0–3 done locally).
+Last updated: October 31, 2026 (Increments 0–3 and 4a done locally; 4b next).
 
 This is the shared plan for gradually bringing the fork's intended capabilities
 into `lanl/ALF:development`. It is separate from ongoing implementation on
@@ -65,7 +65,7 @@ official `lanl/ALF:development`). No increment is merged yet.
 | 1. Shared batching helpers | done locally | Compatible grouping, waiting buffers, timeout submission, actual-width accounting, output normalization, and batch-builder ID preservation. | Focused tests pass; existing execution is unchanged until batching is selected. |
 | 2. Labeling coordination | done locally | Batched labeling during bootstrap and active learning; explicit sequential compatibility for existing single-structure labelers. | Actual coordinator tests cover labeling, partial batches, storage, and retraining. |
 | 3. Native PySEQM labeling | done locally | Ground-state batch energies/forces, adapter-local padding and atom-order restoration, and per-member convergence handling. | Native batch results agree with individual evaluations; successful labels survive partial failures. |
-| 4. Ground-state sampling and acquisition | in progress (4a) | Minimal physical-inference/MLMD contracts, uncertainty and summed ranking, first-trigger returns, and an in-memory logical-cohort selector. | Shared observations produce equivalent screening, scores, stopping, and selection across execution strategies. |
+| 4. Ground-state sampling and acquisition | in progress (4a done; 4b next) | Minimal physical-inference/MLMD contracts, uncertainty and summed ranking, first-trigger returns, and an in-memory logical-cohort selector. | Shared observations produce equivalent screening, scores, stopping, and selection across execution strategies. |
 | 5. TorchSim dynamics | planned | Supported NVIDIA/AMD ground-state batched MLMD. | CPU, NVIDIA, and Darwin MI250 mechanics and integration acceptance pass. |
 | 6. ALCHEMI dynamics | planned | NVIDIA batched MLMD through the same contracts, in its separate environment. | Shared conformance tests and NVIDIA acceptance pass. |
 | 7. Combined release validation | planned | Opt-in examples and integration/performance results. | All single/batched dynamics x single/batched labeling combinations complete representative ALF workflows. |
@@ -285,8 +285,8 @@ Sub-steps, each a separate commit:
 
 | Step | Status | Deliverable | Acceptance |
 | --- | --- | --- | --- |
-| 4a. Inference contract and scoring | in progress | Per-member unbiased energies/forces from a list of structures (adapter for the existing ASE ensemble); `Es`/`Fs`/`Fsmax`/`Fsrms` with `MLMD_calculator`'s population-std formulas; eligibility (existing thresholds, `min_time`, `distcut` rejection); uncertainty and summed ranking; stable frame identity and deterministic ties. No `__main__.py` change. | Parity with `MLMD_calculator` on fakes and on the trained Darwin water ensemble (CPU). |
-| 4b. Multi-trajectory MLMD, first-trigger | planned | Opt-in task taking `molecule_objects`; `driver.strategy` `single`/`batched`, `driver.engine` `ase`; minimal engine contract (step, set temperature, scale cell, freeze, state); per-trajectory seeds from molecule IDs; configurable device; shared batched submitter in the coordinator. `simple_mlmd_sampling_task` untouched. | Identical frames/metadata for single vs batched from seeded inputs; real coordinator with mocks; real-coordinator CPU run with the trained water model. |
+| 4a. Inference contract and scoring | done locally | Per-member unbiased energies/forces from a list of structures (adapter for the existing ASE ensemble); `Es`/`Fs`/`Fsmax`/`Fsrms` with `MLMD_calculator`'s population-std formulas; eligibility (existing thresholds, `min_time`, `distcut` rejection); uncertainty and summed ranking; stable frame identity and deterministic ties. No `__main__.py` change. | Parity with `MLMD_calculator` on fakes and on the trained Darwin water ensemble (CPU). |
+| 4b. Multi-trajectory MLMD, first-trigger | planned (next) | Opt-in task taking `molecule_objects`; `driver.strategy` `single`/`batched`, `driver.engine` `ase`; minimal engine contract (step, set temperature, scale cell, freeze, state); per-trajectory seeds from molecule IDs; configurable device; shared batched submitter in the coordinator. `simple_mlmd_sampling_task` untouched. | Identical frames/metadata for single vs batched from seeded inputs; real coordinator with mocks; real-coordinator CPU run with the trained water model. |
 | 4c. In-memory cohort top-K | planned | `acquisition.selection = {mode: cohort_top_k, cohort_size, k}` and `trajectory_policy` `stop`/`continue`; incremental admission; model generation pinned per cohort; terminal outcomes per trajectory; exact global top-K with safe local pruning; handoff to labeling. No persistence. | Replay at widths 1, 2, 8, 32, 50 with reversed completion gives identical selections; ties, empty trajectories, < K candidates, cohort > capacity, failure after an eligible frame, model promotion mid-cohort. |
 
 Out of scope for Increment 4: TorchSim/ALCHEMI (Increments 5/6), native
@@ -298,6 +298,41 @@ Evidence available: the trained 8-member water ensemble at
 July 2026) loads on CPU with `HIPNN_ASE_load_ensemble(..., device='cpu')`
 in about 9 s. `MLMD_calculator` exposes per-member contributions, followed
 by the well potential as a final extra entry.
+
+4a record (done locally, 2026-10-31):
+
+- New `alframework/ml_interfaces/ensemble_inference.py`:
+  - `ASEEnsembleEvaluator.predict(atoms_list)` returns unbiased per-member
+    energies `[models, systems]` and per-system forces
+    `[models, atoms_i, 3]`. It evaluates one structure at a time and applies
+    no UDD, well potential, or thresholds.
+  - `ensemble_statistics` returns `Es`, `Fs`, `Fsmax`, `Fsrms`, and the mean
+    energy.
+- New `alframework/samplers/acquisition.py` (the name is free on
+  development):
+  - `acquisition_settings`: `uncertainty` (default) or `summed`, with
+    required `w_energy`/`w_force`.
+  - `assess_frame` returns `rejected` (`distcut`), `eligible`, or `continue`,
+    only once `min_time` is reached. `ranking_score`, `frame_id`
+    (`<trajectory_id>:step-NNNNNNNNN`), and `top_k` order ties by score,
+    then trajectory ID, then step.
+- Nonpositive cutoffs (examples use `Escut`/`Fscut = -1` to force every
+  frame to trigger) still trigger under `uncertainty` and rank as `inf`
+  ties, broken by trajectory/step. `summed` rejects nonpositive cutoffs at
+  configuration time.
+- Evidence: `tests/test_acquisition.py` has 22 tests.
+  - Statistics match `MLMD_calculator` with and without the well potential,
+    which is excluded from the physical predictions; mixed sizes work.
+  - Eligibility matches a transcription of `mlmd_sampling`'s stopping logic
+    in 10 boundary cases. A high summed score alone is not eligible.
+    Scores match hand values. Top-K is invariant under 10 input shuffles.
+  - Trained Darwin water ensemble (8 HIPPYNN members, CPU, float32): `Es`,
+    `Fs`, `Fsmax` match `MLMD_calculator` within `rtol=atol=1e-5`. The test
+    skips when that untracked model directory or `hippynn` is absent.
+  - Full suite: 102 passed in both envs, with PySEQM on the path. The 8
+    added warnings are HIPPYNN deprecation notices raised while loading the
+    trained checkpoints.
+- Nothing calls these modules yet; existing sampling is unchanged.
 
 ### Batching and reference labeling
 

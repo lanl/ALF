@@ -4,6 +4,7 @@
   "Escut":20,
   "Fscut":0.3,
   "Ncheck":5,
+  "distcut":0.7,
   "srt_temp":[200.0, 450.0],
   "end_temp":[200.0 ,450.0],
   "amp_temp":[0.0   ,50.0],

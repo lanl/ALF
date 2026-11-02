@@ -404,8 +404,17 @@ by the well potential as a final extra entry.
   - `distcut` defaults to 1.2 Å in both `mlmd_sampling` and the new task. The tracked water examples
     omit `distcut`, so dense water (O–H ≈ 0.96 Å) is rejected at the first check under either sampler.
     `simple_water_darwin_run_test` avoided this only because its `maxt` ends sampling before any check
-    triggers. The scratch run set `distcut: 0.7`. Changing the default would be a scientific-default
-    change and needs a separate decision.
+    triggers. The scratch run set `distcut: 0.7`.
+    - Resolved 2026-11-02 at the user's direction. The four tracked water examples (`simple_water`,
+      `simple_water_multi_builder`, `fine_tuning`, `seeded_active_learning`) now set `"distcut":0.7`,
+      matching the existing Darwin fine-tuning example.
+    - The code default (1.2 Å) is unchanged, so other examples and user configs behave as before.
+    - The stored Darwin water bootstrap frames have minimum interatomic distances of 0.84–0.90 Å:
+      every frame is below 1.2 and none is below 0.7.
+    - Re-running the trained-model scratch loop with `simple_water`'s unmodified sampler settings (plus
+      only batching/`maxt`/`device`) gave 6/6 trajectories eligible (force triggers) and labeled, with
+      none rejected and no failed tasks. Before the change, every trajectory was rejected at the first
+      check.
   - `HIPNN_ASE_calculator` loads checkpoints inside `hippynn.tools.active_directory` (process-wide
     `os.chdir`) with a relative model path. Two sampler tasks loading concurrently in one process
     (`ThreadPoolExecutor`) therefore race. One task failed this way in the scratch run. This affects the

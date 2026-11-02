@@ -85,6 +85,13 @@ Record each increment's commits, evidence, and limitations here as it lands.
   `198f125`. Development had no commits absent from main, so local
   `development` was fast-forwarded to `206ea44`; this brings in the main PBC
   and HIPPYNN fixes (`4f54fad`). Not pushed.
+- Rechecked 2026-11-02: official development advanced to `39dcd29` (based on
+  `198f125`), which only restricts the GitHub docs, unit-test, and
+  package-build workflows to `main`. It was merged into local `development`
+  (`47d8835`, workflow files only, no conflicts); the suite still reports 102
+  passed in both envs. Development PRs therefore receive no CI, so the local
+  suite results recorded here are the test evidence. Official development
+  still lacks main's `4f54fad` fixes, which these branches carry.
 - Test baseline: `pytest` on development reports 47 passed both before
   (`198f125`) and after (`206ea44`) synchronization, in both the `atomistic`
   (Python 3.12, ASE 3.27, Parsl 2026.02) and `alf_env` (ASE 3.29, Parsl

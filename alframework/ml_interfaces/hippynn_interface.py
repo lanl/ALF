@@ -579,3 +579,139 @@ def HIPNN_ASE_load_ensemble(HIPNN_ensemble_directory,device="cuda:0"):
         model_list.append(HIPNN_ASE_calculator(cur_dir,device=device))
     return(model_list)
 
+
+# ---------------------------------------------------------------------------------------------
+# Batched ensemble inference for batched dynamics engines (sampler ``batched_calculator``).
+#
+# ``load_hippynn_batched_ensemble`` loads the ``model-*`` members written by
+# ``train_HIPPYNN_ensemble_task`` and evaluates many structures of different sizes together:
+# one padded forward pass per member. Evaluator contract (used by
+# ``alframework.samplers.torchsim_engine.TorchSimEngine``):
+#
+#     energies, forces = evaluator.evaluate(numbers, positions, cells, pbc, counts)
+#
+# Inputs are packed (unpadded) torch tensors: ``numbers`` [atoms], ``positions`` [atoms, 3] in
+# Angstrom, ``cells`` [systems, 3, 3] in ASE's row-vector convention, ``pbc`` [3] shared by the
+# batch, and ``counts`` the atoms per system. Outputs are unbiased per-member ``energies``
+# [models, systems] in eV and ``forces`` [models, atoms, 3] in eV/Angstrom, in input atom order.
+# No UDD, well potential, or thresholds are applied.
+#
+# Molecular checkpoints evaluate nonperiodic systems. Fully periodic systems use the
+# checkpoint's cell input if it was trained with one; otherwise its open-boundary pair finders
+# are replaced by HIPPYNN periodic pair finders, as HIPPYNN's own ASE calculator does, so results
+# match ``HIPNN_ASE_load_ensemble``. Mixed periodicity is not supported. Members are loaded from
+# absolute paths, without changing the working directory.
+# ---------------------------------------------------------------------------------------------
+
+def load_hippynn_batched_ensemble(model_directory, device="cuda:0", energy_key="energy", force_key="forces"):
+    """Load a HIPPYNN ensemble for batched evaluation (``batched_calculator`` loader)."""
+    return HippynnBatchedEnsemble(model_directory, device=device, energy_key=energy_key, force_key=force_key)
+
+
+def _load_member(member_directory, device):
+    # Absolute paths: no process-wide chdir, so concurrent loads in one process are safe.
+    from hippynn.experiment.serialization import load_saved_tensors
+    structure, state = load_saved_tensors(os.path.join(member_directory, "experiment_structure.pt"),
+                                          os.path.join(member_directory, "best_model.pt"), map_location=device)
+    model = structure["training_modules"].model
+    model.load_state_dict(state)
+    return model
+
+
+def _target(model, key):
+    matches = [node for node in model.nodes_to_compute if node.db_name == key]
+    if len(matches) != 1:
+        raise ValueError(f"HIPPYNN checkpoint must have exactly one output with db_name {key!r}.")
+    return matches[0]
+
+
+def _member_graph(model, energy_key, force_key, periodic):
+    """Return a GraphModule computing (energy, forces), made periodic if requested."""
+    from hippynn.graphs import GraphModule, copy_subgraph, find_relatives, find_unique_relative, get_subgraph, \
+        replace_node
+    from hippynn.graphs.nodes.inputs import CellNode, PositionsNode, SpeciesNode
+    from hippynn.graphs.nodes.pairs import OpenPairIndexer, PeriodicPairIndexer
+
+    outputs = [_target(model, energy_key), _target(model, force_key)]
+    trained_cell = any(isinstance(node, CellNode) for node in model.input_nodes)
+    if trained_cell and not periodic:
+        raise ValueError("This HIPPYNN checkpoint was trained with a cell and requires fully periodic systems.")
+    if trained_cell or not periodic:
+        return GraphModule(list(model.input_nodes), outputs)
+    why = "Building a periodic batched HIPPYNN evaluator"
+    open_pairs = [node for node in get_subgraph(outputs) if isinstance(node, OpenPairIndexer)]
+    outputs, subgraph = copy_subgraph(outputs, assume_inputed=open_pairs)
+    copied_pairs = find_relatives(outputs, lambda node: node in subgraph and isinstance(node, OpenPairIndexer),
+                                  why_desc=why)
+    species = find_unique_relative(outputs, lambda node: node in subgraph and isinstance(node, SpeciesNode),
+                                   why_desc=why)
+    positions = find_unique_relative(outputs, lambda node: node in subgraph and isinstance(node, PositionsNode),
+                                     why_desc=why)
+    cell = CellNode("cell", db_name="cell")
+    for pairs in copied_pairs:
+        replace_node(pairs, PeriodicPairIndexer(pairs.name, (positions, species, cell),
+                                                dist_hard_max=pairs.dist_hard_max), disconnect_old=True)
+    return GraphModule([species, positions, cell], outputs)
+
+
+class HippynnBatchedEnsemble:
+    """Padded batched evaluation of HIPPYNN ensemble members on one device.
+
+    Members are evaluated one after another, in ``model-*`` directory order, each on the
+    whole batch. (``hippynn.graphs.make_ensemble`` does not preserve member order.)
+    """
+
+    def __init__(self, model_directory, device="cuda:0", energy_key="energy", force_key="forces"):
+        import torch
+        import hippynn
+        if getattr(torch.version, "hip", None) is not None:
+            # CUDA-specific custom kernels can be importable in a ROCm process; use portable kernels.
+            hippynn.custom_kernels.set_custom_kernels("pytorch")
+        self.device = torch.device(device)
+        self.energy_key, self.force_key = energy_key, force_key
+        directories = sorted(glob.glob(os.path.join(str(model_directory), "model-*/")))
+        if len(directories) < 2:
+            raise ValueError(f"An uncertainty ensemble requires at least two model-* members in {model_directory}.")
+        self._members = [_load_member(directory, self.device) for directory in directories]
+        self.n_models = len(self._members)
+        self._graphs = {}
+
+    def _member_graphs(self, periodic):
+        if periodic not in self._graphs:
+            from hippynn.graphs.nodes.inputs import CellNode, PositionsNode, SpeciesNode
+            graphs = []
+            for model in self._members:
+                graph = _member_graph(model, self.energy_key, self.force_key, periodic)
+                graph.to(self.device)
+                graph.eval()
+                kinds = []
+                for node in graph.input_nodes:
+                    kind = next(name for cls, name in ((SpeciesNode, "species"), (PositionsNode, "positions"),
+                                                       (CellNode, "cell")) if isinstance(node, cls))
+                    kinds.append(kind)
+                graphs.append((graph, kinds))
+            self._graphs[periodic] = graphs
+        return self._graphs[periodic]
+
+    def evaluate(self, numbers, positions, cells, pbc, counts):
+        import torch
+        pbc = [bool(value) for value in pbc]
+        if any(pbc) and not all(pbc):
+            raise ValueError("Batched HIPPYNN inference supports fully periodic or nonperiodic systems only.")
+        counts_tensor = torch.as_tensor(counts, device=self.device)
+        n_systems, max_atoms = len(counts), int(max(counts))
+        mask = torch.arange(max_atoms, device=self.device).unsqueeze(0) < counts_tensor.unsqueeze(1)
+        species = torch.zeros((n_systems, max_atoms), dtype=torch.long, device=self.device)
+        coordinates = torch.zeros((n_systems, max_atoms, 3), dtype=torch.float32, device=self.device)
+        species[mask] = numbers.to(self.device, torch.long)
+        coordinates[mask] = positions.detach().to(self.device, torch.float32)
+        values = {"species": species, "cell": cells.detach().to(self.device, torch.float32)}
+        energies, forces = [], []
+        for graph, kinds in self._member_graphs(all(pbc)):
+            # Forces are autograd derivatives with respect to the coordinates input.
+            values["positions"] = coordinates.clone().requires_grad_(True)
+            with torch.enable_grad():
+                energy, force = graph(*(values[kind] for kind in kinds))
+            energies.append(energy.detach().reshape(n_systems))
+            forces.append(force.detach().reshape(n_systems, max_atoms, 3)[mask])
+        return torch.stack(energies), torch.stack(forces)

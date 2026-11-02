@@ -1,6 +1,6 @@
 # Living roadmap for integration into ALF development
 
-Last updated: November 2, 2026 (Increments 0–3 and 4a–4b merged at `d5a0395`; 4c done locally; Increment 5 next).
+Last updated: November 2, 2026 (Increments 0–3 and 4a–4b merged at `d5a0395`; 4c and 5 done locally; Increment 6 next).
 
 This is the shared plan for gradually bringing the fork's intended capabilities
 into `lanl/ALF:development`. It is separate from ongoing implementation on
@@ -72,7 +72,7 @@ locally only; the user pushes.
 | 2. Labeling coordination | merged (`d5a0395`) | Batched labeling during bootstrap and active learning; explicit sequential compatibility for existing single-structure labelers. | Actual coordinator tests cover labeling, partial batches, storage, and retraining. |
 | 3. Native PySEQM labeling | merged (`d5a0395`) | Ground-state batch energies/forces, adapter-local padding and atom-order restoration, and per-member convergence handling. | Native batch results agree with individual evaluations; successful labels survive partial failures. |
 | 4. Ground-state sampling and acquisition | done locally (4a–4b merged; 4c local) | Minimal physical-inference/MLMD contracts, uncertainty and summed ranking, first-trigger returns, and an in-memory logical-cohort selector. | Shared observations produce equivalent screening, scores, stopping, and selection across execution strategies. |
-| 5. TorchSim dynamics | planned | Supported NVIDIA/AMD ground-state batched MLMD. | CPU, NVIDIA, and Darwin MI250 mechanics and integration acceptance pass. |
+| 5. TorchSim dynamics | done locally | Supported NVIDIA/AMD ground-state batched MLMD. | CPU, NVIDIA, and Darwin MI250 mechanics and integration acceptance pass. |
 | 6. ALCHEMI dynamics | planned | NVIDIA batched MLMD through the same contracts, in its separate environment. | Shared conformance tests and NVIDIA acceptance pass. |
 | 7. Combined release validation | planned | Opt-in examples and integration/performance results. | All single/batched dynamics x single/batched labeling combinations complete representative ALF workflows. |
 
@@ -518,6 +518,104 @@ by the well potential as a final extra entry.
   - Candidate payloads include full positions, so very large cohorts with `continue` and no cap hold
     `cohort_size × min(k, cap)` frames in coordinator memory.
   - Selection is scalar top-K only; no diversity filter.
+
+#### Increment 5 — TorchSim dynamics (done locally, 2026-11-02)
+
+Decisions (user, 2026-11-02):
+
+- Per-trajectory Langevin noise. BAOAB is built from TorchSim's `momentum_step`/`position_step`, with an
+  O-step drawing each trajectory's noise from its own stream (the 4b seed derived from its molecule ID).
+  TorchSim's stock `nvt_langevin_step` uses one generator per batch, so a trajectory's noise would depend
+  on its batch-mates. Finished trajectories are removed from the packed state, not frozen.
+- Batched HIPPYNN inference lives in the existing `ml_interfaces/hippynn_interface.py`, beside
+  `HIPNN_ASE_load_ensemble`.
+
+Implementation:
+
+- `driver.engine: torchsim` is accepted (`alchemi` still raises, Increment 6). New
+  `samplers/torchsim_engine.py` (`TorchSimEngine`) implements the `ASEEngine` contract, so
+  `run_mlmd_trajectories`, acquisition, cohorts, and the coordinator are unchanged. TorchSim is imported
+  only when this engine is selected.
+  - One packed `MDState` per task; one batched ensemble evaluation per MD step; float64 integration state.
+  - ASE units (Å, eV, amu, ASE time; `dt` in fs). Friction 0.02 inverse ASE time, as `mlmd_sampling`.
+    As in ASE `Langevin(fixcm=True)`, the noise carries no net momentum and is rescaled by `sqrt(N/(N-1))`.
+  - Propagation force = member mean + optional well potential + UDD, with `MLMD_calculator`'s formulas;
+    screening uses the unbiased per-member predictions.
+  - `scale_cell` scales one system's cell and positions and refreshes forces before the next step.
+  - A system with non-finite predictions fails alone; an exception in the batched call fails the stepped
+    members. Trajectory files (`trajectory_frequency`) are written from the engine.
+- Inference: `batched_calculator` (with `batched_calculator_options`) selects a batched evaluator,
+  `evaluate(numbers, positions, cells, pbc, counts) -> (energies [models, systems], forces [models, atoms, 3])`.
+  Without it, the TorchSim engine evaluates the `ase_calculator` ensemble one structure at a time.
+  `batched_calculator` with the ASE engine is a configuration error.
+- `hippynn_interface.load_hippynn_batched_ensemble`:
+  - loads members from absolute paths (no `active_directory` chdir, so it avoids the 4b loader race);
+  - evaluates each member on the padded batch in `model-*` order. `hippynn.graphs.make_ensemble` was not
+    used because it does not preserve member order (found when per-member energies disagreed);
+  - periodic systems with cell-less checkpoints (all tracked water examples) get HIPPYNN periodic pair
+    finders in place of the open ones, as HIPPYNN's ASE calculator does; cell-trained checkpoints use their
+    own cell input. Mixed periodicity is rejected;
+  - selects portable HIPPYNN kernels under ROCm.
+- `setup.py` adds a `torchsim` extra (`torch-sim-atomistic>=0.6.2`). Opt-in example
+  `examples/simple_water/mlmd_config_torchsim.json`; acceptance/throughput harness
+  `examples/torchsim_benchmark/benchmark.py`.
+- Test environment: the fork's TorchSim 0.6.2 venvs (`ALF_fork/ALF/debug/portable_gpu_20261027_8795a40/envs/
+  torchsim-{cuda,rocm}`, layered on `atomistic`; Torch 2.9.0+cu128 / +rocm6.4).
+
+CPU evidence (`cn213`):
+
+- `tests/test_torchsim_engine.py` (10 tests; skipped where `torch_sim` is absent):
+  - zero friction and temperature reproduce ASE velocity Verlet (6e-16 Å after 40 steps);
+  - results identical alone, together, split 3+4, and reversed, in first-trigger and cohort `continue`
+    mode (spring ensemble, mixed sizes, a `distcut` rejection);
+  - well + UDD forces and energy equal `MLMD_calculator`'s; Langevin holds 300 K within 3%;
+    density schedules scale cells, also identically when batched; a NaN member fails alone;
+  - trained Darwin water ensemble (8 members): batched HIPPYNN equals the per-structure ASE calculators
+    within `rtol=atol=1e-5` for molecules and 24–36-atom periodic boxes; every collected frame's
+    `Es`/`Fs`/`Fsmax` from a TorchSim run equals the ASE ensemble's at that geometry.
+- Real-entrypoint coordinator test gains `torchsim` and `torchsim-cohort-continue` cases; both complete
+  bootstrap → MLMD → (selection) → labeling → retraining. Stable over 5 repeats.
+- Full suite: 155 passed in the TorchSim venv; 143 passed, 3 skipped (the TorchSim test module and the two
+  TorchSim coordinator cases) in `atomistic` and `alf_env` (PySEQM on the path).
+
+GPU acceptance (Darwin, 2026-11-02; source frozen at `ALF_fork/ALF/debug/torchsim_inc5_20261102/source`,
+base `a74d97b` plus the uncommitted Increment 5 diff; artifacts in its `results/`):
+
+- Environments: the fork's TorchSim 0.6.2 venvs; Torch `2.9.0+cu128` (CUDA 12.8) on NVIDIA and
+  `2.9.0+rocm6.4` (HIP 6.4) on AMD; HIPPYNN portable kernels (`HIPPYNN_USE_CUSTOM_KERNELS=False`).
+- A100-SXM4-40GB, `shared-redstone` cn1, job 17372775: harness passed at all widths;
+  `tests/test_torchsim_engine.py` + `tests/test_sampler_coordinator.py` 19 passed (including the trained
+  ensemble and real-coordinator TorchSim cases). (Job 17372745 on `shared-gpu-ampere` was cancelled
+  unrun: per-user QOS limit.)
+- MI250X/MI250, `shared-gpu-amd-mi250` cn782: harness passed at all widths (job 17372746). Its test run
+  skipped the 3 trained-model tests because the untracked model was not in the frozen copy; rerun with it
+  linked, job 17372771: 19 passed.
+- Harness (`examples/torchsim_benchmark/benchmark.py`): the trained 8-member Darwin water ensemble on
+  periodic water boxes from the condensed-phase builder (27–45 atoms); batched vs per-structure predictions
+  on the same device, `rtol=atol=1e-5`; then timed inference (20 calls) and TorchSim dynamics (50 steps,
+  0.25 fs, 300 K) after 5 warm-up steps. Energy differences up to 0.01 eV are float32 roundoff on
+  ~−16,600 eV totals (relative < 1e-6). Single short runs, no repeat confidence intervals.
+
+| GPU | Systems | Inference systems/s | Dynamics system-steps/s | Peak MiB | Max ΔE (eV) | Max ΔF (eV/Å) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| A100-SXM4-40GB | 1 | 11.6 | 11.4 | 25 | 0.0059 | 2.9e-06 |
+| A100-SXM4-40GB | 2 | 22.8 | 22.4 | 33 | 0.0059 | 3.8e-06 |
+| A100-SXM4-40GB | 8 | 89.8 | 88.0 | 71 | 0.0059 | 5.2e-06 |
+| A100-SXM4-40GB | 32 | 308.9 | 290.7 | 234 | 0.0059 | 5.7e-06 |
+| A100-SXM4-40GB | 50 | 406.7 | 384.0 | 368 | 0.0059 | 7.6e-06 |
+| MI250X/MI250 | 1 | 15.6 | 15.7 | 160 | 0 | 1.9e-06 |
+| MI250X/MI250 | 2 | 31.5 | 31.1 | 167 | 0.0039 | 3.8e-06 |
+| MI250X/MI250 | 8 | 123.9 | 122.1 | 207 | 0.0078 | 6.2e-06 |
+| MI250X/MI250 | 32 | 329.2 | 310.8 | 368 | 0.0078 | 7.6e-06 |
+| MI250X/MI250 | 50 | 397.5 | 381.5 | 503 | 0.0098 | 8.6e-06 |
+
+Batching raises throughput ~34x (A100) and ~24x (MI250X) from width 1 to 50 for this small model.
+Remaining: MI350-family hardware; a trained periodic (cell-input) checkpoint; longer stability runs; an
+end-to-end Slurm active-learning run with `engine: torchsim` (combined validation, Increment 7).
+
+Limitations: one shared PBC per batch; NVT Langevin only (no NPT); trajectories in one task advance in
+lockstep, so a stopped frame reaches labeling when its slowest batch-mate stops (as in 4b); GPU results are
+not bitwise reproducible across devices; inference throughput depends on HIPPYNN's padded evaluation.
 
 ### Batching and reference labeling
 

@@ -36,13 +36,20 @@ def stored_ids(h5_dir):
     return ids
 
 
+TORCHSIM = {"strategy": "batched", "engine": "torchsim"}
+
+
 @pytest.mark.parametrize("driver,policy", [({"strategy": "single"}, None), ({"strategy": "batched"}, None),
-                                           ({"strategy": "batched"}, "stop"), ({"strategy": "batched"}, "continue")],
-                         ids=["single", "batched", "cohort-stop", "cohort-continue"])
+                                           ({"strategy": "batched"}, "stop"), ({"strategy": "batched"}, "continue"),
+                                           (TORCHSIM, None), (TORCHSIM, "continue")],
+                         ids=["single", "batched", "cohort-stop", "cohort-continue", "torchsim",
+                              "torchsim-cohort-continue"])
 def test_coordinator_bootstraps_samples_batches_labels_and_retrains(tmp_path, monkeypatch, driver, policy):
+    if driver.get("engine") == "torchsim":
+        pytest.importorskip("torch_sim")
     monkeypatch.chdir(tmp_path)
     model_pattern = str(tmp_path / "models/model-{:04d}")
-    training_calls, sampler_widths, labeled = [], [], []
+    training_calls, sampler_widths, labeled, engines = [], [], [], []
 
     @python_app(executors=["alf_builder_executor"])
     def builder(moleculeid):
@@ -50,9 +57,10 @@ def test_coordinator_bootstraps_samples_batches_labels_and_retrains(tmp_path, mo
 
     original_sample = batched_mlmd.sample_trajectories
 
-    def recording_sample(molecule_objects, models, sampler_config, engine_class=batched_mlmd.ASEEngine):
+    def recording_sample(molecule_objects, models, sampler_config, engine_class=None, device=None):
         sampler_widths.append(len(molecule_objects))
-        return original_sample(molecule_objects, models, sampler_config, engine_class)
+        engines.append(batched_mlmd.driver_settings(sampler_config)["engine"])
+        return original_sample(molecule_objects, models, sampler_config, engine_class, device)
 
     monkeypatch.setattr(batched_mlmd, "sample_trajectories", recording_sample)
 
@@ -138,6 +146,7 @@ def test_coordinator_bootstraps_samples_batches_labels_and_retrains(tmp_path, mo
             per_cohort.setdefault(cohort, []).append(name)
         assert all(len(frames) <= 2 for frames in per_cohort.values()), per_cohort
         assert any(len(frames) == 2 for frames in per_cohort.values()), per_cohort
+    assert set(engines) == {driver.get("engine", "ase")}
     assert max(sampler_counts) <= master["parallel_samplers"]
     if driver["strategy"] == "single":
         assert set(sampler_widths) == {1}
@@ -151,8 +160,11 @@ def test_driver_settings_validation():
         driver_settings({"driver": {"strategy": "batched"}})
     with pytest.raises(ValueError, match="requires driver.strategy 'batched'"):
         driver_settings({"batching": {"batch_size": 2}})
-    with pytest.raises(NotImplementedError, match="Increment 5"):
-        driver_settings({"driver": {"engine": "torchsim"}})
+    assert driver_settings({"driver": {"engine": "torchsim"}})["engine"] == "torchsim"
+    with pytest.raises(NotImplementedError, match="Increment 6"):
+        driver_settings({"driver": {"engine": "alchemi"}})
+    with pytest.raises(ValueError, match="batched_calculator requires"):
+        driver_settings({"batched_calculator": "x.y"})
     with pytest.raises(ValueError, match="driver.engine"):
         driver_settings({"driver": {"engine": "lammps"}})
     with pytest.raises(ValueError, match="Unknown driver"):

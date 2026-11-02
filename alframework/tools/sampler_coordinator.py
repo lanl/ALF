@@ -29,8 +29,8 @@ from alframework.tools.batching import BatchedSubmitter, batching_settings, defa
 from alframework.tools.cohorts import CohortPool
 
 STRATEGIES = ("single", "batched")
-ENGINES = ("ase",)
-PLANNED_ENGINES = {"torchsim": "Increment 5", "alchemi": "Increment 6"}
+ENGINES = ("ase", "torchsim")
+PLANNED_ENGINES = {"alchemi": "Increment 6"}
 
 
 def driver_settings(sampler_config):
@@ -49,6 +49,8 @@ def driver_settings(sampler_config):
         raise NotImplementedError(f"driver.engine {engine!r} is not available yet ({PLANNED_ENGINES[engine]}).")
     if engine not in ENGINES:
         raise ValueError(f"driver.engine must be one of {ENGINES}; received {engine!r}.")
+    if sampler_config.get("batched_calculator") is not None and engine != "torchsim":
+        raise ValueError("batched_calculator requires driver.engine 'torchsim'; the ASE engine uses ase_calculator.")
     batching = batching_settings(sampler_config)
     if strategy == "batched" and batching is None:
         raise ValueError("driver.strategy 'batched' requires a sampler 'batching' block.")

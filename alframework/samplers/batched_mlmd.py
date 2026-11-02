@@ -25,6 +25,12 @@ Sampler configuration additions (all other keys are those of
     "random_seed": 1234,
     "device": "cpu"
 
+``driver.engine`` ``torchsim`` packs a task's trajectories into one TorchSim
+state (:mod:`alframework.samplers.torchsim_engine`). It may use a batched
+ensemble loader, ``"batched_calculator":
+"alframework.ml_interfaces.hippynn_interface.load_hippynn_batched_ensemble"``
+(with optional ``batched_calculator_options``), in place of ``ase_calculator``.
+
 With ``random_seed``, each trajectory's random stream (schedule draws,
 trajectory-file selection, Langevin noise) is derived from the seed and its
 molecule ID, so results do not depend on how trajectories are grouped. UDD is
@@ -302,9 +308,21 @@ def _prune(candidates, selection):
     return top_k(candidates, limit)
 
 
-def sample_trajectories(molecule_objects, models, sampler_config, engine_class=ASEEngine):
-    """Seed, schedule, and run MLMD for a group of molecules with a loaded ensemble."""
-    driver_settings(sampler_config)
+def make_engine(engine, atoms_list, models, dt, temperatures_K, rngs, calculator_options=None, device=None):
+    """Construct the ``driver.engine`` engine; TorchSim is imported only when selected."""
+    if engine == 'torchsim':
+        from alframework.samplers.torchsim_engine import TorchSimEngine
+        return TorchSimEngine(atoms_list, models, dt, temperatures_K, rngs, calculator_options,
+                              device=device or 'cpu')
+    return ASEEngine(atoms_list, models, dt, temperatures_K, rngs, calculator_options)
+
+
+def sample_trajectories(molecule_objects, models, sampler_config, engine_class=None, device=None):
+    """Seed, schedule, and run MLMD for a group of molecules with a loaded ensemble.
+
+    ``engine_class`` overrides the configured ``driver.engine`` (for tests).
+    """
+    driver = driver_settings(sampler_config)
     seeds, rngs, schedules, trajectory_files = [], [], [], []
     for molecule in molecule_objects:
         assert isinstance(molecule, MoleculesObject), 'molecule_objects must contain MoleculesObject instances'
@@ -320,8 +338,12 @@ def sample_trajectories(molecule_objects, models, sampler_config, engine_class=A
 
     maxt = sampler_config['maxt']
     temperatures = [annealing_schedule(0.0, maxt, s['Tamp'], s['Tper'], s['Tsrt'], s['Tend']) for s in schedules]
-    engine = engine_class([molecule.get_atoms() for molecule in molecule_objects], models, sampler_config['dt'],
-                          temperatures, rngs, sampler_config.get('MLMD_calculator_options'))
+    engine_args = ([molecule.get_atoms() for molecule in molecule_objects], models, sampler_config['dt'],
+                   temperatures, rngs, sampler_config.get('MLMD_calculator_options'))
+    if engine_class is None:
+        engine = make_engine(driver['engine'], *engine_args, device=device)
+    else:
+        engine = engine_class(*engine_args)
     interval = sampler_config.get('trajectory_interval')
     meta_dir = sampler_config.get('meta_dir')
     for index, molecule in enumerate(molecule_objects):
@@ -365,6 +387,12 @@ def mlmd_trajectories_task(molecule_objects, sampler_config, model_path, current
     if sampler_config.get('use_potential_specific_code') is not None:
         raise ValueError("mlmd_trajectories_task does not support use_potential_specific_code; "
                          "use simple_mlmd_sampling_task.")
-    calc_class = load_module_from_config(sampler_config, 'ase_calculator')
-    models = calc_class(model_path.format(current_model_id) + '/', device=sampling_device(sampler_config, gpus_per_node))
-    return sample_trajectories(list(molecule_objects), models, sampler_config)
+    device = sampling_device(sampler_config, gpus_per_node)
+    if sampler_config.get('batched_calculator') is not None:
+        loader = load_module_from_config(sampler_config, 'batched_calculator')
+        models = loader(model_path.format(current_model_id) + '/', device=device,
+                        **(sampler_config.get('batched_calculator_options') or {}))
+    else:
+        calc_class = load_module_from_config(sampler_config, 'ase_calculator')
+        models = calc_class(model_path.format(current_model_id) + '/', device=device)
+    return sample_trajectories(list(molecule_objects), models, sampler_config, device=device)

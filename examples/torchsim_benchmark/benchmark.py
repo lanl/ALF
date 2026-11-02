@@ -1,12 +1,12 @@
-"""TorchSim batched-MLMD acceptance and throughput on one device.
+"""TorchSim/ALCHEMI batched-MLMD acceptance and throughput on one device.
 
 Builds periodic water boxes with ALF's condensed-phase builder, then for each
 batch size:
 
 1. compares batched HIPPYNN predictions (``load_hippynn_batched_ensemble``) with
    per-structure evaluation, within float32 tolerances ``rtol=atol=1e-5``;
-2. times batched inference and TorchSim dynamics steps;
-3. records peak device memory.
+2. times batched inference and the selected engine's dynamics steps;
+3. records peak PyTorch-allocated device memory (not total process memory).
 
 Writes one JSON artifact. It runs no scheduler jobs and no QM.
 
@@ -14,6 +14,8 @@ Writes one JSON artifact. It runs no scheduler jobs and no QM.
         --device cuda:0 --batch-sizes 1 2 8 32 50 --output results.json
 """
 import argparse
+import hashlib
+import importlib.metadata
 import json
 import platform
 import subprocess
@@ -22,14 +24,42 @@ from pathlib import Path
 
 import numpy as np
 import torch
+import alframework
 
 from alframework.builders.builders import condensed_phase_builder, readMolFiles
 from alframework.ml_interfaces.hippynn_interface import load_hippynn_batched_ensemble
-from alframework.samplers.torchsim_engine import TorchSimEngine
+from alframework.samplers.batched_mlmd import make_engine
 from alframework.tools.molecules_class import MoleculesObject
 
 HERE = Path(__file__).resolve().parent
 LIBRARY = HERE.parents[0] / "simple_water" / "fragment_library/"
+
+
+def fingerprint(path):
+    digest = hashlib.sha256()
+    with path.open('rb') as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b''):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def source_identity():
+    """Identify imported code, including copies inside an unrelated checkout."""
+    root = Path(alframework.__file__).resolve().parent.parent
+    if root != HERE.parent.parent:
+        raise RuntimeError(f"Benchmark imports ALF from {root}; set PYTHONPATH to {HERE.parent.parent}.")
+    git_root = subprocess.run(['git', '-C', str(root), 'rev-parse', '--show-toplevel'],
+                              capture_output=True, text=True)
+    revision, dirty = None, None
+    if git_root.returncode == 0 and Path(git_root.stdout.strip()).resolve() == root:
+        revision = subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD'], text=True).strip()
+        dirty = bool(subprocess.check_output(['git', '-C', str(root), 'status', '--porcelain',
+                                             '--untracked-files=no'], text=True).strip())
+    files = sorted((root / 'alframework').rglob('*.py')) + [Path(__file__).resolve()]
+    hashes = {str(path.relative_to(root)): fingerprint(path) for path in files}
+    tree = hashlib.sha256(json.dumps(hashes, sort_keys=True).encode()).hexdigest()
+    return {'revision': revision, 'working_tree_dirty': dirty, 'root': str(root),
+            'files_sha256': hashes, 'tree_sha256': tree}
 
 
 def water_boxes(count, seed):
@@ -65,14 +95,36 @@ def synchronize(device):
 def run(args):
     device = torch.device(args.device)
     model = load_hippynn_batched_ensemble(args.model, device=str(device))
-    boxes = water_boxes(max(args.batch_sizes), args.seed)
+    if args.structures:
+        from ase.io import read
+        boxes = read(args.structures, index=':')
+        if len(boxes) < max(args.batch_sizes):
+            raise ValueError('The structure file has fewer frames than the largest batch size.')
+    else:
+        boxes = water_boxes(max(args.batch_sizes), args.seed)
+    source = source_identity()
+    packages = {}
+    for name in ('torch', 'hippynn', 'ase', 'numpy', 'parsl', 'torch-sim-atomistic',
+                 'nvalchemi-toolkit', 'nvalchemi-toolkit-ops', 'warp-lang'):
+        try:
+            packages[name] = importlib.metadata.version(name)
+        except importlib.metadata.PackageNotFoundError:
+            pass
+    checkpoints = sorted(Path(args.model).glob('model-*/experiment_structure.pt')) + \
+        sorted(Path(args.model).glob('model-*/best_model.pt'))
     report = {"device": str(device), "torch": torch.__version__, "cuda": torch.version.cuda,
               "hip": torch.version.hip, "node": platform.node(),
+              "engine": args.engine, "packages": packages,
               "gpu": torch.cuda.get_device_name(device) if device.type == "cuda" else None,
               "model": str(Path(args.model).resolve()), "n_models": model.n_models,
               "atoms_per_box": [len(b) for b in boxes], "rtol": args.rtol, "atol": args.atol,
-              "source": subprocess.run(["git", "-C", str(HERE), "rev-parse", "HEAD"], capture_output=True,
-                                       text=True).stdout.strip(), "cases": []}
+              "source": source['revision'], "source_identity": source,
+              "checkpoint_sha256": {str(p.resolve()): fingerprint(p) for p in checkpoints},
+              "structures_sha256": fingerprint(Path(args.structures)) if args.structures else None,
+              "memory_metric": "peak PyTorch allocated MiB; excludes non-PyTorch allocations",
+              "parameters": {'dt_fs': .25, 'temperature_K': 300., 'warmup': args.warmup,
+                             'inference_calls': args.inference_calls, 'md_steps': args.md_steps},
+              "cases": []}
     individual = [model.evaluate(*pack([box], device)) for box in boxes]
     for width in args.batch_sizes:
         systems = boxes[:width]
@@ -93,9 +145,9 @@ def run(args):
             model.evaluate(*pack(systems, device))
         synchronize(device)
         inference = width * args.inference_calls / (time.perf_counter() - start)
-        engine = TorchSimEngine([b.copy() for b in systems], model, 0.25, [300.0] * width,
-                                [np.random.RandomState(i) for i in range(width)], device=str(device))
-        engine.step(list(range(width)), args.warmup)
+        engine = make_engine(args.engine, [b.copy() for b in systems], model, 0.25, [300.0] * width,
+                             [np.random.RandomState(i) for i in range(width)], device=str(device))
+        warmup_failures = engine.step(list(range(width)), args.warmup)
         synchronize(device)
         start = time.perf_counter()
         failures = engine.step(list(range(width)), args.md_steps)
@@ -104,8 +156,11 @@ def run(args):
         peak = torch.cuda.max_memory_allocated(device) / 2 ** 20 if device.type == "cuda" else None
         case = {"batch_size": width, "max_energy_error_eV": energy_error, "max_force_error_eV_A": force_error,
                 "parity_passed": passed, "inference_systems_per_s": inference,
-                "dynamics_system_steps_per_s": dynamics, "md_failures": len(failures), "peak_MiB": peak}
+                "dynamics_system_steps_per_s": dynamics,
+                "md_failures": len({**warmup_failures, **failures}), "peak_MiB": peak}
         report["cases"].append(case)
+        for index in range(width):
+            engine.finish(index)
         print(json.dumps(case), flush=True)
     report["passed"] = all(c["parity_passed"] and c["md_failures"] == 0 for c in report["cases"])
     Path(args.output).parent.mkdir(parents=True, exist_ok=True)
@@ -116,6 +171,8 @@ def run(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--model", required=True, help="Ensemble directory containing model-* members.")
+    parser.add_argument("--engine", choices=['torchsim', 'alchemi'], default='torchsim')
+    parser.add_argument("--structures", help="Optional fixed extxyz structures, shared across worker environments.")
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--batch-sizes", type=int, nargs="+", default=[1, 2, 8, 32, 50])
     parser.add_argument("--seed", type=int, default=7)

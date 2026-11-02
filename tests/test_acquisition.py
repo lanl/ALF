@@ -106,16 +106,32 @@ def test_negative_cutoffs_trigger_every_checked_frame_as_before():
     signals = {"Es": 0.0, "Fs": 0.0, "Fsmax": 0.0, "Fsrms": 0.0}
     decision = assess_frame(signals, 1.5, 0.0, config, acquisition_settings(config))
     assert decision["outcome"] == "eligible" and decision["ranking_score"] == np.inf
-    with pytest.raises(ValueError, match="positive Escut"):
+    with pytest.raises(ValueError, match="requires a positive Escut"):
         acquisition_settings({**config, "acquisition": {"strategy": "summed", "w_energy": 1, "w_force": 1}})
 
 
 def test_uncertainty_and_summed_scores():
     signals = {"Es": 1.0, "Fs": 0.3, "Fsmax": 1.2, "Fsrms": 0.4}
     uncertainty = acquisition_settings(CONFIG)
-    assert ranking_score(signals, uncertainty, 0.5, 0.2) == pytest.approx(2.0)
+    assert ranking_score(signals, uncertainty, CONFIG) == pytest.approx(2.0)
     summed = acquisition_settings({**CONFIG, "acquisition": {"strategy": "summed", "w_energy": 0.5, "w_force": 2.0}})
-    assert ranking_score(signals, summed, 0.5, 0.2) == pytest.approx(0.5 * 2.0 + 2.0 * 2.0)
+    assert ranking_score(signals, summed, CONFIG) == pytest.approx(0.5 * 2.0 + 2.0 * 2.0)
+    # The same score through the explicit term table.
+    explicit = acquisition_settings({**CONFIG, "acquisition": {"strategy": "summed",
+                                                              "weights": {"energy": 0.5, "force_rms": 2.0}}})
+    assert ranking_score(signals, explicit, CONFIG) == ranking_score(signals, summed, CONFIG)
+
+
+def test_new_score_terms_extend_summed_ranking(monkeypatch):
+    from alframework.samplers import acquisition
+    monkeypatch.setitem(acquisition.SCORE_TERMS, "gap", ("gap_std", "gap_std_cut", 1.0))
+    config = {**CONFIG, "gap_std_cut": 0.1,
+              "acquisition": {"strategy": "summed", "weights": {"energy": 1.0, "gap": 2.0}}}
+    settings = acquisition_settings(config)
+    signals = {"Es": 1.0, "Fs": 0.3, "Fsmax": 1.2, "Fsrms": 0.4, "gap_std": 0.05}
+    assert ranking_score(signals, settings, config) == pytest.approx(1.0 / 0.5 + 2.0 * 0.05 / 0.1)
+    with pytest.raises(ValueError, match="'gap_std' signal"):
+        ranking_score({key: value for key, value in signals.items() if key != "gap_std"}, settings, config)
 
 
 def test_high_summed_score_alone_is_not_eligible():
@@ -130,6 +146,16 @@ def test_high_summed_score_alone_is_not_eligible():
     ({"strategy": "summed", "w_energy": 1.0}, "w_force"),
     ({"strategy": "summed", "w_energy": -1, "w_force": 1}, "nonnegative"),
     ({"strategy": "summed", "w_energy": 0, "w_force": 0}, "positive"),
+    ({"strategy": "summed", "weights": {"gap": 1.0}}, "Unknown acquisition score terms"),
+    ({"strategy": "summed", "weights": {"energy": 1.0}, "w_energy": 1, "w_force": 1}, "not both"),
+    ({"strategy": "uncertainty", "w_energy": 1.0}, "only to strategy 'summed'"),
+    ({"trajectory_policy": "continue"}, "requires selection.mode 'cohort_top_k'"),
+    ({"selection": {"mode": "cohort_top_k", "k": 2}}, "selection.cohort_size"),
+    ({"selection": {"mode": "cohort_top_k", "cohort_size": 4}}, "selection.k"),
+    ({"selection": {"mode": "cohort_top_k", "cohort_size": 4, "k": 0}}, "positive integer"),
+    ({"selection": {"mode": "first_trigger", "k": 2}}, "require acquisition.selection.mode"),
+    ({"selection": {"mode": "cohort_top_k", "cohort_size": 4, "k": 2, "top_k": 1}}, "Unknown acquisition.selection"),
+    ({"return_top_k": 4}, "Unknown acquisition settings"),
 ])
 def test_invalid_acquisition_settings(block, error):
     with pytest.raises(ValueError, match=error):

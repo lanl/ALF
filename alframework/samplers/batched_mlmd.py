@@ -44,7 +44,7 @@ from ase.md.langevin import Langevin
 from parsl import python_app
 
 from alframework.ml_interfaces.ensemble_inference import ensemble_statistics
-from alframework.samplers.acquisition import acquisition_settings, assess_frame, frame_id
+from alframework.samplers.acquisition import acquisition_settings, assess_frame, frame_id, top_k
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator
 from alframework.tools.molecules_class import MoleculesObject
 from alframework.tools.sampler_coordinator import driver_settings
@@ -164,6 +164,8 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
         (list): The input ``MoleculesObject`` instances, updated in place.
     """
     settings = acquisition_settings(sampler_config)
+    cohort = settings['selection']['mode'] == 'cohort_top_k'
+    keep_running = settings['trajectory_policy'] == 'continue'
     dt, maxt, Ncheck = sampler_config['dt'], sampler_config['maxt'], sampler_config['Ncheck']
     meta_dir = sampler_config.get('meta_dir')
     n_checks = int(np.ceil((1000 * maxt) / (dt * Ncheck)))
@@ -175,7 +177,8 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
         rho0 = None if schedule['Rend'] is None else \
             (1.66054e-24 / 1.0e-24) * (np.sum(atoms.get_masses()) / atoms.get_volume())
         state.append({'temps': [], 'denss': [], 'rho0': rho0, 'decision': None, 'signals': None,
-                      'min_distance': None, 'check': 0, 'outcome': None, 'error': None})
+                      'min_distance': None, 'check': 0, 'outcome': None, 'error': None,
+                      'candidates': []})
 
     def finish(index, outcome, error=None):
         state[index]['outcome'] = outcome
@@ -197,6 +200,12 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
                 decision = assess_frame(signals, observation['min_distance'], time_ps, sampler_config, settings)
                 entry.update(signals=signals, decision=decision, min_distance=observation['min_distance'],
                              check=check)
+                if cohort and decision['outcome'] == 'eligible':
+                    entry['candidates'].append(_candidate(molecule_objects[index], engine, index, signals,
+                                                          decision, time_ps))
+                    if keep_running:
+                        # Keep sampling; the cohort selects among this trajectory's frames later.
+                        decision = dict(decision, outcome='continue')
                 if decision['outcome'] != 'continue':
                     finish(index, decision['outcome'])
                     continue
@@ -219,6 +228,11 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
             finish(index, 'failed', exc)
     for index in list(active):
         finish(index, 'completed')
+    if cohort:
+        for entry in state:
+            if entry['outcome'] in ('completed', 'eligible') and entry['candidates']:
+                entry['outcome'] = 'eligible'
+            entry['candidates'] = _prune(entry['candidates'], settings['selection'])
 
     for index, molecule in enumerate(molecule_objects):
         _record(molecule, state[index], schedules[index], sampler_config, settings, engine,
@@ -252,8 +266,11 @@ def _record(molecule, entry, schedule, sampler_config, settings, engine, index, 
                  "step": step,
                  "frame_id": frame_id(molecule.get_moleculeid(), step),
                  "random_seed": seed}
-    if entry['outcome'] == 'eligible':
+    cohort = settings['selection']['mode'] == 'cohort_top_k'
+    if entry['outcome'] == 'eligible' and not cohort:
         meta_dict['ranking_score'] = decision['ranking_score']
+    if cohort:
+        meta_dict['acquisition_candidates'] = entry['candidates']
     if entry['error'] is not None:
         meta_dict['sampling_error'] = "{}: {}".format(type(entry['error']).__name__, entry['error'])
     meta_dict.update(molecule.get_metadata())
@@ -261,7 +278,28 @@ def _record(molecule, entry, schedule, sampler_config, settings, engine, index, 
         with open(meta_dir + "/metadata-" + molecule.get_moleculeid() + '.p', "wb") as handle:
             pkl.dump(meta_dict, handle)
     molecule.update_metadata(meta_dict)
-    molecule.update_atoms(atoms if entry['outcome'] == 'eligible' else None)
+    # In cohort mode frames travel as candidates; nothing is labeled until the cohort selects.
+    molecule.update_atoms(atoms if entry['outcome'] == 'eligible' and not cohort else None)
+
+
+def _candidate(molecule, engine, index, signals, decision, time_ps):
+    atoms = engine.atoms(index)
+    step = engine.steps[index]
+    return {"trajectory_id": molecule.get_moleculeid(), "step": int(step),
+            "frame_id": frame_id(molecule.get_moleculeid(), step),
+            "time_ps": float(time_ps), "ranking_score": float(decision['ranking_score']),
+            "signals": {key: float(value) for key, value in signals.items()},
+            "flags": {key: decision[key] for key in ('Ecrit', 'Fcrit', 'Fmcrit')},
+            "numbers": atoms.get_atomic_numbers().copy(), "positions": atoms.get_positions().copy(),
+            "cell": np.array(atoms.get_cell()), "pbc": atoms.get_pbc().copy()}
+
+
+def _prune(candidates, selection):
+    """Keep a trajectory's best frames; never more than the cohort can select from one trajectory."""
+    limit = selection['k']
+    if selection['max_candidates_per_trajectory'] is not None:
+        limit = min(limit, selection['max_candidates_per_trajectory'])
+    return top_k(candidates, limit)
 
 
 def sample_trajectories(molecule_objects, models, sampler_config, engine_class=ASEEngine):

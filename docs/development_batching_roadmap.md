@@ -1,6 +1,6 @@
 # Living roadmap for integration into ALF development
 
-Last updated: November 2, 2026 (Increments 0–3 and 4a–4b merged to development at `d5a0395`; 4c next).
+Last updated: November 2, 2026 (Increments 0–3 and 4a–4b merged at `d5a0395`; 4c done locally; Increment 5 next).
 
 This is the shared plan for gradually bringing the fork's intended capabilities
 into `lanl/ALF:development`. It is separate from ongoing implementation on
@@ -71,7 +71,7 @@ locally only; the user pushes.
 | 1. Shared batching helpers | merged (`d5a0395`) | Compatible grouping, waiting buffers, timeout submission, actual-width accounting, output normalization, and batch-builder ID preservation. | Focused tests pass; existing execution is unchanged until batching is selected. |
 | 2. Labeling coordination | merged (`d5a0395`) | Batched labeling during bootstrap and active learning; explicit sequential compatibility for existing single-structure labelers. | Actual coordinator tests cover labeling, partial batches, storage, and retraining. |
 | 3. Native PySEQM labeling | merged (`d5a0395`) | Ground-state batch energies/forces, adapter-local padding and atom-order restoration, and per-member convergence handling. | Native batch results agree with individual evaluations; successful labels survive partial failures. |
-| 4. Ground-state sampling and acquisition | in progress (4a–4b merged; 4c next) | Minimal physical-inference/MLMD contracts, uncertainty and summed ranking, first-trigger returns, and an in-memory logical-cohort selector. | Shared observations produce equivalent screening, scores, stopping, and selection across execution strategies. |
+| 4. Ground-state sampling and acquisition | done locally (4a–4b merged; 4c local) | Minimal physical-inference/MLMD contracts, uncertainty and summed ranking, first-trigger returns, and an in-memory logical-cohort selector. | Shared observations produce equivalent screening, scores, stopping, and selection across execution strategies. |
 | 5. TorchSim dynamics | planned | Supported NVIDIA/AMD ground-state batched MLMD. | CPU, NVIDIA, and Darwin MI250 mechanics and integration acceptance pass. |
 | 6. ALCHEMI dynamics | planned | NVIDIA batched MLMD through the same contracts, in its separate environment. | Shared conformance tests and NVIDIA acceptance pass. |
 | 7. Combined release validation | planned | Opt-in examples and integration/performance results. | All single/batched dynamics x single/batched labeling combinations complete representative ALF workflows. |
@@ -300,7 +300,7 @@ Sub-steps, each a separate commit:
 | --- | --- | --- | --- |
 | 4a. Inference contract and scoring | merged (`d5a0395`) | Per-member unbiased energies/forces from a list of structures (adapter for the existing ASE ensemble); `Es`/`Fs`/`Fsmax`/`Fsrms` with `MLMD_calculator`'s population-std formulas; eligibility (existing thresholds, `min_time`, `distcut` rejection); uncertainty and summed ranking; stable frame identity and deterministic ties. No `__main__.py` change. | Parity with `MLMD_calculator` on fakes and on the trained Darwin water ensemble (CPU). |
 | 4b. Multi-trajectory MLMD, first-trigger | merged (`d5a0395`) | Opt-in task taking `molecule_objects`; `driver.strategy` `single`/`batched`, `driver.engine` `ase`; minimal engine contract (step, set temperature, scale cell, freeze, state); per-trajectory seeds from molecule IDs; configurable device; shared batched submitter in the coordinator. `simple_mlmd_sampling_task` untouched. | Identical frames/metadata for single vs batched from seeded inputs; real coordinator with mocks; real-coordinator CPU run with the trained water model. |
-| 4c. In-memory cohort top-K | planned (next) | `acquisition.selection = {mode: cohort_top_k, cohort_size, k}` and `trajectory_policy` `stop`/`continue`; incremental admission; model generation pinned per cohort; terminal outcomes per trajectory; exact global top-K with safe local pruning; handoff to labeling. No persistence. | Replay at widths 1, 2, 8, 32, 50 with reversed completion gives identical selections; ties, empty trajectories, < K candidates, cohort > capacity, failure after an eligible frame, model promotion mid-cohort. |
+| 4c. In-memory cohort top-K | done locally | `acquisition.selection = {mode: cohort_top_k, cohort_size, k}` and `trajectory_policy` `stop`/`continue`; incremental admission; model generation pinned per cohort; terminal outcomes per trajectory; exact global top-K with safe local pruning; handoff to labeling. No persistence. | Replay at widths 1, 2, 8, 32, 50 with reversed completion gives identical selections; ties, empty trajectories, < K candidates, cohort > capacity, failure after an eligible frame, model promotion mid-cohort. |
 
 Out of scope for Increment 4: TorchSim/ALCHEMI (Increments 5/6), native
 batched HIPPYNN inference (Increment 5), excited states/gap/LCM, plugin
@@ -440,6 +440,84 @@ by the well potential as a final extra entry.
   slowest batch-mate stops. Results are identical; only latency differs. Batches use the model current
   at submission (cohort pinning is 4c). Settings are read once at startup. Only the ASE engine exists;
   inference is still one structure at a time.
+
+4c record (done locally, 2026-11-02):
+
+- Decisions (user, 2026-11-02):
+  - `trajectory_policy: continue` keeps every flagged frame, with an optional
+    `max_candidates_per_trajectory` cap that is unset by default.
+  - A cohort is pinned to the model generation current when it opened and finishes on that model.
+  - Scoring was made extensible: a named term table instead of hardcoded formulas.
+- Configuration (sampler `acquisition` block; flat physics keys unchanged):
+  - `selection: {mode: first_trigger | cohort_top_k, cohort_size, k, max_candidates_per_trajectory}`.
+    `first_trigger` (the default) is exactly 4b. `cohort_size` and `k` are required for `cohort_top_k`.
+  - `trajectory_policy: stop | continue`. `continue` requires `cohort_top_k`.
+  - Unknown keys, including the fork's task-local `return_top_k`, are errors rather than reinterpreted.
+  - Legacy `molecule_object` samplers with a `selection` block are rejected.
+- Scoring (`acquisition.SCORE_TERMS`): `energy` = Es/Escut, `force_mean` = Fs/Fscut,
+  `force_max` = Fsmax/(3·Fscut), `force_rms` = Fsrms/Fscut.
+  - `uncertainty` takes the max of the three trigger terms; `summed` is a weighted sum of configured terms
+    (`weights: {term: w}`). `w_energy`/`w_force` remain shorthand for `energy`/`force_rms`.
+  - Eligibility for every strategy is still main's threshold test.
+  - In first-trigger mode the strategy only sets the `ranking_score` metadata; returned frames are
+    unchanged.
+  - Adding a term (e.g. a future excited-state gap uncertainty) is one table entry naming its signal
+    and normalizing cutoff. Scoring raises if inference does not provide that signal. No change is needed
+    in pools or the coordinator.
+- Sampler (`batched_mlmd.run_mlmd_trajectories`):
+  - In cohort mode each eligible frame becomes a candidate holding positions, cell, PBC, numbers,
+    signals, flags, score and `frame_id`. `stop` ends the trajectory there; `continue` keeps
+    sampling.
+  - Candidates collected before a later `distcut` rejection or failure are kept.
+  - Each trajectory keeps only its best `min(k, cap)` candidates; this cannot change the global top-K.
+  - Returned molecules have `atoms=None` and carry `acquisition_candidates`, so nothing is labeled
+    before the cohort selects.
+- Pool (new `tools/cohorts.py`, `CohortPool`):
+  - Admission is incremental (`cohort-<model>-<n>` IDs, per-member `trajectory_ordinal`), with no
+    admission timeout and no partial-cohort selection.
+  - A cohort finalizes when it is full and every member is terminal (`eligible`, `completed`,
+    `rejected`, `failed`). Selection is `top_k` (score, then trajectory ID, then step). Selected frames
+    become `MoleculesObject`s named `<trajectory_id>-s<step>`, with cohort, rank, score and signal
+    metadata.
+  - Finished-cohort summaries record outcomes, candidate counts and selected frame IDs.
+- Model promotion: the open cohort keeps admitting until full and its members run on its pinned model;
+  the next cohort opens on the then-current model. A cohort never mixes generations, and sampler
+  batches never mix models (the buffer key includes the pinned model, and each task receives the
+  group's `current_model_id`). Without cohorts, multi-trajectory tasks use the model current at
+  submission, as before.
+- Coordinator:
+  - `SamplerCoordinator.submit` admits each structure and pins its model. `harvest` records results
+    and returns each finished cohort's selection; without cohorts it returns results with `atoms` set,
+    which is the prior logic.
+  - `BatchedTaskQueue` now records each task's inputs, so members of a whole-task failure are
+    finalized as `failed` and their cohort can still complete.
+  - `__main__.py`: the harvest loop calls `sampling.harvest(...)`, and cohort status is printed each pass
+    (+5/−3 lines).
+- Evidence:
+  - `tests/test_cohorts.py` (9 tests), with 50 real spring-ensemble trajectories per case under `stop`,
+    `continue`, and `continue` with cap 2, including `distcut` rejections and low-spread members.
+    - Selected frame IDs and ranks are identical at task widths 1, 2, 8, 32, and 50 in forward,
+      reversed, and shuffled completion order.
+    - The selection equals the global top-K over all candidates; worker pruning gives the same
+      selection as no pruning.
+    - Also covered: ties, fewer than K candidates, empty cohorts, and duplicate/unknown reports. A
+      failure after eligible frames keeps them; whole-task failure members are finalized. A cohort of 10
+      completes at capacity 3 with exactly one selection, and promotion is pinned as above.
+  - `tests/test_acquisition.py` adds explicit-term parity with the `w_*` shorthand, a registered dummy
+    `gap` term (including the missing-signal error), and 11 new validation cases. The 4a/4b expectations
+    are unchanged.
+  - The real-entrypoint coordinator test gains `cohort-stop` and `cohort-continue` cases (`cohort_size`
+    6, `k` 2, `parallel_samplers` 4). Both complete bootstrap → MLMD → selection → labeling → retraining.
+    Only selected `-s<step>` frames are labeled, at most 2 per `cohort_id`. Stable over 6 repeats per
+    env.
+  - Full suite: 143 passed in both envs (with PySEQM on the path).
+- Limitations:
+  - Cohorts and candidates are in memory only; unfinished cohorts are lost on restart.
+  - Candidates of a trajectory whose task fails as a whole are lost, since they never reached the
+    coordinator; frames held only inside a crashed worker are out of scope.
+  - Candidate payloads include full positions, so very large cohorts with `continue` and no cap hold
+    `cohort_size × min(k, cap)` frames in coordinator memory.
+  - Selection is scalar top-K only; no diversity filter.
 
 ### Batching and reference labeling
 

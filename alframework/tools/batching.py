@@ -236,9 +236,14 @@ class BatchedTaskQueue(parsl_task_queue):
         self.buffer = buffer
         self.widths = TaskWidths()
         self.failed_structures = 0
+        # Inputs of tasks that failed as a whole, for callers that track members.
+        self.failed_inputs = []
+        self._inputs = {}
 
-    def add_task(self, task, width=1):
+    def add_task(self, task, width=1, inputs=None):
         self.widths.record(task, width)
+        if inputs is not None:
+            self._inputs[id(task)] = list(inputs)
         super().add_task(task)
 
     def get_waiting_number(self):
@@ -286,8 +291,11 @@ class BatchedTaskQueue(parsl_task_queue):
                     logger.warning("Task failed", exc_info=True)
             failed_number += 1
             self.failed_structures += self.widths.width(task)
+            self.failed_inputs.extend(self._inputs.get(id(task), []))
         self.task_list = remaining
         self.widths.prune(self.task_list)
+        live = {id(task) for task in self.task_list}
+        self._inputs = {key: value for key, value in self._inputs.items() if key in live}
         return results_list, failed_number
 
     def print_status(self):
@@ -325,7 +333,7 @@ class BatchedSubmitter:
             ``max_wait_seconds``, as returned by :func:`batching_settings`.
     """
 
-    def __init__(self, task, settings):
+    def __init__(self, task, settings, key_function=default_batch_key):
         self.task = task
         self.settings = settings
         self.buffer = None
@@ -333,7 +341,7 @@ class BatchedSubmitter:
             self.queue = parsl_task_queue()
         else:
             self.buffer = BatchBuffer(settings["batch_size"], settings["partial_policy"],
-                                      settings["max_wait_seconds"])
+                                      settings["max_wait_seconds"], key_function=key_function)
             self.queue = BatchedTaskQueue(self.buffer)
 
     @property
@@ -365,7 +373,7 @@ class BatchedSubmitter:
             return 0
         groups = self.buffer.pop_ready(flush=flush)
         for group in groups:
-            self.queue.add_task(self._group_task(group, input_dicts), width=len(group))
+            self.queue.add_task(self._group_task(group, input_dicts), width=len(group), inputs=group)
         return len(groups)
 
     def _group_task(self, group, input_dicts):

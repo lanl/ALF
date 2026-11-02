@@ -400,8 +400,9 @@ while True:
         status['lifetime_failed_sampler_tasks'] = status['lifetime_failed_sampler_tasks'] + failed
         for structure in sampler_results: #may need [0]
             assert isinstance(structure, MoleculesObject), 'structure must be a MoleculesObject instance'
-            if structure.get_atoms() is not None:
-                labeling.submit(structure, [{"QM_config": QM_config}, master_config, *all_configs, status])
+        # Without cohort selection this is every result whose atoms is set, as before.
+        for structure in sampling.harvest(sampler_results):
+            labeling.submit(structure, [{"QM_config": QM_config}, master_config, *all_configs, status])
     labeling.submit_ready([{"QM_config": QM_config}, master_config, *all_configs, status])
 
     # Train more models
@@ -442,6 +443,8 @@ while True:
     builder_task_queue.print_status()
     print("sampling status:")
     sampler_task_queue.print_status()
+    if sampling.status() is not None:
+        print("cohorts: " + json.dumps(sampling.status()))
     print("QM status:")
     QM_task_queue.print_status()
     print("ML status:")

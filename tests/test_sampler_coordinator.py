@@ -36,8 +36,10 @@ def stored_ids(h5_dir):
     return ids
 
 
-@pytest.mark.parametrize("driver", [{"strategy": "single"}, {"strategy": "batched"}])
-def test_coordinator_bootstraps_samples_batches_labels_and_retrains(tmp_path, monkeypatch, driver):
+@pytest.mark.parametrize("driver,policy", [({"strategy": "single"}, None), ({"strategy": "batched"}, None),
+                                           ({"strategy": "batched"}, "stop"), ({"strategy": "batched"}, "continue")],
+                         ids=["single", "batched", "cohort-stop", "cohort-continue"])
+def test_coordinator_bootstraps_samples_batches_labels_and_retrains(tmp_path, monkeypatch, driver, policy):
     monkeypatch.chdir(tmp_path)
     model_pattern = str(tmp_path / "models/model-{:04d}")
     training_calls, sampler_widths, labeled = [], [], []
@@ -56,7 +58,7 @@ def test_coordinator_bootstraps_samples_batches_labels_and_retrains(tmp_path, mo
 
     @python_app(executors=["alf_QM_executor"])
     def qm(molecule_object):
-        labeled.append(molecule_object.get_moleculeid())
+        labeled.append((molecule_object.get_moleculeid(), molecule_object.get_metadata().get("cohort_id")))
         molecule_object.store_results({"energy": -1.0, "forces": np.zeros((len(molecule_object), 3))})
         molecule_object.set_converged_flag(True)
         return molecule_object
@@ -75,6 +77,10 @@ def test_coordinator_bootstraps_samples_batches_labels_and_retrains(tmp_path, mo
     monkeypatch.setattr(tool_module, "load_module_from_string", modules.__getitem__)
 
     sampler_config = dict(SAMPLER, driver=driver)
+    if policy is not None:
+        # Cohorts of 6 with capacity 4: admission must continue while members run.
+        sampler_config["acquisition"] = {"trajectory_policy": policy,
+                                         "selection": {"mode": "cohort_top_k", "cohort_size": 6, "k": 2}}
     if driver["strategy"] == "batched":
         sampler_config["batching"] = {"batch_size": 3, "max_wait_seconds": 0.05}
     master = dict(master_directory="pwd", builder_task="mock.builder", sampler_task="mock.sampler",
@@ -122,6 +128,16 @@ def test_coordinator_bootstraps_samples_batches_labels_and_retrains(tmp_path, mo
     assert training_calls[0][0] == 0 and training_calls[1][0] == 1
     sampled_ids = [value for value in training_calls[1][1] if value.startswith("mol-0000-")]
     assert sampled_ids, "sampled frames must reach the second HDF5 shard"
+    if policy is not None:
+        # Only cohort selections are labeled: k per cohort, named <trajectory>-s<step>.
+        active = [(name, cohort) for name, cohort in labeled if name.startswith("mol-0000-")]
+        assert active and all("-s" in name and cohort for name, cohort in active)
+        assert len(active) == len(set(active))
+        per_cohort = {}
+        for name, cohort in active:
+            per_cohort.setdefault(cohort, []).append(name)
+        assert all(len(frames) <= 2 for frames in per_cohort.values()), per_cohort
+        assert any(len(frames) == 2 for frames in per_cohort.values()), per_cohort
     assert max(sampler_counts) <= master["parallel_samplers"]
     if driver["strategy"] == "single":
         assert set(sampler_widths) == {1}
@@ -152,9 +168,10 @@ def test_legacy_sampler_is_unchanged_and_rejects_new_blocks():
 
 
 def test_multi_trajectory_sampler_counts_structures():
-    single = SamplerCoordinator(batched_mlmd.mlmd_trajectories_task, "batched", {})
+    cutoffs = {"Escut": 0.5, "Fscut": 0.3}
+    single = SamplerCoordinator(batched_mlmd.mlmd_trajectories_task, "batched", cutoffs)
     assert single.batched and single.settings["batch_size"] == 1 and single.poll_delay(60) == 60
     batched = SamplerCoordinator(batched_mlmd.mlmd_trajectories_task, "batched",
-                                 {"driver": {"strategy": "batched"}, "batching": {"batch_size": 4}})
-    batched.submit(MoleculesObject(WATER.copy(), "a"), [])
+                                 {**cutoffs, "driver": {"strategy": "batched"}, "batching": {"batch_size": 4}})
+    batched.submit(MoleculesObject(WATER.copy(), "a"), [{"current_model_id": 0}])
     assert batched.queue.get_number() == 1 and batched.poll_delay(60) == pytest.approx(5.0, abs=0.1)

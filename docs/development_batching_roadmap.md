@@ -425,6 +425,17 @@ by the well potential as a final extra entry.
     `os.chdir`) with a relative model path. Two sampler tasks loading concurrently in one process
     (`ThreadPoolExecutor`) therefore race. One task failed this way in the scratch run. This affects the
     legacy sampler equally; HTEX workers are separate processes.
+    - Pre-existing; not introduced by batching (checked 2026-11-02).
+      - The loader is unchanged on `origin/main` (`206ea44`) and dates to the 2023 initial commits; no
+        batching commit touches `hippynn_interface.py`.
+      - `simple_mlmd_sampling_task` on main also loads the ensemble inside every task.
+        `mlmd_trajectories_task` loads once per batch, so it loads less often.
+      - Every shipped Parsl config (`alframework/parsl_resource_configs/*`, `examples/*/parsl_configs.py`)
+        uses `HighThroughputExecutor`, so shipped workflows do not trigger it. Only thread-based or other
+        single-process setups with overlapping loads do.
+    - Open follow-up, deferred by the user. Make it a separate small commit, outside the batching
+      increments: load via absolute paths with `load_checkpoint` instead of changing directory, or
+      serialize the load with a lock.
 - Limitations: a stopped trajectory's frame reaches labeling when its task finishes, i.e. when its
   slowest batch-mate stops. Results are identical; only latency differs. Batches use the model current
   at submission (cohort pinning is 4c). Settings are read once at startup. Only the ASE engine exists;

@@ -259,6 +259,29 @@ def test_trained_ensemble_sampling_with_batched_hippynn(engine_name):
     from alframework.ml_interfaces.hippynn_interface import HIPNN_ASE_load_ensemble
 
     batched = load_hippynn_batched_ensemble(str(TRAINED_ENSEMBLE), device=DEVICE)
+    # Keep the actual physical member outputs at each observed geometry. Float32
+    # total-energy rounding can be small relative to E but noticeable relative to
+    # std(E); distinguish prediction parity from correctness of its reduction.
+    recorded = {}
+
+    class RecordingEvaluator:
+        n_models = batched.n_models
+
+        def evaluate(self, numbers, positions, cells, pbc, counts):
+            energies, forces = batched.evaluate(numbers, positions, cells, pbc, counts)
+            numbers = numbers.cpu().numpy()
+            positions = positions.detach().cpu().numpy()
+            offset = 0
+            for system, count in enumerate(counts):
+                section = slice(offset, offset + count)
+                key = (numbers[section].tobytes(), positions[section].tobytes())
+                recorded[key] = {
+                    "energies": energies[:, system:system + 1].detach().cpu().numpy().copy(),
+                    "forces": [forces[:, section].detach().cpu().numpy().copy()],
+                }
+                offset += count
+            return energies, forces
+
     config = dict(CONFIG, Escut=0.5, Fscut=1.0, maxt=0.02, distcut=0.7, srt_temp=[250.0, 350.0],
                   end_temp=[250.0, 350.0], amp_temp=[0.0, 20.0], per_temp=[5.0, 10.0],
                   MLMD_calculator_options={"well_params": {"r_start": 3.0, "force": 0.1}},
@@ -268,13 +291,27 @@ def test_trained_ensemble_sampling_with_batched_hippynn(engine_name):
         [[[3.0 * i, 0, 0], [3.0 * i + 0.96, 0, 0], [3.0 * i - 0.24, 0.93, 0]] for i in range(n)])), f"w-{n}")
         for n in (1, 2, 3)]
     config["driver"] = dict(CONFIG["driver"], engine=engine_name)
-    results = sample_trajectories(molecules, batched, config, device=DEVICE)
+    results = sample_trajectories(molecules, RecordingEvaluator(), config, device=DEVICE)
     reference = ASEEnsembleEvaluator(HIPNN_ASE_load_ensemble(str(TRAINED_ENSEMBLE), device=DEVICE))
-    # Every collected frame's screening signals equal the per-structure ASE ensemble's at that geometry.
+    # Compare raw predictions at the approved tolerance, exact signal reductions,
+    # and the propagation of measured member roundoff into each uncertainty.
     candidates = [c for r in results for c in r.get_metadata()["acquisition_candidates"]]
     assert len(candidates) > 3
     for candidate in candidates:
         frame = Atoms(numbers=candidate["numbers"], positions=candidate["positions"])
-        expected = ensemble_statistics(reference.predict([frame]))[0]
-        for key in ("Es", "Fs", "Fsmax"):
-            assert candidate["signals"][key] == pytest.approx(expected[key], rel=1e-4, abs=1e-5), key
+        prediction = recorded[(frame.numbers.tobytes(), frame.positions.tobytes())]
+        individual = reference.predict([frame])
+        np.testing.assert_allclose(prediction["energies"], individual["energies"], rtol=1e-5, atol=1e-5)
+        np.testing.assert_allclose(prediction["forces"][0], individual["forces"][0], rtol=1e-5, atol=1e-5)
+        actual, expected = ensemble_statistics(prediction)[0], ensemble_statistics(individual)[0]
+        delta_e = prediction["energies"].astype(float) - individual["energies"]
+        delta_f = prediction["forces"][0].astype(float) - individual["forces"][0]
+        component_bound = np.std(delta_f, axis=0)
+        # std is the norm of centered members / sqrt(n). The reverse triangle
+        # inequality bounds its change by std(delta); mean/max/RMS inherit it.
+        bounds = {"Es": float(np.std(delta_e)), "Fs": float(component_bound.mean()),
+                  "Fsmax": float(component_bound.max()),
+                  "Fsrms": float(np.sqrt(np.mean(component_bound ** 2)))}
+        for key, bound in bounds.items():
+            assert candidate["signals"][key] == pytest.approx(actual[key], rel=1e-12, abs=1e-12), key
+            assert abs(actual[key] - expected[key]) <= bound + 1e-12, (key, bound)

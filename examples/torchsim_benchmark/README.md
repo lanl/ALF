@@ -37,7 +37,15 @@ revision. Memory is **peak PyTorch allocated memory**, not total GPU process
 memory; Warp and other allocations may be outside this metric.
 
 Float32 predictions use `rtol=atol=1e-5`, independently of acquisition
-thresholds. Integration state is float64. Friction remains 0.02 inverse ASE
+thresholds. Conformance records the actual member predictions and checks that
+candidate uncertainties are their correct reductions. Comparisons with
+individual evaluations account for measured input roundoff: the change in an
+ensemble standard deviation is bounded by `std(batched - individual)`. Force
+mean/max/RMS uncertainty bounds follow from those component bounds. This avoids
+applying total-energy relative tolerances directly to a much smaller energy
+spread; acquisition cutoffs are unchanged.
+
+Integration state is float64. Friction remains 0.02 inverse ASE
 time; `dt` remains fs. ALCHEMI uses native deterministic half kicks and the
 same per-trajectory NumPy thermostat as TorchSim, rather than the toolkit's
 batch-dependent stochastic kernel. Reports measure this adapter, not the

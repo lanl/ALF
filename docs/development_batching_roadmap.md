@@ -648,6 +648,12 @@ Decisions (user, 2026-11-02):
 - Full Slurm active learning, a trained cell-input checkpoint, and MI350 are
   later acceptance work. The old ASE-loader `chdir` race and fork-roadmap sync
   remain separate changes. Agents commit locally; the user pushes.
+- MI250 float32 uncertainty acceptance (user, 2026-11-02): accept the observed
+  small spread difference when physical member predictions pass `rtol=atol=1e-5`.
+  Verify candidate signals against their actual member predictions and bound
+  differences from individual evaluation by propagated, measured member roundoff.
+  Do not alter inference precision or acquisition cutoffs. The initial direct
+  spread comparison failed; retain that result and its diagnostic in the report.
 
 Implementation: `5001880` (shared packed calculations and ALCHEMI adapter) and
 `fb88905` (benchmark, source identity, and opt-in example). `__main__.py`,

@@ -18,6 +18,7 @@ from alframework.tools.molecules_class import MoleculesObject
 from alframework.tools.tools import (
     FAILED_TASK_STATUSES,
     SUCCESSFUL_TASK_STATUSES,
+    build_input_dict,
     is_final_task,
     parsl_task_queue,
 )
@@ -307,3 +308,72 @@ def poll_delay(default, *buffers, now=None):
         if remaining is not None:
             delay = min(delay, remaining)
     return delay
+
+
+class BatchedSubmitter:
+    """Submit structures to a task one at a time or in compatible batches.
+
+    With ``settings`` of ``None``, :meth:`submit` creates one ordinary task per
+    structure (``molecule_object=...``) on a plain ``parsl_task_queue``, exactly
+    as ALF always has. Otherwise structures wait in a :class:`BatchBuffer` and
+    :meth:`submit_ready` turns ready groups into tasks via :meth:`_group_task`,
+    on a :class:`BatchedTaskQueue` that counts structures.
+
+    Args:
+        task: The loaded Parsl app.
+        settings (dict or None): ``batch_size``, ``partial_policy``, and
+            ``max_wait_seconds``, as returned by :func:`batching_settings`.
+    """
+
+    def __init__(self, task, settings):
+        self.task = task
+        self.settings = settings
+        self.buffer = None
+        if settings is None:
+            self.queue = parsl_task_queue()
+        else:
+            self.buffer = BatchBuffer(settings["batch_size"], settings["partial_policy"],
+                                      settings["max_wait_seconds"])
+            self.queue = BatchedTaskQueue(self.buffer)
+
+    @property
+    def batched(self):
+        return self.settings is not None
+
+    def describe(self):
+        if not self.batched:
+            return "one structure per task"
+        return "batches of up to {batch_size} structures ({partial_policy}, {max_wait_seconds:g} s)".format(
+            **self.settings)
+
+    def submit(self, molecule_object, input_dicts):
+        """Submit (or buffer) one structure.
+
+        ``input_dicts`` is the usual lookup list for ``build_input_dict``, e.g.
+        ``[{"QM_config": QM_config}, *all_configs, status]``.
+        """
+        if not self.batched:
+            task_input = build_input_dict(self.task.func, [{"molecule_object": molecule_object}, *input_dicts],
+                                          raise_on_fail=True)
+            self.queue.add_task(self.task(**task_input))
+        else:
+            self.buffer.add(molecule_object)
+
+    def submit_ready(self, input_dicts, flush=False):
+        """Submit every ready batch; call once per coordinator iteration."""
+        if not self.batched:
+            return 0
+        groups = self.buffer.pop_ready(flush=flush)
+        for group in groups:
+            self.queue.add_task(self._group_task(group, input_dicts), width=len(group))
+        return len(groups)
+
+    def _group_task(self, group, input_dicts):
+        """Launch one task for ``group``; by default the task accepts ``molecule_objects``."""
+        task_input = build_input_dict(self.task.func, [{"molecule_objects": group}, *input_dicts],
+                                      raise_on_fail=True)
+        return self.task(**task_input)
+
+    def poll_delay(self, default):
+        """Coordinator sleep, shortened so that partial batches are submitted on time."""
+        return poll_delay(default, self.buffer)

@@ -31,6 +31,7 @@ from alframework.tools.tools import build_input_dict
 from alframework.tools.pyanitools import anidataloader
 from alframework.tools.molecules_class import MoleculesObject
 from alframework.tools.labeling import LabelingCoordinator
+from alframework.tools.sampler_coordinator import SamplerCoordinator
 #import logging
 #logging.basicConfig(level=logging.DEBUG)
 
@@ -65,7 +66,6 @@ all_configs = [master_config, builder_config, sampler_config, QM_config, ML_conf
 # Define queues (the QM queue is created with the QM task below):
 ML_task_queue = parsl_task_queue()
 builder_task_queue = parsl_task_queue()
-sampler_task_queue = parsl_task_queue()
 
 if (args.test_builder or args.test_qm or args.test_sampler or args.test_ml) and 'parsl_debug_configuration' in master_config:
     parsl_configuration = load_module_from_string(master_config['parsl_debug_configuration'])
@@ -106,6 +106,10 @@ sampler_task = load_module_from_string(master_config['sampler_task'])
 for cur_Exec in sampler_task.executors:
     if cur_Exec.replace('_executor', '_standby_executor') in executor_list:
         sampler_task.executors.append(cur_Exec.replace('_executor', '_standby_executor'))
+# Single-structure samplers submit one task per structure as before; see sampler_coordinator.
+sampling = SamplerCoordinator(sampler_task, master_config['sampler_task'], sampler_config)
+sampler_task_queue = sampling.queue
+print("Sampling: " + sampling.describe())
 
 # QM
 qm_task = load_module_from_string(master_config['QM_task'])
@@ -180,11 +184,8 @@ if args.test_sampler:
     if status['current_model_id'] < 0:
         raise RuntimeError("Need to train model before testing sampling")
     print(master_config['model_path'].format(status['current_model_id']))
-    task_input = build_input_dict(sampler_task.func,
-                                  [{"molecule_object": test_configuration, "sampler_config": sampler_config},
-                                   *all_configs, status],
-                                  raise_on_fail=True)
-    sampler_task_queue.add_task(sampler_task(**task_input))
+    sampling.submit(test_configuration, [{"sampler_config": sampler_config}, *all_configs, status])
+    sampling.submit_ready([{"sampler_config": sampler_config}, *all_configs, status], flush=True)
     sampled_configuration = sampler_task_queue.task_list[0].result()
     queue_output = sampler_task_queue.get_task_results()
     test_configuration = queue_output[0][0]
@@ -385,20 +386,13 @@ while True:
         for structure in structure_list:
             # If builders return a single structure:
             if isinstance(structure, MoleculesObject):
-                task_input = build_input_dict(sampler_task.func,
-                                              [{"molecule_object": structure, "sampler_config": sampler_config},
-                                               *all_configs, status],
-                                              raise_on_fail=True)
-                sampler_task_queue.add_task(sampler_task(**task_input))
+                sampling.submit(structure, [{"sampler_config": sampler_config}, *all_configs, status])
             # If builders return multiple structures
             elif isinstance(structure, list):
                 for substructure in structure:
                     assert isinstance(substructure, MoleculesObject), 'substructure must be a MoleculesObject instance'
-                    task_input = build_input_dict(sampler_task.func,
-                                                  [{"molecule_object": substructure, "sampler_config": sampler_config},
-                                                   *all_configs, status],
-                                                  raise_on_fail=True)
-                    sampler_task_queue.add_task(sampler_task(**task_input))
+                    sampling.submit(substructure, [{"sampler_config": sampler_config}, *all_configs, status])
+    sampling.submit_ready([{"sampler_config": sampler_config}, *all_configs, status])
 
     # Run more QM
     if sampler_task_queue.get_completed_number() > master_config['minimum_QM']:
@@ -458,5 +452,5 @@ while True:
         json.dump(status, outfile, indent=2)
     
     master_loop_iter += 1
-    time.sleep(labeling.poll_delay(60))
+    time.sleep(labeling.poll_delay(sampling.poll_delay(60)))
 	

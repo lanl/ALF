@@ -96,3 +96,37 @@ class FakeTask:
         if self._exception is not None:
             raise self._exception
         return self._result
+
+
+class PairSpringCalculator(Calculator):
+    """All-pairs harmonic springs; ensembles differing in ``k`` give bounded MD with real uncertainty."""
+
+    implemented_properties = ["energy", "forces"]
+
+    def __init__(self, k, d0=1.2):
+        super().__init__()
+        self.k = k
+        self.d0 = d0
+
+    def calculate(self, atoms=None, properties=("energy",), system_changes=all_changes):
+        super().calculate(atoms, properties, system_changes)
+        positions = atoms.get_positions()
+        energy, forces = 0.0, np.zeros_like(positions)
+        for i in range(len(positions)):
+            for j in range(i + 1, len(positions)):
+                vector = positions[i] - positions[j]
+                distance = np.linalg.norm(vector)
+                energy += self.k * (distance - self.d0) ** 2
+                force = -2 * self.k * (distance - self.d0) * vector / distance
+                forces[i] += force
+                forces[j] -= force
+        self.results = {"energy": energy, "forces": forces}
+
+
+def spring_ensemble(spread=1.0):
+    return [PairSpringCalculator(3.5 + spread * delta) for delta in (-1.5, -0.5, 0.5, 1.5)]
+
+
+def load_spring_ensemble(model_directory, device="cpu"):
+    """Stand-in for an ``ase_calculator`` ensemble loader."""
+    return spring_ensemble()

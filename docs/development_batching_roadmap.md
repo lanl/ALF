@@ -1,6 +1,6 @@
 # Living roadmap for integration into ALF development
 
-Last updated: October 31, 2026 (Increments 0–3 and 4a done locally; 4b next).
+Last updated: November 2, 2026 (Increments 0–3 and 4a–4b done locally; 4c next).
 
 This is the shared plan for gradually bringing the fork's intended capabilities
 into `lanl/ALF:development`. It is separate from ongoing implementation on
@@ -65,7 +65,7 @@ official `lanl/ALF:development`). No increment is merged yet.
 | 1. Shared batching helpers | done locally | Compatible grouping, waiting buffers, timeout submission, actual-width accounting, output normalization, and batch-builder ID preservation. | Focused tests pass; existing execution is unchanged until batching is selected. |
 | 2. Labeling coordination | done locally | Batched labeling during bootstrap and active learning; explicit sequential compatibility for existing single-structure labelers. | Actual coordinator tests cover labeling, partial batches, storage, and retraining. |
 | 3. Native PySEQM labeling | done locally | Ground-state batch energies/forces, adapter-local padding and atom-order restoration, and per-member convergence handling. | Native batch results agree with individual evaluations; successful labels survive partial failures. |
-| 4. Ground-state sampling and acquisition | in progress (4a done; 4b next) | Minimal physical-inference/MLMD contracts, uncertainty and summed ranking, first-trigger returns, and an in-memory logical-cohort selector. | Shared observations produce equivalent screening, scores, stopping, and selection across execution strategies. |
+| 4. Ground-state sampling and acquisition | in progress (4a–4b done; 4c next) | Minimal physical-inference/MLMD contracts, uncertainty and summed ranking, first-trigger returns, and an in-memory logical-cohort selector. | Shared observations produce equivalent screening, scores, stopping, and selection across execution strategies. |
 | 5. TorchSim dynamics | planned | Supported NVIDIA/AMD ground-state batched MLMD. | CPU, NVIDIA, and Darwin MI250 mechanics and integration acceptance pass. |
 | 6. ALCHEMI dynamics | planned | NVIDIA batched MLMD through the same contracts, in its separate environment. | Shared conformance tests and NVIDIA acceptance pass. |
 | 7. Combined release validation | planned | Opt-in examples and integration/performance results. | All single/batched dynamics x single/batched labeling combinations complete representative ALF workflows. |
@@ -293,8 +293,8 @@ Sub-steps, each a separate commit:
 | Step | Status | Deliverable | Acceptance |
 | --- | --- | --- | --- |
 | 4a. Inference contract and scoring | done locally | Per-member unbiased energies/forces from a list of structures (adapter for the existing ASE ensemble); `Es`/`Fs`/`Fsmax`/`Fsrms` with `MLMD_calculator`'s population-std formulas; eligibility (existing thresholds, `min_time`, `distcut` rejection); uncertainty and summed ranking; stable frame identity and deterministic ties. No `__main__.py` change. | Parity with `MLMD_calculator` on fakes and on the trained Darwin water ensemble (CPU). |
-| 4b. Multi-trajectory MLMD, first-trigger | planned (next) | Opt-in task taking `molecule_objects`; `driver.strategy` `single`/`batched`, `driver.engine` `ase`; minimal engine contract (step, set temperature, scale cell, freeze, state); per-trajectory seeds from molecule IDs; configurable device; shared batched submitter in the coordinator. `simple_mlmd_sampling_task` untouched. | Identical frames/metadata for single vs batched from seeded inputs; real coordinator with mocks; real-coordinator CPU run with the trained water model. |
-| 4c. In-memory cohort top-K | planned | `acquisition.selection = {mode: cohort_top_k, cohort_size, k}` and `trajectory_policy` `stop`/`continue`; incremental admission; model generation pinned per cohort; terminal outcomes per trajectory; exact global top-K with safe local pruning; handoff to labeling. No persistence. | Replay at widths 1, 2, 8, 32, 50 with reversed completion gives identical selections; ties, empty trajectories, < K candidates, cohort > capacity, failure after an eligible frame, model promotion mid-cohort. |
+| 4b. Multi-trajectory MLMD, first-trigger | done locally | Opt-in task taking `molecule_objects`; `driver.strategy` `single`/`batched`, `driver.engine` `ase`; minimal engine contract (step, set temperature, scale cell, freeze, state); per-trajectory seeds from molecule IDs; configurable device; shared batched submitter in the coordinator. `simple_mlmd_sampling_task` untouched. | Identical frames/metadata for single vs batched from seeded inputs; real coordinator with mocks; real-coordinator CPU run with the trained water model. |
+| 4c. In-memory cohort top-K | planned (next) | `acquisition.selection = {mode: cohort_top_k, cohort_size, k}` and `trajectory_policy` `stop`/`continue`; incremental admission; model generation pinned per cohort; terminal outcomes per trajectory; exact global top-K with safe local pruning; handoff to labeling. No persistence. | Replay at widths 1, 2, 8, 32, 50 with reversed completion gives identical selections; ties, empty trajectories, < K candidates, cohort > capacity, failure after an eligible frame, model promotion mid-cohort. |
 
 Out of scope for Increment 4: TorchSim/ALCHEMI (Increments 5/6), native
 batched HIPPYNN inference (Increment 5), excited states/gap/LCM, plugin
@@ -340,6 +340,80 @@ by the well potential as a final extra entry.
     added warnings are HIPPYNN deprecation notices raised while loading the
     trained checkpoints.
 - Nothing calls these modules yet; existing sampling is unchanged.
+
+4b record (done locally, 2026-11-02):
+
+- New `alframework/samplers/batched_mlmd.py`. `mlmd_trajectories_task(molecule_objects, sampler_config,
+  model_path, current_model_id, gpus_per_node)` runs several independent ASE Langevin trajectories in one
+  task and returns one `MoleculesObject` per input, in order.
+  - `atoms` is the selected frame when the trajectory is eligible, `None` otherwise.
+  - It reuses the flat `simple_mlmd_sampling_task` keys and adds the optional `driver`, `batching`,
+    `acquisition`, `random_seed`, and `device`.
+  - Neurochem (`use_potential_specific_code`) is rejected.
+- Engine contract (`ASEEngine`): `step(indices, n)`, `observe(i)`, `atoms(i)`, `set_temperature`,
+  `scale_cell`, `finish(i)`.
+  - `run_mlmd_trajectories` is the lockstep loop. It reproduces `mlmd_sampling`: initial step, a check
+    every `Ncheck`, schedules from `annealing_schedule`, and density scaling.
+  - Each trajectory stops independently at its first eligible frame, or on a `distcut` rejection.
+    Stopped members are never stepped again while batch-mates continue.
+  - A trajectory whose evaluation raises is marked `failed` (`metadata['sampling_error']`) without
+    affecting the others.
+  - Screening uses unbiased per-member predictions read from `MLMD_calculator`'s contributions, so it
+    excludes UDD and the well potential. UDD remains `MLMD_calculator_options.udd_bias_weight`.
+- Metadata keeps every legacy `meta_dict` key and the `meta_dir` pickle/`.traj` files. It adds `Fsrms`,
+  `trajectory_outcome` (`eligible`/`rejected`/`completed`/`failed`), `acquisition_strategy`,
+  `ranking_score` (eligible only), `step`, `frame_id`, and `random_seed`.
+- Seeds: with `random_seed`, each trajectory's `RandomState` is derived from SHA-256 of the seed and the
+  molecule ID. It drives schedule draws, the `trajectory_frequency` coin flip, and the Langevin noise.
+  Without it, OS entropy is used and recorded. `device` defaults to `cuda:0` when available, else `cpu`.
+- Coordinator: Increment 2's logic was factored into `batching.BatchedSubmitter`. `LabelingCoordinator`
+  now subclasses it, and its tests pass unmodified.
+  - New `tools/sampler_coordinator.py` (`SamplerCoordinator`, `driver_settings`). Legacy
+    `molecule_object` samplers keep an ordinary queue and one task per structure; a `driver` or
+    `batching` block with a legacy task is an error.
+  - `molecule_objects` samplers use a structure-counting `BatchedTaskQueue`: `single` gives width-1
+    tasks; `batched` uses the sampler's `batching` block. `torchsim`/`alchemi` raise
+    `NotImplementedError` (Increments 5/6).
+  - `__main__.py` changes are limited to the three sampler submission sites (active learning and
+    `--test_sampler`), one `sampling.submit_ready` per pass, and the sleep
+    `labeling.poll_delay(sampling.poll_delay(60))`. Net +11/−17 lines.
+- Evidence:
+  - `tests/test_batched_mlmd.py` (14 tests) uses a new bounded fake ensemble
+    (`tests/helpers/fakes.PairSpringCalculator`; spring constants differ per member, so uncertainty grows
+    with thermal motion).
+    - Legacy parity: six cases (trigger, trigger at start, never, `distcut`, `min_time`, periodic
+      density schedule) reproduce `mlmd_sampling` exactly with the same seeded stream: frame,
+      `Es`/`Fs`/`Fsmax`, crit flags, `temps`/`denss`, positions, cell.
+    - Width/order invariance: eight trajectories stopping at steps 11–76, one `distcut` rejection, and
+      one that never triggers give identical results as 8×1, 1×8, 3+5, and reversed.
+    - Also covered: stopped members are not stepped while batch-mates run; failure isolation; UDD moves
+      atoms while the recorded `Es` stays unbiased; seeds; metadata/`.traj` files; device selection.
+    - On the trained Darwin ensemble (CPU), `single` and `batched` agree exactly.
+  - `tests/test_sampler_coordinator.py` (5 tests) runs the real entrypoint with the real
+    `mlmd_trajectories_task`, a fake ensemble loader, and mock builder/QM/ML. `single` and `batched`
+    (width 3) both complete bootstrap → MLMD → labeling → HDF5 → retraining, with sampler structures
+    within `parallel_samplers`. Stable over 10 repeats per env. Full suite: 121 passed in both envs.
+  - Trained model, real coordinator (CPU, `cn211`, scratch `/tmp/alf_inc4b`): active learning resumed
+    from a copy of the Darwin `model-0000`/`data-0000.h5`.
+    - Setup: real condensed-phase builder (30–45 atom water boxes), batched `mlmd_trajectories_task`
+      (width 3, `device: cpu`), and mock QM.
+    - Result: 9/9 harvested trajectories were eligible and all were labeled. Every one triggered at
+      the first check (Es 3.7–7.8 eV vs `Escut` 0.5). That is expected for the 100-structure smoke-test
+      model, so this run checks execution, not sampling quality.
+- Findings from that run (not 4b defects, recorded for follow-up):
+  - `distcut` defaults to 1.2 Å in both `mlmd_sampling` and the new task. The tracked water examples
+    omit `distcut`, so dense water (O–H ≈ 0.96 Å) is rejected at the first check under either sampler.
+    `simple_water_darwin_run_test` avoided this only because its `maxt` ends sampling before any check
+    triggers. The scratch run set `distcut: 0.7`. Changing the default would be a scientific-default
+    change and needs a separate decision.
+  - `HIPNN_ASE_calculator` loads checkpoints inside `hippynn.tools.active_directory` (process-wide
+    `os.chdir`) with a relative model path. Two sampler tasks loading concurrently in one process
+    (`ThreadPoolExecutor`) therefore race. One task failed this way in the scratch run. This affects the
+    legacy sampler equally; HTEX workers are separate processes.
+- Limitations: a stopped trajectory's frame reaches labeling when its task finishes, i.e. when its
+  slowest batch-mate stops. Results are identical; only latency differs. Batches use the model current
+  at submission (cohort pinning is 4c). Settings are read once at startup. Only the ASE engine exists;
+  inference is still one structure at a time.
 
 ### Batching and reference labeling
 

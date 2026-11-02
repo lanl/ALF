@@ -31,9 +31,8 @@ import logging
 
 from parsl import python_app
 
-from alframework.tools.batching import BatchBuffer, BatchedTaskQueue, batching_settings
-from alframework.tools.batching import flatten_molecule_output, poll_delay
-from alframework.tools.tools import build_input_dict, parsl_task_queue
+from alframework.tools.batching import BatchedSubmitter, batching_settings, flatten_molecule_output
+from alframework.tools.tools import build_input_dict
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +77,7 @@ def label_sequentially(molecule_objects, label_one, task_inputs):
     return labeled
 
 
-class LabelingCoordinator:
+class LabelingCoordinator(BatchedSubmitter):
     """Submit reference-labeling work for the ALF coordinator.
 
     Args:
@@ -94,34 +93,24 @@ class LabelingCoordinator:
     """
 
     def __init__(self, qm_task, qm_task_path, QM_config, master_config=None):
+        settings = labeling_batch_settings(QM_config)
+        if settings is not None:
+            mode = settings["mode"]
+            required = "molecule_objects" if mode == "native" else "molecule_object"
+            if required not in inspect.signature(qm_task.func).parameters:
+                raise ValueError("QM batching.mode '{}' requires QM_task {} to accept '{}'.".format(
+                    mode, qm_task_path, required))
+            target = (master_config or {}).get("target_queued_QM")
+            if settings["partial_policy"] == "full_only" and target is not None \
+                    and target < settings["batch_size"]:
+                # Waiting structures count as queued, so builders would stop before a batch fills.
+                raise ValueError("QM batching with partial_policy 'full_only' requires "
+                                 "target_queued_QM >= batching.batch_size.")
+            if mode == "sequential":
+                self._packed_task = python_app(executors=list(qm_task.executors))(label_sequentially)
+        super().__init__(qm_task, settings)
         self.qm_task = qm_task
         self.qm_task_path = qm_task_path
-        self.settings = labeling_batch_settings(QM_config)
-        self.buffer = None
-        if self.settings is None:
-            self.queue = parsl_task_queue()
-            return
-
-        mode = self.settings["mode"]
-        required = "molecule_objects" if mode == "native" else "molecule_object"
-        if required not in inspect.signature(qm_task.func).parameters:
-            raise ValueError("QM batching.mode '{}' requires QM_task {} to accept '{}'.".format(
-                mode, qm_task_path, required))
-        target = (master_config or {}).get("target_queued_QM")
-        if self.settings["partial_policy"] == "full_only" and target is not None \
-                and target < self.settings["batch_size"]:
-            # Waiting structures count as queued, so builders would stop before a batch fills.
-            raise ValueError("QM batching with partial_policy 'full_only' requires "
-                             "target_queued_QM >= batching.batch_size.")
-        self.buffer = BatchBuffer(self.settings["batch_size"], self.settings["partial_policy"],
-                                  self.settings["max_wait_seconds"])
-        self.queue = BatchedTaskQueue(self.buffer)
-        if mode == "sequential":
-            self._packed_task = python_app(executors=list(qm_task.executors))(label_sequentially)
-
-    @property
-    def batched(self):
-        return self.settings is not None
 
     def describe(self):
         if not self.batched:
@@ -129,37 +118,10 @@ class LabelingCoordinator:
         return "{mode} batches of up to {batch_size} structures ({partial_policy}, {max_wait_seconds:g} s)".format(
             **self.settings)
 
-    def submit(self, molecule_object, input_dicts):
-        """Submit (or buffer) one structure.
-
-        ``input_dicts`` is the usual lookup list for ``build_input_dict``, e.g.
-        ``[{"QM_config": QM_config}, *all_configs, status]``.
-        """
-        if not self.batched:
-            task_input = build_input_dict(self.qm_task.func, [{"molecule_object": molecule_object}, *input_dicts],
-                                          raise_on_fail=True)
-            self.queue.add_task(self.qm_task(**task_input))
-        else:
-            self.buffer.add(molecule_object)
-
-    def submit_ready(self, input_dicts, flush=False):
-        """Submit every ready batch; call once per coordinator iteration."""
-        if not self.batched:
-            return 0
-        groups = self.buffer.pop_ready(flush=flush)
-        for group in groups:
-            if self.settings["mode"] == "native":
-                task_input = build_input_dict(self.qm_task.func, [{"molecule_objects": group}, *input_dicts],
-                                              raise_on_fail=True)
-                task = self.qm_task(**task_input)
-            else:
-                task_input = build_input_dict(self.qm_task.func, [{"molecule_object": None}, *input_dicts],
-                                              raise_on_fail=True)
-                task_input.pop("molecule_object")
-                task = self._packed_task(group, self.qm_task.func, task_input)
-            self.queue.add_task(task, width=len(group))
-        return len(groups)
-
-    def poll_delay(self, default):
-        """Coordinator sleep, shortened so that partial batches are submitted on time."""
-        return poll_delay(default, self.buffer)
+    def _group_task(self, group, input_dicts):
+        if self.settings["mode"] == "native":
+            return super()._group_task(group, input_dicts)
+        task_input = build_input_dict(self.qm_task.func, [{"molecule_object": None}, *input_dicts],
+                                      raise_on_fail=True)
+        task_input.pop("molecule_object")
+        return self._packed_task(group, self.qm_task.func, task_input)

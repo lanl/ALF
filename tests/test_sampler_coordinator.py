@@ -1,0 +1,160 @@
+"""Multi-trajectory sampling through the real ALF coordinator with local tasks."""
+import json
+import runpy
+import sys
+import time
+from pathlib import Path
+
+import h5py
+import numpy as np
+import parsl
+import pytest
+from ase import Atoms
+from parsl import python_app
+from parsl.config import Config
+from parsl.executors import ThreadPoolExecutor
+
+from alframework.samplers import batched_mlmd
+from alframework.samplers.mlmd_sampling import simple_mlmd_sampling_task
+from alframework.tools import tools as tool_module
+from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.sampler_coordinator import SamplerCoordinator, driver_settings
+
+WATER = Atoms("OH2", positions=[[0, 0, 0], [1.2, 0, 0], [0.6, 1.0392, 0]])
+SAMPLER = dict(dt=0.5, maxt=0.05, Escut=0.012, Fscut=100.0, Ncheck=5, distcut=0.5, random_seed=3,
+               srt_temp=[2500.0, 3500.0], end_temp=[2500.0, 3500.0], amp_temp=[0.0, 200.0],
+               per_temp=[0.01, 0.05], amp_dens=None, per_dens=None, end_dens=None, device="cpu",
+               ase_calculator="tests.helpers.fakes.load_spring_ensemble")
+
+
+def stored_ids(h5_dir):
+    ids = []
+    for path in sorted(Path(h5_dir).glob("data-*.h5")):
+        with h5py.File(path) as handle:
+            for group in handle.values():
+                ids.extend(value.decode() for value in group["_id"][()])
+    return ids
+
+
+@pytest.mark.parametrize("driver", [{"strategy": "single"}, {"strategy": "batched"}])
+def test_coordinator_bootstraps_samples_batches_labels_and_retrains(tmp_path, monkeypatch, driver):
+    monkeypatch.chdir(tmp_path)
+    model_pattern = str(tmp_path / "models/model-{:04d}")
+    training_calls, sampler_widths, labeled = [], [], []
+
+    @python_app(executors=["alf_builder_executor"])
+    def builder(moleculeid):
+        return MoleculesObject(WATER.copy(), moleculeid)
+
+    original_sample = batched_mlmd.sample_trajectories
+
+    def recording_sample(molecule_objects, models, sampler_config, engine_class=batched_mlmd.ASEEngine):
+        sampler_widths.append(len(molecule_objects))
+        return original_sample(molecule_objects, models, sampler_config, engine_class)
+
+    monkeypatch.setattr(batched_mlmd, "sample_trajectories", recording_sample)
+
+    @python_app(executors=["alf_QM_executor"])
+    def qm(molecule_object):
+        labeled.append(molecule_object.get_moleculeid())
+        molecule_object.store_results({"energy": -1.0, "forces": np.zeros((len(molecule_object), 3))})
+        molecule_object.set_converged_flag(True)
+        return molecule_object
+
+    @python_app(executors=["alf_ML_executor"])
+    def ml(current_training_id):
+        training_calls.append((current_training_id, stored_ids(tmp_path / "h5")))
+        Path(model_pattern.format(current_training_id)).mkdir(parents=True)
+        return [True] * 4, current_training_id
+
+    config = Config(executors=[ThreadPoolExecutor(label=f"alf_{name}_executor", max_threads=2)
+                               for name in ("builder", "sampler", "QM", "ML")],
+                    strategy="none", run_dir=str(tmp_path / "runinfo"))
+    modules = {"mock.config": config, "mock.builder": builder, "mock.qm": qm, "mock.ml": ml,
+               "mock.sampler": batched_mlmd.mlmd_trajectories_task}
+    monkeypatch.setattr(tool_module, "load_module_from_string", modules.__getitem__)
+
+    sampler_config = dict(SAMPLER, driver=driver)
+    if driver["strategy"] == "batched":
+        sampler_config["batching"] = {"batch_size": 3, "max_wait_seconds": 0.05}
+    master = dict(master_directory="pwd", builder_task="mock.builder", sampler_task="mock.sampler",
+                  QM_task="mock.qm", ML_task="mock.ml", parsl_configuration="mock.config",
+                  builder_config_path="builder.json", sampler_config_path="sampler.json",
+                  QM_config_path="qm.json", ML_config_path="ml.json", status_path="status.json",
+                  model_path=model_pattern, h5_path=str(tmp_path / "h5/data-{:04d}.h5"), bootstrap_set=2,
+                  properties_list={"energy": ["energy", "system", 1.0], "forces": ["forces", "atomic", 1.0]},
+                  parallel_samplers=4, target_queued_QM=4, minimum_QM=0, save_h5_threshold=3,
+                  maximum_completed_QM=8, gpus_per_node=0)
+    for name, values in [("master", master), ("builder", {}), ("sampler", sampler_config), ("qm", {}), ("ml", {})]:
+        (tmp_path / f"{name}.json").write_text(json.dumps(values))
+    monkeypatch.setattr(sys, "argv", ["alframework", "--master", str(tmp_path / "master.json")])
+
+    original_sleep = time.sleep
+    passes, sampler_counts = [], []
+
+    class Finished(Exception):
+        pass
+
+    def driver_sleep(seconds):
+        frame = sys._getframe(1)
+        if frame.f_globals.get("__name__") != "__main__":
+            return original_sleep(seconds)
+        passes.append(seconds)
+        if "sampler_task_queue" in frame.f_globals:
+            sampler_counts.append(frame.f_globals["sampler_task_queue"].get_number())
+        if json.loads((tmp_path / "status.json").read_text())["current_model_id"] >= 1:
+            raise Finished
+        assert len(passes) < 3000, "coordinator did not complete active learning"
+        original_sleep(min(seconds, 0.01))
+
+    monkeypatch.setattr(time, "sleep", driver_sleep)
+    try:
+        with pytest.raises(Finished):
+            runpy.run_module("alframework", run_name="__main__")
+    finally:
+        try:
+            parsl.dfk().cleanup()
+        finally:
+            parsl.clear()
+
+    status = json.loads((tmp_path / "status.json").read_text())
+    assert status["lifetime_failed_sampler_tasks"] == 0 and status["lifetime_failed_QM_tasks"] == 0
+    assert training_calls[0][0] == 0 and training_calls[1][0] == 1
+    sampled_ids = [value for value in training_calls[1][1] if value.startswith("mol-0000-")]
+    assert sampled_ids, "sampled frames must reach the second HDF5 shard"
+    assert max(sampler_counts) <= master["parallel_samplers"]
+    if driver["strategy"] == "single":
+        assert set(sampler_widths) == {1}
+    else:
+        assert max(sampler_widths) > 1 and max(sampler_widths) <= 3
+
+
+def test_driver_settings_validation():
+    assert driver_settings({})["strategy"] == "single"
+    with pytest.raises(ValueError, match="requires a sampler 'batching'"):
+        driver_settings({"driver": {"strategy": "batched"}})
+    with pytest.raises(ValueError, match="requires driver.strategy 'batched'"):
+        driver_settings({"batching": {"batch_size": 2}})
+    with pytest.raises(NotImplementedError, match="Increment 5"):
+        driver_settings({"driver": {"engine": "torchsim"}})
+    with pytest.raises(ValueError, match="driver.engine"):
+        driver_settings({"driver": {"engine": "lammps"}})
+    with pytest.raises(ValueError, match="Unknown driver"):
+        driver_settings({"driver": {"stratgy": "single"}})
+
+
+def test_legacy_sampler_is_unchanged_and_rejects_new_blocks():
+    coordinator = SamplerCoordinator(simple_mlmd_sampling_task, "mlmd", {"dt": 0.5})
+    assert type(coordinator.queue) is tool_module.parsl_task_queue and not coordinator.batched
+    for key in ("driver", "batching"):
+        with pytest.raises(ValueError, match="molecule_objects"):
+            SamplerCoordinator(simple_mlmd_sampling_task, "mlmd", {key: {}})
+
+
+def test_multi_trajectory_sampler_counts_structures():
+    single = SamplerCoordinator(batched_mlmd.mlmd_trajectories_task, "batched", {})
+    assert single.batched and single.settings["batch_size"] == 1 and single.poll_delay(60) == 60
+    batched = SamplerCoordinator(batched_mlmd.mlmd_trajectories_task, "batched",
+                                 {"driver": {"strategy": "batched"}, "batching": {"batch_size": 4}})
+    batched.submit(MoleculesObject(WATER.copy(), "a"), [])
+    assert batched.queue.get_number() == 1 and batched.poll_delay(60) == pytest.approx(5.0, abs=0.1)

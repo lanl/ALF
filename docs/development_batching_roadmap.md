@@ -274,7 +274,7 @@ Record each increment's commits, evidence, and limitations here as it lands.
   through HIPPYNN was not run here; storage/retraining through the
   coordinator is covered by Increment 2's tests.
 
-#### Increment 4 — ground-state sampling and acquisition (in progress)
+#### Increment 4 — ground-state sampling and acquisition (done locally; 4a–4b merged)
 
 Decisions (2026-10-31, with the user):
 
@@ -436,12 +436,14 @@ by the well potential as a final extra entry.
     - Open follow-up, deferred by the user. Make it a separate small commit, outside the batching
       increments: load via absolute paths with `load_checkpoint` instead of changing directory, or
       serialize the load with a lock.
+    - Increment 5's `load_hippynn_batched_ensemble` already loads from absolute paths, so it is not
+      affected; `HIPNN_ASE_calculator` (the `ase_calculator` path) still is.
 - Limitations: a stopped trajectory's frame reaches labeling when its task finishes, i.e. when its
   slowest batch-mate stops. Results are identical; only latency differs. Batches use the model current
   at submission (cohort pinning is 4c). Settings are read once at startup. Only the ASE engine exists;
   inference is still one structure at a time.
 
-4c record (done locally, 2026-11-02):
+4c record (done locally, 2026-11-02, commit `a74d97b`):
 
 - Decisions (user, 2026-11-02):
   - `trajectory_policy: continue` keeps every flagged frame, with an optional
@@ -519,7 +521,7 @@ by the well potential as a final extra entry.
     `cohort_size × min(k, cap)` frames in coordinator memory.
   - Selection is scalar top-K only; no diversity filter.
 
-#### Increment 5 — TorchSim dynamics (done locally, 2026-11-02)
+#### Increment 5 — TorchSim dynamics (done locally, 2026-11-02, commit `a80c23e`)
 
 Decisions (user, 2026-11-02):
 
@@ -579,7 +581,7 @@ CPU evidence (`cn213`):
   TorchSim coordinator cases) in `atomistic` and `alf_env` (PySEQM on the path).
 
 GPU acceptance (Darwin, 2026-11-02; source frozen at `ALF_fork/ALF/debug/torchsim_inc5_20261102/source`,
-base `a74d97b` plus the uncommitted Increment 5 diff; artifacts in its `results/`):
+base `a74d97b` plus the Increment 5 working tree later committed as `a80c23e`; artifacts in its `results/`):
 
 - Environments: the fork's TorchSim 0.6.2 venvs; Torch `2.9.0+cu128` (CUDA 12.8) on NVIDIA and
   `2.9.0+rocm6.4` (HIP 6.4) on AMD; HIPPYNN portable kernels (`HIPPYNN_USE_CUSTOM_KERNELS=False`).

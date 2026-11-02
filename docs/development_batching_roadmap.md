@@ -1,6 +1,6 @@
 # Living roadmap for integration into ALF development
 
-Last updated: November 2, 2026 (Increments 0–5 merged; development at `86f62ca`; Increment 6 next).
+Last updated: November 2, 2026 (Increments 0–5 merged; Increment 6 in progress locally).
 
 This is the shared plan for gradually bringing the fork's intended capabilities
 into `lanl/ALF:development`. It is separate from ongoing implementation on
@@ -74,7 +74,7 @@ locally only; the user pushes.
 | 3. Native PySEQM labeling | merged (`d5a0395`) | Ground-state batch energies/forces, adapter-local padding and atom-order restoration, and per-member convergence handling. | Native batch results agree with individual evaluations; successful labels survive partial failures. |
 | 4. Ground-state sampling and acquisition | merged (`86f62ca`) | Minimal physical-inference/MLMD contracts, uncertainty and summed ranking, first-trigger returns, and an in-memory logical-cohort selector. | Shared observations produce equivalent screening, scores, stopping, and selection across execution strategies. |
 | 5. TorchSim dynamics | merged (`86f62ca`) | Supported NVIDIA/AMD ground-state batched MLMD. | CPU, NVIDIA, and Darwin MI250 mechanics and integration acceptance pass. |
-| 6. ALCHEMI dynamics | planned | NVIDIA batched MLMD through the same contracts, in its separate environment. | Shared conformance tests and NVIDIA acceptance pass. |
+| 6. ALCHEMI dynamics | in progress | ALCHEMI 0.2.0 NVIDIA batched MLMD through the same contracts, in its separate environment. | Shared conformance tests and NVIDIA acceptance pass. |
 | 7. Combined release validation | planned | Opt-in examples and integration/performance results. | All single/batched dynamics x single/batched labeling combinations complete representative ALF workflows. |
 
 Port narrowly scoped implementations and tests. Each increment must be
@@ -620,6 +620,39 @@ Limitations: one shared PBC per batch; NVT Langevin only (no NPT); trajectories 
 lockstep, so a stopped frame reaches labeling when its slowest batch-mate stops (as in 4b); GPU results are
 not bitwise reproducible across devices; inference throughput depends on HIPPYNN's padded evaluation.
 
+#### Increment 6 — ALCHEMI 0.2 (in progress, 2026-11-02)
+
+Decisions (user, 2026-11-02):
+
+- Target toolkit 0.2.0. Clone `tmn_alchemi` into `alf_alchemi_02`, preserving
+  its Python 3.11, Torch 2.13.0+cu130, ops 0.5.0, and Warp 1.18.0 stack.
+  Add HIPPYNN, Parsl, ALF, and test dependencies only in the clone. Keep the
+  original environment and the validated TorchSim environments unchanged.
+- Reuse the current molecule-ID-derived NumPy streams and center-of-mass
+  thermostat correction. ALCHEMI's stock global-seed Langevin kernel is not
+  used: its random draws depend on packed atom indices.
+- Use ALCHEMI deterministic velocity updates with adapter-owned BAOAB drifts
+  and the shared stochastic step. Preserve `dt` in fs and friction 0.02 in
+  inverse ASE time, initial velocities, schedules, and current UDD/well options.
+- Extract shared evaluation/force/noise helpers without importing either
+  engine's optional dependencies. Reuse the existing batched HIPPYNN loader,
+  acquisition, cohorts, and coordinator; no `__main__.py` changes are expected.
+- Extend the existing benchmark with `--engine torchsim|alchemi` (default
+  `torchsim`). Record the executing development revision and source hashes,
+  not an enclosing repository's revision when source is copied elsewhere.
+- Validate CPU checkpoint inference before engine development, then CPU
+  conformance and full suites. NVIDIA acceptance first launches Torch and Warp
+  kernels to check compatibility with the cloned CUDA stack, then tests widths
+  1, 2, 8, 32, and 50 with the trained water ensemble. Re-run TorchSim CUDA/ROCm
+  regressions after extracting shared helpers. Keep `rtol=atol=1e-5`.
+- Full Slurm active learning, a trained cell-input checkpoint, and MI350 are
+  later acceptance work. The old ASE-loader `chdir` race and fork-roadmap sync
+  remain separate changes. Agents commit locally; the user pushes.
+
+Artifacts: `ALF_fork/ALF/debug/alchemi_inc6_20261102/`. Environment creation,
+checkpoint compatibility, implementation, and final hardware acceptance are
+not yet claimed complete; results will be recorded here as they become available.
+
 ### Batching and reference labeling
 
 - Preserve molecule IDs, metadata, atom order, cells, and PBC. Builder width,
@@ -648,14 +681,18 @@ labels through the same batching path without changes to the coordinator.
 ### Dynamics, screening, and identity
 
 - Select grouping and engine explicitly through `driver.strategy` and
-  `driver.engine`. Keep physical settings in the sampler's batching block.
+  `driver.engine`. Keep the flat physics/calculator settings and physical
+  grouping settings in `batching`; do not adopt the fork's `sampling`/`inference`
+  configuration dialect (Increment 4 decision).
 - Support mixed-size ground-state systems, initial velocities, independent
   stopping, temperature/density schedules, and supported periodic checkpoints.
 - Inference supplies physical predictions; sampling owns scientific checks;
   acquisition owns eligibility/ranking/selection; engines own integration,
   units, and synchronization.
-- Preserve physical-force and geometry screening when configured. Screen
-  unbiased physical predictions, excluding UDD/LCM/confinement forces.
+- Preserve main's `distcut` geometry screen and unbiased ensemble uncertainty.
+  Defer the optional physical-force screen (`max_force_cutoff`) until GALF
+  (Increment 4 decision). When introduced, it must exclude artificial bias and
+  confinement forces rather than change propagation.
 - Keep sampling screens, optional post-label dataset screens, and trainer
   outlier filters distinct. Preserve current defaults and upstream training
   filter semantics; do not automatically enable one from another.

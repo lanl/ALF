@@ -36,6 +36,9 @@ torchsim_requirements = [
     "torch-sim-atomistic>=0.6.2",
 ]
 
+# Qualified separately from TorchSim; sampler workers need Python 3.11+.
+alchemi_requirements = ["nvalchemi-toolkit==0.2.0"]
+
 setuptools.setup(
     name="alf",
     version="0.1.0",
@@ -44,7 +47,7 @@ setuptools.setup(
     python_requires=">3.9",
     install_requires=install_requirements,
     extras_require={"docs": doc_requirements, "full": full_requirements, "tests": test_requirements,
-                    "torchsim": torchsim_requirements},
+                    "torchsim": torchsim_requirements, "alchemi": alchemi_requirements},
     license="BSD 3-Clause License",
     classifiers=[
         "Development Status :: 3 - Alpha",
@@ -55,5 +58,5 @@ setuptools.setup(
     ],
     description="Active Learning Framework",
     long_description=long_description,
-    packages=setuptools.find_packages(),
+    packages=setuptools.find_packages(exclude=['tests', 'tests.*']),
 )

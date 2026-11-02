@@ -1,5 +1,6 @@
 """Multi-trajectory sampling through the real ALF coordinator with local tasks."""
 import json
+import os
 import runpy
 import sys
 import time
@@ -37,16 +38,28 @@ def stored_ids(h5_dir):
 
 
 TORCHSIM = {"strategy": "batched", "engine": "torchsim"}
+ALCHEMI = {"strategy": "batched", "engine": "alchemi"}
 
 
 @pytest.mark.parametrize("driver,policy", [({"strategy": "single"}, None), ({"strategy": "batched"}, None),
                                            ({"strategy": "batched"}, "stop"), ({"strategy": "batched"}, "continue"),
-                                           (TORCHSIM, None), (TORCHSIM, "continue")],
+                                           (TORCHSIM, None), (TORCHSIM, "continue"),
+                                           (ALCHEMI, None), (ALCHEMI, "stop"), (ALCHEMI, "continue"),
+                                           ({"strategy": "single", "engine": "alchemi"}, None)],
                          ids=["single", "batched", "cohort-stop", "cohort-continue", "torchsim",
-                              "torchsim-cohort-continue"])
+                              "torchsim-cohort-continue", "alchemi", "alchemi-cohort-stop",
+                              "alchemi-cohort-continue", "alchemi-single"])
 def test_coordinator_bootstraps_samples_batches_labels_and_retrains(tmp_path, monkeypatch, driver, policy):
     if driver.get("engine") == "torchsim":
         pytest.importorskip("torch_sim")
+    if driver.get("engine") == "alchemi":
+        from importlib.metadata import PackageNotFoundError, version
+        try:
+            qualified = version('nvalchemi-toolkit') == '0.2.0'
+        except PackageNotFoundError:
+            qualified = False
+        if not qualified:
+            pytest.skip('ALCHEMI 0.2 has its own worker environment.')
     monkeypatch.chdir(tmp_path)
     model_pattern = str(tmp_path / "models/model-{:04d}")
     training_calls, sampler_widths, labeled, engines = [], [], [], []
@@ -85,10 +98,14 @@ def test_coordinator_bootstraps_samples_batches_labels_and_retrains(tmp_path, mo
     monkeypatch.setattr(tool_module, "load_module_from_string", modules.__getitem__)
 
     sampler_config = dict(SAMPLER, driver=driver)
+    if driver.get('engine') in {'torchsim', 'alchemi'}:
+        sampler_config['device'] = os.environ.get('ALF_TEST_ENGINE_DEVICE', 'cpu')
     if policy is not None:
         # Cohorts of 6 with capacity 4: admission must continue while members run.
         sampler_config["acquisition"] = {"trajectory_policy": policy,
                                          "selection": {"mode": "cohort_top_k", "cohort_size": 6, "k": 2}}
+    if policy == "continue" and driver.get("engine") == "alchemi":
+        sampler_config['acquisition'].update(strategy='summed', weights={'energy': 1., 'force_rms': 1.})
     if driver["strategy"] == "batched":
         sampler_config["batching"] = {"batch_size": 3, "max_wait_seconds": 0.05}
     master = dict(master_directory="pwd", builder_task="mock.builder", sampler_task="mock.sampler",
@@ -161,8 +178,8 @@ def test_driver_settings_validation():
     with pytest.raises(ValueError, match="requires driver.strategy 'batched'"):
         driver_settings({"batching": {"batch_size": 2}})
     assert driver_settings({"driver": {"engine": "torchsim"}})["engine"] == "torchsim"
-    with pytest.raises(NotImplementedError, match="Increment 6"):
-        driver_settings({"driver": {"engine": "alchemi"}})
+    assert driver_settings({"driver": {"engine": "alchemi"}})["engine"] == "alchemi"
+    assert driver_settings({"driver": {"engine": "alchemi"}, "batched_calculator": "x.y"})["engine"] == "alchemi"
     with pytest.raises(ValueError, match="batched_calculator requires"):
         driver_settings({"batched_calculator": "x.y"})
     with pytest.raises(ValueError, match="driver.engine"):

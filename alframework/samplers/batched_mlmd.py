@@ -25,8 +25,8 @@ Sampler configuration additions (all other keys are those of
     "random_seed": 1234,
     "device": "cpu"
 
-``driver.engine`` ``torchsim`` packs a task's trajectories into one TorchSim
-state (:mod:`alframework.samplers.torchsim_engine`). It may use a batched
+``driver.engine`` ``torchsim`` or ``alchemi`` packs a task's trajectories into
+one engine state. Either may use a batched
 ensemble loader, ``"batched_calculator":
 "alframework.ml_interfaces.hippynn_interface.load_hippynn_batched_ensemble"``
 (with optional ``batched_calculator_options``), in place of ``ase_calculator``.
@@ -309,11 +309,17 @@ def _prune(candidates, selection):
 
 
 def make_engine(engine, atoms_list, models, dt, temperatures_K, rngs, calculator_options=None, device=None):
-    """Construct the ``driver.engine`` engine; TorchSim is imported only when selected."""
+    """Construct the engine; optional GPU libraries are imported only when selected."""
     if engine == 'torchsim':
         from alframework.samplers.torchsim_engine import TorchSimEngine
         return TorchSimEngine(atoms_list, models, dt, temperatures_K, rngs, calculator_options,
                               device=device or 'cpu')
+    if engine == 'alchemi':
+        from alframework.samplers.alchemi_engine import AlchemiEngine
+        return AlchemiEngine(atoms_list, models, dt, temperatures_K, rngs, calculator_options,
+                             device=device or 'cpu')
+    if engine != 'ase':
+        raise ValueError(f'Unsupported dynamics engine: {engine!r}.')
     return ASEEngine(atoms_list, models, dt, temperatures_K, rngs, calculator_options)
 
 

@@ -649,9 +649,35 @@ Decisions (user, 2026-11-02):
   later acceptance work. The old ASE-loader `chdir` race and fork-roadmap sync
   remain separate changes. Agents commit locally; the user pushes.
 
-Artifacts: `ALF_fork/ALF/debug/alchemi_inc6_20261102/`. Environment creation,
-checkpoint compatibility, implementation, and final hardware acceptance are
-not yet claimed complete; results will be recorded here as they become available.
+Implementation: `5001880` (shared packed calculations and ALCHEMI adapter) and
+`fb88905` (benchmark, source identity, and opt-in example). `__main__.py`,
+acquisition, cohorts, labeling, and the HIPPYNN loader are unchanged.
+
+- The clone is complete; toolkit 0.2.0, ops 0.5.0, Warp 1.18.0, and Torch
+  2.13.0+cu130 retain their original versions. Four uncached Conda runtime
+  packages were fetched using the source environment's exact package manifest.
+  Added Parsl 2025.10.27, pytest 9.0.1, and HIPPYNN from revision `a66eba61`
+  (package metadata 0.1.3.post0.dev15).
+- CPU checkpoint compatibility: all eight trained water members load; mixed
+  3/6-atom predictions agree with individual ASE evaluations within
+  `rtol=atol=1e-5` (max energy error 0, max force error 1.43e-6 eV/Angstrom).
+- Original-stack GPU compatibility probe: A100-SXM4-40GB, cn1, driver
+  595.71.05, job 17372861. Both Torch and native ALCHEMI/Warp kernels passed.
+  This was a compatibility probe, not final implementation acceptance.
+- Full CPU suites: 166 passed / 16 skipped in `alf_alchemi_02`, 164 / 18 in
+  the TorchSim environment, and 148 / 34 in `atomistic`, with PySEQM on the
+  path. Optional engines account for differing skips.
+- Shared conformance now covers both engines, both ranking strategies,
+  initial velocities/kinetic energy/triclinic cells, temperature changes,
+  earlier candidates surviving a later failure, and dependency isolation.
+  `ALF_TEST_ENGINE_DEVICE=cuda:0` explicitly selects GPU test execution.
+- The cloned stack contains another package named `tests`. ALF's tests now
+  form an explicit local package to avoid that collision and remain excluded
+  from the distribution wheel.
+
+Artifacts: `ALF_fork/ALF/debug/alchemi_inc6_20261102/`. Final NVIDIA acceptance
+and the TorchSim ROCm regression are pending; no new hardware-acceptance claim
+is made yet.
 
 ### Batching and reference labeling
 

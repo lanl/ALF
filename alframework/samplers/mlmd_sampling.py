@@ -12,6 +12,7 @@ from parsl import python_app, bash_app
 from alframework.tools.tools import annealing_schedule
 from alframework.tools.tools import load_module_from_config
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator
+from alframework.samplers.geometry import minimum_distance
 from alframework.tools.tools import build_input_dict
 from alframework.tools.molecules_class import MoleculesObject
     
@@ -102,7 +103,7 @@ def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Escut, Fscut, Nchec
         Ecrit = Es > Escut
         Fcrit = Fs > Fscut
         Fmcrit = Fsmax > 3*Fscut # this is the maximum standard deviation for any force in the system
-        dist_min = ase_atoms.get_all_distances()[ase_atoms.get_all_distances() != 0].min()
+        dist_min = minimum_distance(ase_atoms)
         distcrit = dist_min < distcut
 
         if (i*Ncheck*dt/1000) >= min_time:

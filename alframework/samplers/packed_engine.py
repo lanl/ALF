@@ -37,7 +37,7 @@ from ase import units
 from ase.io.trajectory import Trajectory
 
 from alframework.ml_interfaces.ensemble_inference import ASEEnsembleEvaluator
-from alframework.samplers.batched_mlmd import minimum_distance
+from alframework.samplers.geometry import minimum_distance
 
 KB_EV_PER_K = 8.617333262145e-5
 CALCULATOR_OPTIONS = ("well_params", "udd_bias_weight", "udd_bias_eps", "debug_print")

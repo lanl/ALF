@@ -52,6 +52,7 @@ from parsl import python_app
 from alframework.ml_interfaces.ensemble_inference import ensemble_statistics
 from alframework.samplers.acquisition import acquisition_settings, assess_frame, frame_id, top_k
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator
+from alframework.samplers.geometry import minimum_distance
 from alframework.tools.molecules_class import MoleculesObject
 from alframework.tools.sampler_coordinator import driver_settings
 from alframework.tools.tools import annealing_schedule, load_module_from_config
@@ -83,11 +84,6 @@ def draw_schedule(sampler_config, rng):
             'Tsrt': _draw(rng, sampler_config['srt_temp']), 'Tend': _draw(rng, sampler_config['end_temp']),
             'Ramp': _draw(rng, sampler_config['amp_dens']), 'Rper': _draw(rng, sampler_config['per_dens']),
             'Rend': _draw(rng, sampler_config['end_dens'])}
-
-
-def minimum_distance(atoms):
-    distances = atoms.get_all_distances()
-    return distances[distances != 0].min()
 
 
 class ASEEngine:

@@ -87,7 +87,7 @@ independently reviewable and tested before dependent increments merge. Inspect
 PBC propagation in the multi-structure condensed-phase builder as a focused
 prerequisite; retain the recent main fixes. (Done in Increment 0; see below.)
 
-### Increment 7 — next validation work (not started)
+### Increment 7 — prerequisites in progress; campaign not started
 
 The engine work is merged; a complete Darwin active-learning campaign is not
 yet validated. Keep this increment focused on existing workflows and the
@@ -124,6 +124,26 @@ Longer-term plugin interfaces and durable recovery remain later increments.
 Keep the flat sampler configuration and existing task entrypoints throughout.
 Record source/dependency/checkpoint fingerprints with results, but keep large
 environment dumps and dated validation reports in local artifacts, outside Git.
+
+#### Focused prerequisites (2026-11-02)
+
+- **PBC screening — done locally; hardware regression pending.** Legacy MLMD,
+  batched ASE, TorchSim, and ALCHEMI share a minimum-image distance helper.
+  Only diagonal self-pairs are excluded; distinct overlapping atoms retain
+  distance zero. Fewer than two atoms yield infinity. Cutoffs, strict `<`,
+  timing, and `min_time` behavior are unchanged; self-image screening is not
+  added. The compatibility import `batched_mlmd.minimum_distance` remains.
+  Focused geometry/legacy/batched tests: 44 passed in `atomistic`.
+  ALCHEMI CPU packed-screen regressions: 2 passed, 2 TorchSim skips.
+- **GPU allocation — next.** Preserve inherited scheduler/Parsl visibility and
+  select local device ordinals automatically in legacy/batched MLMD and UDD,
+  including NeuroChem inference. Training and reactive samplers remain separate.
+- **Legacy checkpoint loading — next.** Remove inference-loader `chdir` while
+  retaining `best_checkpoint.pt` restoration and the existing calculator API.
+
+Keep these as separate local commits. CPU suites and NVIDIA/MI250 smoke jobs
+gate this prerequisite stage; the full Increment 7 campaign remains planned.
+Large logs and environment/checkpoint fingerprints belong in local artifacts.
 
 ### Progress log
 
@@ -883,7 +903,7 @@ or adapters wherever possible.
 
 | Area | Current behavior or gap | Follow-up and boundary |
 | --- | --- | --- |
-| Periodic geometry screening | `batched_mlmd.minimum_distance()` uses `get_all_distances()` without minimum-image handling. A periodic pair at x=0.1/9.9 Å in a 10 Å box reports 9.8 Å instead of 0.2 Å. Filtering every zero distance also hides coincident distinct atoms. The legacy `mlmd_sampling.py` uses the same pattern. | Make a separate PBC-aware `distcut` correctness fix with image-crossing and coincident-atom coverage, before periodic production use. Distinguish self-pairs from physical overlaps and compare legacy behavior; do not silently change cutoffs. Periodic inference parity does not validate this screen. |
+| Periodic geometry screening | Fixed locally in the Increment 7 prerequisites: a shared minimum-image screen excludes diagonal self-pairs and retains physical overlaps. Focused legacy, batched ASE, and ALCHEMI CPU checks pass. | NVIDIA/MI250 regressions remain pending. This screen compares distinct atoms, not an atom's own periodic images. Cutoffs and screening timing are unchanged. |
 | Scheduler GPU visibility | `sampling_device()` overwrites both visibility masks with worker rank modulo `gpus_per_node` when those inputs are present. It does not preserve an existing scheduler allocation mask. | Resolve workers within the visible allocation, with CUDA/ROCm-specific handling and pre-existing-mask tests. Retain a compatible fallback for existing Parsl configurations; do not assume physical GPU IDs start at zero. |
 | Legacy ASE checkpoint loading | `HIPNN_ASE_calculator()` still uses process-wide `active_directory`/`chdir`, so concurrent loads in one process can race. The native batched loader already uses absolute paths. | Fix and test the legacy loader separately using absolute paths or a narrowly scoped load lock. Do not bundle this with engine changes or fork-roadmap synchronization. |
 | Configuration reload and pinning | The main loop reloads task configurations, but driver/buffer settings and cohort selection are constructed at startup. Cohorts pin a model generation, not an immutable sampling/acquisition configuration. | Add explicit reload safeguards or configuration snapshots at admission/submission. Changing engine, size/K, thresholds, weights, or stopping policy mid-cohort must not mix meanings between startup coordination and later task configs. Until then, keep these settings fixed for a run. |

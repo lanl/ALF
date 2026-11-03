@@ -74,6 +74,23 @@ def inputs():
     return molecules
 
 
+@pytest.mark.parametrize('overlap', [False, True])
+def test_periodic_and_overlap_screening(engine_name, overlap):
+    bad = Atoms('H2', positions=[[.1, 0, 0], [.1 if overlap else 9.9, 0, 0]],
+                cell=[10]*3, pbc=True)
+    good = Atoms('H2', positions=[[1, 0, 0], [2, 0, 0]], cell=[10]*3, pbc=True)
+    config = dict(CONFIG, dt=.5, maxt=.001, Ncheck=1, Escut=1., Fscut=1.,
+                  srt_temp=[0., 0.], end_temp=[0., 0.], amp_temp=[0., 0.], per_temp=[1., 1.],
+                  amp_dens=None, per_dens=None, end_dens=None,
+                  MLMD_calculator_options={'well_params': None})
+    molecules = [MoleculesObject(a, name) for a, name in [(bad, 'bad'), (good, 'good')]]
+    results = sample_trajectories(molecules, [Tether(0.), Tether(0.)], config,
+                                  engine_class=engine_class(engine_name))
+    assert [m.get_metadata()['trajectory_outcome'] for m in results] == ['rejected', 'completed']
+    assert results[0].get_metadata()['distmin'] == pytest.approx(0. if overlap else .2)
+    assert results[1].get_metadata()['distmin'] == pytest.approx(1.)
+
+
 def run(groups, config=CONFIG, models=spring_ensemble, engine_name="torchsim"):
     config = copy.deepcopy(config)
     config["driver"]["engine"] = engine_name

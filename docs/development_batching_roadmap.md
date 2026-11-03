@@ -1,7 +1,7 @@
 # Living roadmap for integration into ALF development
 
 Last updated: November 2, 2026 (Increments 0–6 and the Increment 7 prerequisites merged at `24028da`;
-the Increment 7 campaign is not started).
+the Increment 7 campaign harness is implemented locally; live acceptance is pending).
 
 This is the shared plan for gradually bringing the fork's intended capabilities
 into `lanl/ALF:development`. It is separate from ongoing implementation on
@@ -83,14 +83,14 @@ pushes.
 | 4. Ground-state sampling and acquisition | merged (`86f62ca`) | Minimal physical-inference/MLMD contracts, uncertainty and summed ranking, first-trigger returns, and an in-memory logical-cohort selector. | Shared observations produce equivalent screening, scores, stopping, and selection across execution strategies. |
 | 5. TorchSim dynamics | merged (`86f62ca`) | Supported NVIDIA/AMD ground-state batched MLMD. | CPU, NVIDIA, and Darwin MI250 mechanics and integration acceptance pass. |
 | 6. ALCHEMI dynamics | merged (`be7fb64`) | ALCHEMI 0.2.0 NVIDIA batched MLMD through the same contracts, in its separate environment. | Shared conformance tests and NVIDIA acceptance pass; TorchSim CUDA/ROCm regressions pass. |
-| 7. Combined release validation | planned | Opt-in examples and integration/performance results. | All single/batched dynamics x single/batched labeling combinations complete representative ALF workflows. |
+| 7. Combined release validation | in progress | Opt-in examples and integration/performance results. | All single/batched dynamics x single/batched labeling combinations complete representative ALF workflows. |
 
 Port narrowly scoped implementations and tests. Each increment must be
 independently reviewable and tested before dependent increments merge. Inspect
 PBC propagation in the multi-structure condensed-phase builder as a focused
 prerequisite; retain the recent main fixes. (Done in Increment 0; see below.)
 
-### Increment 7 — prerequisites merged (`24028da`); campaign not started
+### Increment 7 — prerequisites merged (`24028da`); campaign implementation in progress
 
 The engine work is merged; a complete Darwin active-learning campaign is not
 yet validated. Keep this increment focused on existing workflows and the
@@ -127,6 +127,48 @@ Longer-term plugin interfaces and durable recovery remain later increments.
 Keep the flat sampler configuration and existing task entrypoints throughout.
 Record source/dependency/checkpoint fingerprints with results, but keep large
 environment dumps and dated validation reports in local artifacts, outside Git.
+
+#### Core water campaign matrix (2026-11-02)
+
+The opt-in `examples/simple_water_campaign/` suite prepares twelve immutable
+profiles and runs the real coordinator through observed production task
+functions. Every builder returns four periodic water boxes. Dynamics cross
+ASE/TorchSim/ALCHEMI at widths one/four with single ORCA labeling or sequential
+packs of four. ASE width one retains the legacy sampler. ORCA uses
+PBE/def2-SVP/RI-J; the HIPPYNN ensemble has four members. Other scientific
+settings stay with the water example, except for a 0.1 ps trajectory cap.
+
+One real bootstrap targets 32 converged stored frames and trains the initial
+ensemble. Each isolated case copies those pinned training inputs/checkpoints
+and must promote a genuinely trained ensemble with at least eight sampled,
+converged, stored IDs in its training input. New labels/models are not shared.
+Existing uncertainty cutoffs are retained; acquisition shortfalls remain
+incomplete. Full-width sampler and QM tasks must actually complete before a
+batched case can pass. The runner checks HDF5 units, forces, coordinates, cells,
+atom sorting, member training logs, and checkpoint loading; it records
+retention/split counts separately from training-input IDs.
+
+The elapsed ceiling is four hours for shared preflights/bootstrap and four
+hours per engine group (sixteen hours total), including queue waits. Cases
+are capped at 55 minutes including cleanup. The supervisor journals owned
+Slurm jobs, verifies cancellation, and refuses further allocations after an
+unverified cleanup. Generated data/logs/checkpoints stay outside Git. Native
+PySEQM GPU labeling, full MI250 campaigns, cohort/summed acquisition, deliberate
+failure campaigns, and long-time stability remain separate acceptance work.
+
+QM/training use the existing `atomistic` environment; TorchSim uses its
+qualified CUDA environment. ALCHEMI's Python 3.11 computation is isolated in a
+data-only subprocess adapter behind Python 3.12 Parsl transport, avoiding
+cross-version function serialization or modifications to existing environments.
+This process startup is part of the campaign harness rather than a standalone
+engine benchmark. Production task signatures and `__main__.py` are unchanged.
+
+Focused harness tests currently pass (13 checks), including real local Parsl
+submission auditing, the real multi-builder adapter, independent seed copies,
+late-bootstrap accounting, HDF5 validation, owned-job cleanup, deadlines, and
+Python 3.12-to-3.11 data transfer. The live matrix is not yet accepted; a full
+suite pass requires all twelve cases, not merely successful preparation or
+configured batching. See the example README for commands and artifact layout.
 
 #### Focused prerequisites (2026-11-02)
 

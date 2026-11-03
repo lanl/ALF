@@ -1,6 +1,6 @@
 # Living roadmap for integration into ALF development
 
-Last updated: November 2, 2026 (Increments 0–6 merged; Increment 7 is next).
+Last updated: November 2, 2026 (Increments 0–6 merged; Increment 7 prerequisites done locally).
 
 This is the shared plan for gradually bringing the fork's intended capabilities
 into `lanl/ALF:development`. It is separate from ongoing implementation on
@@ -87,7 +87,7 @@ independently reviewable and tested before dependent increments merge. Inspect
 PBC propagation in the multi-structure condensed-phase builder as a focused
 prerequisite; retain the recent main fixes. (Done in Increment 0; see below.)
 
-### Increment 7 — prerequisites in progress; campaign not started
+### Increment 7 — prerequisites done locally; campaign not started
 
 The engine work is merged; a complete Darwin active-learning campaign is not
 yet validated. Keep this increment focused on existing workflows and the
@@ -127,7 +127,7 @@ environment dumps and dated validation reports in local artifacts, outside Git.
 
 #### Focused prerequisites (2026-11-02)
 
-- **PBC screening — done locally; hardware regression pending.** Legacy MLMD,
+- **PBC screening — done locally; CPU/GPU accepted.** Legacy MLMD,
   batched ASE, TorchSim, and ALCHEMI share a minimum-image distance helper.
   Only diagonal self-pairs are excluded; distinct overlapping atoms retain
   distance zero. Fewer than two atoms yield infinity. Cutoffs, strict `<`,
@@ -135,7 +135,7 @@ environment dumps and dated validation reports in local artifacts, outside Git.
   added. The compatibility import `batched_mlmd.minimum_distance` remains.
   Focused geometry/legacy/batched tests: 44 passed in `atomistic`.
   ALCHEMI CPU packed-screen regressions: 2 passed, 2 TorchSim skips.
-- **GPU allocation — done locally; hardware acceptance pending.** Legacy/batched
+- **GPU allocation — done locally; CPU/GPU accepted.** Legacy/batched
   MLMD and UDD preserve inherited CUDA/HIP/ROCr visibility and select runtime
   local ordinals by worker rank. Unmasked assignment retains the bounded
   `gpus_per_node` cap; explicit CPU skips GPU discovery and `cuda:N` pins a
@@ -155,6 +155,54 @@ environment dumps and dated validation reports in local artifacts, outside Git.
 Keep these as separate local commits. CPU suites and NVIDIA/MI250 smoke jobs
 gate this prerequisite stage; the full Increment 7 campaign remains planned.
 Large logs and environment/checkpoint fingerprints belong in local artifacts.
+
+Implementation commits: `adfb238` (PBC), `d61e533` (GPU assignment), and
+`2a1708a` (legacy checkpoint loading). Full CPU regressions at `2a1708a`:
+
+| Environment | Passed | Skipped | Elapsed |
+| --- | ---: | ---: | ---: |
+| atomistic | 215 | 38 | 134.64 s |
+| TorchSim CUDA environment, CPU execution | 233 | 20 | 184.39 s |
+| alf_alchemi_02 | 233 | 20 | 177.03 s |
+
+All skips are unavailable optional backends. Artifacts are outside Git at
+`/vast/home/pjlohr/ALF_LANL/validation/inc7_prerequisites_20261102/`:
+`cpu-summary.json`, `results/cpu-*.{log,xml}`, the detached `source/` worktree,
+and hardware manifests containing source/package/checkpoint fingerprints.
+GPU acceptance passed against that frozen `2a1708a` source. The first
+hardware attempts (`17373104`/`17373105`) stopped before ALF execution because
+the harness relied on unavailable Parsl launcher scripts. The harness now uses
+its selected interpreter to launch Parsl modules; ALF code was unchanged.
+
+| Device / engine | Passed | Skipped | Elapsed |
+| --- | ---: | ---: | ---: |
+| A100 / TorchSim (job `17373146`) | 76 | 20 | 90.26 s |
+| A100 / ALCHEMI (job `17373146`) | 78 | 18 | 101.11 s |
+| MI250 / TorchSim (job `17373147`) | 76 | 20 | 71.83 s |
+
+The GPU suites include dynamics/engine-boundary conformance, raw-member
+prediction parity with the approved float32/roundoff criteria, coordinator
+routing, device-selection unit checks, and concurrent checkpoint-loading regressions.
+Engine tests explicitly use `cuda:1`; coordinator fixtures retain their own CPU
+settings. Unavailable optional engines account for the skips.
+
+Separate real Parsl high-throughput smoke runs cover inherited, reordered
+two-device, and singleton visibility for all three engine/device cases. Two
+workers each execute two successive tasks per case; selected local ordinals
+remain stable and inherited CUDA/HIP/ROCr variables remain unchanged. NVIDIA
+subsets use allocated GPU UUIDs; MI250 subsets use ROCr device lists. Each task
+runs actual legacy MLMD and two packed trajectories with the trained ensemble;
+all complete. Singleton allocations correctly map both workers to `cuda:0`.
+
+`acceptance-summary.json` combines the CPU/GPU counts, source/checkpoint
+fingerprints, HIPPYNN source/local-change record, and per-worker evidence.
+The runtime/benchmark tree SHA256 is
+`066a5abe7f578a5ad2ff42d3a23c1099f2c6de5abfaba4bd4fefef0b1d264f1f`.
+All 44 runtime/benchmark file hashes match the current development checkout.
+No cutoffs, inference tolerances, or training behavior changed. These checks
+close the focused prerequisites; the production active-learning campaign,
+training GPU assignment, reactive-sampler allocation, and remaining backend
+acceptance stay open as described above.
 
 ### Progress log
 
@@ -907,16 +955,17 @@ overshoot are separate concepts.
 ### Known implementation follow-ups
 
 The following watch list was checked against development at `be7fb64` on
-November 2. It records concrete limitations and future edits, not a requirement
-to handle every edge case before continuing. Fix affected scientific behavior
+November 2, with the first three rows updated for the locally accepted
+Increment 7 prerequisite fixes at `2a1708a`. It records concrete limitations and
+future edits, not a requirement to handle every edge case before continuing. Fix affected scientific behavior
 explicitly, preserve the ordinary examples, and keep implementation in helpers
 or adapters wherever possible.
 
 | Area | Current behavior or gap | Follow-up and boundary |
 | --- | --- | --- |
-| Periodic geometry screening | Fixed locally in the Increment 7 prerequisites: a shared minimum-image screen excludes diagonal self-pairs and retains physical overlaps. Focused legacy, batched ASE, and ALCHEMI CPU checks pass. | NVIDIA/MI250 regressions remain pending. This screen compares distinct atoms, not an atom's own periodic images. Cutoffs and screening timing are unchanged. |
-| Scheduler GPU visibility | Fixed locally for legacy/batched MLMD, UDD, and NeuroChem inference: inherited masks remain unchanged and automatic assignment uses local ordinals. Focused simulated CUDA/ROCm allocation and reused-worker checks pass. | NVIDIA/MI250 hardware acceptance remains pending. Training pools and reactive samplers are separate follow-ups; external Parsl/site configuration must provide valid worker visibility. |
-| Legacy ASE checkpoint loading | Fixed locally: `HIPNN_ASE_calculator()` loads explicit absolute checkpoint paths without `chdir`. Concurrent member loading and parity with the original trained-checkpoint predictions pass. | Full CPU/backend regressions remain part of prerequisite acceptance. Checkpoint format and restoration are unchanged; the batched loader keeps its separate weights format. |
+| Periodic geometry screening | Fixed locally in the Increment 7 prerequisites: a shared minimum-image screen excludes diagonal self-pairs and retains physical overlaps. CPU, A100, and MI250 regressions pass. | This screen compares distinct atoms, not an atom's own periodic images. Cutoffs and screening timing are unchanged. |
+| Scheduler GPU visibility | Fixed locally for legacy/batched MLMD, UDD, and NeuroChem inference: inherited masks remain unchanged and automatic assignment uses local ordinals. Simulated allocation checks and real A100/MI250 reused-worker runs pass. | Training pools and reactive samplers are separate follow-ups; external Parsl/site configuration must provide valid worker visibility. NeuroChem has adapter/unit coverage, not hardware qualification in this stage. |
+| Legacy ASE checkpoint loading | Fixed locally: `HIPNN_ASE_calculator()` loads explicit absolute checkpoint paths without `chdir`. Concurrent member loading and parity with the original trained-checkpoint predictions pass, along with CPU/GPU workflow regressions. | Checkpoint format and restoration are unchanged; the batched loader keeps its separate weights format. The full active-learning campaign remains planned. |
 | Configuration reload and pinning | The main loop reloads task configurations, but driver/buffer settings and cohort selection are constructed at startup. Cohorts pin a model generation, not an immutable sampling/acquisition configuration. | Add explicit reload safeguards or configuration snapshots at admission/submission. Changing engine, size/K, thresholds, weights, or stopping policy mid-cohort must not mix meanings between startup coordination and later task configs. Until then, keep these settings fixed for a run. |
 | Cohort admission | A cohort requires full membership and all terminal reports, with no admission timeout or partial selection. A permanently undersupplied builder leaves it unfinished. | Document and observe admitted/finished counts during Increment 7. Keep incremental admission for cohorts larger than worker capacity; do not introduce an automatic partial-cohort policy without a separate decision. |
 | Queue thresholds and strict batches | `full_only` can leave a PBC/model group waiting indefinitely when it cannot fill within available capacity. The inherited `minimum_QM` harvest gate can also hold a small number of finished sampler results. | Exercise small capacities and fragmented groups with the existing timeout policy. Check that configured completion thresholds are reachable. Add focused diagnostics/validation or drain behavior only as a separate compatibility change. The labeler already checks `target_queued_QM >= batch_size` for strict batches. |

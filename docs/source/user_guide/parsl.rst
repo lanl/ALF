@@ -485,8 +485,9 @@ executor, ``nodes_per_block * max_blocks`` controls the maximum node footprint
 Parsl may request, while ``max_workers_per_node`` controls how many ALF tasks
 can run on each allocated node. ALF settings such as ``parallel_samplers`` and
 ``target_queued_QM`` are queue-depth targets; they do not directly request
-nodes. For sampler tasks, make sure ``gpus_per_node`` matches the number of
-sampler workers you expect to place on each GPU node.
+nodes. For unmasked sampler workers, ``gpus_per_node`` specifies the number of
+GPUs to distribute over, not the worker count. More workers than visible GPUs
+share devices by rank; scheduler/Parsl visibility takes precedence.
 
 Configuration Knobs
 -------------------

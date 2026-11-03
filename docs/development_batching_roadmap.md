@@ -144,8 +144,13 @@ environment dumps and dated validation reports in local artifacts, outside Git.
   its Torch-free path uses CUDA mask width or the unmasked configured count.
   Focused device/interface/legacy checks: 65 passed, 1 trained-model deselected
   in `atomistic`. Training and reactive samplers remain separate.
-- **Legacy checkpoint loading — next.** Remove inference-loader `chdir` while
-  retaining `best_checkpoint.pt` restoration and the existing calculator API.
+- **Legacy checkpoint loading — done locally.** Inference calls HIPPYNN's
+  explicit-filename loader with absolute `experiment_structure.pt` and
+  `best_checkpoint.pt` paths. Checkpoint restoration, CPU mapping, units,
+  float32/device conversion, and the calculator API are preserved. The batched
+  loader still uses `best_model.pt`. Focused loading/acquisition/MLMD checks:
+  49 passed in `atomistic`, including simultaneous distinguishable checkpoint
+  loads with `chdir` forbidden and real trained-member prediction parity.
 
 Keep these as separate local commits. CPU suites and NVIDIA/MI250 smoke jobs
 gate this prerequisite stage; the full Increment 7 campaign remains planned.
@@ -911,7 +916,7 @@ or adapters wherever possible.
 | --- | --- | --- |
 | Periodic geometry screening | Fixed locally in the Increment 7 prerequisites: a shared minimum-image screen excludes diagonal self-pairs and retains physical overlaps. Focused legacy, batched ASE, and ALCHEMI CPU checks pass. | NVIDIA/MI250 regressions remain pending. This screen compares distinct atoms, not an atom's own periodic images. Cutoffs and screening timing are unchanged. |
 | Scheduler GPU visibility | Fixed locally for legacy/batched MLMD, UDD, and NeuroChem inference: inherited masks remain unchanged and automatic assignment uses local ordinals. Focused simulated CUDA/ROCm allocation and reused-worker checks pass. | NVIDIA/MI250 hardware acceptance remains pending. Training pools and reactive samplers are separate follow-ups; external Parsl/site configuration must provide valid worker visibility. |
-| Legacy ASE checkpoint loading | `HIPNN_ASE_calculator()` still uses process-wide `active_directory`/`chdir`, so concurrent loads in one process can race. The native batched loader already uses absolute paths. | Fix and test the legacy loader separately using absolute paths or a narrowly scoped load lock. Do not bundle this with engine changes or fork-roadmap synchronization. |
+| Legacy ASE checkpoint loading | Fixed locally: `HIPNN_ASE_calculator()` loads explicit absolute checkpoint paths without `chdir`. Concurrent member loading and parity with the original trained-checkpoint predictions pass. | Full CPU/backend regressions remain part of prerequisite acceptance. Checkpoint format and restoration are unchanged; the batched loader keeps its separate weights format. |
 | Configuration reload and pinning | The main loop reloads task configurations, but driver/buffer settings and cohort selection are constructed at startup. Cohorts pin a model generation, not an immutable sampling/acquisition configuration. | Add explicit reload safeguards or configuration snapshots at admission/submission. Changing engine, size/K, thresholds, weights, or stopping policy mid-cohort must not mix meanings between startup coordination and later task configs. Until then, keep these settings fixed for a run. |
 | Cohort admission | A cohort requires full membership and all terminal reports, with no admission timeout or partial selection. A permanently undersupplied builder leaves it unfinished. | Document and observe admitted/finished counts during Increment 7. Keep incremental admission for cohorts larger than worker capacity; do not introduce an automatic partial-cohort policy without a separate decision. |
 | Queue thresholds and strict batches | `full_only` can leave a PBC/model group waiting indefinitely when it cannot fill within available capacity. The inherited `minimum_QM` harvest gate can also hold a small number of finished sampler results. | Exercise small capacities and fragmented groups with the existing timeout policy. Check that configured completion thresholds are reachable. Add focused diagnostics/validation or drain behavior only as a separate compatibility change. The labeler already checks `target_queued_QM >= batch_size` for strict batches. |

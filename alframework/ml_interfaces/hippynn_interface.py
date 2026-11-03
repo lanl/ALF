@@ -559,12 +559,12 @@ def train_HIPPYNN_ensemble_task(ML_config,h5_dir,model_path,current_training_id,
     
 
 def HIPNN_ASE_calculator(HIPNN_model_directory,energy_key='energy',device="cuda:0"):
-    from hippynn.experiment.serialization import load_checkpoint_from_cwd
-    from hippynn.tools import active_directory
+    from hippynn.experiment.serialization import load_checkpoint
     from hippynn.interfaces.ase_interface import HippynnCalculator
     import torch
-    with active_directory(HIPNN_model_directory):
-        bundle = load_checkpoint_from_cwd(map_location="cpu")
+    member_directory = os.path.abspath(HIPNN_model_directory)
+    bundle = load_checkpoint(os.path.join(member_directory, 'experiment_structure.pt'),
+                             os.path.join(member_directory, 'best_checkpoint.pt'), map_location="cpu")
 
     model = bundle["training_modules"].model
     energy_node = model.node_from_name(energy_key)

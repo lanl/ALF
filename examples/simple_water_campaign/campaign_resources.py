@@ -42,15 +42,20 @@ def make_config(run):
         ]
         if cpu:
             initialization.append('module load ' + shlex.quote(site['mpi_module']))
+            initialization += ['export PARSL_CORES=16',
+                               'export OMPI_MCA_hwloc_base_binding_policy=none']
         provider = CampaignSlurmProvider(
             partition=site['cpu_partition'] if cpu else site['gpu_partition'], account=site['account'],
             init_blocks=0, min_blocks=0, max_blocks=1, nodes_per_block=1,
-            cores_per_node=16 if cpu else 4,
-            scheduler_options='#SBATCH --mem=40G' if cpu else '#SBATCH --mem=0',
+            cores_per_node=None if cpu else 4,
+            # Open MPI counts Slurm tasks, not cpus-per-task, as MPI slots.
+            scheduler_options=('#SBATCH --ntasks-per-node=16\n#SBATCH --cpus-per-task=1\n#SBATCH --mem=40G'
+                               if cpu else '#SBATCH --mem=0'),
             worker_init='\n'.join(initialization), launcher=SingleNodeLauncher(), walltime='04:00:00',
             cmd_timeout=60)
         return HighThroughputExecutor(
             label=f'alf_{role}_executor', max_workers_per_node=workers, cores_per_worker=cores,
+            cpu_affinity='block' if cpu else 'none',
             address=address_by_hostname(), provider=provider, heartbeat_period=10, heartbeat_threshold=120,
             interchange_launch_cmd=[python, '-m', 'parsl.executors.high_throughput.interchange'],
             launch_cmd=shlex.quote(python) + ' -m parsl.executors.high_throughput.process_worker_pool' +

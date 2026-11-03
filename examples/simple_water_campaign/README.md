@@ -34,7 +34,9 @@ is still built and trained, but only that matrix case runs. A one-case pass
 never marks the complete matrix accepted. `--prepare-only` submits no jobs.
 Do not edit generated JSON: the runner verifies its configuration and source
 manifest before execution. A root executes only once; use another directory
-for a new attempt so earlier failures remain reviewable.
+for a new attempt so earlier failures remain reviewable. For a harness repair,
+pass `--budget-start` with the first attempt's `execution.json` start timestamp
+to keep its original bootstrap and sixteen-hour overall deadlines.
 
 The default site configuration uses Darwin's `general` CPU partition,
 `shared-redstone` NVIDIA partition, account `y2020-bf`, ORCA 5.0.4/OpenMPI 4.1.1,
@@ -62,6 +64,8 @@ including queue waits. Each case has a 55-minute cap, including cleanup;
 unused deadlines are not transferred to another stage. Resource ceilings are
 one CPU allocation with two eight-core ORCA workers, one training allocation,
 and one sampling allocation. Each GPU allocation has at most one block.
+The CPU allocation reserves sixteen MPI slots. Each ORCA worker inherits an
+exclusive eight-core affinity block; Open MPI leaves that affinity unchanged.
 
 ## Evidence and success
 

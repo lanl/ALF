@@ -107,6 +107,7 @@ def worker_identity():
         hashes = {str(p.relative_to(package)): fingerprint(p) for p in sorted(package.rglob('*.py'))}
         dependency = dict(root=str(package), tree_sha256=hashlib.sha256(json.dumps(hashes, sort_keys=True).encode()).hexdigest())
     return dict(host=socket.gethostname(), python=sys.executable, alf=str(Path(alframework.__file__).resolve()),
+                cpu_affinity=sorted(os.sched_getaffinity(0)) if hasattr(os, 'sched_getaffinity') else None,
                 hippynn_source=dependency,
                 packages=packages, masks={key: os.environ.get(key) for key in
                 ('CUDA_VISIBLE_DEVICES', 'ROCR_VISIBLE_DEVICES', 'HIP_VISIBLE_DEVICES')})

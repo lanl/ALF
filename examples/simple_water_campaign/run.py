@@ -266,17 +266,22 @@ def case_metrics(run):
                 queue_occupancy=[r for r in records if r['kind'] == 'queue_poll'])
 
 
-def suite(root, selected=None):
+def suite(root, selected=None, budget_start=None):
     root = Path(root).resolve()
     site = read_json(root / 'site.json')
     profile = read_json(root / 'profile.json')
     outcomes = {}
     if (root / 'execution.json').exists():
         raise ValueError('This root has already executed. Preserve it and choose a fresh run root.')
-    atomic_json(root / 'execution.json', dict(start=time.time(), selected=selected))
+    origin = time.time() if budget_start is None else budget_start
+    if origin > time.time() or origin < 0:
+        raise ValueError('Budget origin must be a past timestamp')
+    overall_deadline = origin + 4*profile['stage_seconds']
+    atomic_json(root / 'execution.json', dict(start=origin, launched=time.time(), selected=selected,
+                                             overall_deadline=overall_deadline))
     atomic_json(root / 'result.json', dict(status='running', phase='bootstrap', cases={}))
     print('Starting shared bootstrap and real ORCA preflight.', flush=True)
-    stage_start = time.time()
+    stage_start = origin
     bootstrap = root / 'bootstrap'
     try:
         launch(bootstrap, 'preflight', stage_start + profile['stage_seconds'] - profile['cleanup_seconds'])
@@ -294,7 +299,7 @@ def suite(root, selected=None):
         cases = [case for case in matrix() if case.engine == engine and (selected is None or case.name == selected)]
         if not cases:
             continue
-        stage_deadline = time.time() + profile['stage_seconds']
+        stage_deadline = min(time.time() + profile['stage_seconds'], overall_deadline)
         for case in cases:
             run = root / 'cases' / case.name
             started = time.time()
@@ -334,6 +339,7 @@ def main():
     parser.add_argument('--site', type=Path, help='JSON overrides for Darwin executable/resource defaults')
     parser.add_argument('--worker', choices=['coordinator', 'preflight', 'prediction'], help=argparse.SUPPRESS)
     parser.add_argument('--seed', type=Path, help=argparse.SUPPRESS)
+    parser.add_argument('--budget-start', type=float, help='Retain the original budget timestamp for a fresh retry root')
     args = parser.parse_args()
     if args.worker:
         worker(args.run_root, args.worker, args.seed)
@@ -361,7 +367,7 @@ def main():
         for key in ('base_python', 'torchsim_python', 'alchemi_python', 'orca'):
             if not Path(site[key]).is_file():
                 raise FileNotFoundError(site[key])
-        if not suite(root, args.case):
+        if not suite(root, args.case, args.budget_start):
             sys.exit(1)
 
 

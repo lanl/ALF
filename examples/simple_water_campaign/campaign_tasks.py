@@ -116,6 +116,10 @@ def sample_many(molecule_objects, sampler_config, model_path, current_model_id, 
 def label_water(molecule_object, QM_config, QM_scratch_dir, properties_list):
     import numpy as np
     from alframework.qm_interfaces.orca5_interface import orca_calculator_task
+    # HTEX affinity sets OMP threads to its block size. Each ORCA MPI rank
+    # uses one thread, with eight ranks inside this worker's inherited block.
+    for key in ('OMP_NUM_THREADS', 'MKL_NUM_THREADS', 'OPENBLAS_NUM_THREADS'):
+        os.environ[key] = '1'
     identify()
     event('qm_start', id=molecule_object.get_moleculeid(), structure=geometry(molecule_object))
     result = unwrap(orca_calculator_task.func(molecule_object, QM_config, QM_scratch_dir, properties_list))

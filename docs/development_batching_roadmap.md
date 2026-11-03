@@ -170,6 +170,13 @@ Python 3.12-to-3.11 data transfer. The live matrix is not yet accepted; a full
 suite pass requires all twelve cases, not merely successful preparation or
 configured batching. See the example README for commands and artifact layout.
 
+The first live preflight at `cf29d50` reached both single and packed ORCA
+calls, but MPI refused eight ranks because the initial CPU profile exposed
+only one Slurm task/slot. Jobs `17373266`/`17373267` were cancelled and cleanup
+verified. The validation profile now reserves sixteen MPI slots and divides
+worker affinity blocks; ORCA ranks use one thread each. The repaired attempt
+retains the first attempt's budget origin rather than resetting its deadlines.
+
 #### Focused prerequisites (2026-11-02)
 
 - **PBC screening — merged; CPU/GPU accepted.** Legacy MLMD,

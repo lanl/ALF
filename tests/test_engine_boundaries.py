@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 from ase import Atoms
 
-from tests.test_torchsim_engine import engine_name, engine_class, Tether, DEVICE
+from tests.test_dynamics_engines import engine_name, engine_class, Tether, DEVICE
 
 
 def test_initial_velocities_cells_and_kinetic_energy_round_trip(engine_name):

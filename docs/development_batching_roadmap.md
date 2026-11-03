@@ -567,7 +567,7 @@ Implementation:
 
 CPU evidence (`cn213`):
 
-- `tests/test_torchsim_engine.py` (10 tests; skipped where `torch_sim` is absent):
+- `tests/test_dynamics_engines.py` (10 tests; skipped where `torch_sim` is absent):
   - zero friction and temperature reproduce ASE velocity Verlet (6e-16 Å after 40 steps);
   - results identical alone, together, split 3+4, and reversed, in first-trigger and cohort `continue`
     mode (spring ensemble, mixed sizes, a `distcut` rejection);
@@ -587,7 +587,7 @@ base `a74d97b` plus the Increment 5 working tree later committed as `a80c23e`; a
 - Environments: the fork's TorchSim 0.6.2 venvs; Torch `2.9.0+cu128` (CUDA 12.8) on NVIDIA and
   `2.9.0+rocm6.4` (HIP 6.4) on AMD; HIPPYNN portable kernels (`HIPPYNN_USE_CUSTOM_KERNELS=False`).
 - A100-SXM4-40GB, `shared-redstone` cn1, job 17372775: harness passed at all widths;
-  `tests/test_torchsim_engine.py` + `tests/test_sampler_coordinator.py` 19 passed (including the trained
+  `tests/test_dynamics_engines.py` + `tests/test_sampler_coordinator.py` 19 passed (including the trained
   ensemble and real-coordinator TorchSim cases). (Job 17372745 on `shared-gpu-ampere` was cancelled
   unrun: per-user QOS limit.)
 - MI250X/MI250, `shared-gpu-amd-mi250` cn782: harness passed at all widths (job 17372746). Its test run

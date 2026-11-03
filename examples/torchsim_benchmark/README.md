@@ -51,10 +51,10 @@ same per-trajectory NumPy thermostat as TorchSim, rather than the toolkit's
 batch-dependent stochastic kernel. Reports measure this adapter, not the
 stock high-level ALCHEMI Langevin runner.
 
-Shared conformance tests retain their historical filename:
+Shared numerical conformance covers both engines:
 
 ```bash
-PYTHONPATH="$PWD" python -m pytest tests/test_torchsim_engine.py \
+PYTHONPATH="$PWD" python -m pytest tests/test_dynamics_engines.py \
   tests/test_engine_boundaries.py tests/test_sampler_coordinator.py
 ```
 

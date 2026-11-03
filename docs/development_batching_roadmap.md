@@ -1,6 +1,7 @@
 # Living roadmap for integration into ALF development
 
-Last updated: November 2, 2026 (Increments 0–6 merged; Increment 7 prerequisites done locally).
+Last updated: November 2, 2026 (Increments 0–6 and the Increment 7 prerequisites merged at `24028da`;
+the Increment 7 campaign is not started).
 
 This is the shared plan for gradually bringing the fork's intended capabilities
 into `lanl/ALF:development`. It is separate from ongoing implementation on
@@ -65,8 +66,10 @@ On 2026-11-02 the user pushed local `development` directly to official
 `development` (tip `d5a0395`), rather than through separate fork PRs.
 Increments 0–3 and 4a–4b are therefore merged. The user pushed again the same day
 (tip `86f62ca`), merging 4c and Increment 5. A live remote check on November 2
-now confirms official development at `be7fb64`, including Increment 6 and the
-shared-test rename; main remains `206ea44`, already included in development.
+confirmed official development at `be7fb64`, including Increment 6 and the
+shared-test rename. A later push (tip `24028da`, verified November 2) merged the
+Increment 7 prerequisite fixes and their acceptance record. Main remains
+`206ea44`, already included in development.
 Older progress entries retain their dated status at the time of writing; the
 table below is the current status. Agents still commit locally only; the user
 pushes.
@@ -87,7 +90,7 @@ independently reviewable and tested before dependent increments merge. Inspect
 PBC propagation in the multi-structure condensed-phase builder as a focused
 prerequisite; retain the recent main fixes. (Done in Increment 0; see below.)
 
-### Increment 7 — prerequisites done locally; campaign not started
+### Increment 7 — prerequisites merged (`24028da`); campaign not started
 
 The engine work is merged; a complete Darwin active-learning campaign is not
 yet validated. Keep this increment focused on existing workflows and the
@@ -127,7 +130,7 @@ environment dumps and dated validation reports in local artifacts, outside Git.
 
 #### Focused prerequisites (2026-11-02)
 
-- **PBC screening — done locally; CPU/GPU accepted.** Legacy MLMD,
+- **PBC screening — merged; CPU/GPU accepted.** Legacy MLMD,
   batched ASE, TorchSim, and ALCHEMI share a minimum-image distance helper.
   Only diagonal self-pairs are excluded; distinct overlapping atoms retain
   distance zero. Fewer than two atoms yield infinity. Cutoffs, strict `<`,
@@ -135,7 +138,7 @@ environment dumps and dated validation reports in local artifacts, outside Git.
   added. The compatibility import `batched_mlmd.minimum_distance` remains.
   Focused geometry/legacy/batched tests: 44 passed in `atomistic`.
   ALCHEMI CPU packed-screen regressions: 2 passed, 2 TorchSim skips.
-- **GPU allocation — done locally; CPU/GPU accepted.** Legacy/batched
+- **GPU allocation — merged; CPU/GPU accepted.** Legacy/batched
   MLMD and UDD preserve inherited CUDA/HIP/ROCr visibility and select runtime
   local ordinals by worker rank. Unmasked assignment retains the bounded
   `gpus_per_node` cap; explicit CPU skips GPU discovery and `cuda:N` pins a
@@ -144,7 +147,7 @@ environment dumps and dated validation reports in local artifacts, outside Git.
   its Torch-free path uses CUDA mask width or the unmasked configured count.
   Focused device/interface/legacy checks: 65 passed, 1 trained-model deselected
   in `atomistic`. Training and reactive samplers remain separate.
-- **Legacy checkpoint loading — done locally.** Inference calls HIPPYNN's
+- **Legacy checkpoint loading — merged; CPU/GPU accepted.** Inference calls HIPPYNN's
   explicit-filename loader with absolute `experiment_structure.pt` and
   `best_checkpoint.pt` paths. Checkpoint restoration, CPU mapping, units,
   float32/device conversion, and the calculator API are preserved. The batched
@@ -157,7 +160,8 @@ gate this prerequisite stage; the full Increment 7 campaign remains planned.
 Large logs and environment/checkpoint fingerprints belong in local artifacts.
 
 Implementation commits: `adfb238` (PBC), `d61e533` (GPU assignment), and
-`2a1708a` (legacy checkpoint loading). Full CPU regressions at `2a1708a`:
+`2a1708a` (legacy checkpoint loading); acceptance record `24028da`. All are in
+official development at `24028da`. Full CPU regressions at `2a1708a`:
 
 | Environment | Passed | Skipped | Elapsed |
 | --- | ---: | ---: | ---: |
@@ -933,7 +937,7 @@ existing sampler can already run through the new engines.
 | Increment | Capabilities to integrate | Important boundary |
 | --- | --- | --- |
 | 1. Composable sampling | Separate propagation from UDD, confinement, and other bias/force controls; support callable extensions and grouped non-MD evaluations. | Preserve physical predictions, formulas, switching order, and replica-local state. |
-| 2. Additional acquisition strategies | Custom import-string strategies and geometry-based demonstrations, followed by production distance-based acquisition and diversity filtering. | Eligibility, ranking, trajectory policy, and selection remain separate; future selectors declare their retention needs. |
+| 2. Additional acquisition strategies | Custom import-string strategies and geometry-based demonstrations, followed by production distance-based acquisition and diversity-aware batch selection within cohorts (and later against the existing training set). | Eligibility, ranking, trajectory policy, and selection remain separate; future selectors declare their retention needs. |
 | 3. Model/training handoffs and distillation | Opaque model-artifact references, model-independent inference adapters, and foundation-MLIP reference labeling. | Record teacher identity, version, units, and label provenance separately from the student sampling model. |
 | 4. Molecular excited states | PySEQM/GPU4PySCF labeling, multi-state HIPPYNN training, derived gap targets, state selection, gap diagnostics, and LCM. | Preserve per-state convergence, state/atom mappings, physical screening, and the distinction between predictions and propagation controls. |
 | 5. RDKit initialization | Reference-centered KDG geometry generation, seed-specific screening, and FPS selection, with reproducible settings/provenance. | Optional preprocessing/builders; unlabeled seed geometries are not labeled training rows. |
@@ -941,6 +945,78 @@ existing sampler can already run through the new engines.
 | 7. Optional additional labels | Preserve optional nonadiabatic-coupling labeling and storage, including state-pair and atom-axis mappings. | Computing/storing NACs does not automatically make them energy/force training targets. |
 | 8. Durable recovery and staged workflows | Persist batching/cohort handoffs; add retained-label budgets, ALF-to-GALF/configuration stages, exact dataset checkpoints, and endpoint training. | Preserve ordinary runs as the default; budgets count retained labeled frames, not candidates or submitted jobs. |
 | 9. Further model and sampling extensions | Additional production model families, reactive batching, and separately planned methods. | Follow the same minimal-core-change and existing-workflow compatibility gates. |
+| 10. Multi-node ML training | Train ensemble members across nodes, then optionally data-parallel training of one member across GPUs/nodes. | Keep the `ML_task` entrypoint, `(completed, training_id)` return, member directory layout, and model-promotion semantics; single-node training remains the default. |
+| 11. Non-ensemble uncertainty | Pluggable uncertainty estimators, including single-network methods, alongside the existing ensemble disagreement. | New signals carry their own names, units, and cutoffs; `Es`/`Fs`/`Fsmax` and `Escut`/`Fscut` keep their ensemble-std meaning. |
+
+Items 10 and 11 and the diversity part of item 2 were added at the user's
+request on November 2, 2026; their order relative to the other rows is not yet
+decided. Readiness notes from a review of development at `24028da`:
+
+- **Multi-node training (10).** `train_HIPPYNN_ensemble_task` is one Parsl
+  app on `alf_ML_executor` that runs `multiprocessing.Pool(gpus_per_node)` on
+  one node, one member per GPU. Each member sets `CUDA_VISIBLE_DEVICES` itself,
+  which is the "training pools" GPU-visibility follow-up above. The tracked
+  Darwin/Chicoma configs give the ML executor one node per block. `__main__.py`
+  waits for a single ML task (`ML_task_queue.get_number() < 1`) and promotes the
+  model after it returns.
+  - The first step is to run members across nodes: they train independently,
+    so this is task placement, not distributed numerics. A Parsl `join_app`
+    that fans out one app per member (or per node) and returns the existing
+    `(completed, training_id)` keeps `__main__.py` unchanged. A multi-node
+    block with `srun` placement is the alternative. Both need the
+    local-ordinal GPU assignment already used by the samplers, and the
+    per-member `completed` handling for partial failures must be kept.
+  - A later step is data-parallel training of one member, for datasets or
+    models too large for one GPU. HIPPYNN's Lightning trainer
+    (`hippynn.experiment.lightning_trainer`) is marked experimental and lacks
+    some features. Adopting it changes checkpoint layout and the batched
+    loader's `best_model.pt` assumption, so it is a separate decision.
+- **Non-ensemble uncertainty (11).** This is partly ready.
+  - Ready: acquisition reads a signal dictionary, and ranking terms are a
+    table (`SCORE_TERMS`). Packed engines keep physical predictions separate
+    from propagation.
+  - Ensemble assumptions to factor out:
+    - both evaluators require at least two members, and the evaluator contract
+      returns per-member `[models, ...]` arrays;
+    - `run_mlmd_trajectories` calls `ensemble_statistics` directly;
+    - eligibility (`uncertainty_flags`) hard-codes `Es`/`Fs`/`Fsmax` against
+      `Escut`/`Fscut`/`3*Fscut`;
+    - propagation uses the member mean;
+    - UDD needs member deviations;
+    - legacy samplers read `MLMD_calculator`'s `energy_stdev` results;
+    - training assumes `n_models` member directories.
+  - Proposed contract: the evaluator returns a mean prediction plus named
+    uncertainty signals, with ensemble statistics as the default estimator.
+    Eligibility then reads configurable signal/cutoff pairs. Methods that need
+    repeated stochastic passes (for example MC dropout) can still use the
+    member layout.
+  - A single-network estimator may provide only energy uncertainty or no
+    per-atom force uncertainty, so eligibility must allow a subset of signals.
+  - Calibration and cutoffs need per-method validation; ensemble cutoffs must
+    not be reused.
+  - UDD-style biasing needs a differentiable uncertainty, which ties this to
+    composable sampling (item 1).
+- **Diversity-aware acquisition (2).** The cohort pool is the natural place
+  for it.
+  - Ready: `CohortPool.ready()` selects with `top_k(cohort.candidates, k)`, and
+    candidates already carry numbers, positions, cell, PBC, and signals. A
+    selector interface, such as score-weighted farthest-point or k-center
+    selection on geometric descriptors, can replace that call.
+  - Constraints:
+    - `_prune` and `max_candidates_per_trajectory` drop candidates by score
+      inside the worker before the pool sees them, so a diversity selector must
+      declare its own retention (as noted under Known implementation
+      follow-ups).
+    - First-trigger mode has no pool.
+    - Selection must stay invariant to grouping and completion order:
+      canonicalize candidates by `(trajectory_id, step)` first and break ties
+      deterministically.
+    - Model-latent descriptors would require evaluators to return features
+      and candidates to carry them, which costs memory.
+    - Diversity against the existing training set needs read access to the
+      HDF5 store; it is a separate step from within-cohort diversity.
+  - The `acquisition.selection` keys are validated against a fixed set, so new
+    selectors need a `mode` or import-string extension.
 
 The excited-state increment includes explicit topology validation and
 topology-aware replay/storage where configured. Existing ordinary workflows
@@ -955,17 +1031,17 @@ overshoot are separate concepts.
 ### Known implementation follow-ups
 
 The following watch list was checked against development at `be7fb64` on
-November 2, with the first three rows updated for the locally accepted
-Increment 7 prerequisite fixes at `2a1708a`. It records concrete limitations and
+November 2, with the first three rows updated for the Increment 7
+prerequisite fixes (`2a1708a`, merged at `24028da`). It records concrete limitations and
 future edits, not a requirement to handle every edge case before continuing. Fix affected scientific behavior
 explicitly, preserve the ordinary examples, and keep implementation in helpers
 or adapters wherever possible.
 
 | Area | Current behavior or gap | Follow-up and boundary |
 | --- | --- | --- |
-| Periodic geometry screening | Fixed locally in the Increment 7 prerequisites: a shared minimum-image screen excludes diagonal self-pairs and retains physical overlaps. CPU, A100, and MI250 regressions pass. | This screen compares distinct atoms, not an atom's own periodic images. Cutoffs and screening timing are unchanged. |
-| Scheduler GPU visibility | Fixed locally for legacy/batched MLMD, UDD, and NeuroChem inference: inherited masks remain unchanged and automatic assignment uses local ordinals. Simulated allocation checks and real A100/MI250 reused-worker runs pass. | Training pools and reactive samplers are separate follow-ups; external Parsl/site configuration must provide valid worker visibility. NeuroChem has adapter/unit coverage, not hardware qualification in this stage. |
-| Legacy ASE checkpoint loading | Fixed locally: `HIPNN_ASE_calculator()` loads explicit absolute checkpoint paths without `chdir`. Concurrent member loading and parity with the original trained-checkpoint predictions pass, along with CPU/GPU workflow regressions. | Checkpoint format and restoration are unchanged; the batched loader keeps its separate weights format. The full active-learning campaign remains planned. |
+| Periodic geometry screening | Fixed in the Increment 7 prerequisites: a shared minimum-image screen excludes diagonal self-pairs and retains physical overlaps. CPU, A100, and MI250 regressions pass. | This screen compares distinct atoms, not an atom's own periodic images. Cutoffs and screening timing are unchanged. |
+| Scheduler GPU visibility | Fixed for legacy/batched MLMD, UDD, and NeuroChem inference: inherited masks remain unchanged and automatic assignment uses local ordinals. Simulated allocation checks and real A100/MI250 reused-worker runs pass. | Training pools and reactive samplers are separate follow-ups; external Parsl/site configuration must provide valid worker visibility. NeuroChem has adapter/unit coverage, not hardware qualification in this stage. |
+| Legacy ASE checkpoint loading | Fixed: `HIPNN_ASE_calculator()` loads explicit absolute checkpoint paths without `chdir`. Concurrent member loading and parity with the original trained-checkpoint predictions pass, along with CPU/GPU workflow regressions. | Checkpoint format and restoration are unchanged; the batched loader keeps its separate weights format. The full active-learning campaign remains planned. |
 | Configuration reload and pinning | The main loop reloads task configurations, but driver/buffer settings and cohort selection are constructed at startup. Cohorts pin a model generation, not an immutable sampling/acquisition configuration. | Add explicit reload safeguards or configuration snapshots at admission/submission. Changing engine, size/K, thresholds, weights, or stopping policy mid-cohort must not mix meanings between startup coordination and later task configs. Until then, keep these settings fixed for a run. |
 | Cohort admission | A cohort requires full membership and all terminal reports, with no admission timeout or partial selection. A permanently undersupplied builder leaves it unfinished. | Document and observe admitted/finished counts during Increment 7. Keep incremental admission for cohorts larger than worker capacity; do not introduce an automatic partial-cohort policy without a separate decision. |
 | Queue thresholds and strict batches | `full_only` can leave a PBC/model group waiting indefinitely when it cannot fill within available capacity. The inherited `minimum_QM` harvest gate can also hold a small number of finished sampler results. | Exercise small capacities and fragmented groups with the existing timeout policy. Check that configured completion thresholds are reachable. Add focused diagnostics/validation or drain behavior only as a separate compatibility change. The labeler already checks `target_queued_QM >= batch_size` for strict batches. |

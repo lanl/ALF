@@ -139,10 +139,12 @@ def NeuroChemCalculator(model_details):
     cns = [f for f in os.listdir(model_path) if '.params' in f][0]
     sae = 'sae_linfit.dat'
     Nn  = model_details['Nn']
-    gpu = model_details['gpu']
-    os.environ['CUDA_VISIBLE_DEVICES'] = str(gpu)
+    # GPU is a local ordinal within the inherited CUDA visibility.
+    gpu = int(model_details['gpu'])
+    if gpu < 0:
+        raise ValueError('NeuroChem gpu must be a nonnegative local ordinal.')
 
-    return ANIENS(batchedensemblemolecule(model_path + '/' + cns, model_path + '/' + sae, model_path, Nn, 0))
+    return ANIENS(batchedensemblemolecule(model_path + '/' + cns, model_path + '/' + sae, model_path, Nn, gpu))
 
 #Gen
 #configuration,h5_train_dir,ensemble_path,ensemble_index,remove_existing=False,h5_test_dir=None)

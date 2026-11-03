@@ -15,6 +15,7 @@ from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator
 from alframework.samplers.geometry import minimum_distance
 from alframework.tools.tools import build_input_dict
 from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.gpu import sampling_device, neurochem_device
     
 
 #For now I will take a dictionary with all sample parameters.
@@ -210,8 +211,6 @@ def simple_mlmd_sampling_task(molecule_object, sampler_config, model_path, curre
     """
     assert isinstance(molecule_object, MoleculesObject), 'molecule_object must be an instance of MoleculesObject'
 
-    os.environ["CUDA_VISIBLE_DEVICES"] = str(int(os.environ.get('PARSL_WORKER_RANK')) % gpus_per_node)
-    os.environ["ROCR_VISIBLE_DEVICES"] = str(int(os.environ.get('PARSL_WORKER_RANK'))%gpus_per_node)
     feed_parameters = {}
 
     # Setup T
@@ -238,16 +237,19 @@ def simple_mlmd_sampling_task(molecule_object, sampler_config, model_path, curre
     calc_class = load_module_from_config(sampler_config, 'ase_calculator')
     
     if sampler_config.get("use_potential_specific_code", None) == 'neurochem':
+        device = neurochem_device(sampler_config, gpus_per_node)
         model_info = {'model_path': model_path.format(current_model_id) + '/',
                       'Nn': 8,
-                      'gpu': '0'}
+                      'gpu': device.split(':')[1]}
 
         # os.environ.get('PARSL_WORKER_RANK') now using cuda visible devices
         ase_calculator = calc_class(model_info)
             
     else:
-        gpu = '0' # os.environ.get('PARSL_WORKER_RANK') now using cuda visible devices
-        calculator_list = calc_class(model_path.format(current_model_id) + '/', device='cuda:' + gpu)
+        # Preserve this task's GPU default; explicit CPU execution is opt-in.
+        device = sampling_device(dict(sampler_config, device=sampler_config.get('device') or 'cuda'),
+                                 gpus_per_node)
+        calculator_list = calc_class(model_path.format(current_model_id) + '/', device=device)
         ase_calculator = MLMD_calculator(calculator_list, **sampler_config['MLMD_calculator_options'])
         
     if sampler_config.get('translate_to_center', False):

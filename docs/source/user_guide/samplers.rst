@@ -17,9 +17,23 @@ In a master configuration, the selected sampler is specified with the
      "sampler_config_path": "mlmd_config.json"
    }
 
-Sampler tasks usually run on the ``alf_sampler_executor`` Parsl executor. GPU
-assignment is controlled by ``gpus_per_node`` in the master configuration and
-the worker layout in the Parsl resource configuration.
+Sampler tasks usually run on the ``alf_sampler_executor`` Parsl executor.
+Legacy MLMD, UDD, and the multi-trajectory sampler select GPUs automatically
+within the worker's scheduler/Parsl allocation. Existing CUDA, HIP, and ROCr
+visibility variables are preserved. Workers distribute over runtime-visible
+local devices by ``PARSL_WORKER_RANK``; a worker already restricted to one GPU
+uses local device zero. Without a visibility mask, ``gpus_per_node`` caps this
+distribution, bounded by runtime availability. An absent rank selects zero.
+
+The optional sampler ``device`` setting accepts ``cpu``, ``cuda`` for automatic
+GPU assignment, or ``cuda:N`` to pin a visible local ordinal. For example, when
+``CUDA_VISIBLE_DEVICES=2,5``, local ``cuda:1`` refers to the second exposed GPU,
+not physical GPU 1. Explicit unavailable GPU requests fail without changing
+visibility. The legacy task retains its GPU default; the multi-trajectory task
+automatically falls back to CPU when no GPU is available. Explicit CPU use
+does not require GPU discovery. NeuroChem inference supports CUDA only; its
+``model_details['gpu']`` value is now a local ordinal passed to its constructor.
+Training pools and reactive samplers retain their separate device behavior.
 
 Supported Sampler Tasks
 -----------------------

@@ -203,8 +203,11 @@ for GPU execution of ML and sampling tasks.
        ),
    )
 
-ALF also uses ``gpus_per_node`` from the master configuration to assign visible
-GPU ids inside sampler tasks.
+ALF's MLMD sampler workers preserve scheduler/Parsl GPU visibility and select
+local device ordinals automatically by worker rank. ``gpus_per_node`` caps
+assignment when no visibility mask is set; an existing allocation takes
+precedence. GPU numbering inside a worker is relative to that allocation.
+See :doc:`samplers` for explicit device overrides and legacy defaults.
 
 Globus Compute Endpoints
 ------------------------

@@ -205,7 +205,7 @@ def test_neurochem_calculator_builds_ani_ensemble(monkeypatch):
     monkeypatch.setattr(neurochem_interface.os, "listdir", lambda path: ["network.params", "notes.txt"])
     monkeypatch.setattr(neurochem_interface, "batchedensemblemolecule", fake_batchedensemblemolecule)
     monkeypatch.setattr(neurochem_interface, "ANIENS", fake_aniens)
-    monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "3,5,7")
 
     calculator = neurochem_interface.NeuroChemCalculator(
         {"model_path": "/models/model-0006", "Nn": 8, "gpu": "2"}
@@ -218,6 +218,6 @@ def test_neurochem_calculator_builds_ani_ensemble(monkeypatch):
         "/models/model-0006/sae_linfit.dat",
         "/models/model-0006",
         8,
-        0,
+        2,
     )
-    assert neurochem_interface.os.environ["CUDA_VISIBLE_DEVICES"] == "2"
+    assert neurochem_interface.os.environ["CUDA_VISIBLE_DEVICES"] == "3,5,7"

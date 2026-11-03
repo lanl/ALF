@@ -135,9 +135,15 @@ environment dumps and dated validation reports in local artifacts, outside Git.
   added. The compatibility import `batched_mlmd.minimum_distance` remains.
   Focused geometry/legacy/batched tests: 44 passed in `atomistic`.
   ALCHEMI CPU packed-screen regressions: 2 passed, 2 TorchSim skips.
-- **GPU allocation — next.** Preserve inherited scheduler/Parsl visibility and
-  select local device ordinals automatically in legacy/batched MLMD and UDD,
-  including NeuroChem inference. Training and reactive samplers remain separate.
+- **GPU allocation — done locally; hardware acceptance pending.** Legacy/batched
+  MLMD and UDD preserve inherited CUDA/HIP/ROCr visibility and select runtime
+  local ordinals by worker rank. Unmasked assignment retains the bounded
+  `gpus_per_node` cap; explicit CPU skips GPU discovery and `cuda:N` pins a
+  local ordinal. Legacy GPU and batched automatic CPU/GPU defaults remain.
+  NeuroChem inference passes its local ordinal without changing CUDA visibility;
+  its Torch-free path uses CUDA mask width or the unmasked configured count.
+  Focused device/interface/legacy checks: 65 passed, 1 trained-model deselected
+  in `atomistic`. Training and reactive samplers remain separate.
 - **Legacy checkpoint loading — next.** Remove inference-loader `chdir` while
   retaining `best_checkpoint.pt` restoration and the existing calculator API.
 
@@ -904,7 +910,7 @@ or adapters wherever possible.
 | Area | Current behavior or gap | Follow-up and boundary |
 | --- | --- | --- |
 | Periodic geometry screening | Fixed locally in the Increment 7 prerequisites: a shared minimum-image screen excludes diagonal self-pairs and retains physical overlaps. Focused legacy, batched ASE, and ALCHEMI CPU checks pass. | NVIDIA/MI250 regressions remain pending. This screen compares distinct atoms, not an atom's own periodic images. Cutoffs and screening timing are unchanged. |
-| Scheduler GPU visibility | `sampling_device()` overwrites both visibility masks with worker rank modulo `gpus_per_node` when those inputs are present. It does not preserve an existing scheduler allocation mask. | Resolve workers within the visible allocation, with CUDA/ROCm-specific handling and pre-existing-mask tests. Retain a compatible fallback for existing Parsl configurations; do not assume physical GPU IDs start at zero. |
+| Scheduler GPU visibility | Fixed locally for legacy/batched MLMD, UDD, and NeuroChem inference: inherited masks remain unchanged and automatic assignment uses local ordinals. Focused simulated CUDA/ROCm allocation and reused-worker checks pass. | NVIDIA/MI250 hardware acceptance remains pending. Training pools and reactive samplers are separate follow-ups; external Parsl/site configuration must provide valid worker visibility. |
 | Legacy ASE checkpoint loading | `HIPNN_ASE_calculator()` still uses process-wide `active_directory`/`chdir`, so concurrent loads in one process can race. The native batched loader already uses absolute paths. | Fix and test the legacy loader separately using absolute paths or a narrowly scoped load lock. Do not bundle this with engine changes or fork-roadmap synchronization. |
 | Configuration reload and pinning | The main loop reloads task configurations, but driver/buffer settings and cohort selection are constructed at startup. Cohorts pin a model generation, not an immutable sampling/acquisition configuration. | Add explicit reload safeguards or configuration snapshots at admission/submission. Changing engine, size/K, thresholds, weights, or stopping policy mid-cohort must not mix meanings between startup coordination and later task configs. Until then, keep these settings fixed for a run. |
 | Cohort admission | A cohort requires full membership and all terminal reports, with no admission timeout or partial selection. A permanently undersupplied builder leaves it unfinished. | Document and observe admitted/finished counts during Increment 7. Keep incremental admission for cohorts larger than worker capacity; do not introduce an automatic partial-cohort policy without a separate decision. |

@@ -54,6 +54,7 @@ from alframework.samplers.acquisition import acquisition_settings, assess_frame,
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator
 from alframework.samplers.geometry import minimum_distance
 from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.gpu import sampling_device
 from alframework.tools.sampler_coordinator import driver_settings
 from alframework.tools.tools import annealing_schedule, load_module_from_config
 
@@ -354,21 +355,6 @@ def sample_trajectories(molecule_objects, models, sampler_config, engine_class=N
     return run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, seeds)
 
 
-def sampling_device(sampler_config, gpus_per_node=None):
-    """Return the configured device, defaulting to ``cuda:0`` when available."""
-    rank = os.environ.get('PARSL_WORKER_RANK')
-    if rank is not None and gpus_per_node:
-        os.environ["CUDA_VISIBLE_DEVICES"] = str(int(rank) % gpus_per_node)
-        os.environ["ROCR_VISIBLE_DEVICES"] = str(int(rank) % gpus_per_node)
-    if sampler_config.get('device') is not None:
-        return sampler_config['device']
-    try:
-        import torch
-        return 'cuda:0' if torch.cuda.is_available() else 'cpu'
-    except ImportError:
-        return 'cpu'
-
-
 @python_app(executors=['alf_sampler_executor'])
 def mlmd_trajectories_task(molecule_objects, sampler_config, model_path, current_model_id, gpus_per_node=None):
     """Run MLMD for several trajectories in one task.
@@ -380,7 +366,7 @@ def mlmd_trajectories_task(molecule_objects, sampler_config, model_path, current
             ``random_seed``, and ``device`` keys described in this module.
         model_path (str): Model path pattern from the master configuration.
         current_model_id (int): Model generation to sample with.
-        gpus_per_node (int): Used to assign a GPU from ``PARSL_WORKER_RANK``.
+        gpus_per_node (int): GPU assignment cap when worker visibility is unmasked.
 
     Returns:
         (list): One MoleculesObject per input. ``atoms`` is the selected frame

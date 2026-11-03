@@ -219,10 +219,11 @@ def test_trained_ensemble_single_and_batched_agree():
 
 
 def test_device_defaults_and_overrides(monkeypatch):
+    import os
     monkeypatch.delenv("PARSL_WORKER_RANK", raising=False)
     assert batched_mlmd.sampling_device({"device": "cpu"}) == "cpu"
     assert batched_mlmd.sampling_device({}) in ("cpu", "cuda:0")
     monkeypatch.setenv("PARSL_WORKER_RANK", "5")
-    batched_mlmd.sampling_device({"device": "cpu"}, gpus_per_node=4)
-    import os
-    assert os.environ["CUDA_VISIBLE_DEVICES"] == "1"
+    before = dict(os.environ)
+    assert batched_mlmd.sampling_device({"device": "cpu"}, gpus_per_node=4) == 'cpu'
+    assert dict(os.environ) == before

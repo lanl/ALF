@@ -5,7 +5,7 @@ import time
 
 from parsl import python_app
 
-from campaign_support import atomic_json, event, h5_inventory, member_reports, read_json, worker_identity
+from campaign_support import atomic_json, check_campaign_gpu, event, h5_inventory, member_reports, read_json, worker_identity
 
 _identified = False
 
@@ -202,6 +202,7 @@ def label_molecules(molecule_objects, QM_config):
     import seqm
     identify()
     assert torch.cuda.is_available(), 'Native GPU acceptance requires CUDA'
+    check_campaign_gpu('pyseqm', gpu_identity(QM_config['device']))
     torch.cuda.reset_peak_memory_stats()
     for molecule in molecule_objects:
         event('qm_start', id=molecule.get_moleculeid(), structure=geometry(molecule))
@@ -260,6 +261,9 @@ def prediction_check(model_directory, structures_file):
     from alframework.tools.gpu import sampling_device
     identify()
     device = sampling_device({'device': 'cuda'}, 4)
+    spec = read_json(Path(os.environ['ALF_CAMPAIGN_RUN']) / 'run.json')
+    gpu = gpu_identity(device)
+    check_campaign_gpu(spec['profile'].get('campaign', 'core'), gpu)
     atoms = read(structures_file, index=':')
     reference = ASEEnsembleEvaluator([HIPNN_ASE_calculator(str(p), device=device)
         for p in sorted(Path(model_directory).glob('model-*'))]).predict(atoms)
@@ -297,4 +301,4 @@ def prediction_check(model_directory, structures_file):
                                max_force_error=float(np.abs(delta_f).max())))
         rows.append(dict(width=width, max_energy_error=float(np.abs(actual['energies']-reference['energies']).max()),
                          structures=errors))
-    return dict(device=device, n_models=4, comparisons=rows, worker=worker_identity(), gpu=gpu_identity(device))
+    return dict(device=device, n_models=4, comparisons=rows, worker=worker_identity(), gpu=gpu)

@@ -141,6 +141,19 @@ def test_native_fallback_is_not_full_batch_evidence():
     assert campaign_accepted(case, records + [dict(kind='native_solve', width=4, success=True)], set(), set(), set())
 
 
+def test_partition_names_cannot_substitute_for_actual_target_hardware():
+    amd = dict(hardware='AMD Instinct MI250X', hip='6.4', cuda=None)
+    nvidia = dict(hardware='NVIDIA A100', hip=None, cuda='12.8')
+    support.check_campaign_gpu('mi250', amd)
+    support.check_campaign_gpu('pyseqm', nvidia)
+    with pytest.raises(ValueError, match='MI250'):
+        support.check_campaign_gpu('mi250', nvidia)
+    with pytest.raises(ValueError, match='MI250'):
+        support.check_campaign_gpu('mi250', dict(amd, hardware='AMD MI300X'))
+    with pytest.raises(ValueError, match='NVIDIA'):
+        support.check_campaign_gpu('pyseqm', amd)
+
+
 def test_fault_wrapper_retains_actual_candidate_before_failure(tmp_path, monkeypatch):
     from tests.test_cohorts import WATER, cohort_config
     from tests.helpers.fakes import spring_ensemble

@@ -85,6 +85,16 @@ def fingerprint(path):
     return digest.hexdigest()
 
 
+def check_campaign_gpu(campaign, gpu):
+    """A partition name alone does not establish the requested hardware gate."""
+    if campaign == 'mi250':
+        if not gpu.get('hip') or 'MI250' not in gpu.get('hardware', '').upper():
+            raise ValueError('MI250 acceptance requires actual MI250/MI250X hardware and ROCm')
+    elif campaign in ('cohort', 'failures', 'pyseqm'):
+        if not gpu.get('cuda') or gpu.get('hip'):
+            raise ValueError('This campaign requires actual NVIDIA CUDA execution')
+
+
 def event(kind, run=None, **values):
     run = Path(run or os.environ['ALF_CAMPAIGN_RUN'])
     record = dict(kind=kind, time=time.time(), pid=os.getpid(), **values)

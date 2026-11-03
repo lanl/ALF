@@ -316,6 +316,33 @@ Trained cell-input, qualified potential-stability, and MI350 gates stay explicit
 open when their required inputs/hardware are absent; the combined runner does
 not mark all of Increment 7 complete merely because its runnable campaigns pass.
 
+Implementation is committed locally at `1b0c813`, with observed-hardware guards
+at `5dadbd8`. Full CPU regressions passed before the final hardware guard;
+the subsequent focused checks cover that guard and all campaign harness checks:
+
+| Environment | Full passed | Full skipped | Final focused passed |
+| --- | ---: | ---: | ---: |
+| atomistic | 245 | 38 | 31 |
+| TorchSim CUDA, CPU execution | 263 | 20 | 31 |
+| alf_alchemi_02 | 263 | 20 | 31 |
+| TorchSim ROCm, CPU execution | 263 | 20 | 31 |
+
+The separate real PySEQM CPU suite passed all eight checks with pinned source
+`31edd887`; GPU native batching and real retraining remain separate live gates.
+Prepared profiles submit no jobs, and the final frozen source successfully
+verified the accepted water seed with four loaded initial members.
+
+The sequential supervisor is running on `darwin-fe2` in tmux session
+`alf-inc7-remaining-20261103`, using frozen revision `5dadbd8` from the detached
+`source-final/` worktree. All artifacts are outside Git under
+`/vast/home/pjlohr/ALF_LANL/validation/inc7_remaining_20261103/`.
+`run-001/` contains preparation only; `run-002/` is the executed campaign root.
+`suite.log`, campaign logs/results, and `validation-summary.json` retain live
+progress, CPU test evidence, and fingerprints. At startup the first ASE cohort
+case passed its CUDA prediction preflight and returned four real builder boxes;
+no remaining campaign gate is inferred from that startup check. Final accepted
+case counts must come from each campaign's result and cleanup evidence.
+
 #### Focused prerequisites (2026-11-02)
 
 - **PBC screening — merged; CPU/GPU accepted.** Legacy MLMD,

@@ -12,14 +12,17 @@ import time
 from campaign_support import atomic_json, events, read_json, source_identity
 
 
-def run_remaining(root, seed):
+def run_remaining(root, seed, budget_start=None):
     root = Path(root).resolve()
     root.mkdir(parents=True, exist_ok=True)
     with (root / '.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         if (root / 'execution.json').exists():
             raise ValueError('Preserve this executed root and choose a fresh directory')
-        atomic_json(root / 'execution.json', dict(start=time.time(), seed=str(Path(seed).resolve()),
+        origin = time.time() if budget_start is None else budget_start
+        if origin < 0 or origin > time.time():
+            raise ValueError('Budget origin must be a past timestamp')
+        atomic_json(root / 'execution.json', dict(start=origin, launched=time.time(), seed=str(Path(seed).resolve()),
                                                 source=source_identity()))
         outcomes = {}
         for campaign in ('cohort', 'failures', 'pyseqm', 'mi250'):
@@ -29,6 +32,8 @@ def run_remaining(root, seed):
                        '--run-root', str(directory), '--campaign', campaign]
             if campaign != 'pyseqm':
                 command += ['--import-seed', str(Path(seed).resolve())]
+            if campaign == 'cohort' and budget_start is not None:
+                command += ['--budget-start', str(budget_start)]
             print(f'Starting {campaign}.', flush=True)
             with (root / f'{campaign}.log').open('w') as log:
                 process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
@@ -67,5 +72,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--run-root', type=Path, required=True)
     parser.add_argument('--import-seed', type=Path, required=True)
+    parser.add_argument('--budget-start', type=float, help='Preserve the original cohort budget when repairing an early attempt')
     args = parser.parse_args()
-    run_remaining(args.run_root, args.import_seed)
+    run_remaining(args.run_root, args.import_seed, args.budget_start)

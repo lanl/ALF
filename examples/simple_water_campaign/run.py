@@ -350,14 +350,21 @@ def suite(root, selected=None, budget_start=None, import_seed=None):
         if not cases:
             continue
         stage_deadline = min(time.time() + profile['stage_seconds'], overall_deadline)
-        for case in cases:
+        early_retry = campaign == 'cohort' and budget_start is not None and engine == 'ase'
+        if early_retry:
+            # Count the first attempt's setup against its ASE group as well.
+            stage_deadline = min(origin + profile['stage_seconds'], overall_deadline)
+        for index, case in enumerate(cases):
             run = root / 'cases' / case.name
             started = time.time()
             print(f'Starting {case.name}.', flush=True)
             atomic_json(root / 'result.json', dict(status='running', phase=engine, current_case=case.name, cases=outcomes))
-            deadline = min(started + profile['case_seconds'], stage_deadline)
+            effective_start = origin if early_retry and index == 0 else started
+            deadline = min(effective_start + profile['case_seconds'], stage_deadline)
+            atomic_json(run / 'deadlines.json', dict(started=started, effective_start=effective_start,
+                        case_deadline=deadline, group_deadline=stage_deadline, overall_deadline=overall_deadline))
             if deadline - started <= profile['cleanup_seconds']:
-                outcome = dict(status='incomplete', reason='engine stage deadline reached before execution')
+                outcome = dict(status='incomplete', reason='case or engine stage deadline reached before execution')
             else:
                 try:
                     seed_case(root / 'seed', run)
@@ -373,7 +380,8 @@ def suite(root, selected=None, budget_start=None, import_seed=None):
                     outcome = dict(status='incomplete' if isinstance(exc, TimeoutError) else 'failed', error=str(exc))
                     if not (run / 'cleanup.json').exists() or not read_json(run / 'cleanup.json')['verified']:
                         raise RuntimeError(f'Cleanup unverified for {case.name}; refusing further allocations') from exc
-                outcome.update(elapsed=time.time()-started, metrics=case_metrics(run))
+                outcome.update(elapsed=time.time()-started, budget_elapsed=time.time()-effective_start,
+                               metrics=case_metrics(run))
                 if outcome.get('accepted'):
                     outcome['metrics']['converged_label_overshoot'] = outcome['metrics']['qm_converged'] - len(
                         outcome['accepted']['qualifying_ids'])

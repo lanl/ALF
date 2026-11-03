@@ -154,6 +154,27 @@ def test_partition_names_cannot_substitute_for_actual_target_hardware():
         support.check_campaign_gpu('pyseqm', amd)
 
 
+def test_fresh_worker_initializes_selected_gpu_before_resetting_allocator_stats(monkeypatch):
+    import torch
+    calls = []
+    class Device:
+        def __init__(self, device):
+            assert device == 'cuda:1'
+        def __enter__(self):
+            calls.append('selected')
+        def __exit__(self, *args):
+            calls.append('restored')
+    def reset(device):
+        assert calls == ['selected', 'initialized']
+        assert device == 'cuda:1'
+        calls.append('reset')
+    monkeypatch.setattr(torch.cuda, 'device', Device)
+    monkeypatch.setattr(torch.cuda, 'init', lambda: calls.append('initialized'))
+    monkeypatch.setattr(torch.cuda, 'reset_peak_memory_stats', reset)
+    tasks.start_gpu_memory_measurement('cuda:1')
+    assert calls == ['selected', 'initialized', 'reset', 'restored']
+
+
 def test_fault_wrapper_retains_actual_candidate_before_failure(tmp_path, monkeypatch):
     from tests.test_cohorts import WATER, cohort_config
     from tests.helpers.fakes import spring_ensemble
@@ -340,3 +361,40 @@ def test_combined_runner_stops_after_unverified_owned_job_cleanup(tmp_path, monk
         remaining.run_remaining(tmp_path, tmp_path / 'seed')
     assert len(calls) == 1
     assert support.read_json(tmp_path / 'result.json')['status'] == 'incomplete'
+
+
+def test_combined_retry_forwards_original_cohort_budget(tmp_path, monkeypatch):
+    import remaining
+    commands = []
+    class Process:
+        def __init__(self, command, **kwargs):
+            commands.append(command)
+            directory = Path(command[command.index('--run-root')+1])
+            support.atomic_json(directory / 'result.json', dict(status='passed'))
+        def wait(self):
+            return 0
+    monkeypatch.setattr(remaining.subprocess, 'Popen', Process)
+    monkeypatch.setattr(remaining, 'source_identity', lambda: {})
+    remaining.run_remaining(tmp_path, tmp_path / 'seed', budget_start=10.)
+    assert commands[0][-2:] == ['--budget-start', '10.0']
+    assert all('--budget-start' not in command for command in commands[1:])
+    assert support.read_json(tmp_path / 'execution.json')['start'] == 10.
+    assert support.read_json(tmp_path / 'result.json')['status'] == 'incomplete'  # Scientific gates remain open.
+
+
+def test_early_cohort_retry_does_not_refund_case_or_group_deadline(tmp_path, monkeypatch):
+    import campaign_evidence
+    from tests.test_water_campaign import runner
+    p = dict(profile('cohort'), stage_seconds=100, case_seconds=30, cleanup_seconds=5, overall_seconds=400)
+    support.atomic_json(tmp_path / 'profile.json', p)
+    support.atomic_json(tmp_path / 'site.json', {})
+    monkeypatch.setattr(runner.time, 'time', lambda: 50.)
+    monkeypatch.setattr(campaign_evidence, 'verify_seed', lambda *a: dict(initial_training={}))
+    monkeypatch.setattr(runner, 'seed_case', lambda *a: None)
+    def unexpected_launch(*args, **kwargs):
+        raise AssertionError('An expired case must not allocate resources')
+    monkeypatch.setattr(runner, 'launch', unexpected_launch)
+    assert not runner.suite(tmp_path, selected='ase-uncertainty-stop', budget_start=0., import_seed=tmp_path / 'seed')
+    deadlines = support.read_json(tmp_path / 'cases/ase-uncertainty-stop/deadlines.json')
+    assert deadlines['case_deadline'] == 30. and deadlines['group_deadline'] == 100.
+    assert deadlines['overall_deadline'] == 400.

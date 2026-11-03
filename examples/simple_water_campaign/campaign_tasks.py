@@ -68,6 +68,14 @@ def gpu_identity(device):
                 visible_devices=torch.cuda.device_count())
 
 
+def start_gpu_memory_measurement(device):
+    """Allocator-stat APIs do not initialize CUDA in a fresh sampling worker."""
+    import torch
+    with torch.cuda.device(device):
+        torch.cuda.init()
+        torch.cuda.reset_peak_memory_stats(device)
+
+
 @python_app(executors=['alf_sampler_executor'])
 def build_water(moleculeids, builder_config, molecule_library_dir, cell_range, solute_molecule_options, Rrange):
     from alframework.builders.builders import simple_multi_condensed_phase_builder_task
@@ -151,7 +159,7 @@ def sample_many(molecule_objects, sampler_config, model_path, current_model_id, 
         import torch
         from alframework.tools.gpu import sampling_device
         device = sampling_device(sampler_config, gpus_per_node)
-        torch.cuda.reset_peak_memory_stats(device)
+        start_gpu_memory_measurement(device)
     with sampling_audit(molecule_objects, (spec.get('case') or {}).get('fault', '')):
         result = unwrap(mlmd_trajectories_task.func(molecule_objects, sampler_config, model_path,
                                                    current_model_id, gpus_per_node))

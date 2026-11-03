@@ -195,3 +195,9 @@ qualified potential-stability, or other required gates remain unresolved.
 `runnable_campaigns_passed` reports the four executed campaign gates separately.
 No replacement scientific fixtures are generated for missing inputs. MI350
 retains its independent hardware-qualification dependency.
+
+For an early repair during the first cohort case, `remaining.py --budget-start`
+accepts that original campaign's `execution.json` start. It retains the overall,
+first ASE group, and first-case deadlines conservatively; repair time is not
+refunded. Later stages that have not started receive their normal budgets.
+This is not a general resume or durable-recovery interface.

@@ -1,7 +1,7 @@
 # Living roadmap for integration into ALF development
 
-Last updated: November 2, 2026 (Increments 0–6 and the Increment 7 prerequisites merged at `24028da`;
-the Increment 7 campaign harness is implemented locally and live validation is running).
+Last updated: November 3, 2026 (Increments 0–6 and the Increment 7 prerequisites merged at `24028da`;
+all twelve core water campaign cases passed; remaining Increment 7 acceptance is planned below).
 
 This is the shared plan for gradually bringing the fork's intended capabilities
 into `lanl/ALF:development`. It is separate from ongoing implementation on
@@ -90,10 +90,11 @@ independently reviewable and tested before dependent increments merge. Inspect
 PBC propagation in the multi-structure condensed-phase builder as a focused
 prerequisite; retain the recent main fixes. (Done in Increment 0; see below.)
 
-### Increment 7 — prerequisites merged (`24028da`); live campaign in progress
+### Increment 7 — core water matrix accepted; remaining release validation open
 
-The engine work is merged; a complete Darwin active-learning campaign is not
-yet validated. Keep this increment focused on existing workflows and the
+The engine work is merged, and the twelve-case Darwin water campaign now
+validates first-trigger active learning across all three engines. Cohort/summed
+acquisition and the other backend gates below remain open. Keep this increment focused on existing workflows and the
 concrete correctness gaps listed under **Known implementation follow-ups**.
 Longer-term plugin interfaces and durable recovery remain later increments.
 
@@ -166,9 +167,8 @@ engine benchmark. Production task signatures and `__main__.py` are unchanged.
 Focused harness tests currently pass (15 checks), including real local Parsl
 submission auditing, the real multi-builder adapter, independent seed copies,
 late-bootstrap accounting, HDF5 validation, owned-job cleanup, deadlines, and
-Python 3.12-to-3.11 data transfer. The live matrix is not yet accepted; a full
-suite pass requires all twelve cases, not merely successful preparation or
-configured batching. See the example README for commands and artifact layout.
+Python 3.12-to-3.11 data transfer. All twelve live cases passed, including actual
+full-width execution. See the example README for commands and artifact layout.
 
 The first live preflight at `cf29d50` reached both single and packed ORCA
 calls, but MPI refused eight ranks because the initial CPU profile exposed
@@ -179,16 +179,34 @@ retains the first attempt's budget origin rather than resetting its deadlines.
 
 The repaired `cd46b3f` attempt passed the real preflight: all four recorded
 boxes converged in both single and sequential-batched ORCA execution, with
-zero energy/force differences. Shared bootstrap is running; the matrix has
-not yet passed. The supervisor is on `darwin-fe2` in tmux session
-`alf-inc7-water-20261102-02`, using a detached source worktree. Artifacts are
-outside Git under
+zero energy/force differences. The persistent supervisor on `darwin-fe2`
+completed all twelve cases at 22:06 MST on November 2, within approximately
+2 hours 53 minutes of the original budget origin, including the MPI repair.
+The final reports were checked on November 3. Artifacts are outside Git under
 `/vast/home/pjlohr/ALF_LANL/validation/inc7_water_matrix_20261102/`:
-`run-001/` retains the failed MPI attempt, `run-002/` is active,
+`run-001/` retains the failed MPI attempt, `run-002/` is the completed attempt,
 `suite-002.log` records stage progress, and `validation-summary.json` records
-CPU test evidence and the actual imported environment versions. Live results
-are in `run-002/result.json` and each case's `result.json`; only twelve passed
-cases close this matrix gate.
+CPU test evidence and the actual imported environment versions. Final results
+are in `run-002/result.json` (`status: passed`, `complete_matrix: true`) and
+each case's `result.json`.
+
+| Engine | Passed cases | Case elapsed range, including cleanup |
+| --- | ---: | ---: |
+| ASE | 4/4 | 11.3–13.4 min |
+| TorchSim CUDA | 4/4 | 9.3–14.4 min |
+| ALCHEMI 0.2 | 4/4 | 9.6–15.5 min |
+
+The shared bootstrap stored 32 converged structures and trained four loadable
+initial members. Every case promoted model 1 with eight new sampled IDs in
+its training-input manifest and four valid output members with actual epochs.
+All members retained 40 frames (33 train, 4 validation, 3 test). Across cases,
+128 labeling attempts converged; 96 new frames entered the accepted training
+inputs, with the remaining 32 labels recorded as overshoot. Each case stored
+40 frames including its seed. Actual sampler widths were one/four as required,
+and actual QM task widths were one/four as required. Individual/packed
+prediction checks passed for every case. Bootstrap and all twelve case cleanup
+reports verified termination of owned jobs. These short workflows establish
+execution correctness, not engine speedup or bulk-water potential accuracy.
 
 Complete CPU regressions with the final MPI/deadline checks:
 
@@ -200,6 +218,56 @@ Complete CPU regressions with the final MPI/deadline checks:
 
 The skips are unavailable optional backends. No production coordinator,
 training implementation, or existing example was modified for this harness.
+
+#### Next stage: cohort and summed acquisition (planned)
+
+Keep Increment 7 open and extend the opt-in campaign harness before starting
+new model, training, or acquisition capabilities. The next proposed matrix is
+twelve cases: ASE/TorchSim/ALCHEMI crossed with uncertainty/summed ranking and
+cohort `stop`/`continue`. Use dynamics width four, sequential ORCA packs of
+four, logical cohort size eight, and K = four. Four active trajectory slots
+must admit a cohort incrementally; cohort size is independent of task width.
+Keep the existing water science settings and 0.1 ps bound. Freeze explicit
+summed weights before submission; ranking must not change eligibility cutoffs.
+
+Reuse the accepted shared bootstrap only through a new, verified seed-import
+option: check training-input/checkpoint hashes and configuration compatibility,
+then copy into fresh isolated case directories with fresh status. Do not edit
+the accepted run or inherit pending work, new labels, or promoted models.
+The current runner does not yet implement this suite-level seed import.
+
+Require at least two completed cohorts, eight selected sampled IDs traced
+through converged labels and storage into real retraining, and four loadable
+promoted members per case. Report actual admitted/terminal counts, candidate
+counts, selected IDs/scores, pinned model generations, actual task widths,
+selection latency, labeling latency, and candidate-memory measurements.
+Insufficient natural acquisition remains incomplete. For identical recorded
+observations, replay grouping widths 1, 2, 4, 8, 32, and 50 and reordered
+completion must preserve selected IDs and deterministic ties. Independent
+stochastic engine trajectories need not select identical structures.
+
+Add targeted model-promotion coverage proving an already open cohort finishes
+on its pinned generation. Keep sampling/acquisition configuration fixed during
+each run; hot reload and durable recovery remain separate work. Address any
+demonstrated cohort correctness bug in a focused fix. Online candidate
+retention becomes a prerequisite only if measured memory prevents the bounded
+`continue` campaign. Retain persistent supervision, owned-job cleanup, the
+existing resource ceilings, and bounded case/group deadlines.
+
+After that stage, proceed with:
+
+1. A focused partial-batch and deliberate partial-label-failure campaign,
+   proving valid siblings survive and counts/storage/retraining remain correct.
+2. A separate nonperiodic molecular campaign for native PySEQM GPU batching
+   and retraining; retain periodic water geometry in the water campaign.
+3. A full TorchSim MI250 active-learning campaign, trained cell-input checkpoint
+   acceptance, and longer stability work using a suitable qualified potential.
+   MI350 stays explicitly pending hardware availability.
+
+These are separate acceptance gates. Passing the core water matrix closes
+only that gate, not all of Increment 7. Training GPU-assignment changes,
+multi-node training, non-ensemble uncertainty, diversity selection, and durable
+recovery keep their existing later scope.
 
 #### Focused prerequisites (2026-11-02)
 
@@ -1114,7 +1182,7 @@ or adapters wherever possible.
 | --- | --- | --- |
 | Periodic geometry screening | Fixed in the Increment 7 prerequisites: a shared minimum-image screen excludes diagonal self-pairs and retains physical overlaps. CPU, A100, and MI250 regressions pass. | This screen compares distinct atoms, not an atom's own periodic images. Cutoffs and screening timing are unchanged. |
 | Scheduler GPU visibility | Fixed for legacy/batched MLMD, UDD, and NeuroChem inference: inherited masks remain unchanged and automatic assignment uses local ordinals. Simulated allocation checks and real A100/MI250 reused-worker runs pass. | Training pools and reactive samplers are separate follow-ups; external Parsl/site configuration must provide valid worker visibility. NeuroChem has adapter/unit coverage, not hardware qualification in this stage. |
-| Legacy ASE checkpoint loading | Fixed: `HIPNN_ASE_calculator()` loads explicit absolute checkpoint paths without `chdir`. Concurrent member loading and parity with the original trained-checkpoint predictions pass, along with CPU/GPU workflow regressions. | Checkpoint format and restoration are unchanged; the batched loader keeps its separate weights format. The full active-learning campaign remains planned. |
+| Legacy ASE checkpoint loading | Fixed: `HIPNN_ASE_calculator()` loads explicit absolute checkpoint paths without `chdir`. Concurrent member loading, prediction parity, and the twelve-case water active-learning matrix pass. | Checkpoint format and restoration are unchanged; the batched loader keeps its separate weights format. Cohort and other backend acceptance remain open. |
 | Configuration reload and pinning | The main loop reloads task configurations, but driver/buffer settings and cohort selection are constructed at startup. Cohorts pin a model generation, not an immutable sampling/acquisition configuration. | Add explicit reload safeguards or configuration snapshots at admission/submission. Changing engine, size/K, thresholds, weights, or stopping policy mid-cohort must not mix meanings between startup coordination and later task configs. Until then, keep these settings fixed for a run. |
 | Cohort admission | A cohort requires full membership and all terminal reports, with no admission timeout or partial selection. A permanently undersupplied builder leaves it unfinished. | Document and observe admitted/finished counts during Increment 7. Keep incremental admission for cohorts larger than worker capacity; do not introduce an automatic partial-cohort policy without a separate decision. |
 | Queue thresholds and strict batches | `full_only` can leave a PBC/model group waiting indefinitely when it cannot fill within available capacity. The inherited `minimum_QM` harvest gate can also hold a small number of finished sampler results. | Exercise small capacities and fragmented groups with the existing timeout policy. Check that configured completion thresholds are reachable. Add focused diagnostics/validation or drain behavior only as a separate compatibility change. The labeler already checks `target_queued_QM >= batch_size` for strict batches. |

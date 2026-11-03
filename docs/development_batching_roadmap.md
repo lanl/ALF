@@ -1,7 +1,7 @@
 # Living roadmap for integration into ALF development
 
 Last updated: November 2, 2026 (Increments 0–6 and the Increment 7 prerequisites merged at `24028da`;
-the Increment 7 campaign harness is implemented locally; live acceptance is pending).
+the Increment 7 campaign harness is implemented locally and live validation is running).
 
 This is the shared plan for gradually bringing the fork's intended capabilities
 into `lanl/ALF:development`. It is separate from ongoing implementation on
@@ -90,7 +90,7 @@ independently reviewable and tested before dependent increments merge. Inspect
 PBC propagation in the multi-structure condensed-phase builder as a focused
 prerequisite; retain the recent main fixes. (Done in Increment 0; see below.)
 
-### Increment 7 — prerequisites merged (`24028da`); campaign implementation in progress
+### Increment 7 — prerequisites merged (`24028da`); live campaign in progress
 
 The engine work is merged; a complete Darwin active-learning campaign is not
 yet validated. Keep this increment focused on existing workflows and the
@@ -163,7 +163,7 @@ cross-version function serialization or modifications to existing environments.
 This process startup is part of the campaign harness rather than a standalone
 engine benchmark. Production task signatures and `__main__.py` are unchanged.
 
-Focused harness tests currently pass (13 checks), including real local Parsl
+Focused harness tests currently pass (15 checks), including real local Parsl
 submission auditing, the real multi-builder adapter, independent seed copies,
 late-bootstrap accounting, HDF5 validation, owned-job cleanup, deadlines, and
 Python 3.12-to-3.11 data transfer. The live matrix is not yet accepted; a full
@@ -176,6 +176,30 @@ only one Slurm task/slot. Jobs `17373266`/`17373267` were cancelled and cleanup
 verified. The validation profile now reserves sixteen MPI slots and divides
 worker affinity blocks; ORCA ranks use one thread each. The repaired attempt
 retains the first attempt's budget origin rather than resetting its deadlines.
+
+The repaired `cd46b3f` attempt passed the real preflight: all four recorded
+boxes converged in both single and sequential-batched ORCA execution, with
+zero energy/force differences. Shared bootstrap is running; the matrix has
+not yet passed. The supervisor is on `darwin-fe2` in tmux session
+`alf-inc7-water-20261102-02`, using a detached source worktree. Artifacts are
+outside Git under
+`/vast/home/pjlohr/ALF_LANL/validation/inc7_water_matrix_20261102/`:
+`run-001/` retains the failed MPI attempt, `run-002/` is active,
+`suite-002.log` records stage progress, and `validation-summary.json` records
+CPU test evidence and the actual imported environment versions. Live results
+are in `run-002/result.json` and each case's `result.json`; only twelve passed
+cases close this matrix gate.
+
+Complete CPU regressions with the final MPI/deadline checks:
+
+| Environment | Passed | Skipped | Elapsed |
+| --- | ---: | ---: | ---: |
+| atomistic | 230 | 38 | 133.19 s |
+| TorchSim CUDA environment, CPU execution | 248 | 20 | 180.52 s |
+| alf_alchemi_02 | 248 | 20 | 178.29 s |
+
+The skips are unavailable optional backends. No production coordinator,
+training implementation, or existing example was modified for this harness.
 
 #### Focused prerequisites (2026-11-02)
 

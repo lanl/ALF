@@ -317,3 +317,57 @@ def test_data_pickle_is_readable_in_alchemi_python(tmp_path, h2_atoms):
     result = subprocess.run([str(python), '-B', '-c', code, str(path)],
         env=dict(os.environ, PYTHONPATH=str(support.SOURCE)), capture_output=True, text=True, timeout=60)
     assert result.returncode == 0, result.stderr
+
+
+def test_resource_profile_exposes_mpi_slots_without_mixing_python_versions(tmp_path, monkeypatch, profile):
+    import parsl.addresses
+    import parsl.config
+    import parsl.executors
+    import parsl.providers
+    run = support.prepare_run(tmp_path / 'resources', support.Case('alchemi', 4, 4), profile, support.darwin_site())
+    monkeypatch.setenv('ALF_CAMPAIGN_RUN', str(run))
+    class Provider:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+    monkeypatch.setattr(parsl.providers, 'SlurmProvider', Provider)
+    monkeypatch.setattr(parsl.executors, 'HighThroughputExecutor', lambda **kwargs: kwargs)
+    monkeypatch.setattr(parsl.config, 'Config', lambda **kwargs: kwargs)
+    monkeypatch.setattr(parsl.addresses, 'address_by_hostname', lambda: '127.0.0.1')
+    spec = importlib.util.spec_from_file_location('campaign_resource_test', CAMPAIGN / 'campaign_resources.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    executors = {e['label']: e for e in module.config['executors']}
+    qm = executors['alf_QM_executor']
+    request = qm['provider'].kwargs
+    assert request['cores_per_node'] is None  # Avoid multiplying sixteen tasks by sixteen CPUs each.
+    assert '--ntasks-per-node=16' in request['scheduler_options']
+    assert '--cpus-per-task=1' in request['scheduler_options']
+    assert qm['max_workers_per_node'] == 2 and qm['cores_per_worker'] == 8
+    assert qm['cpu_affinity'] == 'block'
+    transport = executors['alf_sampler_executor']['interchange_launch_cmd'][0]
+    assert transport == support.darwin_site()['base_python']
+    assert all(e['provider'].kwargs['max_blocks'] == 1 for e in executors.values())
+
+
+def test_retry_preserves_original_bootstrap_and_overall_budget(tmp_path, monkeypatch, profile):
+    profile = dict(profile, stage_seconds=100, case_seconds=30, cleanup_seconds=5)
+    support.atomic_json(tmp_path / 'profile.json', profile)
+    support.atomic_json(tmp_path / 'site.json', {})
+    clock = [20.]
+    calls = []
+    monkeypatch.setattr(runner.time, 'time', lambda: clock[0])
+
+    def launch(run, operation, deadline, **kwargs):
+        calls.append((operation, deadline))
+        clock[0] += 1
+        return {'model_id': 0}
+
+    monkeypatch.setattr(runner, 'launch', launch)
+    monkeypatch.setattr(runner, 'freeze_seed', lambda *args: None)
+    monkeypatch.setattr(runner, 'seed_case', lambda *args: None)
+    monkeypatch.setattr(runner, 'case_metrics', lambda *args: {})
+    assert runner.suite(tmp_path, selected='ase-w1-q1', budget_start=0.)
+    assert calls[:2] == [('preflight', 95.), ('coordinator', 95.)]
+    assert support.read_json(tmp_path / 'execution.json')['overall_deadline'] == 400.
+    assert all(deadline <= 400. for _, deadline in calls)
+    assert support.read_json(tmp_path / 'result.json')['complete_matrix'] is False

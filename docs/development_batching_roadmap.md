@@ -1,6 +1,6 @@
 # Living roadmap for integration into ALF development
 
-Last updated: November 2, 2026 (Increments 0–5 merged; Increment 6 in progress locally).
+Last updated: November 2, 2026 (Increments 0–5 merged; Increment 6 done locally).
 
 This is the shared plan for gradually bringing the fork's intended capabilities
 into `lanl/ALF:development`. It is separate from ongoing implementation on
@@ -74,7 +74,7 @@ locally only; the user pushes.
 | 3. Native PySEQM labeling | merged (`d5a0395`) | Ground-state batch energies/forces, adapter-local padding and atom-order restoration, and per-member convergence handling. | Native batch results agree with individual evaluations; successful labels survive partial failures. |
 | 4. Ground-state sampling and acquisition | merged (`86f62ca`) | Minimal physical-inference/MLMD contracts, uncertainty and summed ranking, first-trigger returns, and an in-memory logical-cohort selector. | Shared observations produce equivalent screening, scores, stopping, and selection across execution strategies. |
 | 5. TorchSim dynamics | merged (`86f62ca`) | Supported NVIDIA/AMD ground-state batched MLMD. | CPU, NVIDIA, and Darwin MI250 mechanics and integration acceptance pass. |
-| 6. ALCHEMI dynamics | in progress | ALCHEMI 0.2.0 NVIDIA batched MLMD through the same contracts, in its separate environment. | Shared conformance tests and NVIDIA acceptance pass. |
+| 6. ALCHEMI dynamics | done locally | ALCHEMI 0.2.0 NVIDIA batched MLMD through the same contracts, in its separate environment. | Shared conformance tests and NVIDIA acceptance pass. |
 | 7. Combined release validation | planned | Opt-in examples and integration/performance results. | All single/batched dynamics x single/batched labeling combinations complete representative ALF workflows. |
 
 Port narrowly scoped implementations and tests. Each increment must be
@@ -535,7 +535,7 @@ Decisions (user, 2026-11-02):
 
 Implementation:
 
-- `driver.engine: torchsim` is accepted (`alchemi` still raises, Increment 6). New
+- `driver.engine: torchsim` is accepted (ALCHEMI is added in Increment 6 below). New
   `samplers/torchsim_engine.py` (`TorchSimEngine`) implements the `ASEEngine` contract, so
   `run_mlmd_trajectories`, acquisition, cohorts, and the coordinator are unchanged. TorchSim is imported
   only when this engine is selected.
@@ -620,7 +620,7 @@ Limitations: one shared PBC per batch; NVT Langevin only (no NPT); trajectories 
 lockstep, so a stopped frame reaches labeling when its slowest batch-mate stops (as in 4b); GPU results are
 not bitwise reproducible across devices; inference throughput depends on HIPPYNN's padded evaluation.
 
-#### Increment 6 — ALCHEMI 0.2 (in progress, 2026-11-02)
+#### Increment 6 — ALCHEMI 0.2 (done locally, 2026-11-02)
 
 Decisions (user, 2026-11-02):
 
@@ -681,9 +681,31 @@ acquisition, cohorts, labeling, and the HIPPYNN loader are unchanged.
   form an explicit local package to avoid that collision and remain excluded
   from the distribution wheel.
 
-Artifacts: `ALF_fork/ALF/debug/alchemi_inc6_20261102/`. Final NVIDIA acceptance
-and the TorchSim ROCm regression are pending; no new hardware-acceptance claim
-is made yet.
+- NVIDIA A100 acceptance: job 17372891 passed benchmarks at widths 1, 2,
+  8, 32, and 50 for both engines. Final conformance job 17372945 passed
+  27 ALCHEMI / 16 skipped and 25 TorchSim / 18 skipped, including the
+  trained-model check and real coordinator cases.
+- Darwin MI250 TorchSim regression: job 17372892 passed all benchmark widths;
+  its direct spread comparison failed. Diagnostic 17372937 established
+  float32 member roundoff; after the user-approved test refinement in
+  `d6743a7`, job 17372946 passed 25 / 18 skipped. The original failure remains
+  in the artifacts. Inference tolerances and acquisition cutoffs are unchanged.
+- Benchmarks ran frozen commit `b63e3df`; final GPU tests ran `d6743a7`.
+  Imported runtime/benchmark source hashes match. Width-50 dynamics throughput:
+  376.05 system-steps/s (A100 ALCHEMI), 382.48 (A100 TorchSim), and 381.47
+  (MI250 TorchSim). Memory reports are peak PyTorch allocations, excluding
+  possible Warp allocations. Thermostat means passed the 3% criterion.
+- Local validation artifacts (`alchemi_increment6_validation_20261102.md` and
+  `alchemi_02_environment_20261102.json`, kept outside Git in the artifact
+  directory below) record exact versions, HIPPYNN revision and pre-existing
+  source modifications, checkpoint
+  fingerprints, executed revisions, test results, throughput/memory tables,
+  the uncertainty decision, and known limitations.
+
+Artifacts: `ALF_fork/ALF/debug/alchemi_inc6_20261102/`. Implementation and
+CPU/GPU engine acceptance are complete locally; not pushed or merged. This
+is not production-potential accuracy validation. Full Darwin active learning,
+a trained cell-input checkpoint, and MI350 remain Increment 7 or later.
 
 ### Batching and reference labeling
 

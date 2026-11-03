@@ -61,6 +61,13 @@ def geometry(molecule):
                 cell=atoms.cell.array, pbc=atoms.pbc)
 
 
+def gpu_identity(device):
+    import torch
+    return dict(device=str(device), hardware=torch.cuda.get_device_name(device),
+                torch=str(torch.__version__), cuda=torch.version.cuda, hip=torch.version.hip,
+                visible_devices=torch.cuda.device_count())
+
+
 @python_app(executors=['alf_sampler_executor'])
 def build_water(moleculeids, builder_config, molecule_library_dir, cell_range, solute_molecule_options, Rrange):
     from alframework.builders.builders import simple_multi_condensed_phase_builder_task
@@ -70,6 +77,36 @@ def build_water(moleculeids, builder_config, molecule_library_dir, cell_range, s
         moleculeids, builder_config, molecule_library_dir, cell_range, solute_molecule_options, Rrange))
     assert [m.get_moleculeid() for m in result] == list(moleculeids)
     assert all(m.get_atoms().pbc.all() and m.get_atoms().cell.volume > 0 for m in result)
+    event('builder_end', ids=moleculeids, width=len(result), structures=[geometry(m) for m in result])
+    return result
+
+
+@python_app(executors=['alf_sampler_executor'])
+def build_molecules(moleculeids, builder_config):
+    import hashlib
+    import numpy as np
+    from ase import Atoms
+    from alframework.samplers.geometry import minimum_distance
+    from alframework.tools.molecules_class import MoleculesObject
+    identify()
+    result = []
+    for name in moleculeids:
+        number = int(name.rsplit('-', 1)[-1])
+        atoms = (Atoms('HOH', positions=[[.96, 0, 0], [0, 0, 0], [-.24, .93, 0]]) if number % 2 == 0 else
+                 Atoms('HCOHHH', positions=[[-.36, 1.03, 0], [0, 0, 0], [1.43, 0, 0],
+                                           [-.36, -.51, .89], [-.36, -.51, -.89], [1.75, .9, 0]]))
+        rng = np.random.default_rng(int.from_bytes(hashlib.sha256(
+            f"{builder_config['random_seed']}:{name}".encode()).digest()[:8], 'big'))
+        base = atoms.positions.copy()
+        for _ in range(100):
+            atoms.positions = base + rng.normal(0, builder_config['perturbation_angstrom'], base.shape)
+            if minimum_distance(atoms) >= builder_config['distcut']:
+                break
+        else:
+            raise ValueError(f'Could not build acceptable molecular geometry: {name}')
+        # A nonperiodic bookkeeping cell avoids singular-cell storage normalization.
+        atoms.set_cell([20, 20, 20])
+        result.append(MoleculesObject(atoms, name))
     event('builder_end', ids=moleculeids, width=len(result), structures=[geometry(m) for m in result])
     return result
 
@@ -107,8 +144,21 @@ def sample_many(molecule_objects, sampler_config, model_path, current_model_id, 
     start = time.time()
     event('sampler_start', ids=[m.get_moleculeid() for m in molecule_objects], width=len(molecule_objects),
           model_id=current_model_id, structures=[geometry(m) for m in molecule_objects])
-    result = unwrap(mlmd_trajectories_task.func(molecule_objects, sampler_config, model_path,
-                                               current_model_id, gpus_per_node))
+    from campaign_evidence import sampling_audit
+    spec = read_json(Path(os.environ['ALF_CAMPAIGN_RUN']) / 'run.json')
+    measured = spec['profile'].get('campaign', 'core') != 'core'
+    if measured:
+        import torch
+        from alframework.tools.gpu import sampling_device
+        device = sampling_device(sampler_config, gpus_per_node)
+        torch.cuda.reset_peak_memory_stats(device)
+    with sampling_audit(molecule_objects, (spec.get('case') or {}).get('fault', '')):
+        result = unwrap(mlmd_trajectories_task.func(molecule_objects, sampler_config, model_path,
+                                                   current_model_id, gpus_per_node))
+    if measured:
+        from campaign_evidence import memory
+        event('sampler_memory', peak_torch_allocated_bytes=torch.cuda.max_memory_allocated(device),
+              gpu=gpu_identity(device), **memory())
     return sampler_result(result, len(molecule_objects), current_model_id, start)
 
 
@@ -122,12 +172,57 @@ def label_water(molecule_object, QM_config, QM_scratch_dir, properties_list):
         os.environ[key] = '1'
     identify()
     event('qm_start', id=molecule_object.get_moleculeid(), structure=geometry(molecule_object))
+    spec = read_json(Path(os.environ['ALF_CAMPAIGN_RUN']) / 'run.json')
+    fault = (spec.get('case') or {}).get('fault', '')
+    inject = molecule_object.get_moleculeid() == 'mol-0000-0000000000'
+    if fault == 'label_exception' and inject:
+        event('fault_injected', id=molecule_object.get_moleculeid(), fault=fault)
+        event('qm_end', id=molecule_object.get_moleculeid(), converged=False,
+              structure=geometry(molecule_object), properties={})
+        raise RuntimeError('controlled campaign labeling exception')
     result = unwrap(orca_calculator_task.func(molecule_object, QM_config, QM_scratch_dir, properties_list))
     converged = bool(result.check_convergence())
+    if fault == 'label_unconverged' and inject:
+        event('fault_injected', id=result.get_moleculeid(), fault=fault, backend_converged=converged)
+        result.set_converged_flag(False)
+        result.update_metadata(dict(labeling_error='controlled campaign unconverged flag'))
+        converged = False
     if converged:
         assert all(np.isfinite(value).all() for value in result.get_results().values())
     event('qm_end', id=result.get_moleculeid(), converged=converged, structure=geometry(result),
           properties=result.get_results())
+    return result
+
+
+@python_app(executors=['alf_sampler_executor'])
+def label_molecules(molecule_objects, QM_config):
+    """Real native GPU solves on the serialized sampling/labeling executor."""
+    from alframework.qm_interfaces.pyseqm_interface import label_pyseqm_batch, run_pyseqm
+    import torch
+    import seqm
+    identify()
+    assert torch.cuda.is_available(), 'Native GPU acceptance requires CUDA'
+    torch.cuda.reset_peak_memory_stats()
+    for molecule in molecule_objects:
+        event('qm_start', id=molecule.get_moleculeid(), structure=geometry(molecule))
+
+    def runner(*args, **kwargs):
+        started = time.time()
+        try:
+            values = run_pyseqm(*args, **kwargs)
+        except Exception:
+            event('native_solve', width=len(args[0]), success=False, elapsed=time.time()-started)
+            raise
+        event('native_solve', width=len(args[0]), success=True, elapsed=time.time()-started,
+              device=kwargs['device'], pyseqm_source=str(Path(seqm.__file__).resolve()),
+              gpu=gpu_identity(kwargs['device']),
+              peak_torch_allocated_bytes=torch.cuda.max_memory_allocated())
+        return values
+
+    result = label_pyseqm_batch(molecule_objects, QM_config, runner=runner)
+    for molecule in result:
+        event('qm_end', id=molecule.get_moleculeid(), converged=bool(molecule.check_convergence()),
+              structure=geometry(molecule), properties=molecule.get_results())
     return result
 
 
@@ -160,13 +255,14 @@ def prediction_check(model_directory, structures_file):
     import numpy as np
     import torch
     from ase.io import read
-    from alframework.ml_interfaces.hippynn_interface import HIPNN_ASE_load_ensemble, load_hippynn_batched_ensemble
+    from alframework.ml_interfaces.hippynn_interface import HIPNN_ASE_calculator, load_hippynn_batched_ensemble
     from alframework.ml_interfaces.ensemble_inference import ASEEnsembleEvaluator, ensemble_statistics
     from alframework.tools.gpu import sampling_device
     identify()
     device = sampling_device({'device': 'cuda'}, 4)
     atoms = read(structures_file, index=':')
-    reference = ASEEnsembleEvaluator(HIPNN_ASE_load_ensemble(model_directory, device=device)).predict(atoms)
+    reference = ASEEnsembleEvaluator([HIPNN_ASE_calculator(str(p), device=device)
+        for p in sorted(Path(model_directory).glob('model-*'))]).predict(atoms)
     packed = load_hippynn_batched_ensemble(model_directory, device=device)
     assert packed.n_models == 4
 
@@ -201,4 +297,4 @@ def prediction_check(model_directory, structures_file):
                                max_force_error=float(np.abs(delta_f).max())))
         rows.append(dict(width=width, max_energy_error=float(np.abs(actual['energies']-reference['energies']).max()),
                          structures=errors))
-    return dict(device=device, n_models=4, comparisons=rows, worker=worker_identity())
+    return dict(device=device, n_models=4, comparisons=rows, worker=worker_identity(), gpu=gpu_identity(device))

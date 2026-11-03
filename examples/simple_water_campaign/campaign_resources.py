@@ -27,12 +27,16 @@ def make_config(run):
     site, profile = spec['site'], spec['profile']
     source = Path(spec['source'])
     engine = (spec['case'] or {}).get('engine', 'ase')
+    campaign = profile.get('campaign', 'core')
     sampler_python = site['base_python'] if engine == 'ase' else site[engine + '_python']
+    if campaign == 'mi250':
+        sampler_python = site['rocm_python']
     # Parsl/dill code objects cannot safely cross Python 3.12 -> 3.11.
     # ALCHEMI's physics executes in a qualified 3.11 subprocess of this worker.
     transport_python = site['base_python'] if engine == 'alchemi' else sampler_python
 
     def executor(role, python, workers, cores, cpu=False):
+        amd = campaign == 'mi250' and role == 'sampler'
         initialization = [
             'source /etc/profile',
             'export PATH=' + shlex.quote(str(Path(python).parent)) + ':"$PATH"',
@@ -40,12 +44,16 @@ def make_config(run):
             'export ALF_CAMPAIGN_RUN=' + shlex.quote(str(run)),
             'export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 PYTHONDONTWRITEBYTECODE=1 HIPPYNN_USE_CUSTOM_KERNELS=False',
         ]
+        if campaign == 'pyseqm':
+            initialization.append('export PYTHONPATH=' + shlex.quote(site['pyseqm_source']) + ':"$PYTHONPATH"')
+        if amd:
+            initialization.append('module load ' + shlex.quote(site['rocm_module']))
         if cpu:
             initialization.append('module load ' + shlex.quote(site['mpi_module']))
             initialization += ['export PARSL_CORES=16',
                                'export OMPI_MCA_hwloc_base_binding_policy=none']
         provider = CampaignSlurmProvider(
-            partition=site['cpu_partition'] if cpu else site['gpu_partition'], account=site['account'],
+            partition=site['cpu_partition'] if cpu else site['rocm_partition'] if amd else site['gpu_partition'], account=site['account'],
             init_blocks=0, min_blocks=0, max_blocks=1, nodes_per_block=1,
             cores_per_node=None if cpu else 4,
             # Open MPI counts Slurm tasks, not cpus-per-task, as MPI slots.
@@ -61,9 +69,11 @@ def make_config(run):
             launch_cmd=shlex.quote(python) + ' -m parsl.executors.high_throughput.process_worker_pool' +
                        DEFAULT_LAUNCH_CMD.removeprefix('process_worker_pool.py'))
 
-    return Config(executors=[executor('QM', site['base_python'], 2, profile['orca_cores'], cpu=True),
-                             executor('ML', site['base_python'], 1, 4),
-                             executor('sampler', transport_python, 4, 1)],
+    executors = [executor('ML', site['base_python'], 1, 4),
+                 executor('sampler', transport_python, 1 if campaign == 'pyseqm' else 4, 1)]
+    if campaign != 'pyseqm':
+        executors.insert(0, executor('QM', site['base_python'], 2, profile['orca_cores'], cpu=True))
+    return Config(executors=executors,
                   run_dir=str(Path(run) / 'runinfo'), max_idletime=60, retries=0, strategy_period=5)
 
 

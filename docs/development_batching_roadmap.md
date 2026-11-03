@@ -1,7 +1,8 @@
 # Living roadmap for integration into ALF development
 
 Last updated: November 3, 2026 (Increments 0–6 and the Increment 7 prerequisites merged at `24028da`;
-all twelve core water campaign cases passed; remaining Increment 7 acceptance is planned below).
+all twelve core water campaign cases passed; remaining campaign profiles are implemented,
+with external acceptance pending).
 
 This is the shared plan for gradually bringing the fork's intended capabilities
 into `lanl/ALF:development`. It is separate from ongoing implementation on
@@ -70,6 +71,8 @@ confirmed official development at `be7fb64`, including Increment 6 and the
 shared-test rename. A later push (tip `24028da`, verified November 2) merged the
 Increment 7 prerequisite fixes and their acceptance record. Main remains
 `206ea44`, already included in development.
+On November 3, a live remote check confirmed development at `d4bf99d`, including
+the core campaign harness and MPI/deadline repair; main remains `206ea44`.
 Older progress entries retain their dated status at the time of writing; the
 table below is the current status. Agents still commit locally only; the user
 pushes.
@@ -219,22 +222,24 @@ Complete CPU regressions with the final MPI/deadline checks:
 The skips are unavailable optional backends. No production coordinator,
 training implementation, or existing example was modified for this harness.
 
-#### Next stage: cohort and summed acquisition (planned)
+#### Remaining campaigns — implemented; external acceptance pending (2026-11-03)
 
 Keep Increment 7 open and extend the opt-in campaign harness before starting
-new model, training, or acquisition capabilities. The next proposed matrix is
+new model, training, or acquisition capabilities. The next implemented matrix is
 twelve cases: ASE/TorchSim/ALCHEMI crossed with uncertainty/summed ranking and
 cohort `stop`/`continue`. Use dynamics width four, sequential ORCA packs of
 four, logical cohort size eight, and K = four. Four active trajectory slots
 must admit a cohort incrementally; cohort size is independent of task width.
-Keep the existing water science settings and 0.1 ps bound. Freeze explicit
-summed weights before submission; ranking must not change eligibility cutoffs.
+Keep the existing water science settings and 0.1 ps bound. Summed weights are
+fixed at energy = one and force RMS = one; ranking does not change eligibility cutoffs.
 
 Reuse the accepted shared bootstrap only through a new, verified seed-import
 option: check training-input/checkpoint hashes and configuration compatibility,
 then copy into fresh isolated case directories with fresh status. Do not edit
 the accepted run or inherit pending work, new labels, or promoted models.
-The current runner does not yet implement this suite-level seed import.
+The runner now implements this suite-level seed import, including real CPU
+loads/predictions for all four initial members. The accepted seed has passed
+this verification against the new profiles without changing its files.
 
 Require at least two completed cohorts, eight selected sampled IDs traced
 through converged labels and storage into real retraining, and four loadable
@@ -268,6 +273,48 @@ These are separate acceptance gates. Passing the core water matrix closes
 only that gate, not all of Increment 7. Training GPU-assignment changes,
 multi-node training, non-ensemble uncertainty, diversity selection, and durable
 recovery keep their existing later scope.
+
+The implemented CLI adds `--campaign core|cohort|failures|pyseqm|mi250` and
+`--import-seed`; the default core command remains supported. Preparation and
+single-case execution remain available. `remaining.py` supervises four campaigns
+sequentially from a persistent login session, stopping if owned-job cleanup
+cannot be verified. No production task signatures or coordinator code changed.
+
+| Campaign | Cases | Maximum elapsed, including waits/cleanup |
+| --- | ---: | ---: |
+| Cohort/summed acquisition | 12 | 16 h; four-hour setup and engine groups |
+| Controlled failures | 3, plus real three-member timeout preflight | 4 h |
+| Native PySEQM GPU | 2 active-learning cases; native widths 1/2/4/8 in preflight | 4 h; bootstrap at most 1 h |
+| TorchSim MI250 | 4 first-trigger dynamics/labeling combinations | 4 h |
+
+Case limits remain 55 minutes including cleanup. Controlled failures use only
+validation wrappers: one label exception, one unconverged flag after a real
+converged ORCA evaluation, and one trajectory failing after an eligible frame.
+Successful siblings must reach real training; invalid labels must be absent
+from storage/training. A pre-failure candidate must actually survive selection
+and reach labeling/training, or that case remains incomplete.
+
+The native PySEQM campaign has its own nonperiodic water/methanol AM1 bootstrap,
+32 stored structures, and four initial members, with carbon added to the model's
+species. It requests only energy/forces with unit factors one. Its heterogeneous
+builder uses deterministic 0.03 Å perturbations and the 0.7 Å geometry screen.
+Single/native GPU comparisons require absolute differences no larger than
+1e-6 eV and 1e-5 eV/Å and include a force-sign finite difference. Native fallback
+calls cannot satisfy full-batch coverage. Sampling and labeling share one
+serialized GPU allocation; training remains separate on four NVIDIA GPUs.
+
+The MI250 campaign changes only sampler hardware/environment; ORCA and training
+retain their established CPU/NVIDIA environments. All campaigns retain real
+eight-new-label lineage and four-member training requirements. Configuration
+alone, synthetic labels, and model counters do not establish acceptance.
+
+Audits now distinguish generated candidates, returned trajectories, coordinator
+selections, QM attempts/convergence, stored IDs, and training inputs. Selection
+replay checks unpruned top-K and configured eligibility/ranking. Candidate-array
+bytes, process lifetime peak RSS, and peak Torch allocation are separate metrics.
+Trained cell-input, qualified potential-stability, and MI350 gates stay explicitly
+open when their required inputs/hardware are absent; the combined runner does
+not mark all of Increment 7 complete merely because its runnable campaigns pass.
 
 #### Focused prerequisites (2026-11-02)
 

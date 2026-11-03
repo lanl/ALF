@@ -50,10 +50,16 @@ def worker(run, operation, seed=None):
     os.environ['ALF_CAMPAIGN_RUN'] = str(run)
     original_load = parsl.load
     original_sleep = time.sleep
+    observed_model = [None]
 
     def observed_sleep(seconds):
         frame = sys._getframe(1)
         if frame.f_globals.get('__name__') == '__main__' and 'master_loop_iter' in frame.f_globals:
+            model = frame.f_globals.get('status', {}).get('current_model_id')
+            if model != observed_model[0]:
+                event('model_observed' if observed_model[0] is None else 'model_promoted', run,
+                      previous_model_id=observed_model[0], model_id=model)
+                observed_model[0] = model
             queues = {}
             for name in ('builder_task_queue', 'sampler_task_queue', 'QM_task_queue', 'ML_task_queue'):
                 queue = frame.f_globals.get(name)
@@ -72,13 +78,23 @@ def worker(run, operation, seed=None):
     time.sleep = observed_sleep
     try:
         if operation == 'coordinator':
+            if read_json(run / 'run.json')['profile'].get('campaign', 'core') != 'core':
+                from campaign_evidence import install_cohort_audit
+                install_cohort_audit(run)
             sys.argv = ['alframework', '--master', str(run / 'master_config.json')]
             runpy.run_module('alframework', run_name='__main__')
         else:
             from campaign_resources import config
             parsl.load(config)
             if operation == 'preflight':
-                preflight(run)
+                if read_json(run / 'run.json')['profile'].get('campaign') == 'pyseqm':
+                    from campaign_preflights import native_preflight
+                    native_preflight(run)
+                else:
+                    preflight(run)
+            elif operation == 'partial':
+                from campaign_preflights import partial_preflight
+                partial_preflight(run, seed)
             elif operation == 'prediction':
                 from campaign_tasks import prediction_check
                 report = prediction_check(str(Path(seed) / 'models/model-0000'),
@@ -211,7 +227,8 @@ def launch(run, operation, deadline, bootstrap=False, seed=None):
                         validate_checkpoints(run, outcome)
                         break
                 else:
-                    marker = run / ('preflight.json' if operation == 'preflight' else 'prediction.json')
+                    marker = run / {'preflight': 'preflight.json', 'prediction': 'prediction.json',
+                                    'partial': 'partial.json'}[operation]
                     if marker.is_file() and process.poll() == 0:
                         outcome = read_json(marker)
                         break
@@ -256,38 +273,71 @@ def case_metrics(run):
     spans = [r['time'] for r in records]
     elapsed = max(spans)-min(spans) if len(spans) > 1 else 0.
     converged = sum(r['kind'] == 'qm_end' and r['converged'] for r in records)
+    created = {r['candidate']['frame_id']: r['time'] for r in records if r['kind'] == 'candidate_created'}
+    cohort_frames = {f['id']: (f, r['time']) for r in records if r['kind'] == 'cohort_selected' for f in r['frames']}
+    trajectory_returns = {name: r['time'] for r in records if r['kind'] == 'sampler_end' for name in r['ids']}
+    for name, (frame, selected_time) in cohort_frames.items():
+        parent = frame['metadata']['trajectory_id']
+        if name in started and parent in trajectory_returns:
+            latencies[name] = started[name] - trajectory_returns[parent]
     return dict(qm_attempts=sum(r['kind'] == 'qm_start' for r in records),
                 qm_converged=converged, converged_labels_per_elapsed_second=converged/elapsed if elapsed else None,
                 stored=len(h5_inventory(Path(run) / 'h5store')['ids']),
                 sampler_widths=[r['width'] for r in records if r['kind'] == 'sampler_end'],
                 qm_task_widths=[r['width'] for r in records if r['kind'] == 'task_done' and
-                               r['name'] in ('label_water', 'label_sequentially') and r['success']],
+                               r['name'] in ('label_water', 'label_sequentially', 'label_molecules') and r['success']],
                 sampler_return_to_qm_start_seconds=latencies,
+                candidate_to_selection_seconds={name: selected-created[frame['metadata']['frame_id']]
+                    for name, (frame, selected) in cohort_frames.items() if frame['metadata']['frame_id'] in created},
+                candidate_to_qm_start_seconds={name: started[name]-created[frame['metadata']['frame_id']]
+                    for name, (frame, _) in cohort_frames.items() if name in started and frame['metadata']['frame_id'] in created},
+                cohort_summaries=[r['summary'] for r in records if r['kind'] == 'cohort_selected'],
+                model_promotions=[r for r in records if r['kind'] == 'model_promoted'],
+                peak_process_rss_kib=max((r.get('process_peak_rss_kib', 0) for r in records), default=0),
+                controlled_faults=[r for r in records if r['kind'] == 'fault_injected'],
+                queue_snapshots=[r for r in records if r['kind'] == 'queue_snapshot'],
                 queue_occupancy=[r for r in records if r['kind'] == 'queue_poll'])
 
 
-def suite(root, selected=None, budget_start=None):
+def suite(root, selected=None, budget_start=None, import_seed=None):
     root = Path(root).resolve()
     site = read_json(root / 'site.json')
     profile = read_json(root / 'profile.json')
+    campaign = profile.get('campaign', 'core')
     outcomes = {}
     if (root / 'execution.json').exists():
         raise ValueError('This root has already executed. Preserve it and choose a fresh run root.')
     origin = time.time() if budget_start is None else budget_start
     if origin > time.time() or origin < 0:
         raise ValueError('Budget origin must be a past timestamp')
-    overall_deadline = origin + 4*profile['stage_seconds']
+    overall_deadline = origin + profile.get('overall_seconds', 4*profile['stage_seconds'])
     atomic_json(root / 'execution.json', dict(start=origin, launched=time.time(), selected=selected,
                                              overall_deadline=overall_deadline))
     atomic_json(root / 'result.json', dict(status='running', phase='bootstrap', cases={}))
-    print('Starting shared bootstrap and real ORCA preflight.', flush=True)
+    print(f'Starting {campaign} shared verification/bootstrap.', flush=True)
     stage_start = origin
     bootstrap = root / 'bootstrap'
     try:
-        launch(bootstrap, 'preflight', stage_start + profile['stage_seconds'] - profile['cleanup_seconds'])
-        accepted = launch(bootstrap, 'coordinator', stage_start + profile['stage_seconds'] - profile['cleanup_seconds'],
-                          bootstrap=True)
-        freeze_seed(bootstrap, root / 'seed', accepted)
+        bootstrap_deadline = min(stage_start + (3600 if campaign == 'pyseqm' else profile['stage_seconds']),
+                                 overall_deadline) - profile['cleanup_seconds']
+        if import_seed is not None:
+            if campaign == 'pyseqm':
+                raise ValueError('PySEQM must train its own compatible molecular seed')
+            from campaign_evidence import verify_seed
+            provenance = verify_seed(import_seed, bootstrap)
+            if time.time() >= bootstrap_deadline:
+                raise TimeoutError('Seed verification reached its deadline')
+            atomic_json(root / 'seed_import.json', provenance)
+            seed_case(import_seed, root / 'seed')
+            accepted = dict(model_id=0, training=provenance['initial_training'])
+        else:
+            if campaign in ('cohort', 'failures', 'mi250'):
+                raise ValueError(f'{campaign} requires --import-seed from the accepted water campaign')
+            launch(bootstrap, 'preflight', bootstrap_deadline)
+            accepted = launch(bootstrap, 'coordinator', bootstrap_deadline, bootstrap=True)
+            freeze_seed(bootstrap, root / 'seed', accepted)
+        if campaign == 'failures':
+            launch(bootstrap, 'partial', bootstrap_deadline, seed=root / 'seed')
         atomic_json(bootstrap / 'result.json', dict(status='passed', accepted=accepted, elapsed=time.time()-stage_start))
         print('Shared bootstrap accepted; initial ensemble and training inputs frozen.', flush=True)
     except Exception as exc:
@@ -296,7 +346,7 @@ def suite(root, selected=None, budget_start=None):
         atomic_json(root / 'result.json', dict(status='incomplete', cases={}, bootstrap_error=str(exc)))
         raise
     for engine in ('ase', 'torchsim', 'alchemi'):
-        cases = [case for case in matrix() if case.engine == engine and (selected is None or case.name == selected)]
+        cases = [case for case in matrix(campaign) if case.engine == engine and (selected is None or case.name == selected)]
         if not cases:
             continue
         stage_deadline = min(time.time() + profile['stage_seconds'], overall_deadline)
@@ -314,20 +364,27 @@ def suite(root, selected=None, budget_start=None):
                     # Each case verifies the actual sampler environment against common recorded frames.
                     launch(run, 'prediction', deadline-profile['cleanup_seconds'], seed=root / 'seed')
                     accepted = launch(run, 'coordinator', deadline-profile['cleanup_seconds'])
+                    if campaign == 'cohort' or case.fault == 'trajectory_failure':
+                        from campaign_evidence import replay_cohorts
+                        atomic_json(run / 'replay.json', dict(passed=True, cohorts=replay_cohorts(
+                            events(run), read_json(run / 'mlmd_config.json'))))
                     outcome = dict(status='passed', accepted=accepted)
                 except Exception as exc:
                     outcome = dict(status='incomplete' if isinstance(exc, TimeoutError) else 'failed', error=str(exc))
                     if not (run / 'cleanup.json').exists() or not read_json(run / 'cleanup.json')['verified']:
                         raise RuntimeError(f'Cleanup unverified for {case.name}; refusing further allocations') from exc
                 outcome.update(elapsed=time.time()-started, metrics=case_metrics(run))
+                if outcome.get('accepted'):
+                    outcome['metrics']['converged_label_overshoot'] = outcome['metrics']['qm_converged'] - len(
+                        outcome['accepted']['qualifying_ids'])
             atomic_json(run / 'result.json', outcome)
             print(f'{case.name}: {outcome["status"]}.', flush=True)
             outcomes[case.name] = outcome
             atomic_json(root / 'result.json', dict(status='running', cases=outcomes))
-    expected = {case.name for case in matrix()} if selected is None else {selected}
+    expected = {case.name for case in matrix(campaign)} if selected is None else {selected}
     passed = set(outcomes) == expected and all(value['status'] == 'passed' for value in outcomes.values())
     atomic_json(root / 'result.json', dict(status='passed' if passed else 'incomplete', cases=outcomes,
-                                          complete_matrix=passed and len(expected) == 12))
+                                          campaign=campaign, complete_matrix=passed and selected is None))
     return passed
 
 
@@ -335,9 +392,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--run-root', type=Path, required=True)
     parser.add_argument('--prepare-only', action='store_true')
-    parser.add_argument('--case', choices=[case.name for case in matrix()])
+    parser.add_argument('--campaign', choices=['core', 'cohort', 'failures', 'pyseqm', 'mi250'], default='core')
+    parser.add_argument('--case')
+    parser.add_argument('--import-seed', type=Path, help='Verified bootstrap seed from an accepted water campaign')
     parser.add_argument('--site', type=Path, help='JSON overrides for Darwin executable/resource defaults')
-    parser.add_argument('--worker', choices=['coordinator', 'preflight', 'prediction'], help=argparse.SUPPRESS)
+    parser.add_argument('--worker', choices=['coordinator', 'preflight', 'prediction', 'partial'], help=argparse.SUPPRESS)
     parser.add_argument('--seed', type=Path, help=argparse.SUPPRESS)
     parser.add_argument('--budget-start', type=float, help='Retain the original budget timestamp for a fresh retry root')
     args = parser.parse_args()
@@ -349,6 +408,13 @@ def main():
     with (root / '.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         profile = read_json(HERE / 'profile.json')
+        if args.campaign != 'core':
+            profile.update(read_json(HERE / 'campaigns.json')[args.campaign])
+        cases = matrix(args.campaign)
+        if args.case is not None and args.case not in {c.name for c in cases}:
+            parser.error('--case does not belong to the selected campaign')
+        if args.import_seed and args.campaign == 'pyseqm':
+            parser.error('PySEQM must build and train its own seed')
         site = darwin_site()
         if args.site:
             site.update(read_json(args.site))
@@ -359,15 +425,19 @@ def main():
             else:
                 atomic_json(root / name, value)
         prepare_run(root / 'bootstrap', None, profile, site)
-        for case in matrix():
+        for case in cases:
             prepare_run(root / 'cases' / case.name, case, profile, site)
         if args.prepare_only:
-            print(f'Prepared 12 immutable cases under {root}; no jobs submitted.')
+            print(f'Prepared {len(cases)} immutable {args.campaign} cases under {root}; no jobs submitted.')
             return
         for key in ('base_python', 'torchsim_python', 'alchemi_python', 'orca'):
             if not Path(site[key]).is_file():
                 raise FileNotFoundError(site[key])
-        if not suite(root, args.case, args.budget_start):
+        if args.campaign == 'mi250' and not Path(site['rocm_python']).is_file():
+            raise FileNotFoundError(site['rocm_python'])
+        if args.campaign == 'pyseqm' and not (Path(site['pyseqm_source']) / 'seqm/ElectronicStructure.py').is_file():
+            raise FileNotFoundError(site['pyseqm_source'])
+        if not suite(root, args.case, args.budget_start, args.import_seed):
             sys.exit(1)
 
 

@@ -360,12 +360,12 @@ def test_retry_preserves_original_bootstrap_and_overall_budget(tmp_path, monkeyp
     def launch(run, operation, deadline, **kwargs):
         calls.append((operation, deadline))
         clock[0] += 1
-        return {'model_id': 0}
+        return {'model_id': 0, 'qualifying_ids': []}
 
     monkeypatch.setattr(runner, 'launch', launch)
     monkeypatch.setattr(runner, 'freeze_seed', lambda *args: None)
     monkeypatch.setattr(runner, 'seed_case', lambda *args: None)
-    monkeypatch.setattr(runner, 'case_metrics', lambda *args: {})
+    monkeypatch.setattr(runner, 'case_metrics', lambda *args: {'qm_converged': 0})
     assert runner.suite(tmp_path, selected='ase-w1-q1', budget_start=0.)
     assert calls[:2] == [('preflight', 95.), ('coordinator', 95.)]
     assert support.read_json(tmp_path / 'execution.json')['overall_deadline'] == 400.

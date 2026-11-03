@@ -25,13 +25,34 @@ class Case:
     engine: str
     width: int
     qm_width: int
+    campaign: str = 'core'
+    ranking: str = 'uncertainty'
+    policy: str = 'stop'
+    fault: str = ''
 
     @property
     def name(self):
+        if self.campaign == 'cohort':
+            return f'{self.engine}-{self.ranking}-{self.policy}'
+        if self.campaign == 'failures':
+            return self.fault
         return f'{self.engine}-w{self.width}-q{self.qm_width}'
 
 
-def matrix():
+def matrix(campaign='core'):
+    if campaign == 'cohort':
+        return [Case(engine, 4, 4, campaign, ranking, policy)
+                for engine in ('ase', 'torchsim', 'alchemi')
+                for ranking in ('uncertainty', 'summed') for policy in ('stop', 'continue')]
+    if campaign == 'failures':
+        return [Case('ase', 4, 4, campaign, policy='continue' if fault == 'trajectory_failure' else 'stop', fault=fault)
+                for fault in ('label_exception', 'label_unconverged', 'trajectory_failure')]
+    if campaign == 'pyseqm':
+        return [Case('ase', 4, width, campaign) for width in (1, 4)]
+    if campaign == 'mi250':
+        return [Case('torchsim', width, qm, campaign) for width, qm in ((1, 1), (4, 4), (4, 1), (1, 4))]
+    if campaign != 'core':
+        raise ValueError(f'Unknown campaign: {campaign}')
     return [Case(engine, width, qm) for engine in ('ase', 'torchsim', 'alchemi')
             for width, qm in ((1, 1), (4, 4), (4, 1), (1, 4))]
 
@@ -79,7 +100,9 @@ def source_identity(source=SOURCE):
     source = Path(source).resolve()
     names = sorted((source / 'alframework').rglob('*.py'))
     names += sorted((source / 'examples/simple_water_campaign').glob('*.py'))
-    names += [source / 'examples/simple_water_campaign/profile.json']
+    names += sorted((source / 'examples/simple_water_campaign').glob('*.json'))
+    names += sorted((source / 'examples/simple_water').glob('*.json'))
+    names += sorted(p for p in (source / 'examples/simple_water/fragment_library').rglob('*') if p.is_file())
     hashes = {str(path.relative_to(source)): fingerprint(path) for path in names}
     revision = subprocess.check_output(['git', '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip()
     dirty = bool(subprocess.check_output(['git', '-C', str(source), 'status', '--porcelain',
@@ -106,9 +129,16 @@ def worker_identity():
         package = Path(hippynn.origin).resolve().parent
         hashes = {str(p.relative_to(package)): fingerprint(p) for p in sorted(package.rglob('*.py'))}
         dependency = dict(root=str(package), tree_sha256=hashlib.sha256(json.dumps(hashes, sort_keys=True).encode()).hexdigest())
+    seqm = importlib.util.find_spec('seqm')
+    seqm_source = None
+    if seqm and seqm.origin:
+        package = Path(seqm.origin).resolve().parent
+        hashes = {str(p.relative_to(package)): fingerprint(p) for p in sorted(package.rglob('*.py'))}
+        seqm_source = dict(root=str(package), tree_sha256=hashlib.sha256(json.dumps(hashes, sort_keys=True).encode()).hexdigest())
     return dict(host=socket.gethostname(), python=sys.executable, alf=str(Path(alframework.__file__).resolve()),
                 cpu_affinity=sorted(os.sched_getaffinity(0)) if hasattr(os, 'sched_getaffinity') else None,
                 hippynn_source=dependency,
+                pyseqm_source=seqm_source,
                 packages=packages, masks={key: os.environ.get(key) for key in
                 ('CUDA_VISIBLE_DEVICES', 'ROCR_VISIBLE_DEVICES', 'HIP_VISIBLE_DEVICES')})
 
@@ -121,6 +151,10 @@ def darwin_site():
                                     'portable_gpu_20261027_8795a40/envs/torchsim-cuda/bin/python'),
                 alchemi_python=str(home / '.conda/envs/alf_alchemi_02/bin/python'),
                 orca='/usr/projects/ml4chem/Programs/orca_5.0.4/orca',
+                rocm_python=str(home / 'ALF_LANL/ALF_fork/ALF/debug/'
+                                'portable_gpu_20261027_8795a40/envs/torchsim-rocm/bin/python'),
+                rocm_partition='shared-gpu-amd-mi250', rocm_module='rocm/6.4.3',
+                pyseqm_source=str(home / 'github/PYSEQM'),
                 mpi_module='openmpi/4.1.1')
 
 
@@ -164,6 +198,20 @@ def prepare_run(directory, case, profile, site, source=SOURCE):
         if case.qm_width == 4:
             qm['batching'] = dict(mode='sequential', batch_size=4, partial_policy='timeout',
                                   max_wait_seconds=profile['batch_wait_seconds'])
+        if case.campaign == 'cohort' or case.fault == 'trajectory_failure':
+            sampler['acquisition'] = dict(strategy=case.ranking, trajectory_policy=case.policy,
+                selection=dict(mode='cohort_top_k', cohort_size=8, k=4))
+            if case.ranking == 'summed':
+                sampler['acquisition']['weights'] = dict(energy=1.0, force_rms=1.0)
+    if profile.get('campaign') == 'pyseqm':
+        master.update(builder_task='campaign_tasks.build_molecules', QM_task='campaign_tasks.label_molecules',
+                      properties_list=dict(energy=['energy', 'system', 1.0], forces=['forces', 'atomic', 1.0]))
+        # Labeling and sampling share one serialized GPU executor; training stays separate.
+        qm = dict(method='AM1', scf_eps=1e-8, device='cuda:0', batching=dict(mode='native',
+                  batch_size=4 if case is None else case.qm_width, partial_policy='timeout', max_wait_seconds=60))
+        ml['network_params']['possible_species'] = [0, 1, 6, 8]
+        builder = dict(perturbation_angstrom=.03, random_seed=20261103, distcut=.7)
+        sampler.update(end_dens=None, amp_dens=None, per_dens=None, srt_dens=None)
     values = {'master_config.json': master, 'builder_config.json': builder, 'mlmd_config.json': sampler,
               'orca_config.json': qm, 'hippynn_config.json': ml,
               'run.json': dict(case=None if case is None else asdict(case), profile=profile,
@@ -230,7 +278,8 @@ def validate_storage(run):
                     record = labels[name]
                     structure = record['structure']
                     order = np.argsort(structure['numbers'])
-                    assert all(structure['pbc'])
+                    periodic = read_json(run / 'run.json')['profile'].get('campaign') != 'pyseqm'
+                    assert all(structure['pbc']) if periodic else not any(structure['pbc'])
                     expected_species = [chemical_symbols[n] for n in np.array(structure['numbers'])[order]]
                     assert [v.decode() if isinstance(v, bytes) else str(v) for v in group['species'][()]] == expected_species
                     np.testing.assert_allclose(group['coordinates'][index], np.array(structure['positions'])[order], atol=1e-12, rtol=1e-12)
@@ -267,8 +316,11 @@ def completion(run, bootstrap=False):
         records = events(run)
         stored = set(h5_inventory(run / 'h5store')['ids'])
         candidates = {name for rec in records if rec['kind'] == 'sampler_end' for name in rec['selected_ids']}
+        selected = [frame for rec in records if rec['kind'] == 'cohort_selected' for frame in rec['frames']]
+        candidates.update(frame['id'] for frame in selected)
         labels = {rec['id'] for rec in records if rec['kind'] == 'qm_end' and rec['converged']}
         built = {name for rec in records if rec['kind'] == 'builder_end' for name in rec['ids']}
+        built.update(frame['id'] for frame in selected if frame['metadata']['trajectory_id'] in built)
         status = read_json(run / 'status.json') if not bootstrap else None
         for path in sorted((run / 'training').glob('model-*.json')):
             training = read_json(path)
@@ -291,9 +343,14 @@ def completion(run, bootstrap=False):
                 case = Case(**config['case'])
                 if case.width == 4 and not any(r['kind'] == 'sampler_end' and r['width'] == 4 for r in records):
                     continue
-                if case.qm_width == 4 and not any(r['kind'] == 'task_done' and r['name'] == 'label_sequentially'
+                qm_task = 'label_molecules' if case.campaign == 'pyseqm' else 'label_sequentially'
+                if case.qm_width == 4 and not any(r['kind'] == 'task_done' and r['name'] == qm_task
                                                  and r['width'] == 4 and r['success'] for r in records):
                     continue
+                if case.campaign != 'core':
+                    from campaign_evidence import campaign_accepted
+                    if not campaign_accepted(case, records, good, stored, inputs):
+                        continue
             return dict(model_id=training['model_id'], qualifying_ids=sorted(good), training=training)
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         return None
@@ -308,6 +365,8 @@ def seed_case(seed, run):
         raise ValueError(f'Case already seeded: {run}')
     for relative, expected in manifest['files_sha256'].items():
         original = seed / relative
+        if not original.resolve().is_relative_to(seed.resolve()):
+            raise ValueError(f'Invalid seed path: {relative}')
         if fingerprint(original) != expected:
             raise ValueError(f'Seed changed: {original}')
         target = run / relative

@@ -108,3 +108,90 @@ The root `result.json` passes only when all twelve cases pass; natural
 acquisition shortfalls, missing full-width executions, and timeouts remain
 incomplete. Sampler-return-to-QM-start latency includes queue/packing delay;
 it does not measure a frame's earlier wait inside an unfinished dynamics task.
+
+## Remaining Increment 7 campaigns
+
+The accepted core matrix is retained unchanged. Additional opt-in profiles use
+`--campaign cohort|failures|pyseqm|mi250`; omit this argument for the original
+core matrix. Case names are printed by preparation and appear under `cases/`.
+Each profile supports `--prepare-only` and `--case NAME`.
+
+```bash
+python examples/simple_water_campaign/run.py \
+  --campaign cohort --run-root /path/to/new/cohort \
+  --import-seed /path/to/accepted/core/seed --prepare-only
+python examples/simple_water_campaign/remaining.py \
+  --run-root /path/to/new/remaining \
+  --import-seed /path/to/accepted/core/seed
+```
+
+The second command runs all four campaigns sequentially. Launch it from a
+persistent login-node tmux session with the established base interpreter and a
+fixed source checkout. Each campaign has its own log and result. Every root
+executes once. Repairs use a fresh root and the affected campaign's original
+`execution.json` start via `run.py --budget-start`; never reset a failed
+attempt's deadline or edit generated configurations. Other stages may proceed
+after a failed case, but unverified owned-job cleanup stops all later work.
+
+Seed import verifies the accepted bootstrap report, exact closed HDF5 inputs,
+member fingerprints and epochs, scientific configuration, property units, and
+all four checkpoint loads/predictions. The seed and its sibling `bootstrap/`
+directory must remain available. Fragment libraries may move between source
+snapshots only when their contents and builder settings match. Fresh case
+copies never inherit status or pending work. PySEQM rejects seed import and
+builds its own molecular bootstrap.
+
+| Campaign | Cases and required execution | Elapsed ceiling |
+| --- | --- | --- |
+| cohort | Three engines × uncertainty/summed × stop/continue; dynamics/QM widths four; cohort eight, K four | 16 h, including four-hour setup and four hours per engine |
+| failures | Label exception, unconverged label, and trajectory failure after an eligible candidate; real surviving labels/training | 4 h |
+| pyseqm | ASE dynamics width four × native GPU labeling widths one/four; separate 32-frame molecular bootstrap | 4 h; bootstrap at most 1 h |
+| mi250 | TorchSim ROCm dynamics widths one/four × ORCA widths one/four | 4 h |
+
+Every active-learning case retains the 55-minute ceiling including cleanup,
+eight-new-label lineage target, and four trained/loadable promoted members.
+Water scientific settings remain unchanged. Summed ranking uses explicit
+energy and force-RMS weights of one; it does not change eligibility. Cohort
+cases require at least two completed cohorts; `continue` requires an observed
+trajectory with multiple candidates. Audits capture candidates before pruning,
+admission/model pinning, terminal reports, and the coordinator's selected child
+IDs. Replay checks unpruned global top-K and grouping/completion-order parity.
+The 50-trajectory replay fixture and controlled promotion tests are CPU contract
+checks, not claims of width-50 hardware execution in these campaigns.
+
+Failure injection exists only in validation wrappers, once for predetermined
+`mol-0000-0000000000`. It is recorded separately from backend failures. The
+unconverged-flag case requires that member's real ORCA evaluation to have
+converged before the injected flag. Failed labels must never enter storage or
+training, and a successful sibling from the same packed task must reach the
+accepted training input. The trajectory failure preserves prior candidates;
+one of those must actually be selected, labeled, and trained on. Missing that
+natural selection remains incomplete. A separate real-Parsl preflight submits
+three-member sampler and QM tails after 60 seconds without forced flushing.
+
+PySEQM uses nonperiodic water/methanol, deterministic 0.03 Å perturbations,
+AM1, float64, and SCF epsilon 1e-8. Its model includes carbon, requests only
+energy/forces with unit factors one, and disables density schedules. Existing
+water cutoffs and the 0.1 ps sampling cap remain in force. Preflight compares
+identical inputs at actual native widths 1/2/4/8 against individual GPU calls,
+with absolute limits 1e-6 eV and 1e-5 eV/Å, plus a force-sign finite difference.
+Fallback-to-single calls cannot establish native batch coverage. Sampling,
+building, and labeling share one serialized GPU worker allocation; training
+uses its separate four-GPU allocation. A pinned PySEQM source path precedes the
+stale installed package without modifying the environment.
+
+MI250 changes only the sampler interpreter, ROCm initialization, and sampler
+partition. Training remains in the NVIDIA base environment and ORCA remains
+on the established CPU allocation. Scheduler visibility masks are preserved.
+
+Candidate creation, task return, selection, QM start, and promotion timestamps
+are separate events. Memory names distinguish generated candidate-array bytes,
+process lifetime peak RSS (KiB), and task peak Torch allocated bytes; the latter
+excludes Warp and other non-Torch allocations. Queue snapshots retain unfinished
+work, and results report converged-label overshoot separately from accepted IDs.
+
+The combined runner always keeps Increment 7 open while trained cell-input,
+qualified potential-stability, or other required gates remain unresolved.
+`runnable_campaigns_passed` reports the four executed campaign gates separately.
+No replacement scientific fixtures are generated for missing inputs. MI350
+retains its independent hardware-qualification dependency.

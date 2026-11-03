@@ -82,7 +82,7 @@ def test_selection_is_identical_across_widths_and_completion_orders(policy, cap)
         assert max(counts) == 1
     reference, _ = replay(results, 50, 8, 1, "forward")
     assert len(reference) == 8
-    for width in (1, 2, 8, 32, 50):
+    for width in (1, 2, 4, 8, 32, 50):
         for order in ("forward", "reversed", "shuffled"):
             frames, pool = replay(results, 50, 8, width, order)
             assert selected_ids(frames) == selected_ids(reference), (width, order)

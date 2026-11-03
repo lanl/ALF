@@ -317,27 +317,37 @@ open when their required inputs/hardware are absent; the combined runner does
 not mark all of Increment 7 complete merely because its runnable campaigns pass.
 
 Implementation is committed locally at `1b0c813`, with observed-hardware guards
-at `5dadbd8`. Full CPU regressions passed before the final hardware guard;
-the subsequent focused checks cover that guard and all campaign harness checks:
+at `5dadbd8` and the sampling-observer/retry repair at `0e1dbe5`. Full CPU
+regressions passed before these final guards/observer changes; subsequent
+focused checks cover them and all campaign harness checks:
 
 | Environment | Full passed | Full skipped | Final focused passed |
 | --- | ---: | ---: | ---: |
-| atomistic | 245 | 38 | 31 |
-| TorchSim CUDA, CPU execution | 263 | 20 | 31 |
-| alf_alchemi_02 | 263 | 20 | 31 |
-| TorchSim ROCm, CPU execution | 263 | 20 | 31 |
+| atomistic | 245 | 38 | 34 |
+| TorchSim CUDA, CPU execution | 263 | 20 | 34 |
+| alf_alchemi_02 | 263 | 20 | 34 |
+| TorchSim ROCm, CPU execution | 263 | 20 | 34 |
 
 The separate real PySEQM CPU suite passed all eight checks with pinned source
 `31edd887`; GPU native batching and real retraining remain separate live gates.
 Prepared profiles submit no jobs, and the final frozen source successfully
 verified the accepted water seed with four loaded initial members.
 
-The sequential supervisor is running on `darwin-fe2` in tmux session
-`alf-inc7-remaining-20261103`, using frozen revision `5dadbd8` from the detached
-`source-final/` worktree. All artifacts are outside Git under
+The first executed attempt (`run-002`, `5dadbd8`) passed prediction preflight
+but sampling failed because the new allocator-stat observer ran before CUDA
+initialization in a fresh worker. It was stopped and all three owned Slurm
+jobs were verified terminated. The fix initializes the selected GPU before
+resetting its statistics; production sampling/training behavior is unchanged.
+
+The replacement supervisor is running on `darwin-fe2` in tmux session
+`alf-inc7-remaining-20261103-03`, using frozen revision `0e1dbe5` from the detached
+`source-memory-fix/` worktree. All artifacts are outside Git under
 `/vast/home/pjlohr/ALF_LANL/validation/inc7_remaining_20261103/`.
-`run-001/` contains preparation only; `run-002/` is the executed campaign root.
-`suite.log`, campaign logs/results, and `validation-summary.json` retain live
+`run-001/` contains preparation only; `run-002/` retains the failed observer
+attempt; `run-003/` is active. The original cohort budget origin
+`1793730532.3461077` is retained. First-case, ASE-group, and overall deadlines
+count the earlier attempt and repair time; per-case `deadlines.json` records them.
+`suite-003.log`, campaign logs/results, and `validation-summary.json` retain live
 progress, CPU test evidence, and fingerprints. At startup the first ASE cohort
 case passed its CUDA prediction preflight and returned four real builder boxes;
 no remaining campaign gate is inferred from that startup check. Final accepted

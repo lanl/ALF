@@ -1,6 +1,6 @@
 # Living roadmap for integration into ALF development
 
-Last updated: November 2, 2026 (Increments 0–5 merged; Increment 6 done locally).
+Last updated: November 2, 2026 (Increments 0–6 merged; Increment 7 is next).
 
 This is the shared plan for gradually bringing the fork's intended capabilities
 into `lanl/ALF:development`. It is separate from ongoing implementation on
@@ -37,10 +37,12 @@ be a separate, explicit decision.
 
 ## Branch and maintenance workflow
 
-Prepare small PRs from new branches in `pjlohr-LANL/ALF`, targeting official
-`development`. Use isolated fork worktrees and preserve the experimental
-branches. Preserve the official checkout's untracked examples and other local
-work.
+The current integration uses local `development`; agents commit locally and
+the user handles pushes to official `development`. Keep changes small and
+reviewable. When a separate contribution branch/PR is requested, prepare it in
+`pjlohr-LANL/ALF` and target official `development`. Use isolated worktrees and
+preserve experimental branches, untracked examples, and other local work.
+Leave `main` unchanged except for separately authorized synchronization work.
 
 Before feature integration, synchronize development with current main. Recheck
 their relationship before subsequent PRs, and keep fork main tracking official
@@ -62,9 +64,12 @@ local `development`, not yet pushed), and **merged** (in official
 On 2026-11-02 the user pushed local `development` directly to official
 `development` (tip `d5a0395`), rather than through separate fork PRs.
 Increments 0–3 and 4a–4b are therefore merged. The user pushed again the same day
-(tip `86f62ca`), merging 4c and Increment 5. Per-increment records below
-keep their original dated "done locally" headings. Agents still commit
-locally only; the user pushes.
+(tip `86f62ca`), merging 4c and Increment 5. A live remote check on November 2
+now confirms official development at `be7fb64`, including Increment 6 and the
+shared-test rename; main remains `206ea44`, already included in development.
+Older progress entries retain their dated status at the time of writing; the
+table below is the current status. Agents still commit locally only; the user
+pushes.
 
 | Increment | Status | Deliverable | Acceptance gate |
 | --- | --- | --- | --- |
@@ -74,13 +79,51 @@ locally only; the user pushes.
 | 3. Native PySEQM labeling | merged (`d5a0395`) | Ground-state batch energies/forces, adapter-local padding and atom-order restoration, and per-member convergence handling. | Native batch results agree with individual evaluations; successful labels survive partial failures. |
 | 4. Ground-state sampling and acquisition | merged (`86f62ca`) | Minimal physical-inference/MLMD contracts, uncertainty and summed ranking, first-trigger returns, and an in-memory logical-cohort selector. | Shared observations produce equivalent screening, scores, stopping, and selection across execution strategies. |
 | 5. TorchSim dynamics | merged (`86f62ca`) | Supported NVIDIA/AMD ground-state batched MLMD. | CPU, NVIDIA, and Darwin MI250 mechanics and integration acceptance pass. |
-| 6. ALCHEMI dynamics | done locally | ALCHEMI 0.2.0 NVIDIA batched MLMD through the same contracts, in its separate environment. | Shared conformance tests and NVIDIA acceptance pass. |
+| 6. ALCHEMI dynamics | merged (`be7fb64`) | ALCHEMI 0.2.0 NVIDIA batched MLMD through the same contracts, in its separate environment. | Shared conformance tests and NVIDIA acceptance pass; TorchSim CUDA/ROCm regressions pass. |
 | 7. Combined release validation | planned | Opt-in examples and integration/performance results. | All single/batched dynamics x single/batched labeling combinations complete representative ALF workflows. |
 
 Port narrowly scoped implementations and tests. Each increment must be
 independently reviewable and tested before dependent increments merge. Inspect
 PBC propagation in the multi-structure condensed-phase builder as a focused
 prerequisite; retain the recent main fixes. (Done in Increment 0; see below.)
+
+### Increment 7 — next validation work (not started)
+
+The engine work is merged; a complete Darwin active-learning campaign is not
+yet validated. Keep this increment focused on existing workflows and the
+concrete correctness gaps listed under **Known implementation follow-ups**.
+Longer-term plugin interfaces and durable recovery remain later increments.
+
+1. Address relevant focused fixes before relying on the affected workflow:
+   periodic `distcut` screening, scheduler GPU visibility, and the legacy ASE
+   loader's concurrent `chdir` behavior. Make each a separate, reviewable change;
+   do not combine them with a sampler redesign or fork-roadmap synchronization.
+2. Run tracked examples through the real Darwin/Parsl coordinator, keeping an
+   unchanged legacy ASE example as the compatibility baseline. Cover single
+   and batched dynamics with ASE, TorchSim, and ALCHEMI, crossed with single
+   labeling and sequential/native batching where supported. Native PySEQM
+   needs molecular inputs: periodic dynamics support does not make PySEQM a
+   periodic labeler. Do not silently clear PBC to make a combination run.
+3. Exercise bootstrap → sampling → acquisition → labeling → HDF5 → actual
+   retraining/model promotion, including first-trigger, uncertainty/summed
+   ranking, cohort stop/continue, partial batches, and partial labeling failures.
+   Check that older cohorts finish on their pinned model. Local coordinator
+   tests with mock labelers/trainers are already covered; they are not this
+   production-backend campaign.
+4. Record candidate-to-labeling latency and cohort completion/selection latency
+   as well as throughput, queue occupancy, and labeled/stored frame counts.
+   Increment 6 measured inference/dynamics throughput, not selection latency.
+   Name every memory metric explicitly; peak Torch allocation excludes possible
+   Warp and other process allocations.
+5. Finish outstanding backend acceptance separately: native PySEQM GPU labeling
+   and retraining on its labels, a trained HIPPYNN cell-input checkpoint, longer
+   potential-stability checks, and MI350 when hardware is available. An unavailable
+   item must stay explicitly open rather than being inferred from MI250/A100
+   results or a molecular checkpoint's periodic pair adaptation.
+
+Keep the flat sampler configuration and existing task entrypoints throughout.
+Record source/dependency/checkpoint fingerprints with results, but keep large
+environment dumps and dated validation reports in local artifacts, outside Git.
 
 ### Progress log
 
@@ -472,7 +515,11 @@ by the well potential as a final extra entry.
     signals, flags, score and `frame_id`. `stop` ends the trajectory there; `continue` keeps
     sampling.
   - Candidates collected before a later `distcut` rejection or failure are kept.
-  - Each trajectory keeps only its best `min(k, cap)` candidates; this cannot change the global top-K.
+  - Before returning, each trajectory keeps at most its best `k` candidates.
+    An explicit cap below `k` truncates that trajectory's contribution and can
+    change the unrestricted global top-K. Without such a cap, local top-K
+    pruning preserves the final scalar ranking. This is currently return-time
+    pruning, not a bound on candidate memory during the trajectory.
   - Returned molecules have `atoms=None` and carry `acquisition_candidates`, so nothing is labeled
     before the cohort selects.
 - Pool (new `tools/cohorts.py`, `CohortPool`):
@@ -620,7 +667,7 @@ Limitations: one shared PBC per batch; NVT Langevin only (no NPT); trajectories 
 lockstep, so a stopped frame reaches labeling when its slowest batch-mate stops (as in 4b); GPU results are
 not bitwise reproducible across devices; inference throughput depends on HIPPYNN's padded evaluation.
 
-#### Increment 6 — ALCHEMI 0.2 (done locally, 2026-11-02)
+#### Increment 6 — ALCHEMI 0.2 (merged at `be7fb64`, 2026-11-02)
 
 Decisions (user, 2026-11-02):
 
@@ -677,6 +724,10 @@ acquisition, cohorts, labeling, and the HIPPYNN loader are unchanged.
   initial velocities/kinetic energy/triclinic cells, temperature changes,
   earlier candidates surviving a later failure, and dependency isolation.
   `ALF_TEST_ENGINE_DEVICE=cuda:0` explicitly selects GPU test execution.
+- Shared tests were renamed to `tests/test_dynamics_engines.py` in `be7fb64`;
+  `tests/test_engine_boundaries.py` imports its shared fixtures. Test contents
+  were unchanged and all 182 tests collected in both qualified environments.
+  Frozen earlier acceptance logs retain the old `test_torchsim_engine.py` name.
 - The cloned stack contains another package named `tests`. ALF's tests now
   form an explicit local package to avoid that collision and remain excluded
   from the distribution wheel.
@@ -698,14 +749,15 @@ acquisition, cohorts, labeling, and the HIPPYNN loader are unchanged.
 - Local validation artifacts (`alchemi_increment6_validation_20261102.md` and
   `alchemi_02_environment_20261102.json`, kept outside Git in the artifact
   directory below) record exact versions, HIPPYNN revision and pre-existing
-  source modifications, checkpoint
-  fingerprints, executed revisions, test results, throughput/memory tables,
+  source modifications, checkpoint fingerprints, executed revisions, test results,
+  throughput/memory tables,
   the uncertainty decision, and known limitations.
 
 Artifacts: `ALF_fork/ALF/debug/alchemi_inc6_20261102/`. Implementation and
-CPU/GPU engine acceptance are complete locally; not pushed or merged. This
-is not production-potential accuracy validation. Full Darwin active learning,
-a trained cell-input checkpoint, and MI350 remain Increment 7 or later.
+CPU/GPU engine acceptance are merged in official development at `be7fb64`.
+The dated environment/report files remain local artifacts, excluded from Git.
+This is not production-potential accuracy validation. Full Darwin active
+learning, a trained cell-input checkpoint, and MI350 remain Increment 7 or later.
 
 ### Batching and reference labeling
 
@@ -761,8 +813,9 @@ labels through the same batching path without changes to the coordinator.
 - Preserve ordinary energy/force uncertainty eligibility. Uncertainty acquisition
   uses the existing normalized ranking; summed acquisition uses the existing
   weighted sum for ranking only. A high summed score alone is not eligibility.
-- First-trigger mode stops and returns one eligible frame per trajectory
-  immediately. Pooled mode requires explicit cohort size and K.
+- First-trigger mode stops at one eligible frame per trajectory. Its result
+  reaches the coordinator when the whole sampler task returns, so a slower
+  batch-mate can delay labeling. Pooled mode requires explicit cohort size and K.
 - Select pooled top-K over a fixed logical cohort, independently of physical
   task boundaries, with either stop-at-first or continued collection.
 - Pin one model generation per cohort. Admit and execute members incrementally
@@ -794,7 +847,9 @@ is source material for the later recovery increment, not a prerequisite here.
 
 These intended development capabilities remain on the roadmap. The numbering
 is the working order; independent initialization/replay contributions may proceed
-once their helper and identity requirements are available.
+once their helper and identity requirements are available. These are future
+capabilities, not features already supplied by Increment 6 or promises that every
+existing sampler can already run through the new engines.
 
 | Increment | Capabilities to integrate | Important boundary |
 | --- | --- | --- |
@@ -820,13 +875,64 @@ overshoot are separate concepts.
 
 ### Known implementation follow-ups
 
-The model/training-boundary increment must close two items recorded during the
-recent fork review:
+The following watch list was checked against development at `be7fb64` on
+November 2. It records concrete limitations and future edits, not a requirement
+to handle every edge case before continuing. Fix affected scientific behavior
+explicitly, preserve the ordinary examples, and keep implementation in helpers
+or adapters wherever possible.
+
+| Area | Current behavior or gap | Follow-up and boundary |
+| --- | --- | --- |
+| Periodic geometry screening | `batched_mlmd.minimum_distance()` uses `get_all_distances()` without minimum-image handling. A periodic pair at x=0.1/9.9 Å in a 10 Å box reports 9.8 Å instead of 0.2 Å. Filtering every zero distance also hides coincident distinct atoms. The legacy `mlmd_sampling.py` uses the same pattern. | Make a separate PBC-aware `distcut` correctness fix with image-crossing and coincident-atom coverage, before periodic production use. Distinguish self-pairs from physical overlaps and compare legacy behavior; do not silently change cutoffs. Periodic inference parity does not validate this screen. |
+| Scheduler GPU visibility | `sampling_device()` overwrites both visibility masks with worker rank modulo `gpus_per_node` when those inputs are present. It does not preserve an existing scheduler allocation mask. | Resolve workers within the visible allocation, with CUDA/ROCm-specific handling and pre-existing-mask tests. Retain a compatible fallback for existing Parsl configurations; do not assume physical GPU IDs start at zero. |
+| Legacy ASE checkpoint loading | `HIPNN_ASE_calculator()` still uses process-wide `active_directory`/`chdir`, so concurrent loads in one process can race. The native batched loader already uses absolute paths. | Fix and test the legacy loader separately using absolute paths or a narrowly scoped load lock. Do not bundle this with engine changes or fork-roadmap synchronization. |
+| Configuration reload and pinning | The main loop reloads task configurations, but driver/buffer settings and cohort selection are constructed at startup. Cohorts pin a model generation, not an immutable sampling/acquisition configuration. | Add explicit reload safeguards or configuration snapshots at admission/submission. Changing engine, size/K, thresholds, weights, or stopping policy mid-cohort must not mix meanings between startup coordination and later task configs. Until then, keep these settings fixed for a run. |
+| Cohort admission | A cohort requires full membership and all terminal reports, with no admission timeout or partial selection. A permanently undersupplied builder leaves it unfinished. | Document and observe admitted/finished counts during Increment 7. Keep incremental admission for cohorts larger than worker capacity; do not introduce an automatic partial-cohort policy without a separate decision. |
+| Queue thresholds and strict batches | `full_only` can leave a PBC/model group waiting indefinitely when it cannot fill within available capacity. The inherited `minimum_QM` harvest gate can also hold a small number of finished sampler results. | Exercise small capacities and fragmented groups with the existing timeout policy. Check that configured completion thresholds are reachable. Add focused diagnostics/validation or drain behavior only as a separate compatibility change. The labeler already checks `target_queued_QM >= batch_size` for strict batches. |
+| Candidate memory and caps | `continue` appends candidate geometries throughout the trajectory; `_prune()` runs only at the end. `max_candidates_per_trajectory` bounds the returned payload, not peak worker memory. A cap below K can change the unrestricted global top-K. | Add online scalar top-K retention with a proof/test that selection is unchanged when no smaller explicit cap is requested. Future diversity/distance selectors must declare different retention needs. Bound completed-cohort summary history for long runs separately. |
+| Packed inference memory | HIPPYNN pads to the largest system in a task. Capacity is specified in systems, without an atom/pair-memory budget or automatic OOM splitting. A failed batched evaluator call can fail the whole active group. | Profile heterogeneous sizes before increasing widths. Consider adapter-declared memory limits and explicit retry/splitting later, preserving atom order, model pinning, identities, and per-trajectory random streams. This is not a requirement to add every OOM recovery path now. |
+| Capacity and result latency | Finished members leave GPU packed state, but their queue width is released only when the whole task completes and is harvested. Earlier first-trigger frames wait for slower batch-mates. There is no inflight replacement or result streaming. | Measure this delay in Increment 7 and keep physical capacity, candidate storage, and pending QM work distinct. Streaming or replacement would need an explicit task/result protocol change; fixed task membership remains current behavior. |
+| Restart and failed work | Buffers, cohorts, model admission sequence, and handoffs are in memory. No new retry journal or exactly-once QM handoff exists. Candidates survive a later isolated failure only if the task returns them; crashed-worker-only frames are lost. | Keep this limitation visible for ordinary screen/tmux runs as well as staged workflows. Add durable snapshots, logical IDs, replay, and handoff recovery in the later recovery increment, without requiring new pause controls now. |
+| Status and CI | Task-failure counters and failed-structure counts are different; `failed_structures` is not yet part of persisted status. CI workflows target `main`, not `development`. | Improve count/latency reporting without changing existing budget units. Consider enabling development CI separately; current acceptance relies on explicitly recorded local/backend checks and optional-dependency skips. |
+
+Current strategy separation is deliberately incomplete. The multi-trajectory
+task supports Langevin MLMD and existing UDD/well options; it is not yet a
+general propagator/bias plugin API or a grouped non-MD optimization interface.
+The engine contract and packed base remain MD-oriented. Acquisition has the
+two built-in strategies and an extensible score-term table, but no public
+import-string eligibility/observation/retention interface, geometry-only
+strategy, or diversity filter. Legacy reactive tasks remain available through
+their existing entrypoints; they have not been ported to the new engines.
+
+Keep capability boundaries explicit in future changes: native HIPPYNN supports
+nonperiodic or fully periodic systems, not partial PBC; packed engines reject
+ASE constraints; ALCHEMI targets exactly toolkit 0.2.0 and CPU/NVIDIA, with AMD
+served by TorchSim. NPT, excited-state/LCM sampling, and periodic excited states
+have not been added here. A toolkit upgrade or new model adapter needs its own
+qualification rather than inheriting the existing acceptance results.
+
+The approved float32 comparison uses raw member `rtol=atol=1e-5`, verifies
+reported uncertainty reductions, and propagates measured member roundoff into
+spread comparisons. It does not promise identical flags/rankings for a frame
+arbitrarily close to a cutoff, or identical trained-model trajectories across
+devices. Preserve that distinction when changing screening or ranking. The
+water smoke model also produces sensitivity-range warnings and short distances
+in the brief benchmark: engine correctness is not potential stability or
+accuracy validation.
+
+The model/training-boundary increment must also address two porting requirements
+recorded during the recent experimental-fork review. They are not claims that
+the corresponding new handoff/final-training machinery already exists here:
 
 - The training handoff must tolerate valid trainer callables whose signature
   omits `ML_config`.
 - Move model-family artifact validation behind adapters; common final-training
   validation must not assume HIPPYNN-style `model-NN` member directories.
+
+Deferred documentation housekeeping: the fork's copy of this roadmap still
+has the October 31 status. Synchronize it in a separate documentation change;
+this development copy is authoritative for merged integration status. Keep
+experimental-fork capabilities distinct from those available in development.
 
 ## Compatibility and acceptance
 

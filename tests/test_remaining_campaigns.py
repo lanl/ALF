@@ -1,5 +1,6 @@
 """Acceptance regressions for the remaining real-backend campaign harness."""
 from pathlib import Path
+from types import SimpleNamespace
 import sys
 
 import numpy as np
@@ -121,6 +122,42 @@ def test_replay_rejects_incorrect_top_k_and_completion_rejects_missing_candidate
             path.unlink()
     with pytest.raises(ValueError, match='generated candidate'):
         support.completion(tmp_path)
+
+
+def test_label_failure_cases_wait_for_the_lost_label_before_retraining(tmp_path):
+    thresholds = {}
+    for case in support.matrix('failures'):
+        run = support.prepare_run(tmp_path / case.name, case, profile('failures'), support.darwin_site())
+        thresholds[case.name] = support.read_json(run / 'master_config.json')['save_h5_threshold']
+    needed = profile('failures')['new_labels_per_case']
+    assert thresholds['label_exception'] == thresholds['label_unconverged'] == needed + 1
+    assert thresholds['trajectory_failure'] == 7
+
+
+def test_cleanup_retries_slow_slurm_commands_within_the_window(tmp_path, monkeypatch):
+    support.event('job_submitted', tmp_path, job_id='123')
+    monkeypatch.setattr(support.time, 'sleep', lambda seconds: None)
+    calls = []
+
+    def execute(command, **kwargs):
+        calls.append(command[0])
+        if calls.count('scancel') == 1:
+            raise support.subprocess.TimeoutExpired(command, kwargs['timeout'])
+        return SimpleNamespace(returncode=0, stdout='', stderr='')
+
+    assert support.cleanup_jobs(tmp_path, execute=execute) == ['123']
+    assert calls.count('scancel') == 2 and calls[-1] == 'squeue'
+
+
+def test_cleanup_gives_up_when_slurm_never_responds(tmp_path, monkeypatch):
+    support.event('job_submitted', tmp_path, job_id='123')
+    monkeypatch.setattr(support.time, 'sleep', lambda seconds: None)
+
+    def execute(command, **kwargs):
+        raise support.subprocess.TimeoutExpired(command, kwargs['timeout'])
+
+    with pytest.raises(RuntimeError, match='unverified'):
+        support.cleanup_jobs(tmp_path, execute=execute, timeout=0)
 
 
 def test_controlled_label_failure_requires_surviving_sibling_and_exclusion():

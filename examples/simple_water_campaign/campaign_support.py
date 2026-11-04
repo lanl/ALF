@@ -193,6 +193,10 @@ def prepare_run(directory, case, profile, site, source=SOURCE):
     qm['orcablocks'] = qm['orcablocks'].replace('%maxcore 15000', f"%maxcore {profile['orca_maxcore_mb']}")
     ml = read_json(example / 'hippynn_config.json')
     ml['n_models'] = profile['ensemble_members']
+    if case is not None and case.fault.startswith('label_'):
+        # Retraining starts once completed structures (including the injected failure) exceed this
+        # count. Allow for the lost label so the required new labels are all in the training input.
+        master['save_h5_threshold'] = profile['new_labels_per_case'] + 1
     if case is not None:
         if case.engine != 'ase' or case.width == 4:
             master['sampler_task'] = 'campaign_tasks.sample_many'
@@ -401,17 +405,27 @@ def owned_jobs(run):
     return sorted(result)
 
 
-def cleanup_jobs(run, execute=subprocess.run, timeout=90):
+SLURM_TIMEOUT = 120
+
+
+def cleanup_jobs(run, execute=subprocess.run, timeout=600):
     """Only cancel IDs recorded by this run's provider; verify disappearance."""
     jobs = owned_jobs(run)
     if not jobs:
         return []
-    execute(['scancel', *jobs], capture_output=True, text=True, timeout=30, check=False)
     deadline = time.monotonic() + timeout
     while True:
         import getpass
-        result = execute(['squeue', '--noheader', '--user=' + getpass.getuser(), '--format=%A'],
-                         capture_output=True, text=True, timeout=30, check=False)
+        # Slurm commands can stall when the controller is busy; retry within the cleanup window.
+        try:
+            execute(['scancel', *jobs], capture_output=True, text=True, timeout=SLURM_TIMEOUT, check=False)
+            result = execute(['squeue', '--noheader', '--user=' + getpass.getuser(), '--format=%A'],
+                             capture_output=True, text=True, timeout=SLURM_TIMEOUT, check=False)
+        except subprocess.TimeoutExpired:
+            if time.monotonic() >= deadline:
+                raise RuntimeError('Slurm did not respond within the cleanup window; jobs unverified')
+            time.sleep(2)
+            continue
         if result.returncode:
             raise RuntimeError(f'Cannot verify job cleanup: {result.stderr}')
         remaining = sorted(set(result.stdout.split()) & set(jobs))

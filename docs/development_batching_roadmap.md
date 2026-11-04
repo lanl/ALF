@@ -1,8 +1,8 @@
 # Living roadmap for integration into ALF development
 
 Last updated: November 3, 2026 (Increments 0–6 and the Increment 7 prerequisites merged at `24028da`;
-all twelve core water campaign cases passed; remaining campaign profiles are implemented,
-with external acceptance pending).
+core water, cohort/summed, and MI250 matrices passed; the two remaining campaign
+blockers are being repaired. MI350 is deferred outside current acceptance).
 
 This is the shared plan for gradually bringing the fork's intended capabilities
 into `lanl/ALF:development`. It is separate from ongoing implementation on
@@ -124,7 +124,8 @@ Longer-term plugin interfaces and durable recovery remain later increments.
    Warp and other process allocations.
 5. Finish outstanding backend acceptance separately: native PySEQM GPU labeling
    and retraining on its labels, a trained HIPPYNN cell-input checkpoint, longer
-   potential-stability checks, and MI350 when hardware is available. An unavailable
+   potential-stability checks. MI350 testing is deferred by the user and is outside
+   current Increment 7 acceptance; future execution needs separate qualification. An unavailable
    item must stay explicitly open rather than being inferred from MI250/A100
    results or a molecular checkpoint's periodic pair adaptation.
 
@@ -267,7 +268,7 @@ After that stage, proceed with:
    and retraining; retain periodic water geometry in the water campaign.
 3. A full TorchSim MI250 active-learning campaign, trained cell-input checkpoint
    acceptance, and longer stability work using a suitable qualified potential.
-   MI350 stays explicitly pending hardware availability.
+   MI350 is deferred by the user, outside the current acceptance schedule.
 
 These are separate acceptance gates. Passing the core water matrix closes
 only that gate, not all of Increment 7. Training GPU-assignment changes,
@@ -312,8 +313,9 @@ Audits now distinguish generated candidates, returned trajectories, coordinator
 selections, QM attempts/convergence, stored IDs, and training inputs. Selection
 replay checks unpruned top-K and configured eligibility/ranking. Candidate-array
 bytes, process lifetime peak RSS, and peak Torch allocation are separate metrics.
-Trained cell-input, qualified potential-stability, and MI350 gates stay explicitly
-open when their required inputs/hardware are absent; the combined runner does
+Trained cell-input and qualified potential-stability gates stay explicitly
+open when their required inputs are absent; MI350 is deferred and does not block
+the current campaign acceptance. The combined runner does
 not mark all of Increment 7 complete merely because its runnable campaigns pass.
 
 Implementation is committed locally at `1b0c813`, with observed-hardware guards
@@ -339,12 +341,12 @@ initialization in a fresh worker. It was stopped and all three owned Slurm
 jobs were verified terminated. The fix initializes the selected GPU before
 resetting its statistics; production sampling/training behavior is unchanged.
 
-The replacement supervisor is running on `darwin-fe2` in tmux session
+The replacement supervisor ran on `darwin-fe2` in tmux session
 `alf-inc7-remaining-20261103-03`, using frozen revision `0e1dbe5` from the detached
 `source-memory-fix/` worktree. All artifacts are outside Git under
 `/vast/home/pjlohr/ALF_LANL/validation/inc7_remaining_20261103/`.
 `run-001/` contains preparation only; `run-002/` retains the failed observer
-attempt; `run-003/` is active. The original cohort budget origin
+attempt; `run-003/` has finished. The original cohort budget origin
 `1793730532.3461077` is retained. First-case, ASE-group, and overall deadlines
 count the earlier attempt and repair time; per-case `deadlines.json` records them.
 `suite-003.log`, campaign logs/results, and `validation-summary.json` retain live
@@ -352,6 +354,31 @@ progress, CPU test evidence, and fingerprints. At startup the first ASE cohort
 case passed its CUDA prediction preflight and returned four real builder boxes;
 no remaining campaign gate is inferred from that startup check. Final accepted
 case counts must come from each campaign's result and cleanup evidence.
+
+Final `run-003` results: all twelve cohort/summed cases and all four TorchSim
+MI250 cases passed, each with eight new sampled labels in a real promoted
+four-member ensemble. All 18 cleanup reports (12 cohort cases, four MI250
+cases, and the two failed-stage bootstraps) verified termination of owned jobs.
+The controlled-failure stage stopped during its partial-batch preflight because
+the standalone preflight did not create the sampling-output directory. Native
+PySEQM GPU preflight passed widths 1/2/4/8 (maximum absolute errors about
+2.3e-13 eV and 1.6e-7 eV/Å), but bootstrap training failed in HIPPYNN's automatic
+atom-axis inference for three- and six-atom molecules.
+
+The blocker repair creates the preflight output directory and adds an ALF-side
+HIPPYNN database adapter. Small-molecule atom axes come from the configured
+coordinate/force/charge keys; Cartesian components, cells, dipoles, and
+quadrupoles are not inferred as atom axes. Larger-only datasets retain the
+upstream reader path, and checkpoint restarters retain the explicit schema.
+The external HIPPYNN checkout is not modified. Nonperiodic storage acceptance
+now follows ALF's existing convention of omitting cell datasets.
+
+Only the two affected campaigns will be retried from a new frozen snapshot;
+the accepted core/cohort/MI250 evidence remains available. The user's new
+blocker-fix request authorizes a new bounded attempt, with at most four hours
+per failed stage including queue waits and cleanup. Earlier attempts and their
+deadlines remain recorded. `remaining.py --campaigns` selects those stages;
+selected-stage success is distinct from a complete four-campaign result.
 
 #### Focused prerequisites (2026-11-02)
 

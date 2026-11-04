@@ -194,10 +194,23 @@ The combined runner always keeps Increment 7 open while trained cell-input,
 qualified potential-stability, or other required gates remain unresolved.
 `runnable_campaigns_passed` reports the four executed campaign gates separately.
 No replacement scientific fixtures are generated for missing inputs. MI350
-retains its independent hardware-qualification dependency.
+testing is deferred by the user and is outside current Increment 7 acceptance.
 
 For an early repair during the first cohort case, `remaining.py --budget-start`
 accepts that original campaign's `execution.json` start. It retains the overall,
 first ASE group, and first-case deadlines conservatively; repair time is not
 refunded. Later stages that have not started receive their normal budgets.
 This is not a general resume or durable-recovery interface.
+
+To retry only failed stages after a completed run, supply e.g.
+`remaining.py --campaigns pyseqm failures --run-root NEW_ROOT --import-seed SEED`.
+The new authorized attempt has fresh bounded stage budgets and preserves the
+earlier artifacts. `selected_campaigns_passed` reports just those requested
+stages; it cannot establish `runnable_campaigns_passed` for all four campaigns.
+
+The standalone partial-batch preflight creates its metadata directory before
+submission. HIPPYNN training uses ALF's database adapter for groups below seven
+atoms, padding only declared atom axes; larger-only datasets use the upstream
+layout inference. This supports molecular water/methanol without modifying the
+qualified HIPPYNN dependency or padding Cartesian/system properties. Native
+nonperiodic frames retain ALF's storage convention with no cell dataset.

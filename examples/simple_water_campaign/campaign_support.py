@@ -293,7 +293,10 @@ def validate_storage(run):
                     expected_species = [chemical_symbols[n] for n in np.array(structure['numbers'])[order]]
                     assert [v.decode() if isinstance(v, bytes) else str(v) for v in group['species'][()]] == expected_species
                     np.testing.assert_allclose(group['coordinates'][index], np.array(structure['positions'])[order], atol=1e-12, rtol=1e-12)
-                    np.testing.assert_allclose(group['cell'][index], structure['cell'], atol=1e-12, rtol=1e-12)
+                    if periodic:
+                        np.testing.assert_allclose(group['cell'][index], structure['cell'], atol=1e-12, rtol=1e-12)
+                    else:
+                        assert 'cell' not in group, 'Nonperiodic ALF storage should omit the cell'
                     for prop, (key, kind, factor) in master['properties_list'].items():
                         expected = np.asarray(record['properties'][prop])
                         if kind == 'atomic':

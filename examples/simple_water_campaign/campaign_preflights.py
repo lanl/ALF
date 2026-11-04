@@ -67,6 +67,8 @@ def partial_preflight(run, seed):
     builder = load_config_file(master['builder_config_path'], master['master_directory'])
     sampler = load_config_file(master['sampler_config_path'], master['master_directory'])
     qm = load_config_file(master['QM_config_path'], master['master_directory'])
+    if sampler.get('meta_dir') is not None:
+        Path(sampler['meta_dir']).mkdir(parents=True, exist_ok=True)
     sampler.update(driver=dict(engine='ase', strategy='batched'),
                    batching=dict(batch_size=4, partial_policy='timeout', max_wait_seconds=60))
     qm['batching'] = dict(mode='sequential', batch_size=4, partial_policy='timeout', max_wait_seconds=60)

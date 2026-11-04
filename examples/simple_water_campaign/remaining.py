@@ -11,8 +11,13 @@ import time
 
 from campaign_support import atomic_json, events, read_json, source_identity
 
+CAMPAIGNS = ('cohort', 'failures', 'pyseqm', 'mi250')
 
-def run_remaining(root, seed, budget_start=None):
+
+def run_remaining(root, seed, budget_start=None, campaigns=None):
+    campaigns = tuple(CAMPAIGNS if campaigns is None else campaigns)
+    if not campaigns or len(set(campaigns)) != len(campaigns) or not set(campaigns) <= set(CAMPAIGNS):
+        raise ValueError('Select distinct supported campaigns')
     root = Path(root).resolve()
     root.mkdir(parents=True, exist_ok=True)
     with (root / '.lock').open('a') as lock:
@@ -22,10 +27,10 @@ def run_remaining(root, seed, budget_start=None):
         origin = time.time() if budget_start is None else budget_start
         if origin < 0 or origin > time.time():
             raise ValueError('Budget origin must be a past timestamp')
-        atomic_json(root / 'execution.json', dict(start=origin, launched=time.time(), seed=str(Path(seed).resolve()),
+        atomic_json(root / 'execution.json', dict(start=origin, launched=time.time(), campaigns=campaigns, seed=str(Path(seed).resolve()),
                                                 source=source_identity()))
         outcomes = {}
-        for campaign in ('cohort', 'failures', 'pyseqm', 'mi250'):
+        for campaign in campaigns:
             directory = root / campaign
             atomic_json(root / 'result.json', dict(status='running', current_campaign=campaign, campaigns=outcomes))
             command = [sys.executable, '-B', str(Path(__file__).with_name('run.py')),
@@ -60,10 +65,11 @@ def run_remaining(root, seed, budget_start=None):
         dependencies = dict(
             trained_cell_checkpoint=dict(status='open', reason='No qualified trained cell-input checkpoint supplied; existing periodic mechanics fixture is untrained'),
             stability=dict(status='open', reason='No potential with a documented stability domain and acceptance bounds supplied'),
-            mi350=dict(status='open', reason='Requires available hardware and separate environment/backend qualification'))
+            mi350=dict(status='deferred', reason='User deferred MI350 testing; outside the current Increment 7 campaign schedule'))
         atomic_json(root / 'dependencies.json', dependencies)
         atomic_json(root / 'result.json', dict(status='incomplete',
-            runnable_campaigns_passed=all(r['status'] == 'passed' for r in outcomes.values()),
+            selected_campaigns_passed=all(r['status'] == 'passed' for r in outcomes.values()),
+            runnable_campaigns_passed=set(campaigns) == set(CAMPAIGNS) and all(r['status'] == 'passed' for r in outcomes.values()),
             campaigns=outcomes, dependencies=dependencies,
             reason='Required scientific-input gates remain open; do not infer full Increment 7 completion'))
 
@@ -73,5 +79,6 @@ if __name__ == '__main__':
     parser.add_argument('--run-root', type=Path, required=True)
     parser.add_argument('--import-seed', type=Path, required=True)
     parser.add_argument('--budget-start', type=float, help='Preserve the original cohort budget when repairing an early attempt')
+    parser.add_argument('--campaigns', nargs='+', choices=CAMPAIGNS, help='Run selected campaigns in the supplied order')
     args = parser.parse_args()
-    run_remaining(args.run_root, args.import_seed, args.budget_start)
+    run_remaining(args.run_root, args.import_seed, args.budget_start, args.campaigns)

@@ -398,3 +398,51 @@ def test_early_cohort_retry_does_not_refund_case_or_group_deadline(tmp_path, mon
     deadlines = support.read_json(tmp_path / 'cases/ase-uncertainty-stop/deadlines.json')
     assert deadlines['case_deadline'] == 30. and deadlines['group_deadline'] == 100.
     assert deadlines['overall_deadline'] == 400.
+
+
+def test_partial_preflight_creates_sampling_directory_before_submission(tmp_path, monkeypatch):
+    from campaign_preflights import partial_preflight
+    run = support.prepare_run(tmp_path, None, profile('failures'), support.darwin_site())
+    class StopBeforeSubmission(Exception):
+        pass
+    class Builder:
+        func = staticmethod(tasks.build_water.func)
+        def __call__(self, **kwargs):
+            assert (run/'sampling').is_dir()
+            raise StopBeforeSubmission
+    monkeypatch.setattr(tasks, 'build_water', Builder())
+    with pytest.raises(StopBeforeSubmission):
+        partial_preflight(run, tmp_path/'seed')
+
+
+def test_nonperiodic_storage_validation_uses_real_alf_no_cell_convention(tmp_path):
+    from ase import Atoms
+    from alframework.tools.molecules_class import MoleculesObject
+    from alframework.tools.tools import store_current_data
+    run = support.prepare_run(tmp_path, support.matrix('pyseqm')[0], profile('pyseqm'), support.darwin_site())
+    molecule = MoleculesObject(Atoms('HOH', positions=[[1,0,0],[0,0,0],[0,1,0]], cell=[20]*3), 'sample')
+    molecule.store_results(dict(energy=-1., forces=np.arange(9.).reshape(3,3)))
+    molecule.set_converged_flag(True)
+    support.event('qm_end', run, id='sample', converged=True, structure=tasks.geometry(molecule), properties=molecule.get_results())
+    (run/'h5store').mkdir()
+    store_current_data(str(run/'h5store/data-0000.h5'), [molecule], support.read_json(run/'master_config.json')['properties_list'])
+    assert support.validate_storage(run) == 1
+
+
+def test_selected_retry_does_not_rerun_accepted_campaigns_and_defers_mi350(tmp_path, monkeypatch):
+    import remaining
+    commands = []
+    class Process:
+        def __init__(self, command, **kwargs):
+            commands.append(command)
+            directory = Path(command[command.index('--run-root')+1])
+            support.atomic_json(directory/'result.json', dict(status='passed'))
+        def wait(self):
+            return 0
+    monkeypatch.setattr(remaining.subprocess, 'Popen', Process)
+    monkeypatch.setattr(remaining, 'source_identity', lambda: {})
+    remaining.run_remaining(tmp_path, tmp_path/'seed', campaigns=('failures','pyseqm'))
+    assert [c[c.index('--campaign')+1] for c in commands] == ['failures','pyseqm']
+    report = support.read_json(tmp_path/'result.json')
+    assert report['selected_campaigns_passed'] and not report['runnable_campaigns_passed']
+    assert report['dependencies']['mi350']['status'] == 'deferred'

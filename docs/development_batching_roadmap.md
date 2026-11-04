@@ -562,6 +562,8 @@ path.
 4. Record supported versions and any explicit incompatibilities from that
    gate. Existing `atomistic` and other qualified environments remain useful
    comparisons but are not the compatibility target.
+   Include the example config-load test and the first existing-example
+   compatibility smoke matrix (see **Existing-example compatibility**).
 5. Keep the deferred gates explicitly open: trained cell-input checkpoint,
    long-time potential stability, and MI350. They do not block the next increment.
 

@@ -25,6 +25,25 @@ import alframework.ml_interfaces.hippynn_interface
 """], capture_output=True, check=True)
 
 
+def test_cpu_training_checkpoints_reload_through_alf(tmp_path):
+    pytest.importorskip('hippynn')
+    from tests.helpers.hippynn import train_cpu_ensemble
+    from alframework.ml_interfaces.hippynn_interface import HIPNN_ASE_load_ensemble
+    from hippynn.experiment.serialization import load_checkpoint
+    from tests.test_acquisition import WATER
+    reports = train_cpu_ensemble(tmp_path/'ensemble')
+    assert len(reports) == 2 and all(r['epochs'] >= 2 for r in reports)
+    for directory in sorted((tmp_path/'ensemble').glob('model-*')):
+        bundle = load_checkpoint(str(directory/'experiment_structure.pt'),
+                                 str(directory/'best_checkpoint.pt'), restart_db=True, map_location='cpu')
+        assert bundle['database'].coordinates_key == 'coordinates'
+    for calculator in HIPNN_ASE_load_ensemble(str(tmp_path/'ensemble'), device='cpu'):
+        atoms = WATER.copy()
+        atoms.calc = calculator
+        assert np.isfinite(atoms.get_potential_energy())
+        assert np.isfinite(atoms.get_forces()).all()
+
+
 def test_absolute_checkpoint_paths_allow_concurrent_loading(tmp_path, monkeypatch):
     barrier = threading.Barrier(2)
     directory = Path.cwd()

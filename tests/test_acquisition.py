@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 
 import numpy as np
 import pytest
@@ -18,8 +19,8 @@ from tests.helpers.fakes import FixedCalculator
 WATER = Atoms("OH2", positions=[[0, 0, 0], [0.96, 0, 0], [-0.24, 0.93, 0]])
 METHANE = Atoms("CH4", positions=[[0, 0, 0], [0.63, 0.63, 0.63], [-0.63, -0.63, 0.63],
                                   [-0.63, 0.63, -0.63], [0.63, -0.63, -0.63]])
-TRAINED_ENSEMBLE = (Path(__file__).resolve().parents[1]
-                    / "examples/simple_water_darwin_run_test/models/model-0000")
+TRAINED_ENSEMBLE = Path(os.environ.get('ALF_TEST_ENSEMBLE', str(
+    Path(__file__).resolve().parents[1] / 'examples/simple_water_darwin_run_test/models/model-0000')))
 CONFIG = {"Escut": 0.5, "Fscut": 0.2, "distcut": 0.7, "min_time": 0.01}
 
 

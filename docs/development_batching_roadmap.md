@@ -91,6 +91,11 @@ should preserve the dependency and compatibility gates below.
 
 Policy, decided 2026-11-03: test development work against fresh installs with
 up-to-date dependencies, not long-lived personal environments.
+User clarification: this is the next acceptance priority after the running
+Increment 7 retries, before new feature implementation. Compatibility with
+current upstream releases is the target; `atomistic` and the other existing
+environments supply historical comparison evidence, not the target dependency
+versions. Keep the running retries frozen while completing them.
 
 ### Current state (audited 2026-11-03)
 
@@ -136,8 +141,15 @@ As of the audit, PyPI offers HIPPYNN 0.1.3, Parsl 2026.11.2, and
    - Each installs the development checkout editable with its extras, for
      example `pip install -e ".[tests,full,torchsim]"`, after installing the
      torch build for its hardware (CPU, CUDA, or ROCm).
-   - Explicit exceptions only: ALCHEMI stays at its qualified 0.2.0 on Python
-     3.11. Any further pin needs a recorded reason.
+   - Resolve the newest stable releases available when the build starts,
+     including HIPPYNN, Parsl, ASE, NumPy, h5py, PyTorch, TorchSim, and ALCHEMI.
+     Select a supported Python and GPU runtime combination for each engine;
+     record resolver downgrades rather than calling them the latest versions.
+     Prereleases and arbitrary upstream development heads are separate tests.
+   - ALCHEMI 0.2.0 remains the existing qualified baseline. Qualify the newest
+     stable toolkit independently before changing the existing adapter pin;
+     its old acceptance does not establish current-release compatibility.
+     Any temporary pin needs a demonstrated failure, reason, and follow-up.
 2. **Use upstream dependencies without local edits.** HIPPYNN is the PyPI
    release, or a recorded upstream commit when development needs unreleased
    work. PySEQM is a recorded upstream commit, with no shadowing directories.
@@ -153,6 +165,9 @@ As of the audit, PyPI offers HIPPYNN 0.1.3, Parsl 2026.11.2, and
    environments. If a newer dependency breaks ALF, fix it in a focused change
    or record an upper bound with its reason. Do not quietly fall back to an old
    environment.
+   Package imports and mocked checks alone do not establish backend acceptance;
+   the first refresh also runs the real workflow checks below. MI350 remains
+   deferred.
 6. **Add CI.** Running `unit-tests.yml` on `development` gives an automatic
    fresh-install CPU check on every push.
 7. **Choose a location** outside the `core.py` cleanup's reach where possible
@@ -162,6 +177,32 @@ Until the first fresh build passes, existing acceptance records keep their
 recorded environments. Agents must state which environment produced each
 result, and must not modify `atomistic`, `alf_env`, or the user's HIPPYNN and
 PySEQM checkouts.
+
+### First current-release compatibility gate
+
+After recording the running retries and their cleanup, complete this gate
+before starting E1. Preserve the existing feature priority order below it.
+
+| Step | Required evidence |
+| --- | --- |
+| Resolve and install | Dated, independent base/training, TorchSim CUDA, TorchSim ROCm, and ALCHEMI builds. Install ALF from the recorded development revision. Record latest available versus installed versions, Python/runtime support, import paths, upstream revisions for source-only dependencies such as PySEQM, and every constraint. No personal site-packages, local dependency edits, or shadowing source directories. Run `pip check`. |
+| CPU correctness | Full development tests in the fresh environments, including the real HIPPYNN small-molecule reader and larger-system regressions, training restarters in a fresh process, checkpoint inference, batching/cohorts, and failure handling. Report skips by reason and keep missing required backends incomplete. |
+| NVIDIA workflow | Repeat the 12-case water matrix on the fresh compatible stacks, using the established limits, widths, numerical tolerances, and real acquisition/label/storage/retraining criteria. Demonstrate a four-member small-molecule bootstrap and both single/native PySEQM labeling cases. Reload training restarters and inference members at the current source revision, resolving the retry snapshot's old database-class path without restoring a separate database file. |
+| AMD execution | Run the four TorchSim MI250 cases with the fresh ROCm sampler stack and newly qualified QM/training stack. Hardware-specific PyTorch wheels may differ; record their versions and runtime requirements explicitly. MI350 is outside this gate. |
+| Reproducibility and maintenance | Store exact dependency resolutions, install commands, package-source identities, source fingerprints, and results outside Git. Track the install recipe and focused compatibility fixes in Git. Add fresh-install CPU CI for pushes and PRs targeting `development`, retaining `main` coverage and separating base-only optional-dependency isolation from HIPPYNN training coverage. |
+
+Classify failures as dependency installation/resolution, ALF API compatibility,
+numerical behavior, or site/runtime availability. An unavailable backend or
+temporary upper bound remains an explicit gap in the latest-release claim;
+success in an older environment cannot close it. Preserve the scientific
+defaults and approved tolerances when repairing compatibility. Broad dependency
+support is the goal; any minimum/maximum versions declared in packaging must
+be supported by the observed tests rather than invented in advance.
+
+GPU4PySCF receives the same clean current-release qualification when E2 begins;
+it does not inherit acceptance from `alf_env_gpu4pyscf18`. New model/backend
+dependencies receive this check when introduced. Later increments refresh
+their affected stacks without upgrading an environment used by an active run.
 
 ## First-release increments
 
@@ -513,12 +554,14 @@ path.
    does not yet describe `driver`, `batching`, `acquisition`, or labeling batch
    settings), with pointers to the tracked TorchSim/ALCHEMI water configs and
    the campaign README.
-3. Consider running the unit-test workflow on `development` (it currently
-   targets `main` only).
-4. Build the first fresh environments (see **Development and test
-   environments**) and pass the CPU suites and GPU smoke checks in them before
-   the next acceptance-gated push. The first open question is whether
-   development works with PyPI HIPPYNN 0.1.3 and current Parsl.
+3. Complete the **First current-release compatibility gate** before new
+   feature implementation and the next acceptance-gated push. Build fresh
+   environments, run the CPU and real workflow checks, and enable fresh-install
+   CPU CI on `development`. Resolve versions at build time; the dated package
+   audit above is historical evidence, not a dependency lock.
+4. Record supported versions and any explicit incompatibilities from that
+   gate. Existing `atomistic` and other qualified environments remain useful
+   comparisons but are not the compatibility target.
 5. Keep the deferred gates explicitly open: trained cell-input checkpoint,
    long-time potential stability, and MI350. They do not block the next increment.
 

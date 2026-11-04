@@ -108,7 +108,7 @@ def train_HIPNN_model(model_dir,
     import hippynn
     from hippynn import plotting
     from hippynn.graphs import inputs, networks, targets, physics, loss
-    from hippynn.databases.h5_pyanitools import PyAniDirectoryDB
+    from alframework.ml_interfaces.hippynn_database import ALFPyAniDirectoryDB
     from hippynn.experiment.assembly import assemble_for_training
     from hippynn.pretraining import set_e0_values
     from hippynn.experiment.controllers import RaiseBatchSizeOnPlateau, PatienceController
@@ -368,7 +368,9 @@ def train_HIPNN_model(model_dir,
             training_modules, db_info = assemble_for_training(loss_train, validation_losses, plot_maker=plot_maker)
             model, loss_module, model_evaluator= training_modules
         
-            database = PyAniDirectoryDB(directory=h5_train_dir,allow_unfound=True,quiet=False,seed=np.random.randint(1e9),inputs=None,targets=None)
+            database_schema = dict(species_key=species_key, coordinates_key=coordinates_key,
+                                   atom_keys=(coordinates_key, force_key, charges_key))
+            database = ALFPyAniDirectoryDB(directory=h5_train_dir,allow_unfound=True,quiet=False,seed=np.random.randint(1e9),inputs=None,targets=None,**database_schema)
             
             #Ensure that species array is int64 for indexing
             arrays = database.arr_dict
@@ -423,7 +425,7 @@ def train_HIPNN_model(model_dir,
                         
             database.make_random_split("valid",valid_size)
             if not(h5_test_dir == None):
-                database_test = PyAniDirectoryDB(directory=h5_test_dir,allow_unfound=True,quiet=False,seed=np.random.randint(1e9),**db_info)
+                database_test = ALFPyAniDirectoryDB(directory=h5_test_dir,allow_unfound=True,quiet=False,seed=np.random.randint(1e9),**db_info,**database_schema)
                 #Ensure that species array is int64 for indexing
                 arrays_test = database.arr_dict
                 arrays_test[species_key] = arrays_test[species_key].astype('int64')

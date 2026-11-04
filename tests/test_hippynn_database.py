@@ -1,12 +1,14 @@
 """Real-reader regressions for small ALF molecules and existing larger inputs."""
 import pickle
+import subprocess
+import sys
 
 import h5py
 import numpy as np
 import pytest
 
 pytest.importorskip('hippynn')
-from alframework.ml_interfaces.hippynn_database import ALFPyAniDirectoryDB
+from alframework.ml_interfaces.hippynn_interface import ALFPyAniDirectoryDB
 from hippynn.databases.h5_pyanitools import PyAniDirectoryDB
 
 
@@ -51,11 +53,23 @@ def test_custom_schema_survives_checkpoint_restarter(tmp_path):
     schema = write_dataset(tmp_path/'data.h5', custom=True)
     db = ALFPyAniDirectoryDB(str(tmp_path), inputs=None, targets=None, allow_unfound=True,
                             quiet=True, seed=1, **schema)
+    assert type(db).__module__ == 'alframework.ml_interfaces.hippynn_interface'
+    assert type(db).__qualname__ == 'ALFPyAniDirectoryDB'
     restarted = pickle.loads(pickle.dumps(db.restarter)).attempt_restart()
     assert restarted.coordinates_key == 'xyz'
     assert 'grad' in restarted.atom_keys
     for key, value in db.arr_dict.items():
         np.testing.assert_array_equal(value.numpy(), restarted.arr_dict[key].numpy())
+    # A fresh worker must resolve the class without a previous explicit import.
+    subprocess.run([sys.executable, '-c', """
+import pickle
+import sys
+restarter = pickle.loads(sys.stdin.buffer.read())
+database = restarter.attempt_restart()
+assert type(database).__module__ == 'alframework.ml_interfaces.hippynn_interface'
+assert database.coordinates_key == 'xyz'
+assert database.arr_dict['xyz'].shape == (4, 6, 3)
+"""], input=pickle.dumps(db.restarter), capture_output=True, check=True)
 
 
 def test_existing_larger_groups_match_upstream_arrays(tmp_path):

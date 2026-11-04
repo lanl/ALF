@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 import os
 from pathlib import Path
 import sys
+import subprocess
 import threading
 from types import ModuleType, SimpleNamespace
 
@@ -10,6 +11,18 @@ import numpy as np
 import pytest
 
 from alframework.ml_interfaces.hippynn_interface import HIPNN_ASE_calculator
+
+
+def test_interface_import_defers_hippynn_and_torch():
+    subprocess.run([sys.executable, '-c', """
+import builtins
+original_import = builtins.__import__
+def guarded_import(name, *args, **kwargs):
+    assert name.split('.')[0] not in ('torch', 'hippynn'), name
+    return original_import(name, *args, **kwargs)
+builtins.__import__ = guarded_import
+import alframework.ml_interfaces.hippynn_interface
+"""], capture_output=True, check=True)
 
 
 def test_absolute_checkpoint_paths_allow_concurrent_loading(tmp_path, monkeypatch):

@@ -370,6 +370,9 @@ HIPPYNN database adapter. Small-molecule atom axes come from the configured
 coordinate/force/charge keys; Cartesian components, cells, dipoles, and
 quadrupoles are not inferred as atom axes. Larger-only datasets retain the
 upstream reader path, and checkpoint restarters retain the explicit schema.
+The adapter lives in the existing `hippynn_interface.py`, with deferred HIPPYNN
+imports and an importable class path for checkpoint reload; it requires no
+separate database module.
 The external HIPPYNN checkout is not modified. Nonperiodic storage acceptance
 now follows ALF's existing convention of omitting cell datasets.
 

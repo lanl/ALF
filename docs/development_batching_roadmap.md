@@ -659,7 +659,46 @@ no active winning trajectory, the harness does not force a failure or selection.
 The focused sampler/cohort suite passed all 35 checks. Its bounded real retry is
 `inc7_closeout_20261104/failure-run-001/`, supervised by the persistent
 `alf-inc7-closeout-failure-20261104` session on `darwin-fe2`, with frozen
-`source-failure/` at `791dd05`. Its actual result and cleanup remain pending.
+`source-failure/` at `791dd05`. That attempt finished incomplete: eight new
+labels reached a promoted ensemble, but no failure was injected. Its winners
+were rejected before the final step, so the late-active-winner condition never
+held. Cleanup verified termination. The overly strict outer dependency stopped
+the fresh campaigns and example checks before they started; those stopped
+supervisors and their evidence remain preserved.
+
+The user authorized repair and relaunch, emphasizing reuse of passed evidence.
+Local `acb4bb9` replaces the stochastic trigger with a recorded-input regression
+fixture. Its first eight inputs are immutable, genuinely generated builder
+outputs from that attempt, with the same four-member initial model, random
+streams, cells, PBC, and scientific settings. The planned failure follows the
+previously observed natural top-ranked frame, `mol-0000-0000000007` at step 26,
+before its later geometry rejection. The first two builder tasks explicitly
+record fixture replay; all subsequent builders and the fresh coverage matrices
+retain their ordinary generation path. No stored QM labels or old candidates
+are replayed into acquisition: trajectories, ranking, labels, storage, and
+retraining run again. Acceptance now requires that exact planned frame in the
+promoted ensemble's training-input lineage. Changed fixtures, configurations,
+models, or a missed injection produce an explicit error instead of another
+55-minute wait for an impossible condition.
+
+Focused checks passed: 54 in the established stack and 66 in the fresh stack,
+including exact-frame lineage, fixture integrity, early failure retention,
+independent-stage continuation, and owned-job cleanup. Independent qualification
+stages now continue after a failed scientific/harness check when its resources
+are verified terminated. Unverified cleanup still stops further allocations;
+a missing fresh seed blocks only its dependent MI250 campaign. The separate
+example checks have their own wB97X seed and do not require every PBE case to pass.
+
+The new persistent supervisor is `alf-inc7-relaunch-20261104` on `darwin-fe2`,
+using frozen `source/` at `acb4bb9`. Its root is
+`/vast/home/pjlohr/ALF_LANL/validation/inc7_relaunch_20261104/`;
+`relaunch-manifest.json`, `result.json`, and `supervisor.log` identify inputs,
+source, stage outcomes, and progress. It first retries only the remaining
+controlled-failure case, then runs the unexecuted current-release hardware,
+water, native PySEQM, MI250, and original-example checks sequentially. Passed
+historical matrices, the other two failure cases, and fresh CPU checks remain
+accepted in their recorded environments. MI350 and user-guide updates remain
+deferred. No newly launched gate is claimed passed before its actual result.
 
 #### Increment 7 close-out
 

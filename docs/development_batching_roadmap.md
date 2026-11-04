@@ -3,8 +3,36 @@
 Last updated: November 3, 2026 (Increments 0–6 and the Increment 7 prerequisites merged at `24028da`;
 core water, cohort/summed, and MI250 matrices passed; the PySEQM and
 controlled-failure retry is running from `e665690`. MI350 is deferred outside
-current acceptance. Post-release order decided: excited-state ALF, then batched
-UDD/gap ALF, then staged campaigns; see **Decided priority order**).
+current acceptance. Post-release order decided: excited-state ALF, then
+composable sampling with batched UDD/gap ALF, then staged campaigns, with
+multi-node training and teacher labeling as parallel tracks; see **Decided
+priority order**. Fresh-install environment policy added; see **Development
+and test environments**).
+
+## Quick start for contributors and agents
+
+Read these sections before starting work:
+1. **Guiding constraints**
+2. **Branch and maintenance workflow**
+3. **Development and test environments**
+4. The current increment's section: **Increment 7 close-out**, then
+   **Decided priority order** and its E1–E6 table.
+
+Standing rules:
+- Commit locally on `development`. Never push; the user pushes.
+- Verify live remote tips with `git ls-remote origin`.
+- Keep each change small, opt-in, and separately reviewable. Leave
+  `__main__.py`, task signatures, and existing configurations unchanged unless
+  the section says otherwise.
+- Do not modify untracked example directories, the user's personal conda
+  environments, or the HIPPYNN/PySEQM checkouts.
+- Run live campaigns from a frozen source snapshot and a frozen environment.
+  Keep generated data outside Git, under `/vast/home/pjlohr/ALF_LANL/validation/`.
+  Never infer a gate from a startup check.
+- Record each result with its source revision, environment, and evidence path,
+  and update this roadmap's status table and the relevant section.
+- The fork is source material, not an integration target. Its own roadmap copy
+  is stale; this document is authoritative.
 
 This is the shared plan for gradually bringing the fork's intended capabilities
 into `lanl/ALF:development`. It is separate from ongoing implementation on
@@ -58,6 +86,82 @@ The roadmap is a living document. Each increment records its status,
 dependencies, source implementation/commits, PR, acceptance evidence, and known
 limitations. Update it when work merges or priorities change. Changes in order
 should preserve the dependency and compatibility gates below.
+
+## Development and test environments
+
+Policy, decided 2026-11-03: test development work against fresh installs with
+up-to-date dependencies, not long-lived personal environments.
+
+### Current state (audited 2026-11-03)
+
+No regression so far has run against a clean install of the development checkout.
+
+- **`atomistic`** (QM, training, CPU suites). Its editable `alf` points to
+  `~/github/ALF`; tests import the development checkout only because they run
+  from its root.
+  - HIPPYNN is an editable `~/github/hippynn` at upstream `a66eba6` (February
+    2026), with uncommitted local edits to `ase_interface/calculator.py`
+    (energy `offset`) and `experiment/lightning_trainer.py`. ALF development
+    does not use either edit, but all results so far ran against a modified
+    HIPPYNN.
+  - Parsl is 2025.10.27.
+  - A stale `site-packages/seqm/` directory shadows the editable PySEQM, so
+    commands need `PYTHONPATH=~/github/PYSEQM`.
+- **TorchSim CUDA/ROCm.** These are venvs layered on `atomistic` (they include
+  its system site-packages). They live in the fork's
+  `debug/portable_gpu_20261027_8795a40/envs/` and inherit all of the above.
+- **`alf_alchemi_02`** (Python 3.11): an editable development checkout, torch
+  2.13, and `nvalchemi-toolkit==0.2.0`.
+- **`alf_env_gpu4pyscf18`** (intended for E2): its editable `alf` is the fork
+  checkout, and it carries ALCHEMI 0.1.0.
+- **`setup.py`** has no lower bounds and `python_requires=">3.9"`, although the
+  engines need Python 3.11/3.12. The versions used are recorded only in
+  campaign manifests outside Git.
+- **Location risk.** All of these environments live under `/vast/home`, where a
+  recurring cleanup job has deleted every `core.py` file and broken them before.
+
+As of the audit, PyPI offers HIPPYNN 0.1.3, Parsl 2026.11.2, and
+`torch-sim-atomistic` 0.6.2.
+
+### Fresh-environment recipe
+
+1. **Build dated, self-contained environments from scratch** with current
+   releases:
+   - `alf-dev-<date>`: base, QM, and training;
+   - TorchSim CUDA and TorchSim ROCm;
+   - ALCHEMI;
+   - GPU4PySCF, once E2 starts.
+
+   No environment layers on a personal one.
+   - Each installs the development checkout editable with its extras, for
+     example `pip install -e ".[tests,full,torchsim]"`, after installing the
+     torch build for its hardware (CPU, CUDA, or ROCm).
+   - Explicit exceptions only: ALCHEMI stays at its qualified 0.2.0 on Python
+     3.11. Any further pin needs a recorded reason.
+2. **Use upstream dependencies without local edits.** HIPPYNN is the PyPI
+   release, or a recorded upstream commit when development needs unreleased
+   work. PySEQM is a recorded upstream commit, with no shadowing directories.
+3. **Freeze every build.** Write `pip freeze`, and `conda list --explicit` for
+   conda environments, to an artifact outside Git. Record those paths with
+   acceptance evidence, as for frozen source snapshots. Only the recipe belongs
+   in the repository (for example, a short `docs/` page or missing extras).
+4. **Refresh at fixed points.** Rebuild at the start of each increment and
+   before an acceptance-gated push, never during a campaign. A running campaign
+   keeps its frozen environment and frozen source.
+5. **Gate each refresh.** The full CPU suites must pass in the fresh
+   environments, with A100 and MI250 GPU smoke checks for the engine
+   environments. If a newer dependency breaks ALF, fix it in a focused change
+   or record an upper bound with its reason. Do not quietly fall back to an old
+   environment.
+6. **Add CI.** Running `unit-tests.yml` on `development` gives an automatic
+   fresh-install CPU check on every push.
+7. **Choose a location** outside the `core.py` cleanup's reach where possible
+   (a `/projects` or scratch path); record it here once chosen.
+
+Until the first fresh build passes, existing acceptance records keep their
+recorded environments. Agents must state which environment produced each
+result, and must not modify `atomistic`, `alf_env`, or the user's HIPPYNN and
+PySEQM checkouts.
 
 ## First-release increments
 
@@ -411,7 +515,11 @@ path.
    the campaign README.
 3. Consider running the unit-test workflow on `development` (it currently
    targets `main` only).
-4. Keep the deferred gates explicitly open: trained cell-input checkpoint,
+4. Build the first fresh environments (see **Development and test
+   environments**) and pass the CPU suites and GPU smoke checks in them before
+   the next acceptance-gated push. The first open question is whether
+   development works with PyPI HIPPYNN 0.1.3 and current Parsl.
+5. Keep the deferred gates explicitly open: trained cell-input checkpoint,
    long-time potential stability, and MI350. They do not block the next increment.
 
 #### Focused prerequisites (2026-11-02)

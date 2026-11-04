@@ -1225,7 +1225,7 @@ existing sampler can already run through the new engines.
 | --- | --- | --- |
 | 1. Composable sampling | Separate propagation from UDD, confinement, and other bias/force controls; support callable extensions and grouped non-MD evaluations. | Preserve physical predictions, formulas, switching order, and replica-local state. Folded into the batched UDD/gap ALF step (see **Decided priority order**). |
 | 2. Additional acquisition strategies | Custom import-string strategies and geometry-based demonstrations, followed by production distance-based acquisition and diversity-aware batch selection within cohorts (and later against the existing training set). | Eligibility, ranking, trajectory policy, and selection remain separate; future selectors declare their retention needs. The selector/retention interface follows E5 (see **Decided priority order**). |
-| 3. Model/training handoffs and distillation | Opaque model-artifact references, model-independent inference adapters, and foundation-MLIP reference labeling. | Record teacher identity, version, units, and label provenance separately from the student sampling model. |
+| 3. Model/training handoffs and distillation | Opaque model-artifact references, model-independent inference adapters, and foundation-MLIP reference labeling. | Record teacher identity, version, units, and label provenance separately from the student sampling model. Teacher labeling (3a) is a parallel track after Increment 7 (see **Decided priority order**); handoffs and distillation (3b) remain later. |
 | 4. Molecular excited states | PySEQM/GPU4PySCF labeling, multi-state HIPPYNN training, derived gap targets, state selection, gap diagnostics, and LCM. | Preserve per-state convergence, state/atom mappings, physical screening, and the distinction between predictions and propagation controls. |
 | 5. RDKit initialization | Reference-centered KDG geometry generation, seed-specific screening, and FPS selection, with reproducible settings/provenance. | Optional preprocessing/builders; unlabeled seed geometries are not labeled training rows. |
 | 6. Geometry-only HDF5 replay | Reuse stored geometries for sampling or relabeling, with original identities and source provenance. | Do not accidentally carry old labels into a newly requested labeling operation. |
@@ -1333,6 +1333,11 @@ Two further items sit outside that sequence:
   needs replaces the hard-wired `top_k` in `CohortPool.ready()` and the
   score-only `_prune` in `batched_mlmd.py`. Top-K remains the default with
   identical selections.
+- **Foundation-model teacher labeling (row 3a), a parallel track.** A
+  foundation MLIP supplies reference labels instead of QM. It is independent of
+  steps 1–3 and can start after the Increment 7 close-out. Ground-state
+  teachers come first; excited-state teachers wait until a suitable model
+  exists.
 
 Rationale (2026-11-03): the user set composable sampling and multi-node
 training as the priorities after excited states, to make other uncertainty and
@@ -1477,6 +1482,37 @@ sampling (E5) rather than preceding it. Open decisions:
   - Gate: identical selections in the existing `tests/test_cohorts.py`
     width/completion-order replay; online scalar top-K retention closes the
     candidate-memory follow-up.
+- **Foundation-model teacher labeling (row 3a, parallel track).** The
+  labeling boundary already supports this: `LabelingCoordinator`
+  (`tools/labeling.py`) packs `native` batches for any `QM_task` that accepts
+  `molecule_objects`, as PySEQM does. Storage, retraining, and promotion see
+  only labels and a converged flag.
+  - **Adapter:** an ordinary `QM_task`, native over `molecule_objects`, with a
+    single-structure form for sequential packing. It:
+    - loads the teacher once per worker;
+    - evaluates with packed batched inference, reusing the evaluator's padding
+      and atom-order conventions, or with a per-structure ASE calculator;
+    - converts outputs to ALF's eV and eV/Å;
+    - selects its GPU through `tools/gpu.py` local ordinals.
+  - **Why `ase_calculator_task` is not enough:** it passes `QM_run_command`
+    and the whole `QM_config` to the calculator constructor, and it requires
+    `calc.converged`.
+  - **Converged rule:** a teacher needs its own rule, such as finite outputs
+    plus optional domain checks.
+  - **Provenance:** record the teacher's name, version, checkpoint hash, units,
+    and adapter settings with its labels, separately from the student model.
+    `store_current_data` writes only `properties_list` keys, so this needs an
+    explicit metadata path.
+  - **Site:** a GPU-configured `alf_QM_executor`. This is configuration only,
+    as in the PySEQM GPU campaign.
+  - **Gate:**
+    - single and native-batch parity at widths 1/2/4/8;
+    - a bounded water-style active-learning campaign in which teacher labels
+      are stored, used for real retraining, and promoted;
+    - provenance present in the stored data.
+  - **Out of scope for 3a; remains in 3b or row 9:** mixed teacher/QM labels
+    (multi-fidelity or delta learning), teacher-driven dynamics,
+    fine-tuning/distillation handoffs, and opaque model-artifact references.
 - **Staged campaigns across engines** (row 8): durable cohort/handoff
   persistence, a run-control equivalent, staged configurations, and
   retained-label budgets. The fork's `run_control`, `workflow_io`,

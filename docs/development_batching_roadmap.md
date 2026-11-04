@@ -1378,7 +1378,7 @@ existing sampler can already run through the new engines.
 | --- | --- | --- |
 | 1. Composable sampling | Separate propagation from UDD, confinement, and other bias/force controls; support callable extensions and grouped non-MD evaluations. | Preserve physical predictions, formulas, switching order, and replica-local state. Folded into the batched UDD/gap ALF step (see **Decided priority order**). |
 | 2. Additional acquisition strategies | Custom import-string strategies and geometry-based demonstrations, followed by production distance-based acquisition and diversity-aware batch selection within cohorts (and later against the existing training set). | Eligibility, ranking, trajectory policy, and selection remain separate; future selectors declare their retention needs. The selector/retention interface follows E5 (see **Decided priority order**). |
-| 3. Model/training handoffs and distillation | Opaque model-artifact references, model-independent inference adapters, and foundation-MLIP reference labeling. | Record teacher identity, version, units, and label provenance separately from the student sampling model. Teacher labeling (3a) is a parallel track after Increment 7 (see **Decided priority order**); handoffs and distillation (3b) remain later. |
+| 3. Model/training handoffs and distillation | Opaque model-artifact references, model-independent inference adapters, and foundation-MLIP reference labeling. | Record teacher identity, version, units, and label provenance separately from the student sampling model. Teacher labeling (3a) is a parallel track after Increment 7 (see **Decided priority order**); handoffs and distillation (3b) remain later. Fine-tuning tiers F1–F3 are planned in **Later steps**. |
 | 4. Molecular excited states | PySEQM/GPU4PySCF labeling, multi-state HIPPYNN training, derived gap targets, state selection, gap diagnostics, and LCM. | Preserve per-state convergence, state/atom mappings, physical screening, and the distinction between predictions and propagation controls. |
 | 5. RDKit initialization | Reference-centered KDG geometry generation, seed-specific screening, and FPS selection, with reproducible settings/provenance. | Optional preprocessing/builders; unlabeled seed geometries are not labeled training rows. |
 | 6. Geometry-only HDF5 replay | Reuse stored geometries for sampling or relabeling, with original identities and source provenance. | Do not accidentally carry old labels into a newly requested labeling operation. |
@@ -1386,7 +1386,7 @@ existing sampler can already run through the new engines.
 | 8. Durable recovery and staged workflows | Persist batching/cohort handoffs; add retained-label budgets, ALF-to-GALF/configuration stages, exact dataset checkpoints, and endpoint training. | Preserve ordinary runs as the default; budgets count retained labeled frames, not candidates or submitted jobs. |
 | 9. Further model and sampling extensions | Additional production model families, reactive batching, and separately planned methods. | Follow the same minimal-core-change and existing-workflow compatibility gates. |
 | 10. Multi-node ML training | Train ensemble members across nodes, then optionally data-parallel training of one member across GPUs/nodes. | Keep the `ML_task` entrypoint, `(completed, training_id)` return, member directory layout, and model-promotion semantics; single-node training remains the default. Parallel track, independent of the excited-state sequence (see **Decided priority order**). |
-| 11. Non-ensemble uncertainty | Pluggable uncertainty estimators, including single-network methods, alongside the existing ensemble disagreement. | New signals carry their own names, units, and cutoffs; `Es`/`Fs`/`Fsmax` and `Escut`/`Fscut` keep their ensemble-std meaning. |
+| 11. Non-ensemble uncertainty | Pluggable uncertainty estimators, including single-network methods, alongside the existing ensemble disagreement. | New signals carry their own names, units, and cutoffs; `Es`/`Fs`/`Fsmax` and `Escut`/`Fscut` keep their ensemble-std meaning. First planned use: foundation-model fine-tuning (F3). |
 
 Items 10 and 11 and the diversity part of item 2 were added at the user's
 request on November 2, 2026; their order relative to the other rows is not yet
@@ -1491,6 +1491,16 @@ Two further items sit outside that sequence:
   steps 1–3 and can start after the Increment 7 close-out. Ground-state
   teachers come first; excited-state teachers wait until a suitable model
   exists.
+- **Fine-tuning with ALF (rows 3b and 11), a later goal in three tiers.** ALF
+  already fine-tunes ALF-trained HIPPYNN ensembles through the example-local
+  task in `examples/fine_tuning/`.
+  - **F1, library HIPPYNN fine-tuning.** It can start any time after the
+    current-release compatibility gate.
+  - **F2, multi-state fine-tuning.** It follows E3.
+  - **F3, foundation-model fine-tuning under active learning.** It follows E5,
+    teacher labeling (3a), and multi-node training.
+
+  See **Later steps**.
 
 Rationale (2026-11-03): the user set composable sampling and multi-node
 training as the priorities after excited states, to make other uncertainty and
@@ -1666,6 +1676,56 @@ sampling (E5) rather than preceding it. Open decisions:
   - **Out of scope for 3a; remains in 3b or row 9:** mixed teacher/QM labels
     (multi-fidelity or delta learning), teacher-driven dynamics,
     fine-tuning/distillation handoffs, and opaque model-artifact references.
+- **Fine-tuning with ALF (later goal; added 2026-11-03).**
+  - **What exists.** `examples/fine_tuning/` (and its Darwin variant) uses a
+    local `ML_task`, `fine_tune_ml_task.fine_tune_HIPPYNN_ensemble_task`. It:
+    - loads a trained HIPPYNN seed ensemble from `models/model-0000/`;
+    - keeps the checkpoint graph and weights, with a fresh optimizer and
+      controller at a lower learning rate;
+    - rebuilds the training database from `h5store/`, filtered to the
+      checkpoint's inputs and targets;
+    - writes each adapted ensemble to the next model slot.
+
+    `__main__.py` is unchanged and `--test_ml` runs fine-tuning only. The
+    example is part of the compatibility baseline. Fine-tuning is example
+    code, not library code, and it covers HIPPYNN ensembles in ALF's own
+    layout only.
+  - **F1, library HIPPYNN fine-tuning (row 3b).**
+    - Move the task beside `train_HIPPYNN_ensemble_task` as an ordinary
+      `ML_task`.
+    - Make its settings explicit: source checkpoint, optimizer reset, learning
+      rate, frozen layers, and training-data filter.
+    - Record lineage: the parent checkpoint hash and generation.
+    - Keep the example working by pointing it at the library task, with its
+      results unchanged.
+    - Inherit multi-node placement, and do not conflict with it.
+    - Gate: the existing fine-tuning example gives equivalent results through
+      the library task, including a real Darwin fine-tuning round.
+  - **F2, multi-state fine-tuning (after E3).** Start a multi-state model from
+    a pretrained ground-state or earlier multi-state HIPPYNN; for example,
+    seed the cpp ring model from a ground-state model. Use the F1 lineage and
+    settings, with an explicit mapping from source to new heads and targets.
+  - **F3, foundation-model fine-tuning under active learning (rows 3b and
+    11).** ALF samples with the model being fine-tuned and labels with QM or a
+    teacher (3a). It needs:
+    - **Uncertainty.** Foundation models are usually single networks.
+      Options: fine-tuned ensembles (expensive), heads on a shared backbone,
+      or single-network estimators (row 11) through the E5 named-signal
+      contract. F3 is the natural first use of row 11.
+    - **Model-family adapters** for training (behind `ML_task`) and inference
+      (behind the evaluator contract).
+    - **Opaque model-artifact references,** replacing the batched loader's
+      `best_model.pt` and the trainers' `model-NN` assumptions. This must
+      preserve the existing HIPPYNN layout.
+    - **Provenance:** the base model, version, license, and which weights
+      changed.
+    - **Engines:** TorchSim and ALCHEMI already host foundation-model
+      calculators, so the engine side may need little new work. Each model
+      still needs its own qualification.
+
+    Gate: a bounded active-learning campaign in which a fine-tuned foundation
+    model's uncertainty selects frames that are labeled, stored, used for
+    fine-tuning, and promoted, with lineage and provenance recorded.
 - **Staged campaigns across engines** (row 8): durable cohort/handoff
   persistence, a run-control equivalent, staged configurations, and
   retained-label budgets. The fork's `run_control`, `workflow_io`,

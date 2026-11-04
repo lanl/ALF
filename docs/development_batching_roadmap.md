@@ -1,8 +1,10 @@
 # Living roadmap for integration into ALF development
 
 Last updated: November 3, 2026 (Increments 0–6 and the Increment 7 prerequisites merged at `24028da`;
-core water, cohort/summed, and MI250 matrices passed; the two remaining campaign
-blockers are being repaired. MI350 is deferred outside current acceptance).
+core water, cohort/summed, and MI250 matrices passed; the PySEQM and
+controlled-failure retry is running from `e665690`. MI350 is deferred outside
+current acceptance. Post-release order decided: excited-state ALF, then batched
+UDD/gap ALF, then staged campaigns; see **Decided priority order**).
 
 This is the shared plan for gradually bringing the fork's intended capabilities
 into `lanl/ALF:development`. It is separate from ongoing implementation on
@@ -382,6 +384,35 @@ blocker-fix request authorizes a new bounded attempt, with at most four hours
 per failed stage including queue waits and cleanup. Earlier attempts and their
 deadlines remain recorded. `remaining.py --campaigns` selects those stages;
 selected-stage success is distinct from a complete four-campaign result.
+
+The retry started at 18:25 MST on November 3 from frozen revision `e665690`
+(`validation/inc7_blocker_fixes_20261103/run-001/`, `--campaigns pyseqm failures`,
+accepted water seed imported). The native PySEQM preflight passed again at widths
+1/2/4/8, and the small-molecule bootstrap passed the HIPPYNN atom-axis stage that
+failed before: four members are training. Final results are not yet recorded;
+no campaign gate is inferred from these startup checks.
+
+Local `088aa94` (after the frozen snapshot) moves the adapter class from
+`hippynn_database.py` into `hippynn_interface.py` without changing its behavior;
+57 focused tests pass at the tip. Inference loads checkpoints with
+`restart_db=False` and is unaffected. HIPPYNN database restarters in the retry's
+training checkpoints record the old module path, so restarting training from
+those checkpoints under the tip would fail to resolve the class. Before pushing,
+either retrain and reload a member at the tip, or keep a re-export at the old
+path.
+
+#### Increment 7 close-out
+
+1. Record the retry's PySEQM and controlled-failure results and cleanup
+   evidence; repair only demonstrated failures, as focused changes.
+2. Document the opt-in settings in the user guide (`docs/source/user_guide`
+   does not yet describe `driver`, `batching`, `acquisition`, or labeling batch
+   settings), with pointers to the tracked TorchSim/ALCHEMI water configs and
+   the campaign README.
+3. Consider running the unit-test workflow on `development` (it currently
+   targets `main` only).
+4. Keep the deferred gates explicitly open: trained cell-input checkpoint,
+   long-time potential stability, and MI350. They do not block the next increment.
 
 #### Focused prerequisites (2026-11-02)
 
@@ -1183,8 +1214,9 @@ is source material for the later recovery increment, not a prerequisite here.
 
 ## Subsequent capability increments
 
-These intended development capabilities remain on the roadmap. The numbering
-is the working order; independent initialization/replay contributions may proceed
+These intended development capabilities remain on the roadmap. Row numbers
+are stable identifiers; the working order is set in **Decided priority order**
+below. Independent initialization/replay contributions may proceed
 once their helper and identity requirements are available. These are future
 capabilities, not features already supplied by Increment 6 or promises that every
 existing sampler can already run through the new engines.
@@ -1272,6 +1304,127 @@ decided. Readiness notes from a review of development at `24028da`:
       HDF5 store; it is a separate step from within-cohort diversity.
   - The `acquisition.selection` keys are validated against a fixed set, so new
     selectors need a `mode` or import-string extension.
+
+### Decided priority order (2026-11-03)
+
+After Increment 7 closes, the user set this order. Each step will take many
+small, separately reviewable changes over time.
+
+1. **Excited-state ALF** (row 4, pulling forward the parts of rows 6 and 7 that
+   it needs). The target is the excited-state work on the fork's
+   `production_excited_states`. The headline example is the
+   cycloparaphenylene ring (cpp) run as a full ALF active-learning example.
+   Steps are E1–E6 below.
+2. **Batched UDD and gap ALF** (row 1 and the sampling half of row 4). This
+   covers UDD and LCM gap seeking in the packed engines, with gap-aware
+   acquisition.
+3. **Staged campaigns across engines** (row 8): durable handoffs, staged
+   configurations, and budgets.
+
+Rows 2, 3, 5, and 9–11 follow later. Step E5 needs the evaluator-contract part
+of row 11 (named per-state signals), but not single-network estimators. While
+the work is ported, the fork remains the production environment for excited
+states; `production_excited_states` (`c364fa8`) is the source material. Its
+excited-state sources match `feature/unified-sampling-drivers` byte for byte.
+
+#### What the fork provides today
+
+- **The cpp9 example (`examples/cpp9_gpu4pyscf`) is a standalone trial, not
+  an active-learning loop.**
+  - `run_trial.py` and `cpp_trial/` drive two Parsl sessions:
+    1. label a fixed pool of 1,000 perturbed geometries with GPU4PySCF
+       (CAM-B3LYP/6-31G, RKS/TDA, `nroots=3` giving S0–S3, analytic
+       gradients, and NACs for pairs (1,2), (1,3), (2,3));
+    2. train four multi-state HIPPYNN members, then exit.
+  - There is no sampler, no acquisition, and no `alframework.__main__`.
+  - `cpp_trial/qm.py` is a local copy of the core QM interface that adds
+    transition dipoles and oscillator strengths.
+  - Its audit (`docs/cpp9_example_audit_2026-10-21.md` on the fork) records
+    CPU tests with mocks and one CPU PySCF comparison only. Real GPU QM and
+    training were not validated there, and rejected frames are not refilled.
+- **Self-contained excited-state core.** These depend on ordinary task
+  entrypoints, `molecules_class`, `pyanitools`, and each other, not on the
+  fork's staged workflow, run control, or sampling dialect:
+  - `tools/excited_state_tools.py`: the `sE#`/`F#`/`dE#` key contract;
+    the state count is inferred from contiguous keys in `properties_list`.
+  - `tools/atom_order.py`.
+  - The `pair_atomic` storage scope and `nac_pairs` index in
+    `tools/tools.py::store_current_data`.
+  - `qm_interfaces/gpu4pyscf_interface.py`: `run_gpu4pyscf_states`,
+    `gpu4pyscf_excited_state_task`, singlet RKS/TDA, and optional NACs.
+  - PySEQM AM1 CIS through `pyseqm_excited_state_task`, run as one molecule
+    per child process.
+  - `ml_interfaces/excited_state_hippynn_interface.py`:
+    - one shared trunk with an energy head and force gradient per state;
+    - optional derived gap targets;
+    - its own explicit HDF5 loader;
+    - `train_excited_state_HIPPYNN_ensemble_task`;
+    - nonperiodic only.
+  - `builders/h5_replay_builder.py`.
+- **Excited-state sampling exists only in the fork's ALCHEMI sampler**
+  (`samplers/alchemi_sampling.py`, `model_mode='excited_state'`).
+  - The propagated state comes from `selected_state` metadata or from
+    `state_selection` `fixed`/`batch_cycle` (`tools/sampler_batching.py`).
+    Every member of a batch shares one state.
+  - Uncertainty uses `Es`/`Fs`/`Fsmax` on the propagated state, with
+    per-state and `dE##_stdev` diagnostics.
+  - Summed scoring has an optional gap-uncertainty term.
+  - LCM `gap_seeking` permanently switches a triggered replica to the
+    smoothed surface.
+  - The fork's ASE sampler has no excited-state path. Its full-loop examples
+    (`excited_state_gpu4pyscf`, `_nacr`, `excited_state_pyseqm`) also rely on
+    the fork's `run_control` and staged workflow.
+- **What dev lacks.**
+  - There is no GPU4PySCF interface.
+  - `pyseqm_parameters` rejects `excited_states`.
+  - `train_HIPNN_model` fits one energy.
+  - The evaluator contract assumes one energy per system: `energies [M, S]`,
+    `HippynnBatchedEnsemble`, `PackedMLMDEngine._evaluate`/`observe`,
+    `ensemble_statistics`, and `uncertainty_flags`.
+  - Existing hooks:
+    - the `SCORE_TERMS` docstring anticipates a gap term;
+    - `default_batch_key` anticipates a selected-state key;
+    - storage writes only keys listed in `properties_list`, so new keys are
+      opt-in.
+  - Per-state keys are atom-first (`F#` is `[atoms, 3]` per frame), so the
+    existing `"atomic"` sorting handles them. Only NACs need the new scope.
+
+#### Excited-state ALF plan (E1–E6)
+
+Each step is a separate local change with its own CPU tests. Existing
+configurations, task signatures, and ground-state results stay unchanged.
+Steps E1–E4 can proceed in parallel once E1 lands.
+
+| Step | Deliverable | Acceptance gate |
+| --- | --- | --- |
+| E1. Contract and storage | Port the state/gap key contract, `atom_order`, and the `pair_atomic`/`nac_pairs` storage scope. | Multi-state and NAC HDF5 round-trip tests; atom order restored; existing `properties_list` behavior unchanged. |
+| E2. Excited-state labelers | GPU4PySCF TDA as an ordinary `QM_task`, with single and sequential packing (no native batch). Promote cpp9's transition dipoles and oscillator strengths into the interface. PySEQM CIS excited states. | Mocked CPU tests and a CPU PySCF comparison; then real A100 GPU4PySCF labels with the cpp9 label checks (shapes, finiteness, offset applied once, oscillator strengths ≥ 0, NAC pair order). |
+| E3. Multi-state training | The excited-state HIPPYNN trainer as a separate `ML_task`. Reconcile its loader with dev's small-molecule `ALFPyAniDirectoryDB` rather than keeping two readers. | Real four-member GPU training; members reload; the ground-state trainer is unchanged. |
+| E4. External initial geometries | A builder that admits externally generated, unlabeled geometries (xyz or geometry-only HDF5) as bootstrap/sampling seeds. Uses the scoped parts of `h5_replay_builder` (row 6). The random ring generator stays outside ALF. | Identities, atom order, and provenance survive into labeling inputs; no stored labels are carried into new labeling. |
+| E5. Sampling on a chosen state | Multi-state evaluator output (per-state member arrays; existing ground-state shapes remain the default). A `selected_state` from metadata or `fixed`/`batch_cycle`, with a selected-state batch key. Per-state diagnostics and a named gap signal with its own cutoff as a `SCORE_TERMS` entry. Eligibility reads configured signal/cutoff pairs; `Es`/`Fs`/`Fsmax` keep their meaning. | CPU parity with fakes across ASE, TorchSim, and ALCHEMI; a bounded molecular excited-state loop through the real coordinator. |
+| E6. cpp ring full ALF example | An ordinary master configuration run through `alframework.__main__`: (1) bootstrap from a random initial dataset of ring structures made by an external generator; (2) cpp9-science GPU4PySCF labels, with NACs stored but not trained; (3) multi-state training; (4) excited-state MLMD and acquisition; (5) iterate. The fork's standalone driver is not ported as-is; its settings and checks are reused. | A real, bounded Darwin campaign like the water matrix: at least one round selects new sampled ring structures, labels them with converged GPU4PySCF, stores them, and promotes a retrained, loadable four-member ensemble. |
+
+E6 is the first point where dev can do the cpp ring work, so it follows
+sampling (E5) rather than preceding it. Open decisions:
+- whether PySEQM CIS uses dev's native batch path or the fork's one-molecule
+  child process;
+- which state(s) the ring campaign propagates;
+- whether its first campaign enables gap-uncertainty ranking.
+
+#### Later steps (outline; detail after E5)
+
+- **Batched UDD and gap ALF.**
+  - Composable bias controls in the packed engines (row 1): UDD on the
+    selected state, and LCM gap seeking as a per-replica permanent mode
+    switch.
+  - The deferred physical-force screen (`max_force_cutoff`) excludes bias and
+    LCM forces.
+  - Gap-aware summed acquisition.
+  - Parity against the fork's ALCHEMI behavior.
+- **Staged campaigns across engines** (row 8): durable cohort/handoff
+  persistence, a run-control equivalent, staged configurations, and
+  retained-label budgets. The fork's `run_control`, `workflow_io`,
+  `staged_workflow`, and `dataset_screening` are source material.
 
 The excited-state increment includes explicit topology validation and
 topology-aware replay/storage where configured. Existing ordinary workflows

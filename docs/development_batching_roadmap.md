@@ -1223,8 +1223,8 @@ existing sampler can already run through the new engines.
 
 | Increment | Capabilities to integrate | Important boundary |
 | --- | --- | --- |
-| 1. Composable sampling | Separate propagation from UDD, confinement, and other bias/force controls; support callable extensions and grouped non-MD evaluations. | Preserve physical predictions, formulas, switching order, and replica-local state. |
-| 2. Additional acquisition strategies | Custom import-string strategies and geometry-based demonstrations, followed by production distance-based acquisition and diversity-aware batch selection within cohorts (and later against the existing training set). | Eligibility, ranking, trajectory policy, and selection remain separate; future selectors declare their retention needs. |
+| 1. Composable sampling | Separate propagation from UDD, confinement, and other bias/force controls; support callable extensions and grouped non-MD evaluations. | Preserve physical predictions, formulas, switching order, and replica-local state. Folded into the batched UDD/gap ALF step (see **Decided priority order**). |
+| 2. Additional acquisition strategies | Custom import-string strategies and geometry-based demonstrations, followed by production distance-based acquisition and diversity-aware batch selection within cohorts (and later against the existing training set). | Eligibility, ranking, trajectory policy, and selection remain separate; future selectors declare their retention needs. The selector/retention interface follows E5 (see **Decided priority order**). |
 | 3. Model/training handoffs and distillation | Opaque model-artifact references, model-independent inference adapters, and foundation-MLIP reference labeling. | Record teacher identity, version, units, and label provenance separately from the student sampling model. |
 | 4. Molecular excited states | PySEQM/GPU4PySCF labeling, multi-state HIPPYNN training, derived gap targets, state selection, gap diagnostics, and LCM. | Preserve per-state convergence, state/atom mappings, physical screening, and the distinction between predictions and propagation controls. |
 | 5. RDKit initialization | Reference-centered KDG geometry generation, seed-specific screening, and FPS selection, with reproducible settings/provenance. | Optional preprocessing/builders; unlabeled seed geometries are not labeled training rows. |
@@ -1232,7 +1232,7 @@ existing sampler can already run through the new engines.
 | 7. Optional additional labels | Preserve optional nonadiabatic-coupling labeling and storage, including state-pair and atom-axis mappings. | Computing/storing NACs does not automatically make them energy/force training targets. |
 | 8. Durable recovery and staged workflows | Persist batching/cohort handoffs; add retained-label budgets, ALF-to-GALF/configuration stages, exact dataset checkpoints, and endpoint training. | Preserve ordinary runs as the default; budgets count retained labeled frames, not candidates or submitted jobs. |
 | 9. Further model and sampling extensions | Additional production model families, reactive batching, and separately planned methods. | Follow the same minimal-core-change and existing-workflow compatibility gates. |
-| 10. Multi-node ML training | Train ensemble members across nodes, then optionally data-parallel training of one member across GPUs/nodes. | Keep the `ML_task` entrypoint, `(completed, training_id)` return, member directory layout, and model-promotion semantics; single-node training remains the default. |
+| 10. Multi-node ML training | Train ensemble members across nodes, then optionally data-parallel training of one member across GPUs/nodes. | Keep the `ML_task` entrypoint, `(completed, training_id)` return, member directory layout, and model-promotion semantics; single-node training remains the default. Parallel track, independent of the excited-state sequence (see **Decided priority order**). |
 | 11. Non-ensemble uncertainty | Pluggable uncertainty estimators, including single-network methods, alongside the existing ensemble disagreement. | New signals carry their own names, units, and cutoffs; `Es`/`Fs`/`Fsmax` and `Escut`/`Fscut` keep their ensemble-std meaning. |
 
 Items 10 and 11 and the diversity part of item 2 were added at the user's
@@ -1315,14 +1315,43 @@ small, separately reviewable changes over time.
    `production_excited_states`. The headline example is the
    cycloparaphenylene ring (cpp) run as a full ALF active-learning example.
    Steps are E1–E6 below.
-2. **Batched UDD and gap ALF** (row 1 and the sampling half of row 4). This
-   covers UDD and LCM gap seeking in the packed engines, with gap-aware
-   acquisition.
+2. **Composable sampling with batched UDD and gap ALF** (row 1 and the
+   sampling half of row 4). The bias/control interface comes first. UDD,
+   wells, LCM gap seeking, and the deferred physical-force screen are built on
+   it, with gap-aware acquisition.
 3. **Staged campaigns across engines** (row 8): durable handoffs, staged
    configurations, and budgets.
 
-Rows 2, 3, 5, and 9–11 follow later. Step E5 needs the evaluator-contract part
-of row 11 (named per-state signals), but not single-network estimators. While
+Two further items sit outside that sequence:
+
+- **Multi-node training (row 10), a parallel track.** It is independent of
+  steps 1–3 and can start whenever there is capacity. The first step places
+  members across nodes. Data-parallel training of one member is a later,
+  separate decision.
+- **Acquisition selector/retention interface (first part of row 2), after
+  E5.** A pluggable cohort selector that declares its candidate-retention
+  needs replaces the hard-wired `top_k` in `CohortPool.ready()` and the
+  score-only `_prune` in `batched_mlmd.py`. Top-K remains the default with
+  identical selections.
+
+Rationale (2026-11-03): the user set composable sampling and multi-node
+training as the priorities after excited states, to make other uncertainty and
+acquisition methods easier.
+- **Composable sampling is folded into step 2** because that step already
+  rebuilds UDD and LCM in the packed engines. Porting them ad hoc first would
+  mean writing them twice.
+- **Multi-node training runs in parallel** because it touches only training
+  placement. It buys throughput: larger ensembles and multi-state ring
+  training. It does not add method extensibility.
+- **Method extensibility comes from three seams:**
+  1. named uncertainty signals from inference (E5);
+  2. eligibility from configured signal/cutoff pairs (E5);
+  3. the selector/retention interface above.
+- **How later methods attach:** single-network estimators (row 11) plug into
+  seams 1–2. Differentiable estimators used for biasing plug into the
+  composable-sampling interface. Diversity selection (row 2) plugs into seam 3.
+
+Rows 2 (remaining strategies), 3, 5, 9, and 11 follow later. While
 the work is ported, the fork remains the production environment for excited
 states; `production_excited_states` (`c364fa8`) is the source material. Its
 excited-state sources match `feature/unified-sampling-drivers` byte for byte.
@@ -1413,14 +1442,41 @@ sampling (E5) rather than preceding it. Open decisions:
 
 #### Later steps (outline; detail after E5)
 
-- **Batched UDD and gap ALF.**
-  - Composable bias controls in the packed engines (row 1): UDD on the
-    selected state, and LCM gap seeking as a per-replica permanent mode
-    switch.
+- **Composable sampling with batched UDD and gap ALF.**
+  - Start with the bias/control interface in the packed engines (row 1). Each
+    control:
+    - receives physical predictions and returns propagation forces;
+    - keeps replica-local state (for example, the permanent LCM switch);
+    - never changes the unbiased predictions used for screening and
+      uncertainty;
+    - applies in a fixed, documented switching order.
+  - First plugins:
+    - UDD on the selected state;
+    - wells;
+    - LCM gap seeking as a per-replica permanent mode switch.
   - The deferred physical-force screen (`max_force_cutoff`) excludes bias and
     LCM forces.
   - Gap-aware summed acquisition.
-  - Parity against the fork's ALCHEMI behavior.
+  - Gate: parity with the current `MLMD_calculator` UDD/well formulas and with
+    the fork's ALCHEMI LCM behavior, across ASE, TorchSim, and ALCHEMI.
+- **Multi-node training (parallel track).**
+  - Today `train_HIPPYNN_ensemble_task` runs `multiprocessing.Pool` on one
+    node. Fan members out across `alf_ML_executor` blocks that span nodes,
+    via a `join_app` or per-member apps, returning the existing
+    `(completed, training_id)`. `__main__.py` is unchanged.
+  - Use local-ordinal GPU assignment, as for samplers (`tools/gpu.py`); keep
+    per-member `completed` handling and the existing member directory layout.
+  - Gate: a real two-node Darwin training of four members, then promotion and
+    reload.
+  - Data-parallel training of one member (HIPPYNN's experimental Lightning
+    trainer, with a checkpoint-layout change) is a separate decision.
+- **Acquisition selector/retention interface (after E5).**
+  - The selector receives canonicalized candidates and declares what workers
+    must retain.
+  - Top-K is the default.
+  - Gate: identical selections in the existing `tests/test_cohorts.py`
+    width/completion-order replay; online scalar top-K retention closes the
+    candidate-memory follow-up.
 - **Staged campaigns across engines** (row 8): durable cohort/handoff
   persistence, a run-control equivalent, staged configurations, and
   retained-label budgets. The fork's `run_control`, `workflow_io`,

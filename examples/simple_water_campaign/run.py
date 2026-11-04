@@ -222,6 +222,9 @@ def launch(run, operation, deadline, bootstrap=False, seed=None):
         try:
             while time.time() < deadline:
                 if operation == 'coordinator':
+                    fixture_error = run / 'failure-fixture-error.json'
+                    if fixture_error.exists():
+                        raise RuntimeError(read_json(fixture_error)['error'])
                     outcome = completion(run, bootstrap=bootstrap)
                     if outcome is not None:
                         validate_checkpoints(run, outcome)
@@ -404,6 +407,7 @@ def main():
     parser.add_argument('--case')
     parser.add_argument('--import-seed', type=Path, help='Verified bootstrap seed from an accepted water campaign')
     parser.add_argument('--site', type=Path, help='JSON overrides for Darwin executable/resource defaults')
+    parser.add_argument('--failure-fixture', type=Path, help='Immutable recorded builder/trajectory fixture for controlled failure')
     parser.add_argument('--worker', choices=['coordinator', 'preflight', 'prediction', 'partial'], help=argparse.SUPPRESS)
     parser.add_argument('--seed', type=Path, help=argparse.SUPPRESS)
     parser.add_argument('--budget-start', type=float, help='Retain the original budget timestamp for a fresh retry root')
@@ -418,6 +422,13 @@ def main():
         profile = read_json(HERE / 'profile.json')
         if args.campaign != 'core':
             profile.update(read_json(HERE / 'campaigns.json')[args.campaign])
+        if args.failure_fixture:
+            if args.campaign != 'failures':
+                parser.error('--failure-fixture is only for the controlled-failure campaign')
+            profile.update(trajectory_failure_fixture=str(args.failure_fixture.resolve()),
+                           trajectory_failure_fixture_sha256=fingerprint(args.failure_fixture))
+        elif args.campaign == 'failures' and args.case in (None, 'trajectory_failure') and not args.prepare_only:
+            parser.error('The controlled trajectory-failure case requires --failure-fixture')
         cases = matrix(args.campaign)
         if args.case is not None and args.case not in {c.name for c in cases}:
             parser.error('--case does not belong to the selected campaign')

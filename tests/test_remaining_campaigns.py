@@ -1,5 +1,6 @@
 """Acceptance regressions for the remaining real-backend campaign harness."""
 from pathlib import Path
+import copy
 from types import SimpleNamespace
 import sys
 
@@ -225,6 +226,13 @@ def test_fault_wrapper_retains_actual_candidate_before_failure(tmp_path, monkeyp
     for molecule in molecules:
         pool.admit(molecule, 0)
         support.event('cohort_admitted', tmp_path, id=molecule.get_moleculeid(), metadata=molecule.get_metadata())
+    from alframework.samplers.acquisition import top_k
+    pilot = sample_trajectories(copy.deepcopy(molecules), spring_ensemble(), config)
+    chosen = top_k([c for m in pilot for c in m.get_metadata()['acquisition_candidates']], 4)[0]
+    fixture = dict(target=dict(trajectory_id=chosen['trajectory_id'], step=chosen['step'],
+                               frame_id=chosen['frame_id'], reference_cohort_rank=0))
+    import campaign_evidence
+    monkeypatch.setattr(campaign_evidence, 'load_failure_fixture', lambda run: fixture)
     with sampling_audit(molecules, 'trajectory_failure', config):
         result = sample_trajectories(molecules, spring_ensemble(), config)
     failed = [m for m in result if m.get_metadata()['trajectory_outcome'] == 'failed']
@@ -239,33 +247,84 @@ def test_fault_wrapper_retains_actual_candidate_before_failure(tmp_path, monkeyp
         pool.record(molecule)
     assert any(m.get_metadata()['trajectory_id'] == failed[0].get_moleculeid() for m in pool.ready())
     fault = next(r for r in records if r['kind'] == 'fault_injected')
-    assert fault['placement'] == 'after_final_observation'
+    assert fault['placement'] == 'after_recorded_eligible_frame'
     assert fault['frame_id'] in {c['frame_id'] for c in metadata['acquisition_candidates']}
-    assert metadata['step'] == 36
+    assert metadata['step'] == chosen['step']
 
 
-def test_failure_placement_waits_for_full_cohort_and_preserves_losing_candidates(tmp_path):
-    from tests.test_cohorts import candidate, cohort_config, member
-    from alframework.tools.cohorts import CohortPool
-    config = dict(cohort_config(8, 4, 'continue'), maxt=.005)
-    pool = CohortPool(config['acquisition']['selection'])
-    molecules = [member(f't{i}') for i in range(8)]
-    for molecule in molecules:
-        pool.admit(molecule, 0)
-        support.event('cohort_admitted', tmp_path, id=molecule.get_moleculeid(), metadata=molecule.get_metadata())
-    for i in range(8):
-        support.event('candidate_created', tmp_path, candidate=candidate(f't{i}', 1, 100. if i < 4 else 1.))
-    current = molecules[4:]
-    engine = SimpleNamespace(steps=[6]*4)
-    assert failure_target(current, list(range(4)), engine, config, tmp_path) is None
-    for molecule in molecules[:4]:
-        support.event('cohort_terminal', tmp_path, id=molecule.get_moleculeid())
-    # Naturally losing frames are retained in the audit, never boosted or forced in.
-    assert failure_target(current, list(range(4)), engine, config, tmp_path) is None
-    support.event('candidate_created', tmp_path, candidate=candidate('t4', 6, 200.))
-    assert failure_target(current, list(range(4)), SimpleNamespace(steps=[1]*4), config, tmp_path) is None
-    index, frame, rank = failure_target(current, list(range(4)), engine, config, tmp_path)
-    assert (index, frame['frame_id'], rank) == (0, 't4:step-000000006', 0)
+def test_recorded_failure_is_injected_before_a_winner_would_be_rejected():
+    from tests.test_cohorts import candidate, member
+    molecules = [member('t4')]
+    frame = candidate('t4', 6, 200.)
+    fixture = dict(target=dict(trajectory_id='t4', step=6,
+                               frame_id=frame['frame_id'], reference_cohort_rank=0))
+    assert failure_target(molecules, [0], SimpleNamespace(steps=[1]), fixture, {}) is None
+    index, observed, rank = failure_target(molecules, [0], SimpleNamespace(steps=[6]), fixture,
+                                           {frame['frame_id']:frame})
+    assert (index, observed, rank) == (0, frame, 0)
+    with pytest.raises(ValueError, match='without its eligible frame'):
+        failure_target(molecules, [0], SimpleNamespace(steps=[6]), fixture, {})
+
+
+def test_recorded_fixture_rejects_modified_geometry_config_and_model_identity(tmp_path):
+    from campaign_evidence import load_failure_fixture
+    fixture = dict(sampler_config=dict(Escut=20, Fscut=.3, meta_dir='sampling/'),
+                   seed_manifest=dict(ids=['boot'], files_sha256={}))
+    path = tmp_path/'fixture.json'
+    support.atomic_json(path, fixture)
+    support.atomic_json(tmp_path/'run.json', dict(profile=dict(trajectory_failure_fixture=str(path),
+        trajectory_failure_fixture_sha256=support.fingerprint(path))))
+    support.atomic_json(tmp_path/'mlmd_config.json', fixture['sampler_config'])
+    support.atomic_json(tmp_path/'seed.json', fixture['seed_manifest'])
+    assert load_failure_fixture(tmp_path) == fixture
+    support.atomic_json(tmp_path/'mlmd_config.json', dict(Escut=.1, Fscut=.3))
+    with pytest.raises(ValueError, match='configuration differs'):
+        load_failure_fixture(tmp_path)
+    support.atomic_json(tmp_path/'mlmd_config.json', fixture['sampler_config'])
+    support.atomic_json(tmp_path/'seed.json', dict(ids=['different']))
+    with pytest.raises(ValueError, match='identity differs'):
+        load_failure_fixture(tmp_path)
+    path.write_text('{}')
+    with pytest.raises(ValueError, match='fixture changed'):
+        load_failure_fixture(tmp_path)
+
+
+def test_recorded_builder_outputs_preserve_ids_order_cells_and_geometry(tmp_path, monkeypatch):
+    from tests.test_cohorts import WATER
+    case = support.matrix('failures')[-1]
+    p = profile('failures')
+    template = support.prepare_run(tmp_path/'template', case, p, support.darwin_site())
+    ids = [f'mol-0000-{i:010d}' for i in range(4)]
+    frames = {name:dict(numbers=WATER.numbers, positions=WATER.positions,
+                       cell=np.eye(3)*8, pbc=[True]*3) for name in ids}
+    fixture = tmp_path/'fixture.json'
+    manifest = dict(ids=['boot'], files_sha256={})
+    support.atomic_json(fixture, dict(structures=frames, source_run='recorded-real-run',
+        seed_manifest=manifest, sampler_config=support.read_json(template/'mlmd_config.json')))
+    p.update(trajectory_failure_fixture=str(fixture), trajectory_failure_fixture_sha256=support.fingerprint(fixture))
+    run = support.prepare_run(tmp_path/'run', case, p, support.darwin_site())
+    support.atomic_json(run/'seed.json', manifest)
+    monkeypatch.setenv('ALF_CAMPAIGN_RUN', str(run))
+    monkeypatch.setattr(tasks, 'identify', lambda: None)
+    result = tasks.unwrap(tasks.build_water.func(ids, {}, '', [], [], []))
+    assert [m.get_moleculeid() for m in result] == ids
+    for molecule in result:
+        np.testing.assert_array_equal(molecule.get_atoms().positions, WATER.positions)
+        np.testing.assert_array_equal(molecule.get_atoms().cell, np.eye(3)*8)
+        assert molecule.get_atoms().pbc.all()
+    assert any(e['kind']=='builder_fixture_replayed' for e in support.events(run))
+
+
+def test_trajectory_acceptance_requires_the_planned_frame_in_training(tmp_path):
+    _, ids = cohort_case(tmp_path)
+    records = support.events(tmp_path)
+    frame = next(r for r in records if r['kind']=='cohort_selected')['frames'][0]
+    fault = dict(kind='fault_injected', fault='trajectory_failure',
+                 id=frame['metadata']['trajectory_id'], frame_id=frame['metadata']['frame_id'])
+    case = support.matrix('failures')[-1]
+    assert campaign_accepted(case, records+[fault], set(ids), set(ids), set(ids))
+    fault['frame_id'] = 'another frame from the same trajectory'
+    assert not campaign_accepted(case, records+[fault], set(ids), set(ids), set(ids))
 
 
 def test_real_sampler_coordinator_pins_admission_and_task_generation(tmp_path):
@@ -527,3 +586,28 @@ def test_selected_retry_does_not_rerun_accepted_campaigns_and_defers_mi350(tmp_p
     report = support.read_json(tmp_path/'result.json')
     assert report['selected_campaigns_passed'] and not report['runnable_campaigns_passed']
     assert report['dependencies']['mi350']['status'] == 'deferred'
+
+
+def test_independent_campaign_continues_after_failure_with_verified_cleanup(tmp_path, monkeypatch):
+    import remaining
+    calls = []
+    class Process:
+        def __init__(self, command, **kwargs):
+            campaign = command[command.index('--campaign')+1]
+            calls.append(command)
+            directory = tmp_path/campaign
+            support.event('job_submitted', directory/'bootstrap', job_id=str(100+len(calls)))
+            support.atomic_json(directory/'bootstrap/cleanup.json', dict(verified=True))
+            support.atomic_json(directory/'result.json', dict(status='incomplete' if len(calls)==1 else 'passed'))
+        def wait(self):
+            return 1 if len(calls)==1 else 0
+    monkeypatch.setattr(remaining.subprocess, 'Popen', Process)
+    monkeypatch.setattr(remaining, 'source_identity', lambda: {})
+    remaining.run_remaining(tmp_path, tmp_path/'seed', campaigns=['failures','pyseqm'],
+                            failure_fixture=tmp_path/'fixture.json')
+    assert len(calls)==2
+    assert '--failure-fixture' in calls[0] and '--failure-fixture' not in calls[1]
+    result = support.read_json(tmp_path/'result.json')
+    assert result['campaigns']['failures']['status']=='incomplete'
+    assert result['campaigns']['pyseqm']['status']=='passed'
+    assert not result['selected_campaigns_passed']

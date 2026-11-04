@@ -81,8 +81,27 @@ def build_water(moleculeids, builder_config, molecule_library_dir, cell_range, s
     from alframework.builders.builders import simple_multi_condensed_phase_builder_task
     identify()
     event('builder_start', ids=moleculeids, width=len(moleculeids))
-    result = unwrap(simple_multi_condensed_phase_builder_task.func(
-        moleculeids, builder_config, molecule_library_dir, cell_range, solute_molecule_options, Rrange))
+    spec = read_json(Path(os.environ['ALF_CAMPAIGN_RUN']) / 'run.json')
+    fixture = None
+    if (spec.get('case') or {}).get('fault') == 'trajectory_failure':
+        from campaign_evidence import load_failure_fixture
+        fixture = load_failure_fixture(os.environ['ALF_CAMPAIGN_RUN'])
+    if fixture and any(name in fixture['structures'] for name in moleculeids):
+        from ase import Atoms
+        from alframework.tools.molecules_class import MoleculesObject
+        if not all(name in fixture['structures'] for name in moleculeids):
+            raise ValueError('Recorded builder batch must preserve all requested IDs')
+        result = []
+        for name in moleculeids:
+            frame = fixture['structures'][name]
+            atoms = Atoms(numbers=frame['numbers'], positions=frame['positions'],
+                          cell=frame['cell'], pbc=frame['pbc'])
+            result.append(MoleculesObject(atoms, name))
+        event('builder_fixture_replayed', ids=moleculeids, source_run=fixture['source_run'],
+              fixture_sha256=spec['profile']['trajectory_failure_fixture_sha256'])
+    else:
+        result = unwrap(simple_multi_condensed_phase_builder_task.func(
+            moleculeids, builder_config, molecule_library_dir, cell_range, solute_molecule_options, Rrange))
     assert [m.get_moleculeid() for m in result] == list(moleculeids)
     assert all(m.get_atoms().pbc.all() and m.get_atoms().cell.volume > 0 for m in result)
     event('builder_end', ids=moleculeids, width=len(result), structures=[geometry(m) for m in result])

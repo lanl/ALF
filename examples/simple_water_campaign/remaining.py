@@ -14,7 +14,16 @@ from campaign_support import atomic_json, events, read_json, source_identity
 CAMPAIGNS = ('cohort', 'failures', 'pyseqm', 'mi250')
 
 
-def run_remaining(root, seed, budget_start=None, campaigns=None):
+def require_verified_cleanup(directory):
+    """Failed scientific checks may continue; unverified owned jobs may not."""
+    directory = Path(directory)
+    for run in [directory/'bootstrap', *sorted((directory/'cases').glob('*'))]:
+        jobs = [r for r in events(run) if r['kind'] == 'job_submitted']
+        if jobs and (not (run/'cleanup.json').exists() or not read_json(run/'cleanup.json').get('verified')):
+            raise RuntimeError(f'Unverified cleanup: {run}')
+
+
+def run_remaining(root, seed, budget_start=None, campaigns=None, failure_fixture=None):
     campaigns = tuple(CAMPAIGNS if campaigns is None else campaigns)
     if not campaigns or len(set(campaigns)) != len(campaigns) or not set(campaigns) <= set(CAMPAIGNS):
         raise ValueError('Select distinct supported campaigns')
@@ -39,6 +48,8 @@ def run_remaining(root, seed, budget_start=None, campaigns=None):
                 command += ['--import-seed', str(Path(seed).resolve())]
             if campaign == 'cohort' and budget_start is not None:
                 command += ['--budget-start', str(budget_start)]
+            if campaign == 'failures' and failure_fixture is not None:
+                command += ['--failure-fixture', str(Path(failure_fixture).resolve())]
             print(f'Starting {campaign}.', flush=True)
             with (root / f'{campaign}.log').open('w') as log:
                 process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
@@ -55,12 +66,11 @@ def run_remaining(root, seed, budget_start=None, campaigns=None):
                               error=f'Campaign terminated without a final report; see {campaign}.log')
             outcomes[campaign] = result
             # No later stage may allocate resources after an unverified cleanup.
-            for run in [directory / 'bootstrap', *sorted((directory / 'cases').glob('*'))]:
-                jobs = [r for r in events(run) if r['kind'] == 'job_submitted']
-                if jobs and (not (run / 'cleanup.json').exists() or not read_json(run / 'cleanup.json')['verified']):
-                    atomic_json(root / 'result.json', dict(status='incomplete', campaigns=outcomes,
-                                error=f'Unverified cleanup: {run}'))
-                    raise RuntimeError(f'Unverified cleanup: {run}')
+            try:
+                require_verified_cleanup(directory)
+            except RuntimeError as exc:
+                atomic_json(root / 'result.json', dict(status='incomplete', campaigns=outcomes, error=str(exc)))
+                raise
             print(f'{campaign}: {result["status"]}.', flush=True)
         dependencies = dict(
             trained_cell_checkpoint=dict(status='open', reason='No qualified trained cell-input checkpoint supplied; existing periodic mechanics fixture is untrained'),
@@ -80,5 +90,6 @@ if __name__ == '__main__':
     parser.add_argument('--import-seed', type=Path, required=True)
     parser.add_argument('--budget-start', type=float, help='Preserve the original cohort budget when repairing an early attempt')
     parser.add_argument('--campaigns', nargs='+', choices=CAMPAIGNS, help='Run selected campaigns in the supplied order')
+    parser.add_argument('--failure-fixture', type=Path, help='Recorded fixture for the controlled trajectory failure')
     args = parser.parse_args()
-    run_remaining(args.run_root, args.import_seed, args.budget_start, args.campaigns)
+    run_remaining(args.run_root, args.import_seed, args.budget_start, args.campaigns, args.failure_fixture)

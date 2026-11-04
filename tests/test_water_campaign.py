@@ -371,3 +371,14 @@ def test_retry_preserves_original_bootstrap_and_overall_budget(tmp_path, monkeyp
     assert support.read_json(tmp_path / 'execution.json')['overall_deadline'] == 400.
     assert all(deadline <= 400. for _, deadline in calls)
     assert support.read_json(tmp_path / 'result.json')['complete_matrix'] is False
+
+
+def test_fixture_mismatch_fails_promptly_and_still_cleans_up(tmp_path, monkeypatch, profile):
+    run = support.prepare_run(tmp_path/'run', None, profile, support.darwin_site())
+    support.atomic_json(run/'failure-fixture-error.json', dict(error='recorded target was not eligible'))
+    stopped = []
+    monkeypatch.setattr(runner.subprocess, 'Popen', lambda *a, **k: SimpleNamespace(pid=123))
+    monkeypatch.setattr(runner, 'stop_process', lambda process, path: stopped.append(path))
+    with pytest.raises(RuntimeError, match='recorded target was not eligible'):
+        runner.launch(run, 'coordinator', runner.time.time()+60)
+    assert stopped == [run]

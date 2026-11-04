@@ -2,7 +2,7 @@
 from contextlib import contextmanager
 from pathlib import Path
 import copy
-import math
+import hashlib
 import os
 import resource
 
@@ -104,38 +104,86 @@ def install_cohort_audit(run):
     CohortPool.admit, CohortPool.record, CohortPool.ready = admit, record, ready
 
 
-def failure_target(molecules, active, engine, sampler_config, run):
-    """Choose a naturally winning frame before the final integration step.
+def load_failure_fixture(run):
+    """Read immutable real builder outputs and their observed winning frame."""
+    run = Path(run)
+    spec = read_json(run / 'run.json')
+    profile = spec['profile']
+    path = profile.get('trajectory_failure_fixture')
+    if path is None:
+        raise ValueError('Trajectory-failure campaign requires a recorded failure fixture')
+    if fingerprint(path) != profile['trajectory_failure_fixture_sha256']:
+        raise ValueError('Recorded trajectory-failure fixture changed')
+    fixture = read_json(path)
+    actual = read_json(run / 'mlmd_config.json')
+    for key, value in fixture['sampler_config'].items():
+        if key != 'meta_dir' and actual.get(key) != value:
+            raise ValueError(f'Failure fixture sampler configuration differs: {key}')
+    if read_json(run / 'seed.json') != fixture['seed_manifest']:
+        raise ValueError('Failure fixture initial dataset/model identity differs')
+    return fixture
 
-    Earlier members must already have returned. At the final check there are
-    no future observations left to change top-K. Only fault placement changes;
-    scores, candidates, selection, and scientific settings are untouched.
-    """
-    from alframework.samplers.acquisition import acquisition_settings, top_k
-    checks = math.ceil(1000 * sampler_config['maxt'] /
-                       (sampler_config['dt'] * sampler_config['Ncheck']))
-    last_step = 1 + (checks - 1) * sampler_config['Ncheck']
-    if not active or any(engine.steps[i] < last_step for i in active):
-        return None
-    metadata = molecules[0].get_metadata()
-    cohort = metadata['cohort_id']
-    if any(m.get_metadata()['cohort_id'] != cohort for m in molecules):
-        return None
-    records = events(run)
+
+def record_failure_fixture(recorded_run, destination, seed):
+    """Freeze genuine builder outputs and a natural top-K observation, not labels."""
+    from ase import Atoms
+    from alframework.samplers.acquisition import top_k
+    from alframework.samplers.geometry import minimum_distance
+    recorded_run, destination, seed = map(Path, (recorded_run, destination, seed))
+    if destination.exists():
+        raise ValueError('Recorded failure fixture already exists')
+    records = events(recorded_run)
+    selection = next(r for r in records if r['kind'] == 'cohort_selected')
+    cohort = selection['summary']['cohort_id']
     parents = {r['id'] for r in records if r['kind'] == 'cohort_admitted'
                and r['metadata']['cohort_id'] == cohort}
-    returned = {r['id'] for r in records if r['kind'] == 'cohort_terminal'}
-    current = {m.get_moleculeid() for m in molecules}
-    selection = acquisition_settings(sampler_config)['selection']
-    if len(parents) != selection['cohort_size'] or not parents <= returned | current:
-        return None
     candidates = [r['candidate'] for r in records if r['kind'] == 'candidate_created'
                   and r['candidate']['trajectory_id'] in parents]
-    indices = {molecules[i].get_moleculeid(): i for i in active}
-    for rank, candidate in enumerate(top_k(candidates, selection['k'])):
-        index = indices.get(candidate['trajectory_id'])
-        if index is not None:
-            return index, candidate, rank
+    chosen = top_k(candidates, 4)
+    if [c['frame_id'] for c in chosen] != selection['summary']['selected']:
+        raise ValueError('Recorded selection differs from natural unpruned top-K')
+    structures = {f['id']: f for r in records if r['kind'] == 'builder_end'
+                  for f in r['structures'] if f['id'] in parents}
+    if len(parents) != 8 or set(structures) != parents:
+        raise ValueError('Failure fixture needs all eight original cohort inputs')
+    for frame in structures.values():
+        atoms = Atoms(numbers=frame['numbers'], positions=frame['positions'], cell=frame['cell'], pbc=frame['pbc'])
+        if not atoms.pbc.all() or minimum_distance(atoms) < .7:
+            raise ValueError('Recorded builder geometry is invalid')
+    manifest = read_json(seed / 'seed.json')
+    if read_json(recorded_run / 'seed.json') != manifest:
+        raise ValueError('Recorded trajectory and imported seed differ')
+    for name, expected in manifest['files_sha256'].items():
+        if fingerprint(seed / name) != expected:
+            raise ValueError('Initial dataset/model changed')
+    digest = hashlib.sha256()
+    for path in sorted((recorded_run / 'events').glob('*.json')):
+        digest.update(path.name.encode())
+        digest.update(path.read_bytes())
+    winner = chosen[0]
+    fixture = dict(source_run=str(recorded_run.resolve()), source_events_sha256=digest.hexdigest(),
+        sampler_config=read_json(recorded_run / 'mlmd_config.json'), seed_manifest=manifest,
+        structures=structures, target=dict(trajectory_id=winner['trajectory_id'], step=winner['step'],
+        frame_id=winner['frame_id'], reference_cohort_rank=0, reference_score=winner['ranking_score']))
+    atomic_json(destination, fixture)
+    return fixture
+
+
+def failure_target(molecules, active, engine, fixture, captured):
+    """Fail immediately after a naturally eligible, previously observed frame.
+
+    Geometry, model, random streams, and scientific settings are replayed;
+    eligibility, scores, cohort selection, and training lineage remain real.
+    """
+    target = fixture['target']
+    for index in active:
+        if molecules[index].get_moleculeid() != target['trajectory_id']:
+            continue
+        step = int(engine.steps[index])
+        if step >= target['step']:
+            if step != target['step'] or target['frame_id'] not in captured:
+                raise ValueError('Recorded failure point was reached without its eligible frame')
+            return index, captured[target['frame_id']], target['reference_cohort_rank']
     return None
 
 
@@ -146,12 +194,15 @@ def sampling_audit(molecules, fault='', sampler_config=None):
     original_candidate, original_engine = module._candidate, module.make_engine
     if fault == 'trajectory_failure' and sampler_config is None:
         raise ValueError('Trajectory-failure audit requires the sampler configuration')
+    fixture = load_failure_fixture(os.environ['ALF_CAMPAIGN_RUN']) if fault == 'trajectory_failure' else None
+    captured = {}
     arrays_bytes = 0
     original_count = 0
 
     def candidate(*args, **kwargs):
         nonlocal arrays_bytes, original_count
         result = original_candidate(*args, **kwargs)
+        captured[result['frame_id']] = result
         arrays_bytes += sum(result[key].nbytes for key in ('numbers', 'positions', 'cell', 'pbc'))
         original_count += 1
         event('candidate_created', candidate=result, generated_count=original_count,
@@ -171,7 +222,7 @@ def sampling_audit(molecules, fault='', sampler_config=None):
                 run = Path(os.environ['ALF_CAMPAIGN_RUN'])
                 marker = run / 'trajectory-failure.claim'
                 target = None if marker.exists() else failure_target(
-                    molecules, indices, value, sampler_config, run)
+                    molecules, indices, value, fixture, captured)
                 if target is not None:
                     index, frame, rank = target
                     try:
@@ -185,7 +236,7 @@ def sampling_audit(molecules, fault='', sampler_config=None):
                         injected = True
                         event('fault_injected', id=molecules[index].get_moleculeid(), fault=fault,
                               frame_id=frame['frame_id'], ranking_score=frame['ranking_score'],
-                              cohort_rank=rank, placement='after_final_observation')
+                              reference_cohort_rank=rank, placement='after_recorded_eligible_frame')
             if indices:
                 failures.update(step(indices, steps))
             return failures
@@ -198,6 +249,12 @@ def sampling_audit(molecules, fault='', sampler_config=None):
         yield
     finally:
         module._candidate, module.make_engine = original_candidate, original_engine
+        if fixture is not None and fixture['target']['trajectory_id'] in {
+                m.get_moleculeid() for m in molecules}:
+            run = Path(os.environ['ALF_CAMPAIGN_RUN'])
+            if not (run / 'trajectory-failure.claim').exists():
+                atomic_json(run / 'failure-fixture-error.json', dict(
+                    error='Recorded target task returned without injecting its controlled failure'))
 
 
 def replay_cohorts(records, sampler_config=None):
@@ -291,7 +348,9 @@ def campaign_accepted(case, records, good, stored, inputs):
             if not any(set(r['ids']) & good for r in packs if r['name'] == 'label_sequentially'):
                 return False
         elif not any(r['kind'] == 'cohort_selected' and any(
-                f['id'] in good and f['metadata']['trajectory_id'] == failed for f in r['frames']) for r in records):
+                f['id'] in good and f['metadata']['trajectory_id'] == failed and
+                (faults[0].get('frame_id') is None or f['metadata']['frame_id'] == faults[0]['frame_id'])
+                for f in r['frames']) for r in records):
             return False
     if case.campaign == 'pyseqm' and case.qm_width == 4:
         return any(r['kind'] == 'native_solve' and r['width'] == 4 and r['success'] for r in records)

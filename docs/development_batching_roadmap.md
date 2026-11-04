@@ -1,8 +1,8 @@
 # Living roadmap for integration into ALF development
 
-Last updated: November 3, 2026 (Increments 0–6 and the Increment 7 prerequisites merged at `24028da`;
-core water, cohort/summed, and MI250 matrices passed; the PySEQM and
-controlled-failure retry is running from `e665690`. MI350 is deferred outside
+Last updated: November 4, 2026 (Increments 0–6 and the Increment 7 prerequisites merged at `24028da`;
+core water, cohort/summed, MI250, and PySEQM matrices passed; two controlled-failure
+cases passed, while the trajectory-failure case remains incomplete. MI350 is deferred outside
 current acceptance. Post-release order decided: excited-state ALF, then
 composable sampling with batched UDD/gap ALF, then staged campaigns, with
 multi-node training and teacher labeling as parallel tracks; see **Decided
@@ -545,6 +545,41 @@ training checkpoints record the old module path, so restarting training from
 those checkpoints under the tip would fail to resolve the class. Before pushing,
 either retrain and reload a member at the tip, or keep a re-export at the old
 path.
+
+#### Controlled-failure rerun and investigation (2026-11-04)
+
+Harness-only repair `c7485d9` accounts for the deliberately lost label before
+retraining in the label-failure cases, and retries slow Slurm cancellation/query
+commands within its cleanup window. The frozen rerun is outside Git at
+`/vast/home/pjlohr/ALF_LANL/validation/inc7_failures_rerun_20261104/run-001/`.
+Both `label_exception` and `label_unconverged` passed, each with 11 new sampled
+IDs in a trained four-member ensemble. Bootstrap and all three case cleanup
+reports verified termination. Earlier Darwin/cleanup failures remain recorded;
+the prior PySEQM single/native cases both passed with eight new sampled labels
+and real four-member retraining.
+
+`trajectory_failure` reached its deadline and remains incomplete. Its fixed
+target failed immediately after the first eligible frame. That frame was
+correctly retained in the failed trajectory's terminal report, but ranked
+254th of 257 unpruned candidates in its cohort (score 3.8868; fourth-place
+score 14.3623). It correctly lost global top-K selection. Model 1 trained on
+eight new sampled inputs and was promoted at 29.23 minutes; all four members
+completed actual epochs. Model 2 trained on 16 new sampled inputs but was not
+promoted before interruption. Neither training input contains a frame from
+the failed trajectory, so the required pre-failure-frame lineage is missing.
+Increasing the time budget cannot change this closed cohort's selection.
+
+Offline replay verified all four completed cohorts against unpruned candidates,
+configured eligibility/ranking, widths 1/2/4/8/32/50, and reordered completion.
+The observed behavior does not demonstrate a production sampler/selector bug.
+The harness timing/target needs a separate focused revision before another
+attempt: allow naturally ranked pre-failure candidates to accumulate, test
+both winning and losing retained candidates, and retain the actual
+selection/label/storage/training requirement. Do not alter scientific cutoffs,
+boost scores, force selection, or count this attempt as passed. The diagnostic
+and fingerprints are in the rerun artifact directory's
+`investigation/trajectory_failure.{json,md}`. No new jobs were launched by the
+investigation.
 
 #### Increment 7 close-out
 

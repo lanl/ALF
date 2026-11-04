@@ -160,7 +160,7 @@ def sample_many(molecule_objects, sampler_config, model_path, current_model_id, 
         from alframework.tools.gpu import sampling_device
         device = sampling_device(sampler_config, gpus_per_node)
         start_gpu_memory_measurement(device)
-    with sampling_audit(molecule_objects, (spec.get('case') or {}).get('fault', '')):
+    with sampling_audit(molecule_objects, (spec.get('case') or {}).get('fault', ''), sampler_config):
         result = unwrap(mlmd_trajectories_task.func(molecule_objects, sampler_config, model_path,
                                                    current_model_id, gpus_per_node))
     if measured:

@@ -2,9 +2,11 @@
 from contextlib import contextmanager
 from pathlib import Path
 import copy
+import math
+import os
 import resource
 
-from campaign_support import atomic_json, event, fingerprint, h5_inventory, read_json
+from campaign_support import atomic_json, event, events, fingerprint, h5_inventory, read_json
 
 
 def memory():
@@ -102,20 +104,54 @@ def install_cohort_audit(run):
     CohortPool.admit, CohortPool.record, CohortPool.ready = admit, record, ready
 
 
+def failure_target(molecules, active, engine, sampler_config, run):
+    """Choose a naturally winning frame before the final integration step.
+
+    Earlier members must already have returned. At the final check there are
+    no future observations left to change top-K. Only fault placement changes;
+    scores, candidates, selection, and scientific settings are untouched.
+    """
+    from alframework.samplers.acquisition import acquisition_settings, top_k
+    checks = math.ceil(1000 * sampler_config['maxt'] /
+                       (sampler_config['dt'] * sampler_config['Ncheck']))
+    last_step = 1 + (checks - 1) * sampler_config['Ncheck']
+    if not active or any(engine.steps[i] < last_step for i in active):
+        return None
+    metadata = molecules[0].get_metadata()
+    cohort = metadata['cohort_id']
+    if any(m.get_metadata()['cohort_id'] != cohort for m in molecules):
+        return None
+    records = events(run)
+    parents = {r['id'] for r in records if r['kind'] == 'cohort_admitted'
+               and r['metadata']['cohort_id'] == cohort}
+    returned = {r['id'] for r in records if r['kind'] == 'cohort_terminal'}
+    current = {m.get_moleculeid() for m in molecules}
+    selection = acquisition_settings(sampler_config)['selection']
+    if len(parents) != selection['cohort_size'] or not parents <= returned | current:
+        return None
+    candidates = [r['candidate'] for r in records if r['kind'] == 'candidate_created'
+                  and r['candidate']['trajectory_id'] in parents]
+    indices = {molecules[i].get_moleculeid(): i for i in active}
+    for rank, candidate in enumerate(top_k(candidates, selection['k'])):
+        index = indices.get(candidate['trajectory_id'])
+        if index is not None:
+            return index, candidate, rank
+    return None
+
+
 @contextmanager
-def sampling_audit(molecules, fault=''):
+def sampling_audit(molecules, fault='', sampler_config=None):
     """Capture candidates before pruning; optionally fail one stepped trajectory."""
     from alframework.samplers import batched_mlmd as module
     original_candidate, original_engine = module._candidate, module.make_engine
-    target = 'mol-0000-0000000000'
-    eligible = set()
+    if fault == 'trajectory_failure' and sampler_config is None:
+        raise ValueError('Trajectory-failure audit requires the sampler configuration')
     arrays_bytes = 0
     original_count = 0
 
     def candidate(*args, **kwargs):
         nonlocal arrays_bytes, original_count
         result = original_candidate(*args, **kwargs)
-        eligible.add(result['trajectory_id'])
         arrays_bytes += sum(result[key].nbytes for key in ('numbers', 'positions', 'cell', 'pbc'))
         original_count += 1
         event('candidate_created', candidate=result, generated_count=original_count,
@@ -131,14 +167,25 @@ def sampling_audit(molecules, fault=''):
             nonlocal injected
             indices = list(indices)
             failures = {}
-            if fault == 'trajectory_failure' and target in eligible and not injected:
-                for index in indices:
-                    if molecules[index].get_moleculeid() == target:
+            if fault == 'trajectory_failure' and not injected:
+                run = Path(os.environ['ALF_CAMPAIGN_RUN'])
+                marker = run / 'trajectory-failure.claim'
+                target = None if marker.exists() else failure_target(
+                    molecules, indices, value, sampler_config, run)
+                if target is not None:
+                    index, frame, rank = target
+                    try:
+                        descriptor = os.open(marker, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+                    except FileExistsError:
+                        pass
+                    else:
+                        os.close(descriptor)
                         failures[index] = RuntimeError('controlled campaign trajectory failure')
                         indices.remove(index)
                         injected = True
-                        event('fault_injected', id=target, fault=fault)
-                        break
+                        event('fault_injected', id=molecules[index].get_moleculeid(), fault=fault,
+                              frame_id=frame['frame_id'], ranking_score=frame['ranking_score'],
+                              cohort_rank=rank, placement='after_final_observation')
             if indices:
                 failures.update(step(indices, steps))
             return failures

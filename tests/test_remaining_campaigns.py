@@ -9,7 +9,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'examples/simple_water_campaign'))
 import campaign_support as support
 import campaign_tasks as tasks
-from campaign_evidence import campaign_accepted, replay_cohorts, sampling_audit
+from campaign_evidence import campaign_accepted, failure_target, replay_cohorts, sampling_audit
 from tests.test_water_campaign import members, write_h5
 
 
@@ -216,17 +216,56 @@ def test_fault_wrapper_retains_actual_candidate_before_failure(tmp_path, monkeyp
     from tests.test_cohorts import WATER, cohort_config
     from tests.helpers.fakes import spring_ensemble
     from alframework.samplers.batched_mlmd import sample_trajectories
+    from alframework.tools.cohorts import CohortPool
     from alframework.tools.molecules_class import MoleculesObject
     monkeypatch.setenv('ALF_CAMPAIGN_RUN', str(tmp_path))
-    molecules = [MoleculesObject(WATER.copy(), 'mol-0000-0000000000')]
-    with sampling_audit(molecules, 'trajectory_failure'):
-        result = sample_trajectories(molecules, spring_ensemble(), cohort_config(8, 4, 'continue'))
-    metadata = result[0].get_metadata()
+    config = dict(cohort_config(4, 4, 'continue'), maxt=.02)
+    pool = CohortPool(config['acquisition']['selection'])
+    molecules = [MoleculesObject(WATER.copy(), f'mol-0000-{i:010d}') for i in range(4)]
+    for molecule in molecules:
+        pool.admit(molecule, 0)
+        support.event('cohort_admitted', tmp_path, id=molecule.get_moleculeid(), metadata=molecule.get_metadata())
+    with sampling_audit(molecules, 'trajectory_failure', config):
+        result = sample_trajectories(molecules, spring_ensemble(), config)
+    failed = [m for m in result if m.get_metadata()['trajectory_outcome'] == 'failed']
+    assert len(failed) == 1
+    metadata = failed[0].get_metadata()
     assert metadata['trajectory_outcome'] == 'failed'
     assert metadata['acquisition_candidates']
     records = support.events(tmp_path)
     assert sum(r['kind'] == 'fault_injected' for r in records) == 1
     assert any(r['kind'] == 'candidate_created' and r['generated_geometry_bytes'] > 0 for r in records)
+    for molecule in result:
+        pool.record(molecule)
+    assert any(m.get_metadata()['trajectory_id'] == failed[0].get_moleculeid() for m in pool.ready())
+    fault = next(r for r in records if r['kind'] == 'fault_injected')
+    assert fault['placement'] == 'after_final_observation'
+    assert fault['frame_id'] in {c['frame_id'] for c in metadata['acquisition_candidates']}
+    assert metadata['step'] == 36
+
+
+def test_failure_placement_waits_for_full_cohort_and_preserves_losing_candidates(tmp_path):
+    from tests.test_cohorts import candidate, cohort_config, member
+    from alframework.tools.cohorts import CohortPool
+    config = dict(cohort_config(8, 4, 'continue'), maxt=.005)
+    pool = CohortPool(config['acquisition']['selection'])
+    molecules = [member(f't{i}') for i in range(8)]
+    for molecule in molecules:
+        pool.admit(molecule, 0)
+        support.event('cohort_admitted', tmp_path, id=molecule.get_moleculeid(), metadata=molecule.get_metadata())
+    for i in range(8):
+        support.event('candidate_created', tmp_path, candidate=candidate(f't{i}', 1, 100. if i < 4 else 1.))
+    current = molecules[4:]
+    engine = SimpleNamespace(steps=[6]*4)
+    assert failure_target(current, list(range(4)), engine, config, tmp_path) is None
+    for molecule in molecules[:4]:
+        support.event('cohort_terminal', tmp_path, id=molecule.get_moleculeid())
+    # Naturally losing frames are retained in the audit, never boosted or forced in.
+    assert failure_target(current, list(range(4)), engine, config, tmp_path) is None
+    support.event('candidate_created', tmp_path, candidate=candidate('t4', 6, 200.))
+    assert failure_target(current, list(range(4)), SimpleNamespace(steps=[1]*4), config, tmp_path) is None
+    index, frame, rank = failure_target(current, list(range(4)), engine, config, tmp_path)
+    assert (index, frame['frame_id'], rank) == (0, 't4:step-000000006', 0)
 
 
 def test_real_sampler_coordinator_pins_admission_and_task_generation(tmp_path):

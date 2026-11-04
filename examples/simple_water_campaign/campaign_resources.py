@@ -44,6 +44,11 @@ def make_config(run):
             'export ALF_CAMPAIGN_RUN=' + shlex.quote(str(run)),
             'export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 PYTHONDONTWRITEBYTECODE=1 HIPPYNN_USE_CUSTOM_KERNELS=False',
         ]
+        for variable, key in (('CXX', 'cxx'), ('CC', 'cc')):
+            if site.get(key):
+                initialization.append('export ' + variable + '=' + shlex.quote(site[key]))
+        if not cpu and not amd and site.get('cuda_module'):
+            initialization.append('module load ' + shlex.quote(site['cuda_module']))
         if campaign == 'pyseqm':
             initialization.append('export PYTHONPATH=' + shlex.quote(site['pyseqm_source']) + ':"$PYTHONPATH"')
         if amd:

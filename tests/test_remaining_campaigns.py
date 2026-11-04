@@ -348,7 +348,9 @@ def test_resource_profiles_serialize_native_qm_and_keep_training_on_nvidia(tmp_p
     import parsl.config
     import parsl.executors
     import parsl.providers
-    run = support.prepare_run(tmp_path, support.matrix(campaign)[0], profile(campaign), support.darwin_site())
+    site = dict(support.darwin_site(), cxx='/qualified/bin/g++', cc='/qualified/bin/gcc',
+                cuda_module='cuda/13.2.1')
+    run = support.prepare_run(tmp_path, support.matrix(campaign)[0], profile(campaign), site)
     monkeypatch.setenv('ALF_CAMPAIGN_RUN', str(run))
     class Provider:
         def __init__(self, **kwargs):
@@ -363,6 +365,8 @@ def test_resource_profiles_serialize_native_qm_and_keep_training_on_nvidia(tmp_p
     executors = {e['label']: e for e in module.config['executors']}
     sampler = executors['alf_sampler_executor']
     training = executors['alf_ML_executor']
+    assert 'export CXX=/qualified/bin/g++' in training['provider'].kwargs['worker_init']
+    assert 'module load cuda/13.2.1' in training['provider'].kwargs['worker_init']
     assert training['provider'].kwargs['partition'] == support.darwin_site()['gpu_partition']
     if campaign == 'pyseqm':
         assert set(executors) == {'alf_ML_executor', 'alf_sampler_executor'}
@@ -370,6 +374,7 @@ def test_resource_profiles_serialize_native_qm_and_keep_training_on_nvidia(tmp_p
         assert tasks.label_molecules.executors == ['alf_sampler_executor']
         assert support.darwin_site()['pyseqm_source'] in sampler['provider'].kwargs['worker_init']
     else:
+        assert 'module load cuda/13.2.1' not in sampler['provider'].kwargs['worker_init']
         assert sampler['provider'].kwargs['partition'] == support.darwin_site()['rocm_partition']
         assert sampler['interchange_launch_cmd'][0] == support.darwin_site()['rocm_python']
         assert support.darwin_site()['rocm_module'] in sampler['provider'].kwargs['worker_init']

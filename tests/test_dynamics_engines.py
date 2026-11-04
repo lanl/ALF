@@ -35,7 +35,8 @@ def engine_name(request):
     else:
         from importlib.metadata import PackageNotFoundError, version
         try:
-            qualified = version('nvalchemi-toolkit') == '0.2.0'
+            from alframework.samplers.alchemi_engine import SUPPORTED_VERSIONS
+            qualified = version('nvalchemi-toolkit') in SUPPORTED_VERSIONS
         except PackageNotFoundError:
             qualified = False
         if not qualified:

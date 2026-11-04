@@ -1,4 +1,4 @@
-"""ALCHEMI 0.2 deterministic updates with ALF's per-trajectory BAOAB noise.
+"""ALCHEMI deterministic updates with ALF's per-trajectory BAOAB noise.
 
 The native velocity-finalization kernel supplies each half kick. Its unit-mass
 form updates momentum directly (p += dt * F / 2), preserving ASE momenta and
@@ -10,17 +10,19 @@ from importlib.metadata import PackageNotFoundError, version
 
 from alframework.samplers.packed_engine import PackedMLMDEngine
 
+SUPPORTED_VERSIONS = ('0.2.0', '0.3.0')
+
 
 def require_alchemi():
     """Import only the qualified toolkit version, when this engine is selected."""
     try:
-        if version('nvalchemi-toolkit') != '0.2.0':
-            raise ImportError('The ALCHEMI engine requires nvalchemi-toolkit==0.2.0.')
+        if version('nvalchemi-toolkit') not in SUPPORTED_VERSIONS:
+            raise ImportError('The ALCHEMI engine requires nvalchemi-toolkit 0.2.0 or 0.3.0.')
         import torch
         from nvalchemi.dynamics._ops.velocity_verlet import vv_velocity_finalize
     except (ImportError, PackageNotFoundError) as exc:
         raise ImportError("driver.engine 'alchemi' requires ALF's 'alchemi' extra "
-                          "(nvalchemi-toolkit==0.2.0, Python 3.11+) in the sampler worker.") from exc
+                          "(nvalchemi-toolkit 0.2.0 or 0.3.0, Python 3.11+) in the sampler worker.") from exc
     return torch, vv_velocity_finalize
 
 

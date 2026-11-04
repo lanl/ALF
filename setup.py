@@ -37,7 +37,7 @@ torchsim_requirements = [
 ]
 
 # Qualified separately from TorchSim; sampler workers need Python 3.11+.
-alchemi_requirements = ["nvalchemi-toolkit==0.2.0"]
+alchemi_requirements = ["nvalchemi-toolkit==0.3.0"]
 
 setuptools.setup(
     name="alf",

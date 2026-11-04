@@ -39,9 +39,10 @@ def test_unsupported_constraints_fail_explicitly(engine_name):
         engine_class(engine_name)([atoms], [Tether(1.), Tether(2.)], .1, [0.], [np.random.RandomState(0)])
 
 
-def test_alchemi_dependency_version_error_is_explicit(monkeypatch):
+@pytest.mark.parametrize('unsupported', ['0.1.0', '0.4.0'])
+def test_alchemi_dependency_version_error_is_explicit(monkeypatch, unsupported):
     from alframework.samplers import alchemi_engine
-    monkeypatch.setattr(alchemi_engine, 'version', lambda name: '0.1.0')
+    monkeypatch.setattr(alchemi_engine, 'version', lambda name: unsupported)
     with pytest.raises(ImportError, match='0.2.0'):
         alchemi_engine.require_alchemi()
 

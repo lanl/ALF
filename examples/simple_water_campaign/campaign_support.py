@@ -292,7 +292,9 @@ def validate_storage(run):
                     record = labels[name]
                     structure = record['structure']
                     order = np.argsort(structure['numbers'])
-                    periodic = read_json(run / 'run.json')['profile'].get('campaign') != 'pyseqm'
+                    spec = read_json(run / 'run.json')
+                    periodic = (all(structure['pbc']) if spec.get('compatibility') else
+                                spec['profile'].get('campaign') != 'pyseqm')
                     assert all(structure['pbc']) if periodic else not any(structure['pbc'])
                     expected_species = [chemical_symbols[n] for n in np.array(structure['numbers'])[order]]
                     assert [v.decode() if isinstance(v, bytes) else str(v) for v in group['species'][()]] == expected_species

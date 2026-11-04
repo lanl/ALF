@@ -1726,6 +1726,67 @@ sampling (E5) rather than preceding it. Open decisions:
     Gate: a bounded active-learning campaign in which a fine-tuned foundation
     model's uncertainty selects frames that are labeled, stored, used for
     fine-tuning, and promoted, with lineage and provenance recorded.
+  - **First F3 targets: MACE and UMA (notes from 2026-11-03).** These
+    describe the packages found installed, not an acceptance claim. Each
+    package must still pass the clean current-release qualification.
+    - **Availability.** `alf_alchemi_02` contains `mace-torch` 0.3.16 and
+      `fairchem-core` 2.23.0. The batched engines already provide calculators:
+      - TorchSim: `torch_sim/models/mace.py` and `fairchem.py`;
+      - ALCHEMI 0.2: `nvalchemi/models/mace.py` and `uma.py`.
+    - **Inference.** ALF needs an evaluator adapter, the counterpart of
+      `load_hippynn_batched_ensemble`.
+      - It is selected through `batched_calculator` and returns per-member
+        energies `[M, S]` and forces `[M, atoms, 3]` in eV and eV/Å. Engine
+        changes are not expected.
+      - The legacy sampler could use an `ase_calculator` loader returning one
+        ASE calculator per member. This is untested.
+    - **MACE training adapter.** `mace_run_train` provides:
+      - `--foundation_model`, and `--freeze` for frozen layers;
+      - multihead fine-tuning (`--multihead_finetuning`, `--pt_train_file`),
+        which replays pretraining data to limit forgetting.
+
+      The adapter exports `h5store/` to extxyz in eV and eV/Å and trains each
+      member. It keeps outputs in ALF's `model-NN` layout and returns
+      `(completed, training_id)`.
+    - **UMA training adapter.** `create_uma_finetune_dataset.py` builds the
+      dataset, fits normalizers and linear references, and writes a config
+      from fairchem's fine-tuning template. The fairchem CLI then trains from
+      the UMA checkpoint. The adapter must select and record the task head
+      (`omol` for molecules, `omat` for materials).
+    - **Reference level and energy offsets.** Fine-tuning on ALF's labels
+      (for example ORCA PBE/def2-SVP) moves the model away from its pretraining
+      level of theory. Make these explicit and record them:
+      - MACE E0s;
+      - UMA linear references;
+      - `omol` charge and spin inputs.
+    - **Training placement.** Both trainers support multi-GPU training
+      natively (MACE `--distributed`, fairchem DDP). For these families,
+      multi-node training means placing members and then delegating to the
+      native distributed training, not building a new data-parallel trainer.
+    - **Uncertainty.** Members fine-tuned from one foundation checkpoint tend
+      to agree too closely, so their disagreement underestimates error. MACE
+      copies are affordable but share this problem; several UMA copies are
+      also expensive. Options, roughly cheapest first:
+      1. a heterogeneous committee (for example MACE, UMA, and HIPPYNN), which
+         the per-member evaluator contract already allows;
+      2. multiple heads on a shared backbone;
+      3. single-network estimators (row 11) through E5's named signals.
+
+      Calibrate cutoffs for each method; do not reuse ensemble `Escut`/`Fscut`.
+    - **Access, license, and environments.**
+      - UMA weights are gated on Hugging Face: workers need an accepted
+        license and a token.
+      - Record each base checkpoint, version, and license: UMA's FAIR
+        Chemistry license and MACE's model licenses.
+      - Each family pins its own torch/e3nn range, so each gets its own
+        qualified environment, separate from the HIPPYNN environment.
+    - **Suggested order.** Each step has a bounded campaign gate like teacher
+      labeling. The first two need no fine-tuning.
+      1. UMA or MACE as a teacher (3a), labeling for HIPPYNN students.
+      2. A frozen committee as the sampling model: the evaluator adapter
+         only, to prove the engine, evaluator, and uncertainty plumbing.
+      3. MACE fine-tuning (more mature entrypoints and smaller models).
+      4. UMA fine-tuning.
 - **Staged campaigns across engines** (row 8): durable cohort/handoff
   persistence, a run-control equivalent, staged configurations, and
   retained-label budgets. The fork's `run_control`, `workflow_io`,

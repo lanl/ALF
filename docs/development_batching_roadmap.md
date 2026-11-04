@@ -585,22 +585,24 @@ investigation.
 
 1. Record the retry's PySEQM and controlled-failure results and cleanup
    evidence; repair only demonstrated failures, as focused changes.
-2. Document the opt-in settings in the user guide (`docs/source/user_guide`
-   does not yet describe `driver`, `batching`, `acquisition`, or labeling batch
-   settings), with pointers to the tracked TorchSim/ALCHEMI water configs and
-   the campaign README.
-3. Complete the **First current-release compatibility gate** before new
+2. Complete the **First current-release compatibility gate** before new
    feature implementation and the next acceptance-gated push. Build fresh
    environments, run the CPU and real workflow checks, and enable fresh-install
    CPU CI on `development`. Resolve versions at build time; the dated package
    audit above is historical evidence, not a dependency lock.
-4. Record supported versions and any explicit incompatibilities from that
+3. Record supported versions and any explicit incompatibilities from that
    gate. Existing `atomistic` and other qualified environments remain useful
    comparisons but are not the compatibility target.
    Include the example config-load test and the first existing-example
    compatibility smoke matrix (see **Existing-example compatibility**).
-5. Keep the deferred gates explicitly open: trained cell-input checkpoint,
+4. Keep the deferred gates explicitly open: trained cell-input checkpoint,
    long-time potential stability, and MI350. They do not block the next increment.
+
+User-guide updates are deferred at the user's direction (2026-11-04), outside
+the current scope and Increment 7 acceptance. A later documentation change can
+describe `driver`, `batching`, `acquisition`, and labeling batch settings, with
+pointers to the tracked TorchSim/ALCHEMI water configs and campaign README.
+Roadmap status and validation evidence records remain part of close-out.
 
 #### Focused prerequisites (2026-11-02)
 

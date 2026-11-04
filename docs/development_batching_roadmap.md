@@ -1777,6 +1777,81 @@ and convergence criteria separately. Report CPU correctness, hardware acceptance
 and production-potential accuracy separately. MI350 execution requires its own
 hardware validation.
 
+### Existing-example compatibility (planned, 2026-11-03)
+
+No planned increment is meant to make the original examples unusable; every
+new capability stays opt-in. The evidence is narrower than that intent, so
+these checks are part of the future plan.
+
+**Current state.**
+- All ten tracked examples still select the original tasks:
+  - `simple_mlmd_sampling_task`, or `reactive_sampling`;
+  - the ORCA, VASP, and ASE labelers;
+  - `train_HIPPYNN_ensemble_task`, `fine_tune_HIPPYNN_ensemble_task`, or
+    `train_ANI_model_task`;
+  - the original builders.
+- The only deliberate config change is `"distcut": 0.7` in four water
+  examples, made at the user's direction; the code default stays 1.2 Å.
+- Since these changes, only the water family has run through the real
+  coordinator: the legacy ASE width-one cases of the campaign matrix.
+- IL, molten salt (VASP), UO2 (ANI/NeuroChem), reactive sampling,
+  fine-tuning, and seeded active learning have CPU tests and unchanged code
+  paths. They have not been re-run end to end.
+
+**Risk by planned step.**
+- **Low:** E1–E4, teacher labeling, and the selector interface. They add new
+  tasks or opt-in branches. Watch the shared helpers:
+  - `store_current_data`, where E1 adds the NAC scope;
+  - `hippynn_interface.py`, where E3 must leave the ground-state trainer
+    unchanged.
+- **Medium:**
+  - E5's evaluator and eligibility generalization: ground-state shapes and
+    `Es`/`Fs`/`Fsmax` must remain the default.
+  - Multi-node training: every HIPPYNN example uses
+    `train_HIPPYNN_ensemble_task`, so single-node placement stays the default
+    with identical behavior.
+- **Highest: composable sampling with UDD and wells.** Five examples set
+  `well_params`: IL, molten salt, simple water, fine-tuning, and seeded active
+  learning. Build the plugins for the packed engines. Leave `MLMD_calculator`
+  and `mlmd_sampling` unchanged, or prove formula parity if code must be
+  shared.
+- **Staged campaigns and recovery:** keep ordinary runs as the default; do not
+  port the fork's `run_control` changes to `__main__.py` wholesale.
+- **Fresh-install policy:** newer dependencies can break examples without any
+  ALF change. ANI/NeuroChem and VASP paths are the least exercised.
+
+**Planned checks.**
+1. **Compatibility smoke matrix.** One bounded real-coordinator run per
+   tracked example family. Run it:
+   - at the first fresh-environment build;
+   - after E5, after composable sampling, and after multi-node training;
+   - at each release point.
+
+   Water, fine-tuning, and seeded active learning run with ORCA on Darwin.
+   IL, molten salt (VASP), UO2 (ANI), and reactive sampling need their
+   backends. Record a missing backend as "unverified, backend unavailable",
+   never as passed.
+2. **Config-load test.** A CPU test that loads every tracked example's JSON
+   configurations and validates them against current code, including
+   `acquisition_settings`, `driver_settings`, labeling batch settings, and
+   task import strings. It is cheap and suitable for CI.
+3. **UDD/well parity.** In the composable-sampling step, test the new plugins
+   against the legacy `MLMD_calculator` well and UDD forces, using the
+   examples' actual `well_params` values (`r_start` 3.0 and 10).
+
+**Breaking changes need their own increment.** Examples would stop working only
+through a deliberate decision, which no current increment makes. Examples of
+such decisions:
+- removing the legacy sampler or `MLMD_calculator`;
+- changing code defaults such as `distcut` or the uncertainty cutoffs;
+- adopting the fork's `sampling`/`inference` configuration dialect, already
+  rejected in Increment 4;
+- dropping a dependency such as NeuroChem.
+
+Any such retirement is its own increment: an explicit decision, a deprecation
+period, and migrated example configurations. It is never a side effect of
+another change.
+
 ## Source material and contributor handoff
 
 The portable implementation through `2eaa681` and unified strategy work through

@@ -1,6 +1,0 @@
-{
-  "cohort": {"campaign": "cohort", "overall_seconds": 57600, "stage_seconds": 14400},
-  "failures": {"campaign": "failures", "overall_seconds": 14400, "stage_seconds": 14400},
-  "pyseqm": {"campaign": "pyseqm", "overall_seconds": 14400, "stage_seconds": 14400},
-  "mi250": {"campaign": "mi250", "overall_seconds": 14400, "stage_seconds": 14400}
-}

@@ -171,7 +171,7 @@ class ASEEngine:
         self._atoms[index].calc = None
 
 
-def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, seeds=None):
+def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, seeds=None, *, topology=None, screen_audit=None):
     """Run trajectories in lockstep with independent first-trigger stopping.
 
     Args:
@@ -211,7 +211,50 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
         engine.finish(index)
         active.remove(index)
 
+    cutoff = sampler_config.get('max_force_cutoff')
+    screening = topology is not None or cutoff is not None
+    if cutoff is not None:
+        from alframework.tools.force_screen import validated_force_cutoff
+        cutoff = validated_force_cutoff(cutoff)
+
+    def inspect_frame(index, observation, time_ps):
+        from alframework.tools.molecular_topology import validate_fixed_topology, topology_metadata
+        from alframework.tools.force_screen import physical_force_diagnostics, physical_force_exceeds, force_screen_metadata
+        molecule = molecule_objects[index]
+        atoms = engine.atoms(index)
+        report = topology_metadata(validate_fixed_topology(atoms, topology)) if topology is not None else {}
+        force = physical_force_diagnostics(observation['prediction']) if cutoff is not None else None
+        if force is not None:
+            report.update(force_screen_metadata(force))
+            report['physical_force_valid'] = not physical_force_exceeds(force, cutoff)
+            report['max_force_cutoff'] = cutoff
+        reason = report.get('topology_reject_reason')
+        if reason is None and force is not None and not report['physical_force_valid']:
+            reason = 'physical_force'
+        report['screen_reject_reason'] = reason
+        molecule.update_metadata(report)
+        if screen_audit is not None:
+            diagnostics = dict(report, **({'physical_forces': force['physical_forces']} if force is not None else {}))
+            if engine.steps[index] == 0:
+                screen_audit.record(molecule, 'initial', atoms, 0, 0., diagnostics)
+            screen_audit.record(molecule, 'rejected' if reason else 'last_valid', atoms,
+                                engine.steps[index], engine.steps[index] * dt / 1000, diagnostics)
+        return report, reason
+
     active = list(range(count))
+    if screening:
+        for index in list(active):
+            try:
+                observation = engine.observe(index)
+                report, reason = inspect_frame(index, observation, 0.)
+                if reason:
+                    state[index].update(decision=dict(outcome='rejected'),
+                                        signals={k:v for k,v in report.items() if k == 'Fmeanmax' or k.startswith('physical_F')})
+                    finish(index, 'rejected')
+            except Exception as exc:
+                finish(index, 'failed', exc)
+    for molecule in molecule_objects:
+        molecule.update_metadata(dict(sampling_entered_dynamics_width=len(active)))
     for index, exc in engine.step(list(active), 1).items():
         finish(index, 'failed', exc)
     for check in range(n_checks):
@@ -220,7 +263,16 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
             entry, schedule = state[index], schedules[index]
             try:
                 observation = engine.observe(index)
+                if screening:
+                    report, reason = inspect_frame(index, observation, time_ps)
+                    if reason:
+                        entry.update(decision=dict(outcome='rejected'), check=check,
+                                     signals={k:v for k,v in report.items() if k == 'Fmeanmax' or k.startswith('physical_F')})
+                        finish(index, 'rejected')
+                        continue
                 signals = ensemble_statistics(observation['prediction'])[0]
+                if screening:
+                    signals.update({k:v for k,v in report.items() if k == 'Fmeanmax' or k.startswith('physical_F')})
                 decision = assess_frame(signals, observation['min_distance'], time_ps, sampler_config, settings)
                 entry.update(signals=signals, decision=decision, min_distance=observation['min_distance'],
                              check=check)
@@ -337,19 +389,19 @@ def _prune(candidates, selection):
     return top_k(candidates, limit)
 
 
-def make_engine(engine, atoms_list, models, dt, temperatures_K, rngs, calculator_options=None, device=None):
+def make_engine(engine, atoms_list, models, dt, temperatures_K, rngs, calculator_options=None, device=None, friction=0.02):
     """Construct the engine; optional GPU libraries are imported only when selected."""
     if engine == 'torchsim':
         from alframework.samplers.torchsim_engine import TorchSimEngine
         return TorchSimEngine(atoms_list, models, dt, temperatures_K, rngs, calculator_options,
-                              device=device or 'cpu')
+                              device=device or 'cpu', friction=friction)
     if engine == 'alchemi':
         from alframework.samplers.alchemi_engine import AlchemiEngine
         return AlchemiEngine(atoms_list, models, dt, temperatures_K, rngs, calculator_options,
-                             device=device or 'cpu')
+                             device=device or 'cpu', friction=friction)
     if engine != 'ase':
         raise ValueError(f'Unsupported dynamics engine: {engine!r}.')
-    return ASEEngine(atoms_list, models, dt, temperatures_K, rngs, calculator_options)
+    return ASEEngine(atoms_list, models, dt, temperatures_K, rngs, calculator_options, friction=friction)
 
 
 def sample_trajectories(molecule_objects, models, sampler_config, engine_class=None, device=None):
@@ -359,6 +411,40 @@ def sample_trajectories(molecule_objects, models, sampler_config, engine_class=N
     """
     driver = driver_settings(sampler_config)
     states = state_settings(sampler_config)
+    from alframework.tools.molecular_topology import load_reference_topology, validate_fixed_topology, topology_metadata
+    from alframework.tools.force_screen import RuntimeScreenAudit, validated_force_cutoff
+    topology = load_reference_topology(sampler_config)
+    if sampler_config.get('max_force_cutoff') is not None:
+        validated_force_cutoff(sampler_config['max_force_cutoff'])
+    screening = topology is not None or sampler_config.get('max_force_cutoff') is not None
+    original_molecules = list(molecule_objects)
+    audit = RuntimeScreenAudit(original_molecules, sampler_config) if screening else None
+    if states is not None:
+        resolved = {resolve_selected_state(m, states) for m in original_molecules}
+        if len(resolved) != 1:
+            raise ValueError('A sampler task must share one selected state')
+    if topology is not None:
+        valid = []
+        for molecule in original_molecules:
+            atoms = molecule.get_atoms()
+            report = topology_metadata(validate_fixed_topology(atoms, topology))
+            audit.record(molecule, 'initial', atoms, diagnostics=report)
+            molecule.update_metadata(report)
+            if not report['topology_valid']:
+                molecule.update_metadata(dict(trajectory_outcome='rejected', step=0, simulationtime=0.,
+                    acquisition_candidates=[], screen_reject_reason=report['topology_reject_reason']))
+                audit.record(molecule, 'rejected', atoms, diagnostics=report)
+                molecule.update_atoms(None)
+            else:
+                valid.append(molecule)
+        molecule_objects = valid
+    for molecule in original_molecules:
+        molecule.update_metadata(dict(sampling_initial_active_width=len(molecule_objects)))
+    if not molecule_objects:
+        if audit is not None:audit.write()
+        for molecule in original_molecules:
+            molecule.update_metadata(dict(sampling_entered_dynamics_width=0))
+        return original_molecules
     if states is not None:
         from alframework.tools.atom_order import TOPOLOGY_ATOM_IDS, validated_atom_ids
         selected = {resolve_selected_state(m, states) for m in molecule_objects}
@@ -396,16 +482,30 @@ def sample_trajectories(molecule_objects, models, sampler_config, engine_class=N
     temperatures = [annealing_schedule(0.0, maxt, s['Tamp'], s['Tper'], s['Tsrt'], s['Tend']) for s in schedules]
     engine_args = ([molecule.get_atoms() for molecule in molecule_objects], models, sampler_config['dt'],
                    temperatures, rngs, sampler_config.get('MLMD_calculator_options'))
+    friction_options = {}
+    if 'friction_per_fs' in sampler_config:
+        gamma = sampler_config['friction_per_fs']
+        if isinstance(gamma, bool) or not np.isfinite(float(gamma)) or float(gamma) < 0:
+            raise ValueError('friction_per_fs must be finite and nonnegative')
+        friction_options['friction'] = float(gamma) / units.fs
     if engine_class is None:
-        engine = make_engine(driver['engine'], *engine_args, device=device)
+        engine = make_engine(driver['engine'], *engine_args, device=device, **friction_options)
     else:
-        engine = engine_class(*engine_args)
+        engine = engine_class(*engine_args, **friction_options)
     interval = sampler_config.get('trajectory_interval')
     meta_dir = sampler_config.get('meta_dir')
     for index, molecule in enumerate(molecule_objects):
         if trajectory_files[index] and interval is not None and meta_dir is not None:
             engine.attach_trajectory(index, meta_dir + "/metadata-" + molecule.get_moleculeid() + '.traj', interval)
-    return run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, seeds)
+    try:
+        run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, seeds,
+                              topology=topology, screen_audit=audit)
+        entered = molecule_objects[0].get_metadata()['sampling_entered_dynamics_width']
+        for molecule in original_molecules:
+            molecule.update_metadata(dict(sampling_entered_dynamics_width=entered))
+        return original_molecules
+    finally:
+        if audit is not None:audit.write()
 
 
 @python_app(executors=['alf_sampler_executor'])

@@ -257,3 +257,47 @@ def test_excited_ase_propagates_selected_force_and_preserves_cohort_identity():
     config['MLMD_calculator_options'] = {'udd_bias_weight': .1}
     with pytest.raises(ValueError, match='deferred'):
         sample_trajectories([MoleculesObject(WATER.copy(), 'bad')], QuadraticStateEnsemble(), config)
+
+
+def test_force_screen_is_unbiased_and_precedes_first_step():
+    from tests.helpers.fakes import PairSpringCalculator
+    a=Atoms('H2',positions=[[0,0,0],[1.2,0,0]])
+    config=dict(dt=.1,maxt=.001,Ncheck=1,Escut=100.,Fscut=100.,min_time=0.,distcut=.1,
+        srt_temp=[0.,0.],end_temp=[0.,0.],amp_temp=[0.,0.],per_temp=[1.,1.],
+        amp_dens=None,per_dens=None,end_dens=None,max_force_cutoff=16.,
+        MLMD_calculator_options={'well_params':{'r_start':.1,'force':1000.,'mass_weighted':False}})
+    out=sample_trajectories([MoleculesObject(a,'well')],[PairSpringCalculator(1.),PairSpringCalculator(1.)],config)[0]
+    assert out.get_metadata()['screen_audit']['initial']['diagnostics']['Fmeanmax']==pytest.approx(0.)
+    assert out.get_metadata()['step']>0  # Large well forces alone did not reject at step zero.
+
+
+def test_valid_candidate_survives_later_topology_rejection(tmp_path):
+    pytest.importorskip('rdkit')
+    from ase.io import write
+    from tests.helpers.fakes import QuadraticStateEnsemble
+    from alframework.tools.cohorts import CohortPool
+    atoms=Atoms('OHH',positions=[[0,0,0],[.9572,0,0],[-.239,.927,0]])
+    reference=tmp_path/'water.xyz';write(reference,atoms)
+    atoms.set_array('topology_atom_ids',np.arange(3))
+    class BreakBondEngine(ASEEngine):
+        def step(self,indices,n):
+            failures=super().step(indices,n)
+            if self.steps[0]>=2:self._atoms[0].positions[1]*=2.
+            return failures
+    config=dict(dt=.1,maxt=.001,Ncheck=1,Escut=.001,Fscut=.01,min_time=0.,distcut=.7,max_force_cutoff=16.,
+        srt_temp=[0.,0.],end_temp=[0.,0.],amp_temp=[0.,0.],per_temp=[1.,1.],amp_dens=None,per_dens=None,end_dens=None,
+        model_mode='excited_state',state_selection={'mode':'fixed','state':1},
+        topology_check=dict(enabled=True,reference_conformer_path=str(reference),reference_charge=0,
+                            bond_min_scale=.85,bond_max_scale=1.5,connectivity_scale=1.25),
+        acquisition=dict(trajectory_policy='continue',selection=dict(mode='cohort_top_k',cohort_size=1,k=1)))
+    molecule=MoleculesObject(atoms,'late-rejection')
+    pool=CohortPool(dict(cohort_size=1,k=1));pool.admit(molecule,0)
+    result=sample_trajectories([molecule],QuadraticStateEnsemble(),config,engine_class=BreakBondEngine)[0]
+    assert result.get_metadata()['trajectory_outcome']=='rejected'
+    assert result.get_metadata()['topology_valid'] is False
+    pool.record(result);selected,=pool.ready()
+    assert selected.get_metadata()['topology_valid'] is True
+    assert selected.get_metadata()['screen_reject_reason'] is None
+    assert selected.get_metadata()['step']==1
+    audit=result.get_metadata()['screen_audit']
+    assert all(audit[k] is not None for k in ('initial','last_valid','rejected'))

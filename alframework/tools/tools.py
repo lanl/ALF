@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import glob
 import logging
 
@@ -518,6 +519,12 @@ def load_config_file(path, master_directory=None):
                 # For every 'path' entry, make a corresponding 'dir' entry that holds files in the path
                 dir_dict[entry[:-4]+'dir'] = '/'.join(config[entry].split('/')[:-1]) + '/'
         config.update(dir_dict)
+        topology = config.get('topology_check')
+        if isinstance(topology, dict) and topology.get('enabled') and topology.get('reference_conformer_path'):
+            reference = Path(topology['reference_conformer_path']).expanduser()
+            if not reference.is_absolute():
+                reference = Path(master_directory or Path(path).resolve().parent) / reference
+            topology['reference_conformer_path'] = str(reference.resolve())
 
     return config
 

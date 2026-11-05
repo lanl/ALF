@@ -351,3 +351,31 @@ def test_excited_packed_observations_and_compaction_keep_state_atom_axes(engine_
         reference = ensemble_statistics(model.predict([engine.atoms(index)]))[0]
         assert observed == pytest.approx(reference)
     assert engine.steps == [1,0,1]
+
+
+def test_topology_initial_rejection_and_physical_force_stop_before_integration(engine_name,tmp_path):
+    from tests.helpers.fakes import QuadraticStateEnsemble
+    reference=Atoms('OHH',positions=[[0,0,0],[.9572,0,0],[-.239,.927,0]])
+    from ase.io import write
+    path=tmp_path/'water.xyz';write(path,reference)
+    reference.set_array('topology_atom_ids',np.arange(3))
+    config=dict(CONFIG,driver=dict(engine=engine_name,strategy='single'),model_mode='excited_state',
+       state_selection=dict(mode='fixed',state=1),min_time=0.,maxt=.001,Ncheck=1,
+       max_force_cutoff=16.,srt_temp=[0.,0.],end_temp=[0.,0.],amp_temp=[0.,0.],per_temp=[1.,1.],
+       friction_per_fs=.1,topology_check=dict(enabled=True,reference_conformer_path=str(path),
+       reference_charge=0,bond_min_scale=.85,bond_max_scale=1.5,connectivity_scale=1.25))
+    config.pop('batching')
+    def molecules():
+        items=[MoleculesObject(reference.copy(),str(i)) for i in range(4)]
+        items[1].atoms.positions[1]*=2.
+        return items
+    out=sample_trajectories(molecules(),QuadraticStateEnsemble(),config,engine_class=engine_class(engine_name))
+    assert [m.get_moleculeid() for m in out]==['0','1','2','3']
+    assert out[1].get_metadata()['trajectory_outcome']=='rejected' and out[1].get_metadata()['step']==0
+    assert out[1].get_metadata()['screen_reject_reason']=='topology_bond_window'
+    assert all(out[i].get_metadata()['step']>0 for i in (0,2,3))
+    assert all(m.get_metadata()['sampling_initial_active_width']==3 for m in out)
+    config['max_force_cutoff']=1.
+    out=sample_trajectories(molecules(),QuadraticStateEnsemble(),config,engine_class=engine_class(engine_name))
+    assert all(m.atoms is None and m.get_metadata()['step']==0 for m in out)
+    assert out[0].get_metadata()['screen_reject_reason']=='physical_force'

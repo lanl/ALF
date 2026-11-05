@@ -193,13 +193,65 @@ def qualify_pyseqm(root, specs):
     return report
 
 
+def cpu_pyscf_states(spec, config):
+    """Exact small-space RKS/TDA reference with the same density fitting.
+
+    CPU PySCF does not implement analytic DF-TDDFT forces. Return energies
+    from the full response matrix; cpu_pyscf_reference differentiates these.
+    """
+    import numpy as np
+    from pyscf import gto, dft, lib
+    from pyscf.data import nist
+    lib.num_threads(config['num_threads'])
+    mol = gto.M(atom=list(zip(spec['symbols'], spec['positions'])),
+                basis=config['basis'], verbose=0)
+    mf = dft.RKS(mol, xc=config['xc']).density_fit(auxbasis=config.get('auxbasis'))
+    mf.grids.level = config['grids_level']; mf.conv_tol=config['scf_conv_tol']
+    mf.max_cycle=config['scf_max_cycle']
+    mf.kernel()
+    if not mf.converged:
+        raise RuntimeError('CPU reference SCF did not converge')
+    td = mf.TDA()
+    nocc = mol.nelectron//2
+    dimension = nocc*(mf.mo_coeff.shape[1]-nocc)
+    vind, _ = td.gen_vind(mf)
+    response = np.asarray(vind(np.eye(dimension))).T
+    # The TDA response is Hermitian; verify its unmodified residual as well.
+    roots, vectors = np.linalg.eigh((response+response.T)/2)
+    indices = np.flatnonzero(roots > td.positive_eig_threshold)[:config['nroots']]
+    if len(indices) != config['nroots']:
+        raise RuntimeError('Insufficient positive CPU TDA roots')
+    residual = np.linalg.norm(response@vectors[:, indices] - vectors[:, indices]*roots[indices], axis=0)
+    if max(residual) > config['tda_conv_tol']:
+        raise RuntimeError(f'CPU TDA residual exceeds tolerance: {residual}')
+    return (mf.e_tot + np.r_[0., roots[indices]])*nist.HARTREE2EV
+
+
+def cpu_pyscf_reference(spec, config):
+    """CPU DF-RKS/TDA energies and central-difference forces, eV and eV/A."""
+    import copy
+    import numpy as np
+    step = 1e-4
+    energy = cpu_pyscf_states(spec, config)
+    forces = np.empty((config['nroots']+1, len(spec['symbols']), 3))
+    for atom in range(len(spec['symbols'])):
+        for axis in range(3):
+            values=[]
+            for sign in (1,-1):
+                shifted=copy.deepcopy(spec)
+                shifted['positions'][atom][axis] += sign*step
+                values.append(cpu_pyscf_states(shifted, config))
+            forces[:, atom, axis] = -(values[0]-values[1])/(2*step)
+    return energy, forces
+
+
 def qualify_gpu4pyscf(root, specs):
     import numpy as np
     from alframework.qm_interfaces.gpu4pyscf_interface import (
         label_gpu4pyscf_excited_state_molecule, gpu4pyscf_excited_state_task)
     props = properties(nac=True, optical=True)
     config = dict(xc='cam-b3lyp', basis='6-31g', nroots=3, density_fit=True,
-                  grids_level=3, scf_conv_tol=1e-10, tda_conv_tol=1e-8,
+                  grids_level=5, scf_conv_tol=1e-10, tda_conv_tol=1e-8,
                   tda_lindep=1e-20,
                   tda_max_cycle=200, scf_max_cycle=100,
                   cphf_conv_tol=1e-10, num_threads=4, compute_nacr=True)
@@ -216,26 +268,7 @@ def qualify_gpu4pyscf(root, specs):
     store_current_data(str(root/'backend-labels.h5'), gpu, props)
     write_json(root/'backend-labels.json', {'ids':[m.get_moleculeid() for m in gpu],
         'metadata':[m.get_metadata() for m in gpu], 'h5_sha256':digest(root/'backend-labels.h5')})
-    from pyscf import gto, dft, lib
-    from pyscf.data import nist
-    lib.num_threads(4)
-    mol = gto.M(atom=list(zip(specs[0]['symbols'], specs[0]['positions'])), basis=config['basis'], verbose=0)
-    mf = dft.RKS(mol, xc=config['xc']).density_fit()
-    mf.grids.level = config['grids_level']; mf.conv_tol = config['scf_conv_tol']; mf.max_cycle=config['scf_max_cycle']
-    mf.kernel(); assert mf.converged
-    td = mf.TDA(); td.nstates=3; td.conv_tol=config['tda_conv_tol']; td.lindep=config['tda_lindep']
-    td.max_cycle=config['tda_max_cycle']
-    # This fixed small-molecule reference can span the full excitation space.
-    # It avoids CPU Davidson restart/guess roundoff near the strict residual
-    # threshold while retaining the same Hamiltonian and convergence criterion.
-    nocc = mol.nelectron//2
-    td.kernel(x0=np.eye(nocc*(mf.mo_coeff.shape[1]-nocc)))
-    assert np.all(td.converged)
-    energies = (mf.e_tot + np.r_[0., td.e])*nist.HARTREE2EV
-    gradients = [mf.nuc_grad_method().kernel()]
-    grad = td.nuc_grad_method(); grad.cphf_conv_tol=config['cphf_conv_tol']
-    gradients.extend(grad.kernel(state=i) for i in range(1,4))
-    force = -np.asarray(gradients)*nist.HARTREE2EV/nist.BOHR
+    energies, force = cpu_pyscf_reference(specs[0], config)
     errors = {'energy': max(abs(gpu[0].get_results()[f'sE{i}']-energies[i]) for i in range(4)),
               'force': max(float(np.max(np.abs(gpu[0].get_results()[f'F{i}']-force[i]))) for i in range(4))}
     assert errors['energy'] <= 1e-5 and errors['force'] <= 1e-4, errors
@@ -244,7 +277,8 @@ def qualify_gpu4pyscf(root, specs):
         assert np.isfinite(m.get_results()['nacr']).all()
         assert np.isfinite(m.get_results()['transition_dipoles']).all()
         assert np.all(m.get_results()['oscillator_strengths'] >= 0)
-    report = {'cpu_gpu_errors': errors, 'finite_difference': finite_difference(label, specs, gpu[0])}
+    report = {'cpu_reference': 'full-matrix DF-RKS/TDA with central-difference forces',
+              'cpu_gpu_errors': errors, 'finite_difference': finite_difference(label, specs, gpu[0])}
     for mode in (None, 'sequential'):
         report['parsl_'+str(mode)] = parsl_store(root, gpu4pyscf_excited_state_task, config, props, specs, mode)
     return report

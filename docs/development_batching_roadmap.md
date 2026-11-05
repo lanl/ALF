@@ -1850,7 +1850,14 @@ rather than rewriting masks or patching backend module constants. All four GPU g
 optical outputs. The next attempt stopped at CPU-reference Davidson convergence;
 that small reference now uses the complete excitation basis at the same
 Hamiltonian and residual criterion. Initial GPU labels are persisted before
-later checks. Real full qualification remains pending until result and cleanup.
+later checks. CPU PySCF does not implement analytic DF-TDDFT gradients, so its reference
+now diagonalizes the full small TDA response matrix and central-differences
+those same density-fitted energies for forces. A grid-3 diagnostic separated
+quadrature response from adapter errors: CPU/GPU ground-state analytic forces
+agreed within 2.2e-6 eV/Angstrom, while grid response contributed 6.24e-4.
+Qualification therefore uses grid level 5 on both CPU and GPU, retaining the
+1e-5 eV energy, 1e-4 eV/Angstrom force, and 1e-3 finite-difference tolerances.
+Real full qualification remains pending until result and cleanup.
 
 Completion requires focused CPU checks, small-molecule CPU/GPU comparisons,
 native CIS single/packed parity at widths 1/2/4/8, and actual Parsl labeling

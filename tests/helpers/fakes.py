@@ -130,3 +130,28 @@ def spring_ensemble(spread=1.0):
 def load_spring_ensemble(model_directory, device="cpu"):
     """Stand-in for an ``ase_calculator`` ensemble loader."""
     return spring_ensemble()
+
+
+class QuadraticStateEnsemble:
+    """Analytic multi-state forces with correlated member energy errors."""
+    n_models = 2
+    n_states = 3
+
+    def evaluate_states(self, numbers, positions, cells, pbc, counts):
+        import torch
+        x = torch.as_tensor(positions)
+        k = x.new_tensor([[.5, 1., 1.5], [.8, 1.2, 2.]])
+        system = torch.repeat_interleave(torch.arange(len(counts), device=x.device),
+                                        torch.as_tensor(counts, device=x.device))
+        squared = x.new_zeros(len(counts)).index_add_(0, system, (x*x).sum(1))
+        offsets = x.new_tensor([0., 10.])[:, None, None]
+        return k[:, :, None]*squared + offsets, -2*k[:, :, None, None]*x[None, None]
+
+    def predict_states(self, atoms_list):
+        import torch
+        counts = [len(a) for a in atoms_list]
+        e, f = self.evaluate_states(None, torch.tensor(np.concatenate([a.positions for a in atoms_list])),
+                                    None, None, counts)
+        offsets = np.cumsum([0, *counts])
+        return dict(state_energies=e.numpy(), state_forces=[f[:, :, lo:hi].numpy()
+                    for lo, hi in zip(offsets[:-1], offsets[1:])])

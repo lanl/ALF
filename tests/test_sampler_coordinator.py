@@ -241,3 +241,35 @@ def test_real_sampler_coordinator_pins_admission_and_task_generation(tmp_path):
     finally:
         dfk.cleanup()
         parsl.clear()
+
+
+def test_excited_state_admission_is_independent_of_width_and_completion_order(tmp_path):
+    @python_app(executors=['state_admission'])
+    def capture(molecule_objects, current_model_id):
+        assert len({m.get_metadata()['selected_state'] for m in molecule_objects}) == 1
+        assert all(m.get_metadata()['sampling_model_id'] == current_model_id for m in molecule_objects)
+        return molecule_objects
+    dfk = parsl.load(Config(executors=[ThreadPoolExecutor(label='state_admission',max_threads=2)],
+                            run_dir=str(tmp_path/'parsl')))
+    try:
+        snapshots = []
+        for width in (1,2,4):
+            config = dict(Escut=1.,Fscut=1.,model_mode='excited_state',
+                          state_selection={'mode':'batch_cycle','states':[0,1]},
+                          driver={'strategy':'single' if width==1 else 'batched'})
+            if width > 1:
+                config['batching'] = {'batch_size':width,'partial_policy':'timeout','max_wait_seconds':60}
+            coordinator = SamplerCoordinator(capture, 'test.capture', config)
+            for index in range(8):
+                molecule = MoleculesObject(WATER.copy(), f'state-{index}')
+                if index == 2:
+                    molecule.update_metadata({'selected_state':1})
+                coordinator.submit(molecule, [{'current_model_id':7}])
+            coordinator.submit_ready([{'current_model_id':7}], flush=True)
+            results = [m for future in reversed(coordinator.queue.task_list) for m in future.result()]
+            snapshots.append(sorted((m.get_moleculeid(),m.get_metadata()['selected_state'],
+                                     m.get_metadata()['sampling_admission_ordinal']) for m in results))
+        assert snapshots[0] == snapshots[1] == snapshots[2]
+        assert [state for _,state,_ in snapshots[0]] == [0,1,1,1,0,1,0,1]
+    finally:
+        dfk.cleanup(); parsl.clear()

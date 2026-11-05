@@ -224,3 +224,36 @@ def test_device_defaults_and_overrides(monkeypatch):
     before = dict(os.environ)
     assert batched_mlmd.sampling_device({"device": "cpu"}, gpus_per_node=4) == 'cpu'
     assert dict(os.environ) == before
+
+
+def test_excited_ase_propagates_selected_force_and_preserves_cohort_identity():
+    from tests.helpers.fakes import QuadraticStateEnsemble
+    from alframework.ml_interfaces.ensemble_inference import SelectedStateEvaluator, ensemble_statistics
+    from alframework.tools.cohorts import CohortPool
+    a = WATER.copy(); a.set_array('topology_atom_ids', np.array([0, 2, 1]))
+    models = SelectedStateEvaluator(QuadraticStateEnsemble(), 1, [1, 2])
+    engine = ASEEngine([a], models, .25, [0.], [np.random.RandomState(1)])
+    expected = models.predict([a])
+    np.testing.assert_allclose(a.get_forces(), expected['forces'][0].mean(0))
+    assert ensemble_statistics(engine.observe(0)['prediction']) == ensemble_statistics(expected)
+    molecule = MoleculesObject(a.copy(), 'excited')
+    molecule.update_metadata(dict(selected_state=1, source='fixture'))
+    config = dict(dt=.25, maxt=.001, Ncheck=1, Escut=.001, Fscut=.01, distcut=.5,
+                  min_time=0., model_mode='excited_state', gap_uncertainty={'pair':[1,2]},
+                  acquisition={'selection':{'mode':'cohort_top_k','cohort_size':1,'k':1}},
+                  srt_temp=[0.,0.],end_temp=[0.,0.],amp_temp=[0.,0.],per_temp=[1.,1.],
+                  amp_dens=None,per_dens=None,end_dens=None)
+    pool = CohortPool({'cohort_size':1,'k':1}); pool.admit(molecule, 0)
+    result = sample_trajectories([molecule], QuadraticStateEnsemble(), config)[0]
+    pool.record(result); frame, = pool.ready()
+    assert frame.get_metadata()['selected_state'] == 1 and frame.get_metadata()['source'] == 'fixture'
+    np.testing.assert_array_equal(frame.atoms.arrays['topology_atom_ids'], [0,2,1])
+    assert 'dE12_stdev' in frame.get_metadata()
+    for bad in ({'mode':'batch_cycle','states':[0,1]}, {'mode':'fixed','state':9}):
+        config['state_selection'] = bad
+        with pytest.raises(ValueError):
+            sample_trajectories([MoleculesObject(WATER.copy(), 'bad')], QuadraticStateEnsemble(), config)
+    config['state_selection'] = {'mode':'fixed','state':1}
+    config['MLMD_calculator_options'] = {'udd_bias_weight': .1}
+    with pytest.raises(ValueError, match='deferred'):
+        sample_trajectories([MoleculesObject(WATER.copy(), 'bad')], QuadraticStateEnsemble(), config)

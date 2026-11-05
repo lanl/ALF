@@ -32,6 +32,67 @@ STRATEGIES = ("single", "batched")
 ENGINES = ("ase", "torchsim", "alchemi")
 
 
+def state_settings(config):
+    """Validate opt-in molecular state selection without importing model libraries."""
+    mode = config.get('model_mode', 'ground_state')
+    if mode not in ('ground_state', 'excited_state'):
+        raise ValueError('model_mode must be ground_state or excited_state')
+    if mode == 'ground_state':
+        if 'state_selection' in config or 'gap_uncertainty' in config:
+            raise ValueError('State selection/gap uncertainty requires model_mode excited_state')
+        return None
+    controls = config.get('MLMD_calculator_options') or {}
+    if controls.get('well_params') is not None or controls.get('udd_bias_weight') is not None:
+        raise ValueError('Excited-state UDD and wells are deferred')
+    policy = config.get('state_selection')
+    if policy is not None:
+        if not isinstance(policy, dict) or policy.get('mode') not in ('fixed', 'batch_cycle'):
+            raise ValueError('state_selection requires fixed or batch_cycle mode')
+        states = [policy.get('state')] if policy['mode'] == 'fixed' else policy.get('states')
+        if not isinstance(states, (list, tuple)) or not states:
+            raise ValueError('State selection requires a nonempty state list')
+        for state in states:
+            _state_index(state)
+        if len(set(states)) != len(states):
+            raise ValueError('State cycling cannot contain duplicate states')
+    pair = None
+    if 'gap_uncertainty' in config:
+        gap = config['gap_uncertainty']
+        pair = gap.get('pair') if isinstance(gap, dict) else None
+        if not isinstance(pair, (tuple, list)) or len(pair) != 2:
+            raise ValueError('gap_uncertainty requires a pair of ordered states')
+        for state in pair:
+            _state_index(state)
+        if pair[0] >= pair[1]:
+            raise ValueError('Gap pair must be lower state followed by upper state')
+    return dict(policy=policy, gap_pair=pair)
+
+
+def _state_index(value):
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError('Selected state must be a nonnegative integer')
+    return value
+
+
+def resolve_selected_state(molecule, settings, ordinal=None):
+    metadata = molecule.get_metadata()
+    policy = settings['policy']
+    if 'selected_state' in metadata:
+        state, source = _state_index(metadata['selected_state']), metadata.get('selected_state_source', 'metadata')
+    elif policy is None:
+        raise ValueError('Excited-state sampling requires selected_state metadata or state_selection')
+    elif policy['mode'] == 'fixed':
+        state, source = policy['state'], 'state_selection.fixed'
+    else:
+        if ordinal is None:
+            raise ValueError('Unresolved state cycling requires coordinator admission')
+        state, source = policy['states'][ordinal % len(policy['states'])], 'state_selection.batch_cycle'
+    molecule.update_metadata(dict(selected_state=state, selected_state_source=source))
+    if ordinal is not None:
+        molecule.update_metadata(dict(sampling_admission_ordinal=ordinal))
+    return state
+
+
 def driver_settings(sampler_config):
     """Return validated ``driver`` settings for a multi-trajectory sampler."""
     block = sampler_config.get("driver") or {}
@@ -46,7 +107,8 @@ def driver_settings(sampler_config):
         raise ValueError(f"driver.strategy must be one of {STRATEGIES}; received {strategy!r}.")
     if engine not in ENGINES:
         raise ValueError(f"driver.engine must be one of {ENGINES}; received {engine!r}.")
-    if sampler_config.get("batched_calculator") is not None and engine not in {"torchsim", "alchemi"}:
+    states = state_settings(sampler_config)
+    if sampler_config.get("batched_calculator") is not None and engine not in {"torchsim", "alchemi"} and states is None:
         raise ValueError("batched_calculator requires driver.engine 'torchsim' or 'alchemi'; "
                          "the ASE engine uses ase_calculator.")
     batching = batching_settings(sampler_config)
@@ -68,9 +130,13 @@ class SamplerCoordinator(BatchedSubmitter):
 
     def __init__(self, sampler_task, sampler_task_path, sampler_config):
         parameters = inspect.signature(sampler_task.func).parameters
+        self._states = state_settings(sampler_config)
+        self._admission_ordinal = 0
         self.multi_trajectory = "molecule_objects" in parameters
         self.pool = None
         if not self.multi_trajectory:
+            if self._states is not None:
+                raise ValueError('Excited-state sampling requires a multi-trajectory sampler task')
             if "driver" in sampler_config or "batching" in sampler_config or \
                     "selection" in (sampler_config.get("acquisition") or {}):
                 raise ValueError("Sampler driver, batching, and acquisition.selection settings require a "
@@ -85,10 +151,14 @@ class SamplerCoordinator(BatchedSubmitter):
         selection = cohort_selection(sampler_config)
         if selection is not None:
             self.pool = CohortPool(selection)
-        super().__init__(sampler_task, settings, key_function=_model_batch_key)
+        super().__init__(sampler_task, settings, key_function=lambda molecule:
+                         _model_batch_key(molecule, excited=self._states is not None))
 
     def submit(self, molecule_object, input_dicts):
         """Submit (or buffer) one structure; in cohort mode, admit it to a cohort first."""
+        if self._states is not None:
+            resolve_selected_state(molecule_object, self._states, self._admission_ordinal)
+            self._admission_ordinal += 1
         if self.pool is not None:
             model_id = _lookup("current_model_id", input_dicts)
             molecule_object.update_metadata({"sampling_model_id": self.pool.admit(molecule_object, model_id)})
@@ -136,6 +206,7 @@ def _lookup(name, input_dicts):
     raise ValueError(f"Sampler submission requires {name!r}.")
 
 
-def _model_batch_key(molecule):
+def _model_batch_key(molecule, excited=False):
     """Group by PBC and pinned model generation, so a batch never mixes models."""
-    return default_batch_key(molecule) + (molecule.get_metadata().get("sampling_model_id"),)
+    key = default_batch_key(molecule) + (molecule.get_metadata().get("sampling_model_id"),)
+    return key + (molecule.get_metadata().get('selected_state'),) if excited else key

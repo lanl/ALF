@@ -121,8 +121,12 @@ class CohortPool:
     def _frame(self, cohort, candidate, rank):
         atoms = Atoms(numbers=candidate["numbers"], positions=candidate["positions"],
                       cell=candidate["cell"], pbc=candidate["pbc"])
+        if candidate.get('topology_atom_ids') is not None:
+            from alframework.tools.atom_order import validated_atom_ids
+            atoms.set_array('topology_atom_ids', validated_atom_ids(candidate['topology_atom_ids'], len(atoms)))
         frame = MoleculesObject(atoms, "{}-s{:09d}".format(candidate["trajectory_id"], candidate["step"]))
-        frame.update_metadata({"cohort_id": cohort.cohort_id, "cohort_model_id": cohort.model_id,
+        frame.update_metadata({**candidate.get('metadata', {}),
+                               "cohort_id": cohort.cohort_id, "cohort_model_id": cohort.model_id,
                                "frame_id": candidate["frame_id"], "trajectory_id": candidate["trajectory_id"],
                                "step": candidate["step"], "time_ps": candidate["time_ps"],
                                "ranking_score": candidate["ranking_score"], "cohort_rank": rank,

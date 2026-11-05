@@ -46,16 +46,17 @@ import time
 import numpy as np
 from ase import units
 from ase.io.trajectory import Trajectory
+from ase.calculators.calculator import Calculator, all_changes
 from ase.md.langevin import Langevin
 from parsl import python_app
 
-from alframework.ml_interfaces.ensemble_inference import ensemble_statistics
+from alframework.ml_interfaces.ensemble_inference import ensemble_statistics, SelectedStateEvaluator
 from alframework.samplers.acquisition import acquisition_settings, assess_frame, frame_id, top_k
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator
 from alframework.samplers.geometry import minimum_distance
 from alframework.tools.molecules_class import MoleculesObject
 from alframework.tools.gpu import sampling_device
-from alframework.tools.sampler_coordinator import driver_settings
+from alframework.tools.sampler_coordinator import driver_settings, state_settings, resolve_selected_state
 from alframework.tools.tools import annealing_schedule, load_module_from_config
 
 OBSERVED_PROPERTIES = ['energy', 'forces', 'energy_stdev', 'forces_stdev_mean', 'forces_stdev_max']
@@ -87,6 +88,21 @@ def draw_schedule(sampler_config, rng):
             'Rend': _draw(rng, sampler_config['end_dens'])}
 
 
+class _StateMeanCalculator(Calculator):
+    """ASE propagation view retaining unbiased member/state observations."""
+    implemented_properties = ['energy', 'forces']
+
+    def __init__(self, evaluator):
+        super().__init__()
+        self.evaluator = evaluator
+
+    def calculate(self, atoms=None, properties=None, system_changes=all_changes):
+        super().calculate(atoms, properties, system_changes)
+        self.prediction = self.evaluator.predict([atoms])
+        self.results = dict(energy=float(self.prediction['energies'].mean()),
+                            forces=self.prediction['forces'][0].mean(0))
+
+
 class ASEEngine:
     """One ASE Langevin integrator per trajectory.
 
@@ -99,14 +115,16 @@ class ASEEngine:
     """
 
     def __init__(self, atoms_list, models, dt, temperatures_K, rngs, calculator_options=None, friction=0.02):
-        self.n_models = len(models)
+        self._states = isinstance(models, SelectedStateEvaluator)
+        self.n_models = models.n_models if self._states else len(models)
         self._atoms = list(atoms_list)
         self._dynamics = []
         self._writers = {}
         self.steps = [0] * len(self._atoms)
         for atoms, temperature, rng in zip(self._atoms, temperatures_K, rngs):
             # MLMD_calculator appends its well potential to the list and edits its options.
-            atoms.calc = MLMD_calculator(list(models), **copy.deepcopy(calculator_options or {}))
+            atoms.calc = _StateMeanCalculator(models) if self._states else \
+                MLMD_calculator(list(models), **copy.deepcopy(calculator_options or {}))
             self._dynamics.append(Langevin(atoms, dt * units.fs, friction=friction,
                                            temperature_K=temperature, rng=rng))
 
@@ -127,6 +145,9 @@ class ASEEngine:
 
     def observe(self, index):
         atoms = self._atoms[index]
+        if self._states:
+            atoms.calc.calculate(atoms)
+            return dict(prediction=atoms.calc.prediction, min_distance=minimum_distance(atoms))
         atoms.calc.calculate(atoms, properties=list(OBSERVED_PROPERTIES))
         results = atoms.calc.results
         prediction = {'energies': np.array(results['energy_contributions'][:self.n_models], dtype=float)[:, None],
@@ -277,6 +298,12 @@ def _record(molecule, entry, schedule, sampler_config, settings, engine, index, 
     if entry['error'] is not None:
         meta_dict['sampling_error'] = "{}: {}".format(type(entry['error']).__name__, entry['error'])
     meta_dict.update(molecule.get_metadata())
+    meta_dict.update(signals)
+    for key in ('acquisition_trigger_flags', 'acquisition_cutoffs', 'acquisition_score_terms'):
+        if key in decision:
+            meta_dict[key] = decision[key]
+    if sampler_config.get('gap_uncertainty') is not None:
+        meta_dict['gap_pair'] = sampler_config['gap_uncertainty']['pair']
     if meta_dir is not None:
         with open(meta_dir + "/metadata-" + molecule.get_moleculeid() + '.p', "wb") as handle:
             pkl.dump(meta_dict, handle)
@@ -294,7 +321,12 @@ def _candidate(molecule, engine, index, signals, decision, time_ps):
             "signals": {key: float(value) for key, value in signals.items()},
             "flags": {key: decision[key] for key in ('Ecrit', 'Fcrit', 'Fmcrit')},
             "numbers": atoms.get_atomic_numbers().copy(), "positions": atoms.get_positions().copy(),
-            "cell": np.array(atoms.get_cell()), "pbc": atoms.get_pbc().copy()}
+            "cell": np.array(atoms.get_cell()), "pbc": atoms.get_pbc().copy(),
+            "metadata": {**copy.deepcopy(molecule.get_metadata()),
+                         **{key: decision[key] for key in ('acquisition_trigger_flags', 'acquisition_cutoffs',
+                                                          'acquisition_score_terms') if key in decision}},
+            "topology_atom_ids": None if 'topology_atom_ids' not in atoms.arrays else
+                atoms.arrays['topology_atom_ids'].copy()}
 
 
 def _prune(candidates, selection):
@@ -326,6 +358,25 @@ def sample_trajectories(molecule_objects, models, sampler_config, engine_class=N
     ``engine_class`` overrides the configured ``driver.engine`` (for tests).
     """
     driver = driver_settings(sampler_config)
+    states = state_settings(sampler_config)
+    if states is not None:
+        from alframework.tools.atom_order import TOPOLOGY_ATOM_IDS, validated_atom_ids
+        selected = {resolve_selected_state(m, states) for m in molecule_objects}
+        if len(selected) != 1:
+            raise ValueError('A sampler task must share one selected state')
+        if not hasattr(models, 'evaluate_states'):
+            raise ValueError('Excited-state sampling requires a multi-state evaluator')
+        policy = states['policy']
+        configured = [] if policy is None else ([policy['state']] if policy['mode'] == 'fixed' else policy['states'])
+        if any(s >= models.n_states for s in configured):
+            raise ValueError('Configured state is absent from ensemble')
+        for molecule in molecule_objects:
+            atoms = molecule.get_atoms()
+            if atoms.pbc.any():
+                raise ValueError('Excited-state sampling supports nonperiodic molecules only')
+            if TOPOLOGY_ATOM_IDS in atoms.arrays:
+                validated_atom_ids(atoms.arrays[TOPOLOGY_ATOM_IDS], len(atoms))
+        models = SelectedStateEvaluator(models, selected.pop(), states['gap_pair'])
     seeds, rngs, schedules, trajectory_files = [], [], [], []
     for molecule in molecule_objects:
         assert isinstance(molecule, MoleculesObject), 'molecule_objects must contain MoleculesObject instances'

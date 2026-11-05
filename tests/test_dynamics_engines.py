@@ -328,3 +328,26 @@ def test_trained_ensemble_sampling_with_batched_hippynn(engine_name, trained_ens
         for key, bound in bounds.items():
             assert candidate["signals"][key] == pytest.approx(actual[key], rel=1e-12, abs=1e-12), key
             assert abs(actual[key] - expected[key]) <= bound + 1e-12, (key, bound)
+
+
+def test_excited_packed_observations_and_compaction_keep_state_atom_axes(engine_name):
+    from tests.helpers.fakes import QuadraticStateEnsemble
+    from alframework.ml_interfaces.ensemble_inference import SelectedStateEvaluator, ensemble_statistics
+    model = SelectedStateEvaluator(QuadraticStateEnsemble(), 1, [1,2])
+    atoms = [WATER.copy() for _ in range(3)]
+    for index,a in enumerate(atoms):
+        a.positions *= 1 + .1*index
+    engine = engine_class(engine_name)(atoms, model, .1, [0.]*3,
+                                      [np.random.RandomState(i) for i in range(3)], friction=0.)
+    for index in range(3):
+        reference = ensemble_statistics(model.predict([atoms[index]]))[0]
+        assert ensemble_statistics(engine.observe(index)['prediction'])[0] == pytest.approx(reference)
+    # Remove an interior system, then actually step and evaluate the surviving layout.
+    engine.finish(1)
+    assert engine.step([0,2], 1) == {}
+    assert engine._rows == [0,2]
+    for index in (0,2):
+        observed = ensemble_statistics(engine.observe(index)['prediction'])[0]
+        reference = ensemble_statistics(model.predict([engine.atoms(index)]))[0]
+        assert observed == pytest.approx(reference)
+    assert engine.steps == [1,0,1]

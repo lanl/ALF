@@ -134,8 +134,12 @@ class PackedMLMDEngine:
             energies, forces = self._members
             self.state = self.state[keep]
             self._members = (energies[:, selection], forces[:, atom_mask])
+            if getattr(self, '_state_members', None) is not None:
+                se, sf = self._state_members
+                self._state_members = (se[:, :, selection], sf[:, :, atom_mask])
         else:
             self.state, self._members = None, None
+            self._state_members = None
         self._host = None
         self._layout()
 
@@ -166,6 +170,7 @@ class PackedMLMDEngine:
         energies = energies.to(self.device, self.dtype)
         forces = forces.to(self.device, self.dtype)
         self._members = (energies, forces)
+        self._state_members = getattr(self.evaluator, 'last_states', None)
         self._host = None
         self._stale = False
         energy, force = energies.mean(0), forces.mean(0)
@@ -262,6 +267,11 @@ class PackedMLMDEngine:
         selection = self._slices[index]
         prediction = {"energies": host["energies"][:, [self._position[index]]].astype(float),
                       "forces": [host["forces"][:, selection].astype(float)]}
+        if self._state_members is not None:
+            energies, forces = self._state_members
+            prediction.update(state_energies=energies[:, :, [self._position[index]]].cpu().numpy(),
+                              state_forces=[forces[:, :, selection].cpu().numpy()],
+                              selected_state=self.evaluator.selected_state, gap_pair=self.evaluator.gap_pair)
         return {"prediction": prediction, "min_distance": minimum_distance(self.atoms(index))}
 
     def atoms(self, index):

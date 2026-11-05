@@ -188,3 +188,18 @@ def test_model_promotion_finishes_the_open_cohort_on_its_pinned_model():
     frames = pool.ready()
     assert [f.get_metadata()["cohort_model_id"] for f in frames] == [0]
     assert [c["cohort_id"] for c in pool.status()["open"]] == ["cohort-0001-000000"]
+
+
+def test_state_specific_cohorts_pin_each_open_group_across_model_promotions():
+    pool=CohortPool(dict(cohort_size=2,k=1,group_by_selected_state=True))
+    items=[]
+    for name,state,model,expected in [('a',0,0,0),('b',1,1,1),('c',0,2,0),('d',1,2,1)]:
+        molecule=member(name);molecule.update_metadata(dict(selected_state=state,trajectory_outcome='completed'))
+        assert pool.admit(molecule,model)==expected
+        items.append(molecule)
+    for molecule in reversed(items):pool.record(molecule)
+    assert pool.ready()==[]
+    assert {(c['selected_state'],c['model_id']) for c in pool.finished}=={(0,0),(1,1)}
+    assert pool._open=={}
+    with pytest.raises(ValueError,match='resolved'):
+        pool.admit(member('missing'),3)

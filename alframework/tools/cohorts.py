@@ -30,9 +30,10 @@ TERMINAL_OUTCOMES = ("eligible", "completed", "rejected", "failed")
 
 
 class _Cohort:
-    def __init__(self, cohort_id, model_id):
+    def __init__(self, cohort_id, model_id, selected_state=None):
         self.cohort_id = cohort_id
         self.model_id = model_id
+        self.selected_state = selected_state
         self.members = []
         self.outcomes = {}
         self.candidates = []
@@ -49,8 +50,9 @@ class CohortPool:
     def __init__(self, selection):
         self.cohort_size = int(selection["cohort_size"])
         self.k = int(selection["k"])
+        self.group_by_state = bool(selection.get("group_by_selected_state", False))
         self._cohorts = {}
-        self._open = None
+        self._open = {}
         self._next = {}
         self._membership = {}
         self.finished = []
@@ -60,13 +62,16 @@ class CohortPool:
         trajectory_id = molecule.get_moleculeid()
         if trajectory_id in self._membership:
             raise ValueError(f"Trajectory {trajectory_id!r} was already admitted to a cohort.")
-        cohort = self._open
+        state = molecule.get_metadata().get('selected_state') if self.group_by_state else None
+        if self.group_by_state and (isinstance(state, bool) or not isinstance(state, int) or state < 0):
+            raise ValueError('State-grouped admission requires resolved selected_state metadata')
+        cohort = self._open.get(state)
         if cohort is None or len(cohort.members) >= self.cohort_size:
             ordinal = self._next.get(model_id, 0)
             self._next[model_id] = ordinal + 1
-            cohort = _Cohort("cohort-{:04d}-{:06d}".format(int(model_id), ordinal), model_id)
+            cohort = _Cohort("cohort-{:04d}-{:06d}".format(int(model_id), ordinal), model_id, state)
             self._cohorts[cohort.cohort_id] = cohort
-            self._open = cohort
+            self._open[state] = cohort
         cohort.members.append(trajectory_id)
         self._membership[trajectory_id] = cohort.cohort_id
         molecule.update_metadata({"cohort_id": cohort.cohort_id,
@@ -80,6 +85,12 @@ class CohortPool:
         if trajectory_id in cohort.outcomes:
             raise ValueError(f"Trajectory {trajectory_id!r} already reported to {cohort.cohort_id}.")
         metadata = molecule.get_metadata()
+        if self.group_by_state:
+            if metadata.get('selected_state') != cohort.selected_state:
+                raise ValueError('Trajectory changed its selected state within a state-specific cohort')
+            if any(c.get('metadata', {}).get('selected_state') != cohort.selected_state
+                   for c in metadata.get('acquisition_candidates', [])):
+                raise ValueError('Candidate state disagrees with its cohort')
         outcome = metadata.get("trajectory_outcome", "failed")
         if outcome not in TERMINAL_OUTCOMES:
             raise ValueError(f"Trajectory {trajectory_id!r} reported non-terminal outcome {outcome!r}.")
@@ -109,13 +120,14 @@ class CohortPool:
                 selected.append(self._frame(cohort, candidate, rank))
             self.finished.append({
                 "cohort_id": cohort.cohort_id, "model_id": cohort.model_id, "members": len(cohort.members),
+                "selected_state": cohort.selected_state,
                 "outcomes": dict(Counter(cohort.outcomes.values())), "candidates": len(cohort.candidates),
                 "selected": [candidate["frame_id"] for candidate in chosen]})
             for trajectory_id in cohort.members:
                 del self._membership[trajectory_id]
             del self._cohorts[cohort_id]
-            if self._open is cohort:
-                self._open = None
+            if self._open.get(cohort.selected_state) is cohort:
+                del self._open[cohort.selected_state]
         return selected
 
     def _frame(self, cohort, candidate, rank):
@@ -138,6 +150,7 @@ class CohortPool:
         """JSON-safe summary of open and finished cohorts."""
         open_cohorts = [{"cohort_id": cohort.cohort_id, "model_id": cohort.model_id,
                          "admitted": len(cohort.members), "finished": len(cohort.outcomes),
+                         **({"selected_state": cohort.selected_state} if self.group_by_state else {}),
                          "candidates": len(cohort.candidates)} for cohort in self._cohorts.values()]
         return {"cohort_size": self.cohort_size, "k": self.k, "open": open_cohorts,
                 "finished": len(self.finished),

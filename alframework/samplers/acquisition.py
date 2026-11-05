@@ -101,7 +101,7 @@ def _summed_weights(block):
 
 def _selection(block):
     raw = dict(block.get("selection") or {})
-    unknown = set(raw) - {"mode", "cohort_size", "k", "max_candidates_per_trajectory"}
+    unknown = set(raw) - {"mode", "cohort_size", "k", "max_candidates_per_trajectory", "group_by_selected_state"}
     if unknown:
         raise ValueError(f"Unknown acquisition.selection settings: {sorted(unknown)}.")
     mode = raw.get("mode", "first_trigger")
@@ -117,6 +117,11 @@ def _selection(block):
         if key not in raw:
             raise ValueError(f"acquisition.selection.mode 'cohort_top_k' requires selection.{key}.")
         selection[key] = _positive_integer(raw[key], f"acquisition.selection.{key}")
+    group = raw.get('group_by_selected_state', False)
+    if not isinstance(group, bool):
+        raise ValueError('selection.group_by_selected_state must be Boolean')
+    if group:
+        selection['group_by_selected_state'] = True
     cap = raw.get("max_candidates_per_trajectory")
     selection["max_candidates_per_trajectory"] = None if cap is None else \
         _positive_integer(cap, "acquisition.selection.max_candidates_per_trajectory")
@@ -167,6 +172,8 @@ def acquisition_settings(sampler_config):
         if states is None or states['gap_pair'] is None:
             raise ValueError('Gap acquisition requires excited_state mode and gap_uncertainty.pair')
     settings["selection"] = _selection(block)
+    if settings['selection'].get('group_by_selected_state') and sampler_config.get('model_mode') != 'excited_state':
+        raise ValueError('State-grouped cohorts require model_mode excited_state')
     if policy == "continue" and settings["selection"]["mode"] != "cohort_top_k":
         raise ValueError("acquisition.trajectory_policy 'continue' requires selection.mode 'cohort_top_k'.")
     return settings

@@ -1,0 +1,138 @@
+{
+  "model_mode": "excited_state",
+  "state_selection": {
+    "mode": "batch_cycle",
+    "states": [
+      0,
+      1,
+      2,
+      3
+    ]
+  },
+  "batched_calculator": "alframework.ml_interfaces.hippynn_interface.load_hippynn_excited_state_ensemble",
+  "batched_calculator_options": {
+    "properties_list": {
+      "sE0": [
+        "sE0",
+        "system",
+        1.0
+      ],
+      "sE1": [
+        "sE1",
+        "system",
+        1.0
+      ],
+      "sE2": [
+        "sE2",
+        "system",
+        1.0
+      ],
+      "sE3": [
+        "sE3",
+        "system",
+        1.0
+      ],
+      "F0": [
+        "F0",
+        "atomic",
+        1.0
+      ],
+      "F1": [
+        "F1",
+        "atomic",
+        1.0
+      ],
+      "F2": [
+        "F2",
+        "atomic",
+        1.0
+      ],
+      "F3": [
+        "F3",
+        "atomic",
+        1.0
+      ],
+      "dE01": [
+        "dE01",
+        "system",
+        1.0
+      ],
+      "dE12": [
+        "dE12",
+        "system",
+        1.0
+      ],
+      "dE23": [
+        "dE23",
+        "system",
+        1.0
+      ]
+    },
+    "hippynn_kernel": "pytorch"
+  },
+  "driver": {
+    "engine": "alchemi",
+    "strategy": "batched"
+  },
+  "batching": {
+    "batch_size": 50,
+    "partial_policy": "timeout",
+    "max_wait_seconds": 60
+  },
+  "topology_check": {
+    "enabled": true,
+    "reference_conformer_path": "seeds/reference.xyz",
+    "reference_format": "xyz",
+    "reference_charge": 0,
+    "bond_min_scale": 0.85,
+    "bond_max_scale": 1.5,
+    "connectivity_scale": 1.25
+  },
+  "max_force_cutoff": 16.0,
+  "screen_audit_dir": "sampling/screen_audit",
+  "acquisition": {
+    "strategy": "summed",
+    "weights": {
+      "energy": 1.0,
+      "force_rms": 1.0
+    },
+    "trajectory_policy": "continue",
+    "selection": {
+      "mode": "cohort_top_k",
+      "cohort_size": 50,
+      "k": 500,
+      "group_by_selected_state": true
+    }
+  },
+  "dt": 0.1,
+  "maxt": 2.0,
+  "Escut": 0.001,
+  "Fscut": 0.01,
+  "Ncheck": 10,
+  "min_time": 0.1,
+  "distcut": 0.7,
+  "srt_temp": [
+    300.0,
+    300.0
+  ],
+  "end_temp": [
+    300.0,
+    300.0
+  ],
+  "amp_temp": [
+    0.0,
+    0.0
+  ],
+  "per_temp": [
+    1.0,
+    1.0
+  ],
+  "amp_dens": null,
+  "per_dens": null,
+  "end_dens": null,
+  "translate_to_center": false,
+  "friction_per_fs": 0.1,
+  "trajectory_frequency": 0,
+  "random_seed": 42,
+  "device": "cuda"
+}

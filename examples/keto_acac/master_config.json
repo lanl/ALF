@@ -1,0 +1,82 @@
+{
+  "master_directory": "pwd",
+  "builder_config_path": "builder_config.json",
+  "sampler_config_path": "sampler_config.json",
+  "QM_config_path": "QM_config.json",
+  "ML_config_path": "hippynn_config.json",
+  "builder_task": "alframework.builders.rdkit_molecule.rdkit_molecule_builder_task",
+  "sampler_task": "alframework.samplers.batched_mlmd.mlmd_trajectories_task",
+  "QM_task": "alframework.qm_interfaces.pyseqm_interface.pyseqm_excited_state_batch_task",
+  "ML_task": "alframework.ml_interfaces.hippynn_interface.train_excited_state_HIPPYNN_ensemble_task",
+  "properties_list": {
+    "sE0": [
+      "sE0",
+      "system",
+      1.0
+    ],
+    "sE1": [
+      "sE1",
+      "system",
+      1.0
+    ],
+    "sE2": [
+      "sE2",
+      "system",
+      1.0
+    ],
+    "sE3": [
+      "sE3",
+      "system",
+      1.0
+    ],
+    "F0": [
+      "F0",
+      "atomic",
+      1.0
+    ],
+    "F1": [
+      "F1",
+      "atomic",
+      1.0
+    ],
+    "F2": [
+      "F2",
+      "atomic",
+      1.0
+    ],
+    "F3": [
+      "F3",
+      "atomic",
+      1.0
+    ],
+    "dE01": [
+      "dE01",
+      "system",
+      1.0
+    ],
+    "dE12": [
+      "dE12",
+      "system",
+      1.0
+    ],
+    "dE23": [
+      "dE23",
+      "system",
+      1.0
+    ]
+  },
+  "bootstrap_set": 5000,
+  "finite_bootstrap": true,
+  "target_queued_QM": 8,
+  "minimum_QM": 0,
+  "save_h5_threshold": 2000,
+  "parallel_samplers": 200,
+  "maximum_builder_structures": 50,
+  "gpus_per_node": 4,
+  "parsl_configuration": "parsl_configs.config",
+  "status_path": "status.json",
+  "h5_path": "h5store/data-{:04d}.h5",
+  "h5_dir": "h5store/",
+  "model_path": "models/model-{:04d}",
+  "QM_scratch_dir": "qm_scratch/"
+}

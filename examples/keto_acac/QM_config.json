@@ -1,0 +1,15 @@
+{
+  "method": "AM1",
+  "device": "cuda",
+  "scf_eps": 1e-10,
+  "cis_tol": 1e-08,
+  "energy_offset_eV": -1391.451136550848,
+  "timeout_seconds": 60,
+  "num_threads": 1,
+  "batching": {
+    "mode": "native",
+    "batch_size": 4,
+    "partial_policy": "timeout",
+    "max_wait_seconds": 60
+  }
+}

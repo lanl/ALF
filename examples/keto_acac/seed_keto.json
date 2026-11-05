@@ -1,0 +1,59 @@
+{
+  "smiles": "CC(=O)CC(C)=O",
+  "reference_geometry": "keto.xyz",
+  "reference_charge": 0,
+  "pool_size": 50000,
+  "seed_size": 5000,
+  "seed": 42,
+  "threads": 1,
+  "box_size_mult": 4.0,
+  "max_embedding_rounds": 5,
+  "polar_h": true,
+  "bond_scales": [
+    0.0,
+    0.02,
+    0.04,
+    0.06,
+    0.08,
+    0.1
+  ],
+  "angle_scales": [
+    0.0,
+    0.02,
+    0.04,
+    0.06,
+    0.08,
+    0.1
+  ],
+  "xh_bond_scales": [
+    0.0,
+    0.01,
+    0.02,
+    0.03,
+    0.03,
+    0.03
+  ],
+  "xh_angle_scales": [
+    0.0,
+    0.01,
+    0.02,
+    0.03,
+    0.03,
+    0.03
+  ],
+  "torsion_scales": [
+    0.0,
+    0.06,
+    0.12,
+    0.18,
+    0.24,
+    0.3
+  ],
+  "geometry_screen": {
+    "bond_min_scale": 0.85,
+    "bond_max_scale": 1.5,
+    "nonbonded_min_scale": 1.4,
+    "connectivity_scale": 1.25,
+    "min_distance_A": 0.7
+  }
+}

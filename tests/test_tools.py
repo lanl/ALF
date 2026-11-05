@@ -116,3 +116,19 @@ def test_store_current_data_writes_converged_sorted_h5(tmp_path):
         np.testing.assert_allclose(group["energy"][()], [-3.0])
         assert group["forces"].shape == (1, 3, 3)
         assert group["cell"].shape == (1, 3, 3)
+
+
+def test_store_current_data_omits_cell_for_nonperiodic_structures(tmp_path):
+    atoms = Atoms("OH2", positions=[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], cell=[20.0] * 3)
+    molecule = MoleculesObject(atoms, "sample")
+    molecule.store_results({"energy": -1.0, "forces": np.arange(9.0).reshape(3, 3)})
+    molecule.set_converged_flag(True)
+
+    h5_path = tmp_path / "data.h5"
+    store_current_data(str(h5_path), [molecule],
+                       {"energy": ["energy", "system", 1.0], "forces": ["forces", "atomic", 1.0]})
+
+    with h5py.File(h5_path, "r") as h5:
+        group = h5["H02_O01"]
+        assert "cell" not in group
+        assert group["coordinates"].shape == (1, 3, 3)

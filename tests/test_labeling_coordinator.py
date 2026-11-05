@@ -238,3 +238,31 @@ def test_batched_queue_counts_structures_and_flattens_results():
     assert [mol.get_moleculeid() for mol in results] == ["a", "b"]
     assert failed == 1 and queue.failed_structures == 3
     assert queue.get_number() == 5 and queue.get_task_number() == 1
+
+
+@pytest.mark.parametrize('width', [1, 2])
+def test_real_label_coordinator_submits_timeout_tails_without_flush(tmp_path, width):
+    import parsl
+    from parsl import python_app
+    from parsl.config import Config
+    from parsl.executors import ThreadPoolExecutor
+    from ase import Atoms
+    from alframework.tools.labeling import LabelingCoordinator
+    from alframework.tools.molecules_class import MoleculesObject
+    @python_app(executors=['tail'])
+    def label(molecule_object):
+        return molecule_object
+    dfk = parsl.load(Config(executors=[ThreadPoolExecutor(label='tail', max_threads=1)], run_dir=str(tmp_path / 'parsl')))
+    try:
+        coordinator = LabelingCoordinator(label, 'test.label', dict(batching=dict(
+            mode='sequential', batch_size=4, partial_policy='timeout', max_wait_seconds=0)))
+        for i in range(width):
+            coordinator.submit(MoleculesObject(Atoms('H'), str(i)), [])
+        assert coordinator.submit_ready([]) == 1
+        for task in list(dfk.tasks.values()):
+            task['app_fu'].result()
+        results, failures = coordinator.queue.get_task_results()
+        assert failures == 0 and len(results) == width
+    finally:
+        dfk.cleanup()
+        parsl.clear()

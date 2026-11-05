@@ -205,3 +205,39 @@ def test_multi_trajectory_sampler_counts_structures():
                                  {**cutoffs, "driver": {"strategy": "batched"}, "batching": {"batch_size": 4}})
     batched.submit(MoleculesObject(WATER.copy(), "a"), [{"current_model_id": 0}])
     assert batched.queue.get_number() == 1 and batched.poll_delay(60) == pytest.approx(5.0, abs=0.1)
+
+
+def test_real_sampler_coordinator_pins_admission_and_task_generation(tmp_path):
+    import parsl
+    from parsl import python_app
+    from parsl.config import Config
+    from parsl.executors import ThreadPoolExecutor
+    from ase import Atoms
+    from alframework.tools.molecules_class import MoleculesObject
+    from alframework.tools.sampler_coordinator import SamplerCoordinator
+    @python_app(executors=['pinning'])
+    def sampler(molecule_objects, sampler_config, current_model_id):
+        for m in molecule_objects:
+            m.update_metadata(dict(executed_model_id=current_model_id, trajectory_outcome='completed', acquisition_candidates=[]))
+        return molecule_objects
+    config = dict(driver=dict(engine='ase', strategy='batched'),
+                  batching=dict(batch_size=2, partial_policy='timeout', max_wait_seconds=0),
+                  acquisition=dict(selection=dict(mode='cohort_top_k', cohort_size=3, k=1)), Escut=20, Fscut=.3)
+    dfk = parsl.load(Config(executors=[ThreadPoolExecutor(label='pinning', max_threads=1)], run_dir=str(tmp_path / 'parsl')))
+    try:
+        coordinator = SamplerCoordinator(sampler, 'test.sampler', config)
+        for name, model in [('a', 0), ('b', 0), ('c', 1), ('d', 1)]:
+            coordinator.submit(MoleculesObject(Atoms('H'), name), [dict(sampler_config=config, current_model_id=model)])
+        coordinator.submit_ready([dict(sampler_config=config, current_model_id=1)])
+        # Wait through actual Parsl results, then use the normal harvest path.
+        for task in list(dfk.tasks.values()):
+            task['app_fu'].result()
+        results, failed = coordinator.queue.get_task_results()
+        assert failed == 0
+        assert {m.get_moleculeid(): m.get_metadata()['executed_model_id'] for m in results} == dict(a=0, b=0, c=0, d=1)
+        assert coordinator.harvest(results) == []
+        assert coordinator.pool.finished[0]['model_id'] == 0
+        assert coordinator.status()['open'][0]['model_id'] == 1
+    finally:
+        dfk.cleanup()
+        parsl.clear()

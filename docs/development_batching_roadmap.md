@@ -5,8 +5,8 @@ core water, cohort/summed, MI250, and PySEQM matrices passed; all three controll
 cases passed. Increment 7 is closed by user acceptance on November 5; fresh-dependency
 matrices passed and remaining original-example gaps are accepted without further reruns.
 Increment 8 (E1–E2 contracts/storage and excited-state labeling) is complete;
-Increment 9 implements E3–E4 multi-state training and external geometries;
-focused CPU checks pass and real import-to-training qualification is pending.
+Increment 9 (E3–E4 multi-state training and external geometries) is complete;
+next work is E5 selected-state inference/sampling, followed by E6 cpp-ring ALF.
 Legacy NeuroChem is excluded from current acceptance by user decision. MI350 is deferred outside
 current acceptance. Post-release order decided: excited-state ALF, then
 composable sampling with batched UDD/gap ALF, then staged campaigns, with
@@ -380,7 +380,7 @@ pushes.
 | 6. ALCHEMI dynamics | merged (`be7fb64`) | ALCHEMI 0.2.0 NVIDIA batched MLMD through the same contracts, in its separate environment. | Shared conformance tests and NVIDIA acceptance pass; TorchSim CUDA/ROCm regressions pass. |
 | 7. Combined release validation | merged (`401fc89`); closed by user acceptance 2026-11-05 | Opt-in examples and integration/performance results. | All single/batched dynamics x single/batched labeling combinations complete representative ALF workflows. |
 | 8. Excited-state contracts and labeling (E1–E2) | merged (`401fc89`) | State/gap contracts, topology-aware NAC storage, GPU4PySCF TDA labels, and native PySEQM CIS batching. | Backend qualification gates passed; see **Increment 8**. |
-| 9. Multi-state training and external geometries (E3–E4) | in progress | Shared-trunk state heads and force gradients in the existing HIPPYNN interface; unlabeled XYZ/HDF5 geometry builder. | Focused CPU checks pass; real 32-frame PySEQM-to-four-member qualification pending. |
+| 9. Multi-state training and external geometries (E3–E4) | complete locally (`114fa55`, `7885ee3`, `89aeff2`); not pushed | Shared-trunk state heads and force gradients in the existing HIPPYNN interface; unlabeled XYZ/HDF5 geometry builder. | 402 library tests pass; real 32-frame import/label/store/four-member GPU training and reload passed. |
 
 Port narrowly scoped implementations and tests. Each increment must be
 independently reviewable and tested before dependent increments merge. Inspect
@@ -1937,11 +1937,11 @@ and all six verified owned-job cleanup reports. Qualification including retries
 finished within 27 minutes of first preparation, inside the original two-hour
 queue-inclusive deadline. Each allocation retained its 30-minute limit.
 
-Increment 9 continues with E3 multi-state training and E4 external initial geometries;
+Increment 9 completed E3 multi-state training and E4 external initial geometries;
 the E1–E6 sequence below remains the feature roadmap. No increment 8 training,
 dynamics, cpp9 campaign, NeuroChem testing, or user-guide update is required.
 
-### Increment 9 — E3–E4 implementation and qualification (2026-11-05)
+### Increment 9 — completed: multi-state training and external geometries (2026-11-05)
 
 User-approved boundary: fixed-composition nonperiodic molecular training and
 a small integrated PySEQM CIS qualification. E5 dynamics/acquisition and E6 cpp
@@ -1986,10 +1986,11 @@ excited-state interface or database module.
   HIPPYNN 0.1.3, Torch 2.15.0+cu132, NumPy 2.5.4, Parsl 2026.11.2;
   dependency compatibility passes. The accepted Increment 8 PySEQM environment
   and official revision `66021961` remain frozen and are reused.
-- Execution is **pending**: two sequential 30-minute allocations, two hours
-  overall including queue waits, persistent Darwin supervision, numeric owned
-  job journals and verified cleanup. ml4chem nodes are authorized if needed.
-  Generated evidence stays under `validation/inc9_20261105/`, outside Git.
+- Real qualification **passed** on ml4chem cn4072, with four NVIDIA RTX A6000
+  GPUs, explicit interpreters and GCC 11. Two sequential stages, including a
+  training-only retry, completed within the original two-hour queue-inclusive
+  deadline. Each allocation retained its 30-minute limit. Generated evidence
+  stays under `validation/inc9_20261105/`, outside Git.
 
 First real attempt: all 32 geometries converged and stored, with eight actual
 native width-four solves on ml4chem cn4072 (job 17378861). Training job 17378867
@@ -2000,21 +2001,59 @@ public `pytorch` kernels, records the active implementation, and permits an
 explicit `hippynn_kernel` override; ground-state training is unchanged.
 No upstream source or frozen dependency was patched or downgraded. All 67
 HIPPYNN tests pass with GCC 11 (PyTorch's compiled path requires C++20).
-A training-only retry will reuse fingerprint-verified accepted labels and
+A training-only retry reused fingerprint-verified accepted labels and
 the original queue-inclusive deadline; the failed attempt remains incomplete.
+
+Accepted results:
+
+- **Import/label/store:** `run-001/label/result.json`, job **17378861**:
+  all 32 distinct input geometries (16 XYZ and 16 geometry-only HDF5) passed
+  identity/order checks, converged, and stored with S0–S3 forces/energies and
+  adjacent gaps. Eight submitted tasks and all actual native solves had width
+  four; there were no labeling retries. Stored HDF5 SHA256 is
+  `ee74b7719db64279dbade4e895121c20622eac6bae53dd9b28905a7591722641`.
+- **Train/reload:** `run-003/train/result.json`, job **17378910**:
+  the production Parsl ML task trained four HipHopNN members for **five epochs**
+  on **cuda:0–3**, with changed parameters and finite metrics. Each member's
+  input manifest traces all 32 stored IDs into **24/4/4** train/valid/test
+  splits. All four checkpoint/database reloads reproduce those splits and
+  produce finite state forces/energies and consistent derived gaps. Maximum
+  representative force finite-difference error across the four states/members
+  is **1.65e-6 eV/Angstrom**, below **1e-3**.
+- **Regression checks:** final fresh training-environment suite **402 passed,
+  42 skipped**; external qualification tests **12 passed**. The new trainer's
+  explicit PyTorch kernels and C++20 compiler were used for final CPU checks.
+  Skips cover unavailable optional dependencies/hardware; they are not passes.
+- **Source/resources:** accepted ALF code is `89aeff2`, assembled with
+  `alf_validation` `74a4a99`; all current `alframework` source hashes match the
+  accepted frozen snapshot. The accepted labeling source remains `7885ee3`.
+  Source/config/environment fingerprints and the original failed attempt are
+  preserved. All three owned jobs (**17378861**, **17378867**, **17378910**)
+  are verified terminated; only those IDs were queried/cancelled by cleanup.
+- The consolidated report is
+  `/vast/home/pjlohr/ALF_LANL/validation/inc9_20261105/qualification-result.json`.
+  Qualification including the repair/retry took **16.4 minutes** from first
+  submission, including queue waits, within the original two-hour deadline.
+  `run-002` was an unsubmitted preparation and contributed no acceptance gate.
+
+Increment 9 is complete. This qualifies fixed-composition nonperiodic training
+with HIPPYNN's public PyTorch kernel path, not HIPPYNN's incompatible automatic
+Triton adapter. It adds no potential-accuracy, dynamics, acquisition, cpp-ring,
+MI350, NeuroChem, multi-node training, or user-guide gate. Next work is E5;
+E6 follows once selected-state sampling and acquisition are qualified.
 
 #### Excited-state ALF plan (E1–E6)
 
 Each step is a separate local change with its own CPU tests. Existing
 configurations, task signatures, and ground-state results stay unchanged.
-Steps E1–E4 can proceed in parallel once E1 lands.
+E1–E4 are complete; E5 is next, followed by E6.
 
 | Step | Deliverable | Acceptance gate |
 | --- | --- | --- |
 | E1. Contract and storage — complete in Increment 8 | Port the state/gap key contract, `atom_order`, and the `pair_atomic`/`nac_pairs` storage scope. | Multi-state and NAC HDF5 round-trip tests; atom order restored; existing `properties_list` behavior unchanged. |
 | E2. Excited-state labelers — complete in Increment 8 | GPU4PySCF TDA as an ordinary `QM_task`, with single and sequential packing (no native batch). Promote cpp9's transition dipoles and oscillator strengths into the interface. PySEQM CIS single and composition-grouped native batches. | Mocked CPU tests and a CPU PySCF comparison; then real A100 GPU4PySCF labels with the cpp9 label checks (shapes, finiteness, offset applied once, oscillator strengths ≥ 0, NAC pair order). |
-| E3. Multi-state training | The excited-state HIPPYNN trainer as a separate `ML_task`. Reconcile its loader with dev's small-molecule `ALFPyAniDirectoryDB` rather than keeping two readers. | Real four-member GPU training; members reload; the ground-state trainer is unchanged. |
-| E4. External initial geometries | A builder that admits externally generated, unlabeled geometries (xyz or geometry-only HDF5) as bootstrap/sampling seeds. Uses the scoped parts of `h5_replay_builder` (row 6). The random ring generator stays outside ALF. | Identities, atom order, and provenance survive into labeling inputs; no stored labels are carried into new labeling. |
+| E3. Multi-state training — complete in Increment 9 | Separate excited-state `ML_task` in the existing `hippynn_interface.py`, sharing its opt-in `ALFPyAniDirectoryDB`; derived gap losses and fixed-composition nonperiodic data. | Four GPU-trained members reload with exact input/split manifests; ground-state trainer unchanged. |
+| E4. External initial geometries — complete in Increment 9 | `external_geometry_builder_task` imports unlabeled XYZ/extxyz or geometry-only HDF5 with sequential or deterministic-hash selection. The random ring generator stays outside ALF. | Identities, atom order, and provenance survived real labeling inputs; source labels/calculators are stripped. |
 | E5. Sampling on a chosen state | Multi-state evaluator output (per-state member arrays; existing ground-state shapes remain the default). A `selected_state` from metadata or `fixed`/`batch_cycle`, with a selected-state batch key. Per-state diagnostics and a named gap signal with its own cutoff as a `SCORE_TERMS` entry. Eligibility reads configured signal/cutoff pairs; `Es`/`Fs`/`Fsmax` keep their meaning. | CPU parity with fakes across ASE, TorchSim, and ALCHEMI; a bounded molecular excited-state loop through the real coordinator. |
 | E6. cpp ring full ALF example | An ordinary master configuration run through `alframework.__main__`: (1) bootstrap from a random initial dataset of ring structures made by an external generator; (2) cpp9-science GPU4PySCF labels, with NACs stored but not trained; (3) multi-state training; (4) excited-state MLMD and acquisition; (5) iterate. The fork's standalone driver is not ported as-is; its settings and checks are reused. | A real, bounded Darwin campaign like the water matrix: at least one round selects new sampled ring structures, labels them with converged GPU4PySCF, stores them, and promotes a retrained, loadable four-member ensemble. |
 

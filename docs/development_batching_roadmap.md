@@ -1799,8 +1799,10 @@ untagged frames retain the existing ordering behavior. Missing, inconsistent,
 noninteger, or duplicate pair mappings are rejected before writing. Focused
 contract/storage and existing storage checks passed (29 tests).
 
-E2 will add GPU4PySCF single/sequential labeling with optional optical/NAC
-properties and separate single/native PySEQM CIS tasks. Native qualification
+E2 GPU4PySCF single/sequential labeling is implemented with optional optical/NAC
+properties. Its focused adapter, device, and labeling-coordinator checks passed
+(109 tests). Real backend qualification remains pending. Separate single/native
+PySEQM CIS tasks are being implemented. Native qualification
 must record actual successful backend widths, including mixed molecule sizes.
 Target current stable GPU4PySCF/PySCF and official PySEQM master (verified
 `66021961` at implementation start), in new isolated environments. Existing

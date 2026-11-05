@@ -135,6 +135,32 @@ Results after the cleanup:
 
 The 65 harness tests pass in an assembled `alf_validation` tree.
 
+The untracked July 2026 Darwin runs `examples/simple_water_darwin_run_test/`
+and `examples/fine_tuning_darwin_test/` (464 MB) moved to
+`/vast/home/pjlohr/ALF_LANL/validation/darwin_runs_202607/`. Older entries cite
+their former paths; their own `parsl_configs.py` still names the old location.
+
+Tests no longer read that run's trained 8-member checkpoint, because it cannot
+exist on a fresh clone. The parity tests (ensemble statistics against
+`MLMD_calculator`, batched and legacy HIPPYNN inference across engines, and
+concurrent member loading) use a session fixture instead: a two-member HIPPYNN
+water ensemble trained on CPU in about 10 s. They now run in any environment
+with HIPPYNN, including the HIPPYNN CI job. They check code-path parity, not
+potential accuracy.
+
+The smaller ensemble exposed a real ordering bug.
+- `HIPNN_ASE_load_ensemble` returned members in unsorted glob order, while the
+  batched loader sorts.
+- Ensemble means and spreads were unaffected, but per-member comparisons
+  differed.
+- Members are now loaded in sorted order (`eb20ae9`), with a regression test.
+
+| Environment | Passed | Skipped |
+| --- | ---: | ---: |
+| `atomistic` | 339 | 40 |
+| `alf_alchemi_02` | 357 | 22 |
+| Fresh torch-free install | 322 | 24 |
+
 ## Development and test environments
 
 Policy, decided 2026-11-03: test development work against fresh installs with

@@ -45,6 +45,7 @@ DEFAULT_GPU4PYSCF_CONFIG = {
     "scf_conv_tol": 1.0e-10,
     "scf_max_cycle": 100,
     "tda_conv_tol": 1.0e-8,
+    "tda_lindep": 1.0e-20,
     "cphf_conv_tol": 1.0e-8,
     "tda_max_cycle": 200,
     "num_threads": 8,
@@ -213,6 +214,7 @@ def validate_gpu4pyscf_config(QM_config: dict[str, Any] | None) -> dict[str, Any
     options["tda_conv_tol"] = _positive_float(
         options.get("tda_conv_tol"), name="tda_conv_tol"
     )
+    options["tda_lindep"] = _positive_float(options["tda_lindep"], name="tda_lindep")
     options["cphf_conv_tol"] = _positive_float(options["cphf_conv_tol"], name="cphf_conv_tol")
     for key in ("scf_max_cycle", "tda_max_cycle", "num_threads"):
         options[key] = _integer(options.get(key), name=key, minimum=1)
@@ -624,6 +626,35 @@ def transition_dipoles_staged(td, cupy):
     return _to_numpy(moments, cupy)
 
 
+def _single_device_backend(pyscf):
+    """Use upstream's PySCF configuration hook before GPU4PySCF imports.
+
+    GPU4PySCF captures num_devices in many modules at first import. With one
+    device its kernels stay on the current CuPy device selected by ALF. Never
+    rewrite visibility masks or monkeypatch those imported module constants.
+    """
+    import sys
+    cached = sys.modules.get("gpu4pyscf.__config__")
+    if cached is not None and cached.num_devices != 1:
+        raise GPU4PySCFDeviceError(
+            "GPU4PySCF was imported in multi-GPU mode; set PySCF num_devices=1 "
+            "before its first import in this single-device QM worker.")
+    config = getattr(pyscf, "__config__", None)
+    missing = object()
+    previous = getattr(config, "num_devices", missing)
+    if config is not None:
+        config.num_devices = 1
+    try:
+        return (importlib.import_module("gpu4pyscf"),
+                importlib.import_module("gpu4pyscf.dft"))
+    finally:
+        if config is not None:
+            if previous is missing:
+                del config.num_devices
+            else:
+                config.num_devices = previous
+
+
 def run_gpu4pyscf_states(
     atoms,
     options: dict[str, Any],
@@ -638,8 +669,7 @@ def run_gpu4pyscf_states(
 
     try:
         pyscf = importlib.import_module("pyscf")
-        gpu4pyscf = importlib.import_module("gpu4pyscf")
-        gpu_dft = importlib.import_module("gpu4pyscf.dft")
+        gpu4pyscf, gpu_dft = _single_device_backend(pyscf)
         cupy = importlib.import_module("cupy")
         nist = importlib.import_module("pyscf.data.nist")
     except Exception as exc:
@@ -703,6 +733,7 @@ def run_gpu4pyscf_states(
         td.nstates = nroots
         td.conv_tol = float(options["tda_conv_tol"])
         td.max_cycle = int(options["tda_max_cycle"])
+        td.lindep = float(options["tda_lindep"])
         td.kernel()
     except GPU4PySCFError:
         raise
@@ -887,6 +918,7 @@ def run_gpu4pyscf_states(
         "qm_tda_seconds": tda_seconds,
         "qm_optical_seconds": optical_seconds,
         "qm_gradient_seconds": time.time() - gradient_start - (nac_elapsed or 0.0),
+        "gpu4pyscf_num_devices": int(getattr(getattr(gpu4pyscf, "__config__", None), "num_devices", 1)),
         "pyscf_version": str(getattr(pyscf, "__version__", "unknown")),
         "gpu4pyscf_version": str(
             getattr(gpu4pyscf, "__version__", "unknown")

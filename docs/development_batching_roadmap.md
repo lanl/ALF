@@ -18,7 +18,7 @@ Read these sections before starting work:
 2. **Branch and maintenance workflow**
 3. **Development and test environments**
 4. **Increment 7 close-out** for accepted evidence and exclusions, then
-   **Decided priority order** and its E1–E6 table. Next work starts at E1.
+   **Increment 8** and **Decided priority order** with its E1–E6 table.
 
 Standing rules:
 - Commit locally on `development`. Never push; the user pushes.
@@ -1820,6 +1820,34 @@ must record actual successful backend widths, including mixed molecule sizes.
 Target current stable GPU4PySCF/PySCF and official PySEQM master (verified
 `66021961` at implementation start), in new isolated environments. Existing
 accepted environments and external source checkouts remain unchanged.
+
+Implementation commits are `49f6c6e` (E1), `fc7118e` (GPU4PySCF), and
+`f89b722` (native CIS and qualification), with focused runner correction
+`039b9d9`. The final focused suite passed 120 tests; the runner correction's
+five focused tests also passed. New environments and evidence live under
+`ALF_LANL/environments/20261105/inc8/` and
+`ALF_LANL/validation/inc8_20261105/`, outside Git.
+
+The real PySEQM GPU qualification passed in `run-001/pyseqm/result.json`:
+native widths 1/2/4/8, a mixed request partitioned into two width-four solves,
+finite-difference forces on S0–S3, ground-state compatibility, and actual Parsl
+single/sequential-four/native-four labeling through HDF5 storage. Native
+energy/force discrepancies were below 2.2e-13 eV and eV/Angstrom; maximum
+finite-difference error was 1.44e-6 eV/Angstrom. Job 17378058 terminated and its
+cleanup report is verified. The first GPU4PySCF attempt failed before invoking
+the adapter because of a runner keyword-call mistake; it was corrected and
+regression-tested. Only that backend was retried from frozen `039b9d9` in
+`run-002/`, after the PySEQM allocation, retaining the original overall deadline.
+GPU4PySCF's second attempt correctly rejected unconverged TDA roots 2 and 3;
+cleanup was verified. Upstream's default linear-dependence threshold can
+truncate corrections above a requested 1e-8 residual, so the adapter now exposes
+`tda_lindep` (default 1e-20), without relaxing the residual tolerance. The CPU
+reference uses the same setting. GPU4PySCF also defaults to all visible GPUs:
+the adapter configures its supported PySCF `num_devices=1` hook before first
+import, then restores the PySCF setting; backend kernels use ALF's selected
+local CuPy device. A previously imported multi-GPU backend fails explicitly
+rather than rewriting masks or patching backend module constants. Real
+qualification remains pending until the corrected result and cleanup.
 
 Completion requires focused CPU checks, small-molecule CPU/GPU comparisons,
 native CIS single/packed parity at widths 1/2/4/8, and actual Parsl labeling

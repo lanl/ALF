@@ -1028,3 +1028,30 @@ def test_masked_gpu_selection_uses_shared_visibility_rules(monkeypatch):
     selected = gpu4pyscf_module.select_gpu4pyscf_device(1)
     assert selected['index'] == 3
     assert selected['cuda_visible_devices'] == '3,4,6,7'
+
+
+def test_backend_sets_single_device_config_only_during_import(monkeypatch):
+    import sys
+    monkeypatch.delitem(sys.modules, 'gpu4pyscf.__config__', raising=False)
+    config = SimpleNamespace(num_devices=4)
+    fake = SimpleNamespace(__config__=config)
+    seen=[]
+    def load(name):
+        seen.append((name, config.num_devices))
+        return name
+    monkeypatch.setattr(gpu4pyscf_module.importlib, 'import_module', load)
+    gpu4pyscf_module._single_device_backend(fake)
+    assert seen == [('gpu4pyscf', 1), ('gpu4pyscf.dft', 1)]
+    assert config.num_devices == 4
+
+
+def test_preimported_multigpu_backend_is_rejected(monkeypatch):
+    import sys
+    monkeypatch.setitem(sys.modules, 'gpu4pyscf.__config__', SimpleNamespace(num_devices=4))
+    with pytest.raises(GPU4PySCFDeviceError, match='multi-GPU'):
+        gpu4pyscf_module._single_device_backend(SimpleNamespace())
+
+
+def test_tight_tda_convergence_keeps_small_davidson_corrections():
+    config = validate_gpu4pyscf_config({'tda_conv_tol': 1e-8})
+    assert config['tda_lindep'] < config['tda_conv_tol']**2

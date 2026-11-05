@@ -200,6 +200,7 @@ def qualify_gpu4pyscf(root, specs):
     props = properties(nac=True, optical=True)
     config = dict(xc='cam-b3lyp', basis='6-31g', nroots=3, density_fit=True,
                   grids_level=3, scf_conv_tol=1e-10, tda_conv_tol=1e-8,
+                  tda_lindep=1e-20,
                   cphf_conv_tol=1e-10, num_threads=4, compute_nacr=True)
     write_json(root/'config.json', {'QM_config': config, 'properties_list': props})
     def label(items):
@@ -217,7 +218,7 @@ def qualify_gpu4pyscf(root, specs):
     mf = dft.RKS(mol, xc=config['xc']).density_fit()
     mf.grids.level = config['grids_level']; mf.conv_tol = config['scf_conv_tol']
     mf.kernel(); assert mf.converged
-    td = mf.TDA(); td.nstates=3; td.conv_tol=config['tda_conv_tol']; td.kernel()
+    td = mf.TDA(); td.nstates=3; td.conv_tol=config['tda_conv_tol']; td.lindep=config['tda_lindep']; td.kernel()
     assert np.all(td.converged)
     energies = (mf.e_tot + np.r_[0., td.e])*nist.HARTREE2EV
     gradients = [mf.nuc_grad_method().kernel()]

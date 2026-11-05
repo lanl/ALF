@@ -201,6 +201,7 @@ def qualify_gpu4pyscf(root, specs):
     config = dict(xc='cam-b3lyp', basis='6-31g', nroots=3, density_fit=True,
                   grids_level=3, scf_conv_tol=1e-10, tda_conv_tol=1e-8,
                   tda_lindep=1e-20,
+                  tda_max_cycle=200, scf_max_cycle=100,
                   cphf_conv_tol=1e-10, num_threads=4, compute_nacr=True)
     write_json(root/'config.json', {'QM_config': config, 'properties_list': props})
     def label(items):
@@ -211,14 +212,24 @@ def qualify_gpu4pyscf(root, specs):
             result.append(labeled)
         return result
     gpu = label(specs[:4])
+    from alframework.tools.tools import store_current_data
+    store_current_data(str(root/'backend-labels.h5'), gpu, props)
+    write_json(root/'backend-labels.json', {'ids':[m.get_moleculeid() for m in gpu],
+        'metadata':[m.get_metadata() for m in gpu], 'h5_sha256':digest(root/'backend-labels.h5')})
     from pyscf import gto, dft, lib
     from pyscf.data import nist
     lib.num_threads(4)
     mol = gto.M(atom=list(zip(specs[0]['symbols'], specs[0]['positions'])), basis=config['basis'], verbose=0)
     mf = dft.RKS(mol, xc=config['xc']).density_fit()
-    mf.grids.level = config['grids_level']; mf.conv_tol = config['scf_conv_tol']
+    mf.grids.level = config['grids_level']; mf.conv_tol = config['scf_conv_tol']; mf.max_cycle=config['scf_max_cycle']
     mf.kernel(); assert mf.converged
-    td = mf.TDA(); td.nstates=3; td.conv_tol=config['tda_conv_tol']; td.lindep=config['tda_lindep']; td.kernel()
+    td = mf.TDA(); td.nstates=3; td.conv_tol=config['tda_conv_tol']; td.lindep=config['tda_lindep']
+    td.max_cycle=config['tda_max_cycle']
+    # This fixed small-molecule reference can span the full excitation space.
+    # It avoids CPU Davidson restart/guess roundoff near the strict residual
+    # threshold while retaining the same Hamiltonian and convergence criterion.
+    nocc = mol.nelectron//2
+    td.kernel(x0=np.eye(nocc*(mf.mo_coeff.shape[1]-nocc)))
     assert np.all(td.converged)
     energies = (mf.e_tot + np.r_[0., td.e])*nist.HARTREE2EV
     gradients = [mf.nuc_grad_method().kernel()]

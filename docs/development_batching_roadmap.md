@@ -1846,8 +1846,11 @@ reference uses the same setting. GPU4PySCF also defaults to all visible GPUs:
 the adapter configures its supported PySCF `num_devices=1` hook before first
 import, then restores the PySCF setting; backend kernels use ALF's selected
 local CuPy device. A previously imported multi-GPU backend fails explicitly
-rather than rewriting masks or patching backend module constants. Real
-qualification remains pending until the corrected result and cleanup.
+rather than rewriting masks or patching backend module constants. All four GPU geometries passed labeling after this fix, including NACs and
+optical outputs. The next attempt stopped at CPU-reference Davidson convergence;
+that small reference now uses the complete excitation basis at the same
+Hamiltonian and residual criterion. Initial GPU labels are persisted before
+later checks. Real full qualification remains pending until result and cleanup.
 
 Completion requires focused CPU checks, small-molecule CPU/GPU comparisons,
 native CIS single/packed parity at widths 1/2/4/8, and actual Parsl labeling

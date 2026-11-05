@@ -307,7 +307,8 @@ pushes.
 | 4. Ground-state sampling and acquisition | merged (`86f62ca`) | Minimal physical-inference/MLMD contracts, uncertainty and summed ranking, first-trigger returns, and an in-memory logical-cohort selector. | Shared observations produce equivalent screening, scores, stopping, and selection across execution strategies. |
 | 5. TorchSim dynamics | merged (`86f62ca`) | Supported NVIDIA/AMD ground-state batched MLMD. | CPU, NVIDIA, and Darwin MI250 mechanics and integration acceptance pass. |
 | 6. ALCHEMI dynamics | merged (`be7fb64`) | ALCHEMI 0.2.0 NVIDIA batched MLMD through the same contracts, in its separate environment. | Shared conformance tests and NVIDIA acceptance pass; TorchSim CUDA/ROCm regressions pass. |
-| 7. Combined release validation | in progress | Opt-in examples and integration/performance results. | All single/batched dynamics x single/batched labeling combinations complete representative ALF workflows. |
+| 7. Combined release validation | merged (`401fc89`); closed by user acceptance 2026-11-05 | Opt-in examples and integration/performance results. | All single/batched dynamics x single/batched labeling combinations complete representative ALF workflows. |
+| 8. Excited-state contracts and labeling (E1–E2) | merged (`401fc89`) | State/gap contracts, topology-aware NAC storage, GPU4PySCF TDA labels, and native PySEQM CIS batching. | Backend qualification gates passed; see **Increment 8**. |
 
 Port narrowly scoped implementations and tests. Each increment must be
 independently reviewable and tested before dependent increments merge. Inspect
@@ -1794,6 +1795,14 @@ The user approved E1–E2, including native PySEQM CIS batching. Both backend
 qualification gates passed. E3–E6, training, dynamics, cpp9 execution, and
 user-guide updates remain outside this increment. Increment 7 acceptance is
 preserved; its campaigns were not repeated.
+
+CI follow-up (2026-11-05): the first `development` run of the fresh-install
+workflow failed one test in the `base` (torch-free) job.
+`test_fresh_worker_initializes_selected_gpu_before_resetting_allocator_stats`
+imported `torch` directly; it now uses `pytest.importorskip('torch')` like the
+other torch-dependent tests (`2f25c51`, local). A fresh torch-free venv runs
+378 passed and 19 skipped; the test still passes in `atomistic`. This is a test
+gating fix, not a behavior change.
 
 - **E1:** dependency-free contiguous state/gap contracts, explicit topology
   identity helpers, and opt-in `pair_atomic` NAC storage with a constant

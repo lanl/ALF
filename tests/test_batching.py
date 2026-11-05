@@ -148,3 +148,10 @@ def test_poll_delay_honors_nearest_timeout():
     b.add(molecule("y"), now=0.0)
     assert poll_delay(60, a, b, now=2.0) == pytest.approx(3.0)
     assert poll_delay(1, a, now=0.0) == 1
+
+
+def test_finite_bootstrap_ids_never_wrap_and_preserve_ordinary_width():
+    from alframework.tools.batching import bootstrap_molecule_ids
+    assert bootstrap_molecule_ids(8,10,4,True)==['mol-boot-0000000008','mol-boot-0000000009']
+    assert bootstrap_molecule_ids(10,10,4,True)==[]
+    assert len(bootstrap_molecule_ids(8,10,4,False))==4

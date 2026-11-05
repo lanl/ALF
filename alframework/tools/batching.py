@@ -95,6 +95,14 @@ def flatten_molecule_output(output):
                     f"MoleculesObject instances, or None; got {type(output).__name__}.")
 
 
+def bootstrap_molecule_ids(start, total, width, finite=False):
+    """Bound an opt-in finite source without changing ordinary bootstrap admission."""
+    if finite and (isinstance(total, bool) or not isinstance(total, int) or total < 1):
+        raise ValueError('finite_bootstrap requires a positive integer bootstrap_set')
+    stop = min(start + width, total) if finite else start + width
+    return [f'mol-boot-{index:010d}' for index in range(start, stop)]
+
+
 def default_batch_key(molecule):
     """Group molecules by periodicity.
 

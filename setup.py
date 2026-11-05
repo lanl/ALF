@@ -47,7 +47,7 @@ setuptools.setup(
     python_requires=">3.9",
     install_requires=install_requirements,
     extras_require={"docs": doc_requirements, "full": full_requirements, "tests": test_requirements,
-                    "torchsim": torchsim_requirements, "alchemi": alchemi_requirements},
+                    "torchsim": torchsim_requirements, "alchemi": alchemi_requirements, "topology": ["rdkit"]},
     license="BSD 3-Clause License",
     classifiers=[
         "Development Status :: 3 - Alpha",

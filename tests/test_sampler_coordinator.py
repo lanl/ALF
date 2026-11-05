@@ -273,3 +273,60 @@ def test_excited_state_admission_is_independent_of_width_and_completion_order(tm
         assert [state for _,state,_ in snapshots[0]] == [0,1,1,1,0,1,0,1]
     finally:
         dfk.cleanup(); parsl.clear()
+
+
+@pytest.mark.parametrize('failure', [None, 'builder', 'qm'])
+def test_actual_driver_finite_bootstrap_caps_partial_batch_and_reports_exhaustion(tmp_path,monkeypatch,failure):
+    import inspect
+    monkeypatch.chdir(tmp_path)
+    requested=[];training=[]
+    @python_app(executors=['finite_executor'])
+    def builder(moleculeid=None,moleculeids=None):
+        ids=moleculeids if moleculeids is not None else [moleculeid]
+        requested.extend(ids)
+        if failure=='builder':raise RuntimeError('deliberate builder failure')
+        return [MoleculesObject(WATER.copy(),name) for name in ids]
+    @python_app(executors=['finite_executor'])
+    def label(molecule_objects):
+        if failure=='qm':raise RuntimeError('deliberate label failure')
+        for m in molecule_objects:
+            m.store_results(dict(energy=-1.,forces=np.zeros((3,3))))
+            m.set_converged_flag(True)
+        return molecule_objects
+    @python_app(executors=['finite_executor'])
+    def train(current_training_id):
+        training.extend(stored_ids(tmp_path/'h5'))
+        return [True]*4,current_training_id
+    @python_app(executors=['finite_executor'])
+    def sampler(molecule_object):return molecule_object
+    config=Config(executors=[ThreadPoolExecutor(label='finite_executor',max_threads=2)],strategy='none',run_dir=str(tmp_path/'runinfo'))
+    modules={'fake.config':config,'fake.builder':builder,'fake.label':label,'fake.train':train,'fake.sampler':sampler}
+    monkeypatch.setattr(tool_module,'load_module_from_string',modules.__getitem__)
+    master=dict(master_directory='pwd',builder_task='fake.builder',sampler_task='fake.sampler',QM_task='fake.label',
+        ML_task='fake.train',parsl_configuration='fake.config',builder_config_path='builder.json',sampler_config_path='sampler.json',
+        QM_config_path='qm.json',ML_config_path='ml.json',status_path='status.json',model_path=str(tmp_path/'models/model-{:04d}'),
+        h5_path=str(tmp_path/'h5/data-{:04d}.h5'),bootstrap_set=5,finite_bootstrap=True,maximum_builder_structures=4,
+        parallel_samplers=8,target_queued_QM=8,minimum_QM=0,save_h5_threshold=7,gpus_per_node=0,
+        properties_list={'energy':['energy','system',1.],'forces':['forces','atomic',1.]})
+    for name,value in [('master',master),('builder',{}),('sampler',{}),('ml',{}),
+                      ('qm',{'batching':{'mode':'native','batch_size':4,'partial_policy':'timeout','max_wait_seconds':.001}})]:
+        (tmp_path/(name+'.json')).write_text(json.dumps(value))
+    original_sleep=time.sleep;polls=[0]
+    def sleep(seconds):
+        frame=inspect.currentframe().f_back
+        if frame.f_globals.get('__name__')=='__main__':
+            polls[0]+=1
+            if frame.f_globals.get('status',{}).get('current_model_id',-1)>=0:raise StopIteration('initial model ready')
+            if polls[0]>100:raise AssertionError('finite bootstrap hung')
+        original_sleep(.01)
+    monkeypatch.setattr(time,'sleep',sleep)
+    monkeypatch.setattr(sys,'argv',['alframework','--master',str(tmp_path/'master.json')])
+    try:
+        expected=RuntimeError if failure else StopIteration
+        with pytest.raises(expected,match='Finite bootstrap exhausted' if failure else 'initial model ready'):
+            runpy.run_module('alframework',run_name='__main__')
+        bootstrap=[name for name in requested if name.startswith('mol-boot-')]
+        assert sorted(bootstrap)==[f'mol-boot-{i:010d}' for i in range(5)]
+        assert len(training)==(0 if failure else 5)
+    finally:
+        parsl.dfk().cleanup();parsl.clear()

@@ -30,6 +30,7 @@ from alframework.tools.tools import load_module_from_string
 from alframework.tools.tools import build_input_dict
 from alframework.tools.pyanitools import anidataloader
 from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.batching import bootstrap_molecule_ids
 from alframework.tools.labeling import LabelingCoordinator
 from alframework.tools.sampler_coordinator import SamplerCoordinator
 #import logging
@@ -265,20 +266,29 @@ if testing:
 if status['current_h5_id'] == 0 and status['current_model_id'] < 0:
     print("Building Bootstrap Set")
     while QM_task_queue.get_exec_done_number() < master_config['bootstrap_set']:
+        if (master_config.get('finite_bootstrap', False)
+                and status['current_molecule_id'] >= master_config['bootstrap_set']
+                and builder_task_queue.get_number() == 0
+                and QM_task_queue.get_queued_number() + QM_task_queue.get_running_number() == 0
+                and not (getattr(labeling, 'buffer', None) and len(labeling.buffer))
+                and QM_task_queue.get_exec_done_number() < master_config['bootstrap_set']):
+            raise RuntimeError('Finite bootstrap exhausted before all requested labeling tasks completed; inspect failed work')
         if QM_task_queue.get_queued_number() < master_config['target_queued_QM']:
             while builder_task_queue.get_number() * master_config.get('maximum_builder_structures', 1) < master_config['parallel_samplers']:
-                moleculeids = ['mol-boot-{:010d}'.format(it_ind) for it_ind in
-                               range(status['current_molecule_id'], status['current_molecule_id'] + master_config.get('maximum_builder_structures', 1))
-                               ]
+                moleculeids = bootstrap_molecule_ids(status['current_molecule_id'], master_config['bootstrap_set'],
+                    master_config.get('maximum_builder_structures', 1), master_config.get('finite_bootstrap', False))
+                if not moleculeids:
+                    break
                 task_input = build_input_dict(builder_task.func,
                                               [{"moleculeid": 'mol-boot-{:010d}'.format(status['current_molecule_id']),
                                                 "moleculeids": moleculeids, "builder_config": builder_config},
                                                *all_configs, status],
                                               raise_on_fail=True)
                 builder_task_queue.add_task(builder_task(**task_input))
-                status['current_molecule_id'] = status['current_molecule_id'] + master_config.get('maximum_builder_structures',1)
+                status['current_molecule_id'] = status['current_molecule_id'] + len(moleculeids)
         
-        if builder_task_queue.get_exec_done_number() > master_config['minimum_QM']:
+        if (builder_task_queue.get_exec_done_number() > master_config['minimum_QM']
+                or (master_config.get('finite_bootstrap', False) and builder_task_queue.get_completed_number() > 0)):
             builder_results, failed = builder_task_queue.get_task_results()
             status['lifetime_failed_builder_tasks'] = status['lifetime_failed_builder_tasks'] + failed
             for structure in builder_results:

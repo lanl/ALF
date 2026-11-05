@@ -638,7 +638,8 @@ def HIPNN_ASE_calculator(HIPNN_model_directory,energy_key='energy',device="cuda:
     
 def HIPNN_ASE_load_ensemble(HIPNN_ensemble_directory,device="cuda:0"):
     model_list = []
-    for cur_dir in glob.glob(HIPNN_ensemble_directory + '/model-*/'):
+    # Sorted, so member order is deterministic and matches the batched loader.
+    for cur_dir in sorted(glob.glob(HIPNN_ensemble_directory + '/model-*/')):
         model_list.append(HIPNN_ASE_calculator(cur_dir,device=device))
     return(model_list)
 

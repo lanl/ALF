@@ -221,3 +221,14 @@ def test_neurochem_calculator_builds_ani_ensemble(monkeypatch):
         2,
     )
     assert neurochem_interface.os.environ["CUDA_VISIBLE_DEVICES"] == "3,5,7"
+
+
+def test_hippynn_ase_load_ensemble_orders_members_by_directory_name(monkeypatch, tmp_path):
+    hippynn_interface = importlib.import_module("alframework.ml_interfaces.hippynn_interface")
+    for name in ("model-02", "model-00", "model-01"):
+        (tmp_path / name).mkdir()
+    monkeypatch.setattr(hippynn_interface.glob, "glob",
+                        lambda pattern: [str(tmp_path / n) + "/" for n in ("model-02", "model-00", "model-01")])
+    monkeypatch.setattr(hippynn_interface, "HIPNN_ASE_calculator", lambda directory, device: directory)
+    loaded = hippynn_interface.HIPNN_ASE_load_ensemble(str(tmp_path), device="cpu")
+    assert [p.rstrip("/").rsplit("/", 1)[-1] for p in loaded] == ["model-00", "model-01", "model-02"]

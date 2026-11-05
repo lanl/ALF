@@ -195,8 +195,6 @@ def qualify_pyseqm(root, specs):
 
 def qualify_gpu4pyscf(root, specs):
     import numpy as np
-    from pyscf import gto, dft, lib
-    from pyscf.data import nist
     from alframework.qm_interfaces.gpu4pyscf_interface import (
         label_gpu4pyscf_excited_state_molecule, gpu4pyscf_excited_state_task)
     props = properties(nac=True, optical=True)
@@ -205,10 +203,15 @@ def qualify_gpu4pyscf(root, specs):
                   cphf_conv_tol=1e-10, num_threads=4, compute_nacr=True)
     write_json(root/'config.json', {'QM_config': config, 'properties_list': props})
     def label(items):
-        result = [label_gpu4pyscf_excited_state_molecule(m, config, props) for m in molecules(items)]
-        assert_labels(result)
+        result = []
+        for m in molecules(items):
+            labeled = label_gpu4pyscf_excited_state_molecule(m, QM_config=config, properties_list=props)
+            assert_labels([labeled])
+            result.append(labeled)
         return result
     gpu = label(specs[:4])
+    from pyscf import gto, dft, lib
+    from pyscf.data import nist
     lib.num_threads(4)
     mol = gto.M(atom=list(zip(specs[0]['symbols'], specs[0]['positions'])), basis=config['basis'], verbose=0)
     mf = dft.RKS(mol, xc=config['xc']).density_fit()
@@ -294,6 +297,7 @@ def prepare(root, site, backends):
 #SBATCH --mem=0
 #SBATCH --time=00:30:00
 #SBATCH --output={root}/{backend}-slurm.log
+{('#SBATCH --dependency=afterany:'+str(site['after_job'])) if site.get('after_job') else ''}
 set -euo pipefail
 module load {shlex.quote(site.get('cuda_module','cuda/13.2.1'))}
 export OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 PYTHONDONTWRITEBYTECODE=1
@@ -361,6 +365,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--root', type=Path, required=True)
     p.add_argument('--site', type=Path)
+    p.add_argument('--deadline-epoch', type=float, help='Reuse an earlier overall deadline for retries')
     p.add_argument('--backend', nargs='+', choices=BACKENDS, default=list(BACKENDS))
     modes = p.add_mutually_exclusive_group(required=True)
     modes.add_argument('--prepare-only', action='store_true')
@@ -372,7 +377,8 @@ def main():
         if not args.site: p.error('--site is required for preparation')
         prepare(root, json.loads(args.site.read_text()), args.backend)
     elif args.execute:
-        result = execute(root)
+        result = execute(root, budget_seconds=7200 if args.deadline_epoch is None
+                         else max(0., args.deadline_epoch-time.time()))
         raise SystemExit(0 if result['status'] == 'passed' else 1)
     else:
         worker(root, args.worker)

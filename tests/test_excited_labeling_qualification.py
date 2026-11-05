@@ -51,3 +51,17 @@ def test_fixture_identity_is_deterministic_and_tagged():
     ms = qualify.molecules(a)
     assert len(ms) == 5 and len(ms[-1]) == 6
     assert all('topology_atom_ids' in m.get_atoms().arrays for m in ms)
+
+
+def test_gpu_qualification_respects_keyword_only_labeler(tmp_path, monkeypatch):
+    from alframework.qm_interfaces import gpu4pyscf_interface as gpu
+    class StopBeforeCalculation(Exception): pass
+    calls = []
+    def label(molecule_object, *, QM_config, properties_list):
+        calls.append((QM_config, properties_list))
+        raise StopBeforeCalculation
+    monkeypatch.setattr(gpu, 'label_gpu4pyscf_excited_state_molecule', label)
+    with pytest.raises(StopBeforeCalculation):
+        qualify.qualify_gpu4pyscf(tmp_path, qualify.fixture_specs())
+    assert calls[0][0]['nroots'] == 3
+    assert 'nacr' in calls[0][1]

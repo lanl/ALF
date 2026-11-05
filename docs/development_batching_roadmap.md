@@ -91,6 +91,50 @@ dependencies, source implementation/commits, PR, acceptance evidence, and known
 limitations. Update it when work merges or priorities change. Changes in order
 should preserve the dependency and compatibility gates below.
 
+### Test suite scope and validation harnesses (2026-11-05)
+
+`tests/` covers only `alframework`, with one file per module or area. The
+Darwin validation harnesses and their tests were moved out of this repository
+(from `508fc1e`):
+
+- `examples/simple_water_campaign/`: the Increment 7 campaigns.
+- `examples/excited_state_labeling/`: the Increment 8 labeling qualification.
+- `examples/torchsim_benchmark/`: the engine benchmark.
+
+They now live in the local repository `/vast/home/pjlohr/ALF_LANL/alf_validation/`.
+Its `assemble.sh` combines an ALF revision with the harnesses into one
+committed tree, which is the form the harnesses expect. Earlier entries in this
+roadmap still cite the old `examples/...` paths; they refer to those historical
+locations. Recorded runs keep their own frozen source copies under
+`validation/`.
+
+Before removal, the harness tests that exercised production code were moved
+into ALF's own tests:
+- `SamplerCoordinator` model pinning, to `test_sampler_coordinator.py`;
+- `LabelingCoordinator` timeout tails, to `test_labeling_coordinator.py`;
+- nonperiodic storage without `cell`, to `test_tools.py`.
+
+Split suites were merged into these files:
+- `test_qm_interfaces`;
+- `test_pyseqm`;
+- `test_samplers`;
+- `test_hippynn_interface`;
+- `test_excited_states`;
+- `test_tools`.
+
+Three files were renamed: `test_gpu`, `test_gpu4pyscf`, and `test_examples`.
+Every in-scope test ID was preserved.
+
+Results after the cleanup:
+
+| Environment | Passed | Skipped |
+| --- | ---: | ---: |
+| `atomistic` | 338 | 40 |
+| Fresh torch-free install | 321 | 24 |
+| `alf_alchemi_02` | 356 | 22 |
+
+The 65 harness tests pass in an assembled `alf_validation` tree.
+
 ## Development and test environments
 
 Policy, decided 2026-11-03: test development work against fresh installs with

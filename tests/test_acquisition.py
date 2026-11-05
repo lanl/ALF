@@ -120,9 +120,9 @@ def test_uncertainty_and_summed_scores():
 
 def test_new_score_terms_extend_summed_ranking(monkeypatch):
     from alframework.samplers import acquisition
-    monkeypatch.setitem(acquisition.SCORE_TERMS, "gap", ("gap_std", "gap_std_cut", 1.0))
+    monkeypatch.setitem(acquisition.SCORE_TERMS, "custom_gap", ("gap_std", "gap_std_cut", 1.0))
     config = {**CONFIG, "gap_std_cut": 0.1,
-              "acquisition": {"strategy": "summed", "weights": {"energy": 1.0, "gap": 2.0}}}
+              "acquisition": {"strategy": "summed", "weights": {"energy": 1.0, "custom_gap": 2.0}}}
     settings = acquisition_settings(config)
     signals = {"Es": 1.0, "Fs": 0.3, "Fsmax": 1.2, "Fsrms": 0.4, "gap_std": 0.05}
     assert ranking_score(signals, settings, config) == pytest.approx(1.0 / 0.5 + 2.0 * 0.05 / 0.1)
@@ -142,7 +142,7 @@ def test_high_summed_score_alone_is_not_eligible():
     ({"strategy": "summed", "w_energy": 1.0}, "w_force"),
     ({"strategy": "summed", "w_energy": -1, "w_force": 1}, "nonnegative"),
     ({"strategy": "summed", "w_energy": 0, "w_force": 0}, "positive"),
-    ({"strategy": "summed", "weights": {"gap": 1.0}}, "Unknown acquisition score terms"),
+    ({"strategy": "summed", "weights": {"unknown": 1.0}}, "Unknown acquisition score terms"),
     ({"strategy": "summed", "weights": {"energy": 1.0}, "w_energy": 1, "w_force": 1}, "not both"),
     ({"strategy": "uncertainty", "w_energy": 1.0}, "only to strategy 'summed'"),
     ({"trajectory_policy": "continue"}, "requires selection.mode 'cohort_top_k'"),
@@ -187,3 +187,36 @@ def test_trained_hippynn_ensemble_statistics_match_mlmd_calculator(trained_ensem
         assert row["Es"] == pytest.approx(float(reference["energy_stdev"]), rel=1e-5, abs=1e-5)
         assert row["Fs"] == pytest.approx(float(reference["forces_stdev_mean"]), rel=1e-5, abs=1e-5)
         assert row["Fsmax"] == pytest.approx(float(reference["forces_stdev_max"]), rel=1e-5, abs=1e-5)
+
+
+def test_gap_spread_uses_correlated_member_differences_and_triggers_independently():
+    from alframework.ml_interfaces.ensemble_inference import ensemble_statistics
+    energies = np.array([[[10.], [12.]], [[20.], [22.]]])
+    prediction = dict(energies=energies[:, 1], forces=[np.zeros((2, 2, 3))],
+                      state_energies=energies, state_forces=[np.zeros((2, 2, 2, 3))], gap_pair=[0, 1])
+    stats = ensemble_statistics(prediction)[0]
+    assert stats['Es'] == 5. and stats['gap_std'] == 0.
+    config = dict(Escut=100., Fscut=100., distcut=.7, gap_std_cut=.01, model_mode='excited_state',
+                  gap_uncertainty={'pair': [0, 1]},
+                  acquisition={'strategy':'summed','weights':{'energy':1., 'gap':1.},
+                               'eligibility':['gap']})
+    settings = acquisition_settings(config)
+    assert assess_frame(stats, 1., 0., config, settings)['outcome'] == 'continue'
+    stats['gap_std'] = .02
+    decision = assess_frame(stats, 1., 0., config, settings)
+    assert decision['outcome'] == 'eligible' and not decision['Ecrit']
+    assert decision['acquisition_trigger_flags'] == {'gap': True}
+    assert decision['acquisition_score_terms']['gap'] == 2.
+    config['acquisition']['eligibility'] = ['energy']
+    assert assess_frame(stats, 1., 0., config, acquisition_settings(config))['outcome'] == 'continue'
+    del stats['gap_std']
+    with pytest.raises(ValueError, match='gap_std'):
+        ranking_score(stats, settings, config)
+
+
+@pytest.mark.parametrize('cutoff', [0., -1., float('nan'), float('inf')])
+def test_gap_cutoffs_are_positive_finite(cutoff):
+    config = dict(model_mode='excited_state', gap_uncertainty={'pair':[0, 1]}, gap_std_cut=cutoff,
+                  Escut=1., Fscut=1., acquisition={'eligibility':['gap']})
+    with pytest.raises(ValueError, match='positive finite'):
+        acquisition_settings(config)

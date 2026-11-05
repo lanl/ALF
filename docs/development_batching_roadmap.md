@@ -384,7 +384,7 @@ pushes.
 | 7. Combined release validation | merged (`401fc89`); closed by user acceptance 2026-11-05 | Opt-in examples and integration/performance results. | All single/batched dynamics x single/batched labeling combinations complete representative ALF workflows. |
 | 8. Excited-state contracts and labeling (E1–E2) | merged (`401fc89`) | State/gap contracts, topology-aware NAC storage, GPU4PySCF TDA labels, and native PySEQM CIS batching. | Backend qualification gates passed; see **Increment 8**. |
 | 9. Multi-state training and external geometries (E3–E4) | merged (`7c24cb2`, live remote verified 2026-11-05) | Shared-trunk state heads and force gradients in the existing HIPPYNN interface; unlabeled XYZ/HDF5 geometry builder. | 402 library tests pass; real 32-frame import/label/store/four-member GPU training and reload passed. |
-| 10. Selected-state sampling and acquisition (E5) | planned; engine coverage agreed 2026-11-05 | Multi-state inference, state selection and grouping, and named gap uncertainty across ASE, TorchSim CUDA, and ALCHEMI. | Focused compatibility/parity tests; real widths one/four on each engine; one shared small acquisition/label/store/retraining qualification. |
+| 10. Selected-state sampling and acquisition (E5) | in progress; engine coverage agreed 2026-11-05 | Multi-state inference, state selection and grouping, and named gap uncertainty across ASE, TorchSim CUDA, and ALCHEMI. | Focused compatibility/parity tests; real widths one/four on each engine; one shared small acquisition/label/store/retraining qualification. |
 | 11. cpp-ring active learning (E6) | planned; follows Increment 10 | Ordinary ALF loop with external ring inputs, GPU4PySCF labels, multi-state training, and selected-state sampling. | Newly sampled ring IDs enter a promoted, loadable four-member ensemble. Campaign settings are decided after E5. |
 
 Port narrowly scoped implementations and tests. Each increment must be
@@ -2051,7 +2051,7 @@ Triton adapter. It adds no potential-accuracy, dynamics, acquisition, cpp-ring,
 MI350, NeuroChem, multi-node training, or user-guide gate. Next work is E5;
 E6 follows once selected-state sampling and acquisition are qualified.
 
-### Increment 10 — planned: selected-state sampling and acquisition (E5)
+### Increment 10 — in progress: selected-state sampling and acquisition (E5)
 
 User decision, November 5: qualify ASE, TorchSim CUDA, and ALCHEMI with short
 real sampling checks at widths one and four, followed by one shared small
@@ -2059,6 +2059,22 @@ end-to-end qualification. This extends the accepted Increment 9 models and
 data; it does not repeat the Increment 7 matrices or Increment 8 labeler
 qualification. The initial excited-state scope remains fixed-composition,
 nonperiodic molecules. The implementation boundary below is the working plan.
+
+Implementation started November 5. Inference (`a5090e0`) and state propagation
+(`6c2751d`) are committed locally. The current library suite passes **409 tests**
+with **44 skips** in the frozen training environment. Focused CPU packed-state
+checks pass separately in the TorchSim CUDA and ALCHEMI environments. Real
+qualification remains pending and no hardware gate is inferred from CPU checks.
+
+The qualification profile is fixed by user decisions: molecular cutoffs
+`Escut=0.001 eV`, `Fscut=0.01 eV/Angstrom`, and S1/S2 gap-spread cutoff
+`0.01 eV`; gap uncertainty triggers and contributes to summed ranking. Require
+sampled labels from every engine. State cycling rotates per admitted trajectory,
+independently of execution width; metadata overrides consume an ordinal.
+Six sampling cases use four-trajectory cohorts with top-two selection. Their
+combined selections feed one native PySEQM label/store/four-member retraining
+stage. This gives at most twelve new labels; at least eight must pass, with
+all engines represented in retained inputs and across actual training splits.
 
 Deliver three separately reviewable local changes:
 

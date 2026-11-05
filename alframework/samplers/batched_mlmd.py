@@ -372,6 +372,8 @@ def sample_trajectories(molecule_objects, models, sampler_config, engine_class=N
             raise ValueError('Configured state is absent from ensemble')
         for molecule in molecule_objects:
             atoms = molecule.get_atoms()
+            if states['gap_pair'] is not None:
+                molecule.update_metadata(dict(gap_pair=list(states['gap_pair'])))
             if atoms.pbc.any():
                 raise ValueError('Excited-state sampling supports nonperiodic molecules only')
             if TOPOLOGY_ATOM_IDS in atoms.arrays:
@@ -427,6 +429,10 @@ def mlmd_trajectories_task(molecule_objects, sampler_config, model_path, current
         raise ValueError("mlmd_trajectories_task does not support use_potential_specific_code; "
                          "use simple_mlmd_sampling_task.")
     device = sampling_device(sampler_config, gpus_per_node)
+    if state_settings(sampler_config) is not None:
+        for molecule in molecule_objects:
+            molecule.update_metadata(dict(sampling_task_width=len(molecule_objects),
+                                           sampling_engine=driver_settings(sampler_config)['engine']))
     if sampler_config.get('batched_calculator') is not None:
         loader = load_module_from_config(sampler_config, 'batched_calculator')
         models = loader(model_path.format(current_model_id) + '/', device=device,

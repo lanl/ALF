@@ -1786,6 +1786,32 @@ excited-state sources match `feature/unified-sampling-drivers` byte for byte.
   - Per-state keys are atom-first (`F#` is `[atoms, 3]` per frame), so the
     existing `"atomic"` sorting handles them. Only NACs need the new scope.
 
+### Increment 8 — excited-state contracts and labeling (in progress, 2026-11-05)
+
+The user approved E1–E2, including native PySEQM CIS batching. E3–E6,
+training, dynamics, cpp9 execution, and user-guide updates remain outside this
+increment. Preserve Increment 7 acceptance without rerunning its campaigns.
+
+E1 is implemented: dependency-free state/gap contracts, explicit topology
+identity helpers, and opt-in `pair_atomic` NAC storage with a constant
+`nac_pairs` index. Tagged frames retain identities through species sorting;
+untagged frames retain the existing ordering behavior. Missing, inconsistent,
+noninteger, or duplicate pair mappings are rejected before writing. Focused
+contract/storage and existing storage checks passed (29 tests).
+
+E2 will add GPU4PySCF single/sequential labeling with optional optical/NAC
+properties and separate single/native PySEQM CIS tasks. Native qualification
+must record actual successful backend widths, including mixed molecule sizes.
+Target current stable GPU4PySCF/PySCF and official PySEQM master (verified
+`66021961` at implementation start), in new isolated environments. Existing
+accepted environments and external source checkouts remain unchanged.
+
+Completion requires focused CPU checks, small-molecule CPU/GPU comparisons,
+native CIS single/packed parity at widths 1/2/4/8, and actual Parsl labeling
+through HDF5 storage. Each GPU allocation defaults to 30 minutes; the overall
+qualification deadline is two hours including queue waits. Unresolved checks
+remain explicit, with cleanup restricted to owned jobs and termination verified.
+
 #### Excited-state ALF plan (E1–E6)
 
 Each step is a separate local change with its own CPU tests. Existing

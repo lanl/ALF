@@ -32,3 +32,18 @@ def water_molecule(periodic_water_atoms):
 @pytest.fixture
 def fixed_calculator_factory():
     return FixedCalculator
+
+
+@pytest.fixture(scope="session")
+def trained_ensemble(tmp_path_factory):
+    """A real two-member HIPPYNN water ensemble, trained on CPU once per session.
+
+    Parity tests compare code paths on the same trained model; they do not need
+    an accurate potential, so no external checkpoint is required.
+    """
+    pytest.importorskip("torch")
+    pytest.importorskip("hippynn")
+    from tests.helpers.hippynn import train_cpu_ensemble
+    directory = tmp_path_factory.mktemp("trained") / "ensemble"
+    train_cpu_ensemble(directory)
+    return directory

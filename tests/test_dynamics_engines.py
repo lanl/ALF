@@ -15,7 +15,6 @@ from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator  # noq
 from alframework.samplers.batched_mlmd import sample_trajectories  # noqa: E402
 from alframework.tools.molecules_class import MoleculesObject  # noqa: E402
 from tests.helpers.fakes import spring_ensemble  # noqa: E402
-from tests.test_acquisition import TRAINED_ENSEMBLE  # noqa: E402
 
 DEVICE = os.environ.get("ALF_TEST_ENGINE_DEVICE", "cpu")
 
@@ -242,10 +241,8 @@ def test_failed_member_does_not_affect_batch_mates(engine_name, pooled):
                                                                      rel=1e-12, abs=1e-12)
 
 
-@pytest.mark.skipif(not TRAINED_ENSEMBLE.is_dir(), reason="trained Darwin water ensemble not available")
 @pytest.mark.parametrize("periodic", [False, True], ids=["molecular", "periodic"])
-def test_batched_hippynn_matches_ase_calculators(periodic, engine_name):
-    pytest.importorskip("hippynn")
+def test_batched_hippynn_matches_ase_calculators(periodic, engine_name, trained_ensemble):
     import torch
     from alframework.ml_interfaces.hippynn_interface import load_hippynn_batched_ensemble
     from alframework.ml_interfaces.hippynn_interface import HIPNN_ASE_load_ensemble
@@ -259,8 +256,8 @@ def test_batched_hippynn_matches_ase_calculators(periodic, engine_name):
             center = rng.uniform(0, size, 3)
             positions += [center, center + [0.96, 0, 0], center + [-0.24, 0.93, 0]]
         systems.append(Atoms("OH2" * waters, positions=positions, cell=np.eye(3) * size, pbc=periodic))
-    batched = load_hippynn_batched_ensemble(str(TRAINED_ENSEMBLE), device=DEVICE)
-    reference = ASEEnsembleEvaluator(HIPNN_ASE_load_ensemble(str(TRAINED_ENSEMBLE), device=DEVICE)).predict(systems)
+    batched = load_hippynn_batched_ensemble(str(trained_ensemble), device=DEVICE)
+    reference = ASEEnsembleEvaluator(HIPNN_ASE_load_ensemble(str(trained_ensemble), device=DEVICE)).predict(systems)
     energies, forces = batched.evaluate(
         torch.as_tensor(np.concatenate([a.numbers for a in systems])),
         torch.as_tensor(np.concatenate([a.positions for a in systems])),
@@ -269,14 +266,12 @@ def test_batched_hippynn_matches_ase_calculators(periodic, engine_name):
     np.testing.assert_allclose(forces.cpu().numpy(), np.concatenate(reference["forces"], axis=1), rtol=1e-5, atol=1e-5)
 
 
-@pytest.mark.skipif(not TRAINED_ENSEMBLE.is_dir(), reason="trained Darwin water ensemble not available")
-def test_trained_ensemble_sampling_with_batched_hippynn(engine_name):
-    pytest.importorskip("hippynn")
+def test_trained_ensemble_sampling_with_batched_hippynn(engine_name, trained_ensemble):
     from alframework.ml_interfaces.ensemble_inference import ASEEnsembleEvaluator, ensemble_statistics
     from alframework.ml_interfaces.hippynn_interface import load_hippynn_batched_ensemble
     from alframework.ml_interfaces.hippynn_interface import HIPNN_ASE_load_ensemble
 
-    batched = load_hippynn_batched_ensemble(str(TRAINED_ENSEMBLE), device=DEVICE)
+    batched = load_hippynn_batched_ensemble(str(trained_ensemble), device=DEVICE)
     # Keep the actual physical member outputs at each observed geometry. Float32
     # total-energy rounding can be small relative to E but noticeable relative to
     # std(E); distinguish prediction parity from correctness of its reduction.
@@ -310,7 +305,7 @@ def test_trained_ensemble_sampling_with_batched_hippynn(engine_name):
         for n in (1, 2, 3)]
     config["driver"] = dict(CONFIG["driver"], engine=engine_name)
     results = sample_trajectories(molecules, RecordingEvaluator(), config, device=DEVICE)
-    reference = ASEEnsembleEvaluator(HIPNN_ASE_load_ensemble(str(TRAINED_ENSEMBLE), device=DEVICE))
+    reference = ASEEnsembleEvaluator(HIPNN_ASE_load_ensemble(str(trained_ensemble), device=DEVICE))
     # Compare raw predictions at the approved tolerance, exact signal reductions,
     # and the propagation of measured member roundoff into each uncertainty.
     candidates = [c for r in results for c in r.get_metadata()["acquisition_candidates"]]

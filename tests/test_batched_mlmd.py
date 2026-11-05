@@ -18,7 +18,6 @@ from alframework.samplers.mlmd_sampling import mlmd_sampling
 from alframework.tools.molecules_class import MoleculesObject
 from alframework.tools.tools import annealing_schedule
 from tests.helpers.fakes import spring_ensemble as fake_ensemble
-from tests.test_acquisition import TRAINED_ENSEMBLE
 
 # Equilateral water at the springs' rest length: zero uncertainty that grows as it heats.
 WATER = Atoms("OH2", positions=[[0, 0, 0], [1.2, 0, 0], [0.6, 1.0392, 0]])
@@ -192,12 +191,10 @@ def test_metadata_files_and_task_signature(tmp_path):
     assert "molecule_objects" in inspect.signature(mlmd_trajectories_task.func).parameters
 
 
-@pytest.mark.skipif(not TRAINED_ENSEMBLE.is_dir(), reason="trained Darwin water ensemble not available")
-def test_trained_ensemble_single_and_batched_agree():
-    pytest.importorskip("hippynn")
+def test_trained_ensemble_single_and_batched_agree(trained_ensemble):
     from alframework.ml_interfaces.hippynn_interface import HIPNN_ASE_load_ensemble
 
-    models = HIPNN_ASE_load_ensemble(str(TRAINED_ENSEMBLE), device="cpu")
+    models = HIPNN_ASE_load_ensemble(str(trained_ensemble), device="cpu")
     config = dict(GROUP_CONFIG, Escut=0.5, Fscut=1.0, maxt=0.01, distcut=0.7, srt_temp=[250.0, 350.0],
                   end_temp=[250.0, 350.0], amp_temp=[0.0, 20.0], per_temp=[5.0, 10.0],
                   MLMD_calculator_options={"well_params": {"r_start": 3.0, "force": 0.1}})

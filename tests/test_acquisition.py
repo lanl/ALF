@@ -1,6 +1,3 @@
-from pathlib import Path
-import os
-
 import numpy as np
 import pytest
 from ase import Atoms
@@ -19,8 +16,6 @@ from tests.helpers.fakes import FixedCalculator
 WATER = Atoms("OH2", positions=[[0, 0, 0], [0.96, 0, 0], [-0.24, 0.93, 0]])
 METHANE = Atoms("CH4", positions=[[0, 0, 0], [0.63, 0.63, 0.63], [-0.63, -0.63, 0.63],
                                   [-0.63, 0.63, -0.63], [0.63, -0.63, -0.63]])
-TRAINED_ENSEMBLE = Path(os.environ.get('ALF_TEST_ENSEMBLE', str(
-    Path(__file__).resolve().parents[1] / 'examples/simple_water_darwin_run_test/models/model-0000')))
 CONFIG = {"Escut": 0.5, "Fscut": 0.2, "distcut": 0.7, "min_time": 0.01}
 
 
@@ -175,12 +170,10 @@ def test_top_k_is_deterministic_and_independent_of_input_order():
     assert frame_id("mol-0000-0000000007", 40) == "mol-0000-0000000007:step-000000040"
 
 
-@pytest.mark.skipif(not TRAINED_ENSEMBLE.is_dir(), reason="trained Darwin water ensemble not available")
-def test_trained_hippynn_ensemble_statistics_match_mlmd_calculator():
-    pytest.importorskip("hippynn")
+def test_trained_hippynn_ensemble_statistics_match_mlmd_calculator(trained_ensemble):
     from alframework.ml_interfaces.hippynn_interface import HIPNN_ASE_load_ensemble
 
-    calculators = HIPNN_ASE_load_ensemble(str(TRAINED_ENSEMBLE), device="cpu")
+    calculators = HIPNN_ASE_load_ensemble(str(trained_ensemble), device="cpu")
     rng = np.random.default_rng(1)
     frames = []
     for _ in range(3):

@@ -106,18 +106,15 @@ def test_absolute_checkpoint_paths_allow_concurrent_loading(tmp_path, monkeypatc
     assert Path.cwd() == directory
 
 
-def test_concurrent_trained_members_match_legacy_predictions(monkeypatch):
-    torch = pytest.importorskip('torch')
-    pytest.importorskip('hippynn')
+def test_concurrent_trained_members_match_legacy_predictions(monkeypatch, trained_ensemble):
+    import torch
     from ase import units
     from hippynn.experiment import serialization
     from hippynn.interfaces.ase_interface import HippynnCalculator
     from hippynn.tools import active_directory
-    from tests.test_acquisition import TRAINED_ENSEMBLE, WATER
+    from tests.test_acquisition import WATER
 
-    members = [TRAINED_ENSEMBLE / f'model-{i:02d}' for i in range(2)]
-    if not all((member / 'best_checkpoint.pt').is_file() for member in members):
-        pytest.skip('trained Darwin checkpoint members not available')
+    members = [trained_ensemble / f'model-{i:02d}' for i in range(2)]
 
     expected = []
     # Capture the original loader's predictions before forbidding cwd changes.

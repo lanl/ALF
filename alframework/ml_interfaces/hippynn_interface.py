@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from parsl import python_app, bash_app
 import sys
 import multiprocessing
@@ -7,6 +9,14 @@ import glob
 import os
 from ase import units
 from ase.data import chemical_symbols
+import hashlib
+import json
+import math
+import traceback
+from pathlib import Path
+from typing import Any
+from alframework.tools.atom_order import TOPOLOGY_ATOM_IDS, canonical_orders
+from alframework.tools.excited_state_tools import derive_state_property_table, derive_gap_property_table
 
 
 def __getattr__(name):
@@ -17,19 +27,132 @@ def __getattr__(name):
     from hippynn.databases.h5_pyanitools import PyAniDirectoryDB
 
     class ALFPyAniDirectoryDB(PyAniDirectoryDB):
-        def __init__(self, *args, coordinates_key='coordinates', atom_keys=(), **kwargs):
+        def __init__(self, *args, coordinates_key='coordinates', atom_keys=(),
+                     excited_state_properties=None, retained_indices=None, **kwargs):
             self.coordinates_key = coordinates_key
+            self.excited_state_properties = excited_state_properties
+            self.retained_indices = retained_indices
+            self.alf_frame_manifest = []
             self.atom_keys = tuple(dict.fromkeys(('coordinates', 'forces', 'charges', coordinates_key,
                                                  *(key for key in atom_keys if key is not None))))
             super().__init__(*args, **kwargs)
             # HIPPYNN persists this restarter in checkpoints; retain custom schema.
             self.restarter.kwargs.update(coordinates_key=coordinates_key, atom_keys=self.atom_keys,
                                         allow_unfound=kwargs.get('allow_unfound', False))
+            if excited_state_properties is not None:
+                self.restarter.kwargs.update(excited_state_properties=excited_state_properties,
+                                            retained_indices=retained_indices)
+
+        def extract_full_file(self, file, species_key='species'):
+            if self.excited_state_properties is None:
+                return super().extract_full_file(file, species_key=species_key)
+            states = validate_excited_state_training_properties(self.excited_state_properties)
+            gaps = derive_gap_property_table(self.excited_state_properties)
+            # Select datasets before reading: pair indices/NACs and optics may
+            # have unrelated axes and can be much larger than training targets.
+            import h5py
+            from ase.data import atomic_numbers
+            keys = {self.coordinates_key, species_key, TOPOLOGY_ATOM_IDS, '_id', 'pbc'}
+            keys.update(row[key] for row in states for key in ('energy_db_name', 'force_db_name'))
+            keys.update(row['gap_db_name'] for row in gaps)
+            batches, paths = [], []
+            with h5py.File(file, 'r') as handle:
+                names = []
+                if self.coordinates_key in handle or species_key in handle:
+                    names.append('/')
+                handle.visititems(lambda name, obj: names.append(name)
+                                  if isinstance(obj, h5py.Group) and
+                                  (self.coordinates_key in obj or species_key in obj) else None)
+                for name in sorted(names):
+                    group = handle[name]
+                    if self.coordinates_key not in group or species_key not in group:
+                        raise KeyError(f'{file}:{name}: missing required coordinates/species datasets')
+                    batch = {key: group[key][()] for key in keys if key in group}
+                    species = np.asarray(batch[species_key])
+                    if species.dtype.kind in 'SUO':
+                        species = np.array([atomic_numbers[v.decode() if isinstance(v, bytes) else str(v)]
+                                            for v in species.reshape(-1)]).reshape(species.shape)
+                    if species.ndim == 1:
+                        species = species[None]
+                    batch[species_key] = species
+                    batches.append(batch)
+                    paths.append(name)
+            if not batches:
+                raise ValueError(f'No structure groups in {file}')
+            n_atoms_max = max(b[species_key].shape[-1] for b in batches)
+            selected = []
+            for group_index, batch in enumerate(batches):
+                context = f'{file}:{paths[group_index]}'
+                coordinates = np.asarray(batch[self.coordinates_key], dtype=np.float64)
+                if coordinates.ndim != 3 or coordinates.shape[-1] != 3 or min(coordinates.shape[:2]) < 1:
+                    raise ValueError(f'{context}: coordinates must be nonempty [frames, atoms, 3]')
+                count, atoms = coordinates.shape[:2]
+                species = np.asarray(batch[species_key])
+                if species.shape != (1, atoms):
+                    raise ValueError(f'{context}: species must describe one composition per group')
+                species_rows = np.broadcast_to(species, (count, atoms)).copy()
+                orders = None
+                if TOPOLOGY_ATOM_IDS in batch:
+                    orders = canonical_orders(batch[TOPOLOGY_ATOM_IDS], count, atoms, context=context)
+                    species_rows = np.take_along_axis(species_rows, orders, axis=1)
+                    coordinates = np.take_along_axis(coordinates, orders[:, :, None], axis=1)
+                if not np.all(species_rows == species_rows[0]):
+                    raise ValueError(f'{context}: topology mappings change the atomic-number sequence')
+                if 'pbc' in batch and np.any(batch['pbc']):
+                    raise ValueError('Excited-state training requires nonperiodic data')
+                out = {self.coordinates_key: coordinates, species_key: species_rows[:1]}
+                for row in states:
+                    ekey, fkey = row['energy_db_name'], row['force_db_name']
+                    if ekey not in batch or fkey not in batch:
+                        raise KeyError(f'{context}: missing required state energy/force datasets {ekey}, {fkey}')
+                    energy = np.asarray(batch[ekey], dtype=np.float64)
+                    if energy.shape == (count, 1):
+                        energy = energy[:, 0]
+                    if energy.shape != (count,):
+                        raise ValueError(f'{context}:{ekey} must contain one energy per structure')
+                    forces = np.asarray(batch[fkey], dtype=np.float64)
+                    if forces.shape != (count, atoms, 3):
+                        raise ValueError(f'{context}:{fkey} must have shape [frames, atoms, 3]')
+                    if orders is not None:
+                        forces = np.take_along_axis(forces, orders[:, :, None], axis=1)
+                    out.update({ekey: energy, fkey: forces})
+                for row in gaps:
+                    key = row['gap_db_name']
+                    if key not in batch:
+                        raise KeyError(f'{context}: missing required datasets: {key}')
+                    values = np.asarray(batch[key], dtype=np.float64).reshape(-1)
+                    if not np.isfinite(values).all():
+                        raise ValueError(f'{context}:{key} contains nonfinite values')
+                    expected = (out[self.excited_state_properties[row['upper_energy_key']][0]]
+                                - out[self.excited_state_properties[row['lower_energy_key']][0]])
+                    if values.shape != (count,) or not np.allclose(values, expected, rtol=1e-7, atol=1e-7):
+                        raise ValueError(f'{context}: gap {key} is inconsistent with upper minus lower energy')
+                    out[key] = values
+                for key, values in out.items():
+                    if not np.isfinite(values).all():
+                        raise ValueError(f'{context}:{key} contains nonfinite values')
+                source_ids = np.asarray(batch.get('_id', [f'{context}:{i}' for i in range(count)])).reshape(-1)
+                if len(source_ids) != count:
+                    raise ValueError(f'{context}: ID count does not match coordinates')
+                self.alf_frame_manifest.extend(dict(file=str(Path(file).resolve()), group=paths[group_index],
+                                                    frame=i, id=v.decode() if isinstance(v, bytes) else str(v))
+                                               for i, v in enumerate(source_ids))
+                selected.append(out)
+            return selected, n_atoms_max, sum(len(b[self.coordinates_key]) for b in selected)
+
+        def load_arrays(self, allow_unfound=False, quiet=False):
+            arrays = super().load_arrays(allow_unfound=allow_unfound, quiet=quiet)
+            if self.excited_state_properties is not None and self.retained_indices is not None:
+                indices = np.asarray(self.retained_indices, dtype=int)
+                arrays = {key: value[indices] for key, value in arrays.items()}
+                arrays['indices'] = indices
+                self.alf_frame_manifest = [self.alf_frame_manifest[i] for i in indices]
+            return arrays
 
         def determine_key_structure(self, batches, sys_count, n_atoms_max, species_key='species'):
             if not batches:
                 raise ValueError('No structure groups in the ALF training dataset')
-            if all(batch[species_key].shape[1] >= 7 for batch in batches):
+            if self.excited_state_properties is None and all(batch[species_key].shape[1] >= 7 for batch in batches):
                 return super().determine_key_structure(batches, sys_count, n_atoms_max, species_key=species_key)
 
             keys = set(batches[0])
@@ -779,3 +902,1279 @@ class HippynnBatchedEnsemble:
             energies.append(energy.detach().reshape(n_systems))
             forces.append(force.detach().reshape(n_systems, max_atoms, 3)[mask])
         return torch.stack(energies), torch.stack(forces)
+
+
+# Multi-state molecular training. Ground-state entry points above are unchanged.
+
+def validate_excited_state_training_properties(
+    properties_list: dict[str, list[Any]],
+) -> list[dict[str, Any]]:
+    """Validate flattened state targets and their HDF5 storage schemas."""
+
+    state_table = derive_state_property_table(
+        dict(properties_list or {}),
+        require_forces=True,
+    )
+    database_names: list[str] = []
+    for row in state_table:
+        energy_schema = properties_list[str(row["energy_key"])]
+        force_schema = properties_list[str(row["force_key"])]
+        if len(energy_schema) < 2 or str(energy_schema[1]).lower() != "system":
+            raise ValueError(
+                f"{row['energy_key']} must be a system property in "
+                "properties_list."
+            )
+        if len(force_schema) < 2 or str(force_schema[1]).lower() != "atomic":
+            raise ValueError(
+                f"{row['force_key']} must be an atomic property in "
+                "properties_list."
+            )
+        database_names.extend(
+            [str(row["energy_db_name"]), str(row["force_db_name"])]
+        )
+    gap_table = derive_gap_property_table(properties_list)
+    database_names.extend(str(row["gap_db_name"]) for row in gap_table)
+    if any(not name for name in database_names):
+        raise ValueError("Excited-state HDF5 database names cannot be empty.")
+    if len(database_names) != len(set(database_names)):
+        raise ValueError(
+            "Every excited-state energy, force, and gap requires a unique "
+            "HDF5 database name."
+        )
+    return state_table
+
+
+def validate_excited_state_training_config(
+    ML_config: dict[str, Any],
+    properties_list: dict[str, list[Any]],
+) -> list[dict[str, Any]]:
+    """Validate the supported multi-state training contract."""
+
+    config = dict(ML_config or {})
+    state_table = validate_excited_state_training_properties(properties_list)
+    n_models = int(config.get("n_models", 0))
+    if n_models < 1:
+        raise ValueError("n_models must be a positive integer.")
+
+    cell_key = config.get("cell_key")
+    if cell_key not in {None, "None"}:
+        raise ValueError(
+            "Excited-state HIPPYNN training currently supports only "
+            "nonperiodic data; cell_key must be null."
+        )
+    if not bool(config.get("train_forces", True)):
+        raise ValueError(
+            "Excited-state HIPPYNN training requires train_forces=true."
+        )
+    if not bool(config.get("export_force_gradients", True)):
+        raise ValueError(
+            "Excited-state checkpoints require export_force_gradients=true "
+            "so every F# node is available to sampling."
+        )
+
+    gap_config = config.get("gap_targets")
+    if gap_config is not None and not isinstance(gap_config, dict):
+        raise TypeError("gap_targets must be a dictionary when provided.")
+    gap_options = dict(gap_config or {})
+    gap_enabled = bool(gap_options.get("enabled", False))
+    gap_mode = str(gap_options.get("mode", "derived")).strip().lower()
+    if gap_mode != "derived":
+        raise ValueError(
+            "gap_targets.mode must be 'derived'; independent gap heads are "
+            "not supported."
+        )
+    gap_weight = float(gap_options.get("weight", 1.0))
+    if not np.isfinite(gap_weight) or gap_weight < 0:
+        raise ValueError("gap_targets.weight must be finite and nonnegative.")
+    configured_gaps = derive_gap_property_table(
+        properties_list,
+        gap_config=gap_options,
+        require_properties=gap_enabled,
+    )
+    if gap_enabled and not configured_gaps:
+        raise ValueError(
+            "Enabled gap targets require at least one dE# property in "
+            "properties_list."
+        )
+
+    exports = config.get("exports")
+    if exports is not None:
+        if not isinstance(exports, dict):
+            raise TypeError("exports must be a dictionary when provided.")
+        if bool(exports.get("csv", False)):
+            raise ValueError(
+                "CSV prediction export is not supported by the isolated "
+                "excited-state trainer; PDF and PNG plots are supported."
+            )
+
+    network_choice = int(config.get("network_choice", 1))
+    if network_choice not in {0, 1}:
+        raise ValueError(
+            "network_choice must be 0 (HipNN) or 1 (HipHopNN)."
+        )
+    if str(config.get("optimizer", "AdamW")).lower() != "adamw":
+        raise ValueError(
+            "The isolated excited-state trainer currently supports "
+            "optimizer='AdamW' only."
+        )
+    if config.get("n_atoms") is not None and int(config["n_atoms"]) < 1:
+        raise ValueError("n_atoms must be positive when configured.")
+
+    for key in (
+        "batch_size",
+        "eval_batch_size",
+        "max_epochs",
+        "termination_patience",
+        "plot_frequency",
+    ):
+        if int(config.get(key, 1)) < 1:
+            raise ValueError(f"{key} must be a positive integer.")
+
+    valid_size = float(config.get("valid_size", 0.1))
+    test_size = float(config.get("test_size", 0.1))
+    if (
+        not np.isfinite(valid_size)
+        or not np.isfinite(test_size)
+        or valid_size <= 0
+        or test_size <= 0
+        or valid_size + test_size >= 1
+    ):
+        raise ValueError(
+            "valid_size and test_size must be finite, positive, and sum to "
+            "less than one."
+        )
+
+    for key in (
+        "energy_weight",
+        "force_weight",
+        "l2_weight",
+        "learning_rate",
+    ):
+        value = float(config.get(key, 1.0 if key != "l2_weight" else 2.0e-5))
+        if not np.isfinite(value) or value < 0:
+            raise ValueError(f"{key} must be finite and nonnegative.")
+    if float(config.get("learning_rate", 5.0e-4)) <= 0:
+        raise ValueError("learning_rate must be positive.")
+    for key in (
+        "remove_high_energy_cut",
+        "remove_high_energy_std",
+        "remove_high_forces_cut",
+        "remove_high_forces_std",
+    ):
+        if config.get(key) is None:
+            continue
+        value = float(config[key])
+        if not np.isfinite(value) or value < 0:
+            raise ValueError(f"{key} must be finite and nonnegative or null.")
+
+    return state_table
+
+
+def _h5_shards(h5_train_dir: str) -> list[str]:
+    root = Path(h5_train_dir).expanduser()
+    if root.is_file():
+        paths = [str(root)]
+    else:
+        paths = sorted(
+            set(
+                glob.glob(str(root / "*.h5"))
+                + glob.glob(str(root / "*.hdf5"))
+            )
+        )
+    if not paths:
+        raise FileNotFoundError(
+            f"No ALF HDF5 shards were found in {str(root)!r}."
+        )
+    return paths
+
+
+def load_excited_state_h5_arrays(h5_train_dir, properties_list, *, coordinates_key='coordinates',
+                                species_key='species', configured_n_atoms=None,
+                                configured_possible_species=None, return_database=False, seed=0):
+    """Load explicit multi-state schemas through the shared restartable reader.
+
+    HDF5 values already include properties_list unit conversions; do not apply
+    those conversions again. Identity-aware reading is opt-in to this path.
+    """
+    states = validate_excited_state_training_properties(properties_list)
+    gaps = derive_gap_property_table(properties_list)
+    paths = _h5_shards(h5_train_dir)
+    targets = [row[key] for row in states for key in ('energy_db_name', 'force_db_name')]
+    targets += [row['gap_db_name'] for row in gaps]
+    from alframework.ml_interfaces.hippynn_interface import ALFPyAniDirectoryDB
+    database = ALFPyAniDirectoryDB(
+        str(Path(paths[0]).parent), files=[str(Path(p).resolve()) for p in paths],
+        inputs=[species_key, coordinates_key], targets=targets,
+        coordinates_key=coordinates_key, species_key=species_key,
+        atom_keys=[row['force_db_name'] for row in states],
+        excited_state_properties=properties_list, seed=seed, quiet=True,
+    )
+    arrays = {key: value.numpy() for key, value in database.arr_dict.items()}
+    species = arrays[species_key]
+    if not np.all(species == species[0]):
+        raise ValueError('Excited-state training requires one exact atomic-number sequence')
+    if np.any(species <= 0):
+        raise ValueError('Species must be positive atomic numbers')
+    n_atoms = species.shape[1]
+    if configured_n_atoms is not None and int(configured_n_atoms) != n_atoms:
+        raise ValueError(f'Configured n_atoms={configured_n_atoms} does not match HDF5 atom count {n_atoms}')
+    possible = list(configured_possible_species) if configured_possible_species is not None else [0, *sorted(set(species[0].tolist()))]
+    if not possible or possible[0] != 0 or len(possible) != len(set(possible)) or min(possible) < 0:
+        raise ValueError('possible_species must begin with padding species 0 and contain unique nonnegative integers')
+    if not set(species[0]).issubset(possible):
+        raise ValueError('possible_species is missing atomic numbers present in HDF5')
+    summary = dict(n_structures=len(species), n_atoms=n_atoms, atomic_numbers=species[0].tolist(),
+                   possible_species=possible, state_table=states, gap_table=gaps,
+                   frames=database.alf_frame_manifest,
+                   files=[dict(path=str(Path(p).resolve()), sha256=hashlib.sha256(Path(p).read_bytes()).hexdigest()) for p in paths])
+    if return_database:
+        return arrays, summary, database
+    # Keep bookkeeping indices outside the public numerical target contract.
+    return {key: value for key, value in arrays.items() if key != 'indices'}, summary
+
+
+def excited_training_device(device_string, model_id, gpus_per_node):
+    """Select visible local ordinals without rewriting scheduler masks."""
+    if str(device_string).lower() == 'cpu':
+        return 'cpu'
+    import torch
+    count = torch.cuda.device_count()
+    if count < 1:
+        raise RuntimeError('No GPU is available within the training worker visibility')
+    requested = str(device_string)
+    if requested in {'from_multiprocessing', 'cuda', 'None'}:
+        width = min(count, int(gpus_per_node)) if gpus_per_node else count
+        if width < 1:
+            raise ValueError('Training GPU count must be positive')
+        requested = f'cuda:{int(model_id) % width}'
+    from alframework.tools.gpu import _cuda_device
+    return _cuda_device(requested, count, None, True)
+
+
+def _minimum_structure_distances(coordinates: np.ndarray) -> np.ndarray:
+    """Return the shortest nonperiodic pair distance in every structure."""
+
+    count, atom_count, _ = coordinates.shape
+    if atom_count < 2:
+        return np.full(count, np.inf, dtype=np.float64)
+    minima = np.full(count, np.inf, dtype=np.float64)
+    for first in range(atom_count - 1):
+        distances = np.linalg.norm(
+            coordinates[:, first + 1 :, :]
+            - coordinates[:, first : first + 1, :],
+            axis=-1,
+        )
+        minima = np.minimum(minima, np.min(distances, axis=1))
+    return minima
+
+
+def _property_outlier_mask(
+    values: np.ndarray,
+    active: np.ndarray,
+    threshold: float | None,
+    *,
+    standardized: bool,
+) -> np.ndarray:
+    """Apply production HIPPYNN's centered componentwise outlier formula."""
+
+    failures = np.zeros(active.shape, dtype=bool)
+    if threshold is None or not np.any(active):
+        return failures
+    selected = np.asarray(values, dtype=np.float64)[active]
+    mean = float(np.mean(selected))
+    if standardized:
+        flattened = selected.reshape(-1)
+        if flattened.size < 2:
+            return failures
+        deviation_scale = float(np.std(flattened, ddof=1))
+        if not np.isfinite(deviation_scale) or deviation_scale == 0.0:
+            return failures
+        element_failures = (
+            np.abs(selected - mean) / deviation_scale > float(threshold)
+        )
+    else:
+        element_failures = np.abs(selected - mean) > float(threshold)
+    structure_failures = np.any(
+        element_failures.reshape(selected.shape[0], -1),
+        axis=1,
+    )
+    failures[np.flatnonzero(active)] = structure_failures
+    return failures
+
+
+def _mask_training_arrays(
+    arrays: dict[str, np.ndarray],
+    keep: np.ndarray,
+) -> dict[str, np.ndarray]:
+    count = int(keep.shape[0])
+    filtered: dict[str, np.ndarray] = {}
+    for key, value in arrays.items():
+        array = np.asarray(value)
+        if array.shape[0] != count:
+            raise ValueError(
+                f"Training array {key!r} has {array.shape[0]} structures; "
+                f"expected {count}."
+            )
+        filtered[key] = array[keep]
+    return filtered
+
+
+def filter_excited_state_training_arrays(
+    arrays: dict[str, np.ndarray],
+    state_table: list[dict[str, Any]],
+    *,
+    coordinates_key: str,
+    dist_soft_min: float,
+    remove_high_energy_cut: float | None = None,
+    remove_high_energy_std: float | None = None,
+    remove_high_forces_cut: float | None = None,
+    remove_high_forces_std: float | None = None,
+) -> tuple[dict[str, np.ndarray], dict[str, Any]]:
+    """Filter fixed-composition multi-state arrays before data splitting.
+
+    Multi-state masks are computed from a common survivor pool and unioned,
+    making the result independent of state order. The one-state path preserves
+    production's force-then-energy cut/std sequence exactly.
+    """
+
+    coordinates = np.asarray(arrays[coordinates_key], dtype=np.float64)
+    if coordinates.ndim != 3 or coordinates.shape[-1] != 3:
+        raise ValueError(
+            f"{coordinates_key} must have shape [structures, atoms, 3]."
+        )
+    count = int(coordinates.shape[0])
+    minimum_distance = float(dist_soft_min)
+    if not np.isfinite(minimum_distance) or minimum_distance < 0:
+        raise ValueError("network_params.dist_soft_min must be nonnegative.")
+    options = {
+        "remove_high_energy_cut": remove_high_energy_cut,
+        "remove_high_energy_std": remove_high_energy_std,
+        "remove_high_forces_cut": remove_high_forces_cut,
+        "remove_high_forces_std": remove_high_forces_std,
+    }
+    for key, value in options.items():
+        if value is not None and (
+            not np.isfinite(float(value)) or float(value) < 0
+        ):
+            raise ValueError(f"{key} must be finite and nonnegative or null.")
+
+    active = _minimum_structure_distances(coordinates) > minimum_distance
+    summary: dict[str, Any] = {
+        "initial_structures": count,
+        "dist_soft_min": minimum_distance,
+        "removed_min_distance": int(count - np.count_nonzero(active)),
+        "static_cut_failures": {},
+        "standard_deviation_failures": {},
+    }
+    energy_names = [
+        str(row["energy_db_name"]) for row in state_table
+    ]
+    force_names = [
+        str(row["force_db_name"]) for row in state_table
+    ]
+    removed_static = 0
+    removed_standardized = 0
+
+    def apply_one(
+        property_name: str,
+        threshold: float | None,
+        *,
+        standardized: bool,
+        summary_key: str,
+    ) -> None:
+        nonlocal active, removed_static, removed_standardized
+        failures = _property_outlier_mask(
+            arrays[property_name],
+            active,
+            threshold,
+            standardized=standardized,
+        )
+        failure_count = int(np.count_nonzero(failures))
+        summary[summary_key][property_name] = failure_count
+        if standardized:
+            removed_standardized += failure_count
+        else:
+            removed_static += failure_count
+        active &= ~failures
+
+    if len(state_table) == 1:
+        # Production ground-state HIPPYNN filters force cut/std first, then
+        # energy cut/std, recomputing statistics after every removal.
+        apply_one(
+            force_names[0],
+            remove_high_forces_cut,
+            standardized=False,
+            summary_key="static_cut_failures",
+        )
+        apply_one(
+            force_names[0],
+            remove_high_forces_std,
+            standardized=True,
+            summary_key="standard_deviation_failures",
+        )
+        apply_one(
+            energy_names[0],
+            remove_high_energy_cut,
+            standardized=False,
+            summary_key="static_cut_failures",
+        )
+        apply_one(
+            energy_names[0],
+            remove_high_energy_std,
+            standardized=True,
+            summary_key="standard_deviation_failures",
+        )
+    else:
+        static_failures = np.zeros(count, dtype=bool)
+        for property_name, threshold in (
+            *(
+                (name, remove_high_forces_cut)
+                for name in force_names
+            ),
+            *(
+                (name, remove_high_energy_cut)
+                for name in energy_names
+            ),
+        ):
+            failures = _property_outlier_mask(
+                arrays[property_name],
+                active,
+                threshold,
+                standardized=False,
+            )
+            summary["static_cut_failures"][property_name] = int(
+                np.count_nonzero(failures)
+            )
+            static_failures |= failures
+        removed_static = int(
+            np.count_nonzero(static_failures & active)
+        )
+        active &= ~static_failures
+
+        standard_failures = np.zeros(count, dtype=bool)
+        for property_name, threshold in (
+            *(
+                (name, remove_high_forces_std)
+                for name in force_names
+            ),
+            *(
+                (name, remove_high_energy_std)
+                for name in energy_names
+            ),
+        ):
+            failures = _property_outlier_mask(
+                arrays[property_name],
+                active,
+                threshold,
+                standardized=True,
+            )
+            summary["standard_deviation_failures"][property_name] = int(
+                np.count_nonzero(failures)
+            )
+            standard_failures |= failures
+        removed_standardized = int(
+            np.count_nonzero(standard_failures & active)
+        )
+        active &= ~standard_failures
+
+    summary["removed_static_cut_union"] = int(removed_static)
+    summary["removed_standard_deviation_union"] = int(
+        removed_standardized
+    )
+    summary["final_structures"] = int(np.count_nonzero(active))
+    summary["per_state_failures"] = {
+        str(int(row["state"])): {
+            "energy": {
+                "static_cut": int(
+                    summary["static_cut_failures"].get(
+                        str(row["energy_db_name"]),
+                        0,
+                    )
+                ),
+                "standard_deviation": int(
+                    summary["standard_deviation_failures"].get(
+                        str(row["energy_db_name"]),
+                        0,
+                    )
+                ),
+            },
+            "forces": {
+                "static_cut": int(
+                    summary["static_cut_failures"].get(
+                        str(row["force_db_name"]),
+                        0,
+                    )
+                ),
+                "standard_deviation": int(
+                    summary["standard_deviation_failures"].get(
+                        str(row["force_db_name"]),
+                        0,
+                    )
+                ),
+            },
+        }
+        for row in state_table
+    }
+    filtered = _mask_training_arrays(arrays, active)
+    return filtered, summary
+
+
+def validate_filtered_split_capacity(
+    structure_count: int,
+    *,
+    test_size: float,
+    valid_size: float,
+) -> None:
+    """Fail before HIPPYNN attempts to create an empty data split."""
+
+    count = int(structure_count)
+    test_count = int(float(test_size) * count)
+    remaining = count - test_count
+    adjusted_valid = float(valid_size) / (1.0 - float(test_size))
+    valid_count = int(adjusted_valid * remaining)
+    train_count = remaining - valid_count
+    if min(test_count, valid_count, train_count) < 1:
+        raise ValueError(
+            "Excited-state filtering left too few structures for nonempty "
+            f"train/valid/test splits: {count} survivors produce "
+            f"train={train_count}, valid={valid_count}, test={test_count}."
+        )
+
+
+def compose_excited_state_loss(
+    energy_error_terms: list[tuple[Any, Any]],
+    force_error_terms: list[tuple[Any, Any]],
+    l2_term: Any,
+    *,
+    gap_error_terms: list[tuple[Any, Any]] | None = None,
+    n_atoms: int,
+    energy_weight: float,
+    force_weight: float,
+    gap_weight: float = 1.0,
+    l2_weight: float,
+) -> Any:
+    """Compose the fork-compatible multi-state E/F/gap/L2 objective."""
+
+    if not energy_error_terms:
+        raise ValueError("At least one state-energy loss term is required.")
+    atom_count = int(n_atoms)
+    if atom_count < 1:
+        raise ValueError("n_atoms must be positive.")
+    total = sum(
+        float(energy_weight) * (rmse + mae)
+        for rmse, mae in energy_error_terms
+    )
+    force_normalizer = math.sqrt(3.0 * float(atom_count))
+    total = total + sum(
+        float(force_weight) * (rmse + mae) / force_normalizer
+        for rmse, mae in force_error_terms
+    )
+    total = total + sum(
+        float(gap_weight) * (rmse + mae)
+        for rmse, mae in (gap_error_terms or [])
+    )
+    return total + float(l2_weight) * l2_term
+
+
+def _build_shared_network(
+    species_node: Any,
+    positions_node: Any,
+    *,
+    network_choice: int,
+    network_params: dict[str, Any],
+) -> Any:
+    from hippynn.graphs import networks
+
+    parents = (species_node, positions_node)
+    if int(network_choice) == 0:
+        return networks.Hipnn(
+            "excited_state_HipNN",
+            parents,
+            module_kwargs=dict(network_params),
+            periodic=False,
+        )
+    if int(network_choice) == 1:
+        return networks.HipHopnn(
+            "excited_state_HipHopNN",
+            parents,
+            module_kwargs=dict(network_params),
+            periodic=False,
+        )
+    raise ValueError("network_choice must be 0 (HipNN) or 1 (HipHopNN).")
+
+
+def build_excited_state_training_graph(
+    network: Any,
+    positions_node: Any,
+    state_table: list[dict[str, Any]],
+    *,
+    gap_table: list[dict[str, Any]] | None = None,
+    n_atoms: int,
+    energy_weight: float,
+    force_weight: float,
+    gap_weight: float = 1.0,
+    l2_weight: float,
+    first_is_interacting: bool = False,
+) -> tuple[
+    list[tuple[dict[str, Any], Any]],
+    list[tuple[dict[str, Any], Any]],
+    Any,
+    dict[str, Any],
+]:
+    """Attach state heads/gradients and construct the shared training loss."""
+
+    from hippynn.graphs import loss, physics, targets
+
+    energy_outputs: list[tuple[dict[str, Any], Any]] = []
+    force_outputs: list[tuple[dict[str, Any], Any]] = []
+    gap_outputs: list[tuple[dict[str, Any], Any]] = []
+    energy_error_terms: list[tuple[Any, Any]] = []
+    force_error_terms: list[tuple[Any, Any]] = []
+    gap_error_terms: list[tuple[Any, Any]] = []
+    validation_losses: dict[str, Any] = {}
+    for row in state_table:
+        state = int(row["state"])
+        energy_head = targets.HEnergyNode(
+            f"state_{state}_energy_head",
+            network,
+            first_is_interacting=bool(first_is_interacting),
+        )
+        energy_output = energy_head.mol_energy
+        energy_output.db_name = str(row["energy_db_name"])
+        force_output = physics.GradientNode(
+            f"state_{state}_force_gradient",
+            (energy_output, positions_node),
+            sign=-1,
+            db_name=str(row["force_db_name"]),
+        )
+        energy_outputs.append((row, energy_output))
+        force_outputs.append((row, force_output))
+
+        energy_rmse = loss.MSELoss.of_node(energy_output) ** 0.5
+        energy_mae = loss.MAELoss.of_node(energy_output)
+        force_rmse = loss.MSELoss.of_node(force_output) ** 0.5
+        force_mae = loss.MAELoss.of_node(force_output)
+        energy_error_terms.append((energy_rmse, energy_mae))
+        force_error_terms.append((force_rmse, force_mae))
+        validation_losses[f"sE{state}_RMSE"] = energy_rmse
+        validation_losses[f"sE{state}_MAE"] = energy_mae
+        validation_losses[f"F{state}_RMSE"] = force_rmse
+        validation_losses[f"F{state}_MAE"] = force_mae
+
+    energy_by_state = {
+        int(row["state"]): output for row, output in energy_outputs
+    }
+    for row in gap_table or []:
+        gap_key = str(row["gap_key"])
+        gap_output = (
+            energy_by_state[int(row["upper_state"])]
+            - energy_by_state[int(row["lower_state"])]
+        )
+        gap_output.name = f"derived_{gap_key}"
+        gap_output.db_name = str(row["gap_db_name"])
+        gap_outputs.append((row, gap_output))
+        gap_rmse = loss.MSELoss.of_node(gap_output) ** 0.5
+        gap_mae = loss.MAELoss.of_node(gap_output)
+        gap_error_terms.append((gap_rmse, gap_mae))
+        validation_losses[f"{gap_key}_RMSE"] = gap_rmse
+        validation_losses[f"{gap_key}_MAE"] = gap_mae
+
+    l2_term = loss.l2reg(network)
+    total_loss = compose_excited_state_loss(
+        energy_error_terms,
+        force_error_terms,
+        l2_term,
+        gap_error_terms=gap_error_terms,
+        n_atoms=n_atoms,
+        energy_weight=energy_weight,
+        force_weight=force_weight,
+        gap_weight=gap_weight,
+        l2_weight=l2_weight,
+    )
+    validation_losses["L2"] = l2_term
+    validation_losses["Loss"] = total_loss
+    return (
+        energy_outputs,
+        force_outputs,
+        total_loss,
+        validation_losses,
+    )
+
+
+def _json_safe(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, np.generic):
+        return value.item()
+    if hasattr(value, "detach"):
+        value = value.detach()
+    if hasattr(value, "cpu"):
+        value = value.cpu()
+    if hasattr(value, "item"):
+        try:
+            return value.item()
+        except (TypeError, ValueError):
+            pass
+    return value
+
+
+def model_member_seed(ML_config: dict[str, Any], model_id: int) -> int:
+    """Return the deterministic seed assigned to an ensemble member."""
+
+    return int(ML_config.get("random_seed", 114514)) + int(model_id)
+
+
+def train_single_excited_state_model(
+    *,
+    model_id: int,
+    model_dir: str,
+    h5_train_dir: str,
+    properties_list: dict[str, list[Any]],
+    ML_config: dict[str, Any],
+    from_multiprocessing_nGPU: int | None = None,
+) -> dict[str, Any]:
+    """Train one shared-trunk multi-state HIPPYNN model member."""
+
+    config = dict(ML_config or {})
+    state_table = validate_excited_state_training_config(
+        config,
+        properties_list,
+    )
+    gap_options = dict(config.get("gap_targets") or {})
+    gap_table = (
+        derive_gap_property_table(
+            properties_list,
+            gap_config=gap_options,
+            require_properties=True,
+        )
+        if bool(gap_options.get("enabled", False))
+        else []
+    )
+    selected_device = excited_training_device(config.get('device_string', 'from_multiprocessing'),
+                                                model_id, from_multiprocessing_nGPU)
+    recorded_device = {key: os.environ.get(key) for key in ('CUDA_VISIBLE_DEVICES', 'HIP_VISIBLE_DEVICES', 'ROCR_VISIBLE_DEVICES')}
+
+    # Torch and HIPPYNN must be imported only after the child selects its GPU.
+    import torch
+    import hippynn
+    from hippynn import plotting
+    from hippynn.experiment import SetupParams, setup_training, train_model
+    from hippynn.experiment.controllers import (
+        PatienceController,
+        RaiseBatchSizeOnPlateau,
+    )
+    from hippynn.graphs import inputs
+
+    device = torch.device(selected_device)
+    if device.type == 'cuda':
+        torch.cuda.set_device(device)
+    torch.set_num_threads(int(config.get('torch_threads', 1)))
+    seed = model_member_seed(config, model_id)
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+    torch.set_default_dtype(torch.float32)
+    hippynn.settings.WARN_LOW_DISTANCES = False
+    hippynn.settings.TRANSPARENT_PLOT = True
+
+    coordinates_key = str(config.get("coordinates_key", "coordinates"))
+    species_key = str(config.get("species_key", "species"))
+    network_params = dict(config.get("network_params") or {})
+    configured_n_atoms = config.get("n_atoms")
+    configured_species = network_params.get("possible_species")
+    arrays, data_summary, database = load_excited_state_h5_arrays(
+        h5_train_dir,
+        properties_list,
+        coordinates_key=coordinates_key,
+        species_key=species_key,
+        configured_n_atoms=(
+            None if configured_n_atoms is None else int(configured_n_atoms)
+        ),
+        configured_possible_species=configured_species, return_database=True, seed=seed,
+    )
+    if "dist_soft_min" not in network_params:
+        raise ValueError(
+            "network_params.dist_soft_min is required for production-style "
+            "excited-state training filtering."
+        )
+    arrays, filtering_summary = filter_excited_state_training_arrays(
+        arrays,
+        state_table,
+        coordinates_key=coordinates_key,
+        dist_soft_min=float(network_params["dist_soft_min"]),
+        remove_high_energy_cut=config.get("remove_high_energy_cut"),
+        remove_high_energy_std=config.get("remove_high_energy_std"),
+        remove_high_forces_cut=config.get("remove_high_forces_cut"),
+        remove_high_forces_std=config.get("remove_high_forces_std"),
+    )
+    validate_filtered_split_capacity(
+        int(arrays[coordinates_key].shape[0]),
+        test_size=float(config.get("test_size", 0.1)),
+        valid_size=float(config.get("valid_size", 0.1)),
+    )
+    data_summary["n_structures_before_filtering"] = int(
+        data_summary["n_structures"]
+    )
+    data_summary["n_structures"] = int(
+        arrays[coordinates_key].shape[0]
+    )
+    data_summary["filtering"] = filtering_summary
+    network_params["possible_species"] = data_summary["possible_species"]
+    n_atoms = int(data_summary["n_atoms"])
+
+    model_root = Path(model_dir).expanduser().resolve()
+    if model_root.exists() and any(model_root.iterdir()):
+        raise FileExistsError(
+            f"Refusing to overwrite nonempty model directory {model_root}."
+        )
+    model_root.mkdir(parents=True, exist_ok=True)
+
+    with hippynn.tools.active_directory(str(model_root)):
+        with hippynn.tools.log_terminal("training_log.txt", "wt"):
+            print(f"Model ID: {int(model_id)}")
+            print(f"Model seed: {seed}")
+            print(f"CUDA_VISIBLE_DEVICES: {recorded_device}")
+            print(f"Training device: {device}")
+            print("Training filters:")
+            print(json.dumps(filtering_summary, indent=2))
+
+            species_node = inputs.SpeciesNode(db_name=species_key)
+            positions_node = inputs.PositionsNode(db_name=coordinates_key)
+            positions_node.requires_grad = True
+            network = _build_shared_network(
+                species_node,
+                positions_node,
+                network_choice=int(config.get("network_choice", 1)),
+                network_params=network_params,
+            )
+
+            plotters: list[Any] = []
+            exports = dict(config.get("exports") or {})
+            export_pdf = bool(exports.get("pdf", True))
+            export_png = bool(exports.get("png", False))
+            (
+                energy_outputs,
+                force_outputs,
+                total_loss,
+                validation_losses,
+            ) = build_excited_state_training_graph(
+                network,
+                positions_node,
+                state_table,
+                gap_table=gap_table,
+                n_atoms=n_atoms,
+                energy_weight=float(config.get("energy_weight", 1.0)),
+                force_weight=float(config.get("force_weight", 1.0)),
+                gap_weight=float(gap_options.get("weight", 1.0)),
+                l2_weight=float(config.get("l2_weight", 2.0e-5)),
+                first_is_interacting=bool(
+                    config.get("first_is_interacting", False)
+                ),
+            )
+
+            plot_dir = model_root / str(
+                exports.get("output_subdir", "plots")
+            )
+            if export_pdf or export_png:
+                plot_dir.mkdir(parents=True, exist_ok=True)
+            for row, output in energy_outputs:
+                if export_pdf:
+                    plotters.append(
+                        plotting.Hist2D.compare(
+                            output,
+                            saved=str(
+                                plot_dir / f"{str(row['energy_key'])}.pdf"
+                            ),
+                            shown=False,
+                        )
+                    )
+                if export_png:
+                    plotters.append(
+                        plotting.Hist2D.compare(
+                            output,
+                            saved=str(
+                                plot_dir / f"{str(row['energy_key'])}.png"
+                            ),
+                            shown=False,
+                        )
+                    )
+            for row, output in force_outputs:
+                if export_pdf:
+                    plotters.append(
+                        plotting.Hist2D.compare(
+                            output,
+                            saved=str(
+                                plot_dir / f"{str(row['force_key'])}.pdf"
+                            ),
+                            shown=False,
+                        )
+                    )
+                if export_png:
+                    plotters.append(
+                        plotting.Hist2D.compare(
+                            output,
+                            saved=str(
+                                plot_dir / f"{str(row['force_key'])}.png"
+                            ),
+                            shown=False,
+                        )
+                    )
+            plot_maker = (
+                plotting.PlotMaker(
+                    *plotters,
+                    plot_every=int(config.get("plot_frequency", 50)),
+                )
+                if plotters
+                else None
+            )
+
+            training_modules, db_info = hippynn.experiment.assemble_for_training(
+                total_loss,
+                validation_losses,
+                plot_maker=plot_maker,
+            )
+            database.inputs, database.targets = db_info['inputs'], db_info['targets']
+            database.arr_dict = {key: torch.as_tensor(value) for key, value in arrays.items()}
+            database.make_trainvalidtest_split(test_size=float(config.get('test_size', .1)),
+                                               valid_size=float(config.get('valid_size', .1)))
+            retained = arrays['indices'].tolist()
+            database.restarter.args = (database.directory, database.inputs, database.targets)
+            database.restarter.kwargs.update(retained_indices=retained,
+                                             test_size=float(config.get('test_size', .1)),
+                                             valid_size=float(config.get('valid_size', .1)))
+            split_indices = {name: split['indices'].tolist() for name, split in database.splits.items()}
+            fraction = float((config.get('controller_options') or {}).get('fraction_train_eval',
+                                                                         config.get('fraction_train_eval', .1)))
+            if not 0 < fraction <= 1 or int(len(split_indices['train']) * fraction) < 1:
+                raise ValueError('fraction_train_eval selects no training frames; increase it for this small dataset')
+            manifest = dict(files=data_summary['files'], frames=data_summary['frames'],
+                            retained_indices=retained, splits=split_indices,
+                            filtered_indices=sorted(set(range(data_summary['n_structures_before_filtering'])) - set(retained)))
+            Path('training_input_manifest.json').write_text(json.dumps(manifest, indent=2))
+            initial_parameters = [p.detach().clone() for p in training_modules.model.parameters()]
+
+            optimizer = torch.optim.AdamW(
+                training_modules.model.parameters(),
+                lr=float(config.get("learning_rate", 5.0e-4)),
+            )
+            scheduler = RaiseBatchSizeOnPlateau(
+                optimizer=optimizer,
+                **dict(
+                    config.get("scheduler_options")
+                    or {
+                        "max_batch_size": 128,
+                        "patience": 15,
+                        "factor": 0.5,
+                    }
+                ),
+            )
+            controller_options = dict(config.get("controller_options") or {})
+            controller_options.setdefault(
+                "batch_size",
+                int(config.get("batch_size", 64)),
+            )
+            controller_options.setdefault(
+                "eval_batch_size",
+                int(config.get("eval_batch_size", 128)),
+            )
+            controller_options.setdefault(
+                "max_epochs",
+                int(config.get("max_epochs", 1000)),
+            )
+            controller_options.setdefault(
+                "termination_patience",
+                int(config.get("termination_patience", 55)),
+            )
+            controller_options.setdefault(
+                "fraction_train_eval",
+                float(config.get("fraction_train_eval", 0.1)),
+            )
+            controller = PatienceController(
+                optimizer=optimizer,
+                scheduler=scheduler,
+                stopping_key="Loss",
+                **controller_options,
+            )
+            setup_params = SetupParams(
+                controller=controller,
+                device=device,
+            )
+            training_modules, controller, metric_tracker = setup_training(
+                training_modules=training_modules,
+                setup_params=setup_params,
+            )
+            metric_tracker = train_model(
+                training_modules,
+                database,
+                controller,
+                metric_tracker,
+                callbacks=None,
+                batch_callbacks=None,
+            )
+            if not all(torch.isfinite(p).all() for p in training_modules.model.parameters()):
+                raise RuntimeError('Training produced nonfinite model parameters')
+
+            summary = {
+                "model_id": int(model_id),
+                "seed": seed,
+                "device": str(device),
+                "cuda_visible_devices": recorded_device,
+                "state_table": state_table,
+                "gap_table": gap_table,
+                "gap_targets": {
+                    "enabled": bool(gap_table),
+                    "weight": float(gap_options.get("weight", 1.0)),
+                    "mode": "derived",
+                },
+                "data": data_summary,
+                "metric": _json_safe(metric_tracker.best_metric_values),
+                "epochs": int(controller.current_epoch),
+                "parameters_changed": any(not torch.equal(before.cpu(), after.detach().cpu())
+                                          for before, after in zip(initial_parameters, training_modules.model.parameters())),
+                "split_counts": {key: len(values) for key, values in split_indices.items()},
+                "average_epoch_time": float(
+                    np.average(metric_tracker.epoch_times)
+                ),
+            }
+            Path("training_summary.json").write_text(
+                json.dumps(_json_safe(summary), indent=2, allow_nan=False),
+                encoding="utf-8",
+            )
+
+    return {
+        "model_id": int(model_id),
+        "model_dir": str(model_root),
+        "device": recorded_device,
+        "seed": seed,
+    }
+
+
+def _excited_state_training_worker(
+    arg_dict: dict[str, Any],
+) -> dict[str, Any]:
+    try:
+        payload = train_single_excited_state_model(**arg_dict)
+        return {"ok": True, "payload": payload}
+    except Exception as exc:
+        return {
+            "ok": False,
+            "payload": {
+                "model_id": int(arg_dict["model_id"]),
+                "model_dir": str(arg_dict["model_dir"]),
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+                "traceback": traceback.format_exc(),
+            },
+        }
+
+
+def _training_complete(model_dir: str) -> bool:
+    log_path = Path(model_dir) / "training_log.txt"
+    return (
+        log_path.exists()
+        and "Training complete" in log_path.read_text(encoding="utf-8")
+    )
+
+
+def _validate_completed_ensemble(ensemble_dir, state_table, gap_table=None):
+    """Reload members using absolute checkpoint paths, without changing cwd."""
+    keys = [row[key] for row in state_table for key in ('energy_db_name', 'force_db_name')]
+    keys += [row['gap_db_name'] for row in (gap_table or [])]
+    members = sorted(Path(ensemble_dir).glob('model-*'))
+    if not members:
+        raise RuntimeError('No completed HIPPYNN model members were found')
+    for directory in members:
+        model = _load_member(directory.resolve(), 'cpu')
+        for key in keys:
+            _target(model, key)
+
+
+def _worker_count(ML_config, *, n_models, gpus_per_node):
+    if str(ML_config.get('device_string', 'from_multiprocessing')).lower() == 'cpu':
+        return 1
+    import torch
+    count = torch.cuda.device_count()
+    if count < 1:
+        raise RuntimeError('No GPU is available within the training worker visibility')
+    width = min(count, gpus_per_node) if gpus_per_node > 0 else count
+    if str(ML_config.get('device_string', '')).startswith('cuda:'):
+        return 1
+    return min(width, n_models)
+
+
+def train_excited_state_ensemble(
+    *,
+    ML_config: dict[str, Any],
+    h5_dir: str,
+    model_path: str,
+    current_training_id: int,
+    gpus_per_node: int,
+    properties_list: dict[str, list[Any]],
+) -> tuple[list[bool], int]:
+    """Train all model members and preserve ALF's promotion contract."""
+
+    config = dict(ML_config or {})
+    state_table = validate_excited_state_training_config(
+        config,
+        properties_list,
+    )
+    gap_options = dict(config.get("gap_targets") or {})
+    gap_table = (
+        derive_gap_property_table(
+            properties_list,
+            gap_config=gap_options,
+            require_properties=True,
+        )
+        if bool(gap_options.get("enabled", False))
+        else []
+    )
+    n_models = int(config["n_models"])
+    ensemble_dir = model_path.format(int(current_training_id))
+    params_list = [
+        {
+            "model_id": model_id,
+            "model_dir": os.path.join(
+                ensemble_dir,
+                f"model-{model_id:02d}",
+            ),
+            "h5_train_dir": str(h5_dir),
+            "properties_list": dict(properties_list),
+            "ML_config": config,
+            "from_multiprocessing_nGPU": (
+                int(gpus_per_node) if int(gpus_per_node) > 0 else None
+            ),
+        }
+        for model_id in range(n_models)
+    ]
+
+    root = Path(ensemble_dir)
+    if root.exists() and any(root.iterdir()):
+        raise FileExistsError(f'Refusing to overwrite nonempty ensemble directory {root}')
+    context = multiprocessing.get_context('spawn')
+    # Consecutive member IDs map to consecutive visible ordinals. Pool chunks
+    # contain at most one member per GPU; every queued chunk has the same mapping.
+    processes = _worker_count(config, n_models=n_models, gpus_per_node=int(gpus_per_node))
+    pool = context.Pool(processes=processes)
+    try:
+        raw_results = []
+        for start in range(0, n_models, processes):
+            raw_results.extend(pool.map(_excited_state_training_worker, params_list[start:start + processes]))
+    except BaseException:
+        pool.terminate()
+        raise
+    else:
+        pool.close()
+    finally:
+        pool.join()
+
+    completed: list[bool] = []
+    for result in raw_results:
+        payload = result["payload"]
+        model_dir = Path(payload["model_dir"]).expanduser().resolve()
+        if bool(result["ok"]):
+            member_complete = _training_complete(str(model_dir))
+            completed.append(member_complete)
+            if not member_complete:
+                model_dir.mkdir(parents=True, exist_ok=True)
+                (model_dir / "training_error.json").write_text(
+                    json.dumps(
+                        {
+                            "model_id": int(payload["model_id"]),
+                            "model_dir": str(model_dir),
+                            "error_type": "IncompleteTrainingError",
+                            "error": (
+                                "HIPPYNN returned without a single "
+                                "'Training complete' marker."
+                            ),
+                        },
+                        indent=2,
+                    ),
+                    encoding="utf-8",
+                )
+        else:
+            completed.append(False)
+            model_dir.mkdir(parents=True, exist_ok=True)
+            (model_dir / "training_error.json").write_text(
+                json.dumps(_json_safe(payload), indent=2),
+                encoding="utf-8",
+            )
+
+    if all(completed):
+        try:
+            if gap_table:
+                _validate_completed_ensemble(
+                    ensemble_dir,
+                    state_table,
+                    gap_table,
+                )
+            else:
+                _validate_completed_ensemble(ensemble_dir, state_table)
+        except Exception as exc:
+            completed = [False for _ in completed]
+            ensemble_root = Path(ensemble_dir).expanduser().resolve()
+            ensemble_root.mkdir(parents=True, exist_ok=True)
+            (ensemble_root / "training_error.json").write_text(
+                json.dumps(
+                    {
+                        "error_type": type(exc).__name__,
+                        "error": str(exc),
+                        "traceback": traceback.format_exc(),
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+    return completed, int(current_training_id)
+
+
+def validate_excited_state_task_options(
+    *,
+    remove_existing: bool,
+    h5_test_dir: str | None,
+) -> None:
+    """Reject task options that would delete or silently ignore data."""
+
+    if bool(remove_existing):
+        raise ValueError(
+            "remove_existing=True is not supported because this trainer will "
+            "not delete or overwrite model data."
+        )
+    if h5_test_dir is not None:
+        raise ValueError(
+            "h5_test_dir is not supported by the isolated excited-state "
+            "trainer; use valid_size and test_size splits."
+        )
+
+
+@python_app(executors=["alf_ML_executor"])
+def train_excited_state_HIPPYNN_ensemble_task(
+    ML_config,
+    h5_dir,
+    model_path,
+    current_training_id,
+    gpus_per_node,
+    properties_list,
+    remove_existing=False,
+    h5_test_dir=None,
+):
+    """Parsl entry point for isolated multi-state HIPPYNN ensembles."""
+
+    validate_excited_state_task_options(
+        remove_existing=remove_existing,
+        h5_test_dir=h5_test_dir,
+    )
+    return train_excited_state_ensemble(
+        ML_config=dict(ML_config or {}),
+        h5_dir=str(h5_dir),
+        model_path=str(model_path),
+        current_training_id=int(current_training_id),
+        gpus_per_node=int(gpus_per_node),
+        properties_list=dict(properties_list or {}),
+    )

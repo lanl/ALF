@@ -5,7 +5,8 @@ core water, cohort/summed, MI250, and PySEQM matrices passed; all three controll
 cases passed. Increment 7 is closed by user acceptance on November 5; fresh-dependency
 matrices passed and remaining original-example gaps are accepted without further reruns.
 Increment 8 (E1–E2 contracts/storage and excited-state labeling) is complete;
-next work is E3–E4 multi-state training and external geometries.
+Increment 9 implements E3–E4 multi-state training and external geometries;
+focused CPU checks pass and real import-to-training qualification is pending.
 Legacy NeuroChem is excluded from current acceptance by user decision. MI350 is deferred outside
 current acceptance. Post-release order decided: excited-state ALF, then
 composable sampling with batched UDD/gap ALF, then staged campaigns, with
@@ -379,6 +380,7 @@ pushes.
 | 6. ALCHEMI dynamics | merged (`be7fb64`) | ALCHEMI 0.2.0 NVIDIA batched MLMD through the same contracts, in its separate environment. | Shared conformance tests and NVIDIA acceptance pass; TorchSim CUDA/ROCm regressions pass. |
 | 7. Combined release validation | merged (`401fc89`); closed by user acceptance 2026-11-05 | Opt-in examples and integration/performance results. | All single/batched dynamics x single/batched labeling combinations complete representative ALF workflows. |
 | 8. Excited-state contracts and labeling (E1–E2) | merged (`401fc89`) | State/gap contracts, topology-aware NAC storage, GPU4PySCF TDA labels, and native PySEQM CIS batching. | Backend qualification gates passed; see **Increment 8**. |
+| 9. Multi-state training and external geometries (E3–E4) | in progress | Shared-trunk state heads and force gradients in the existing HIPPYNN interface; unlabeled XYZ/HDF5 geometry builder. | Focused CPU checks pass; real 32-frame PySEQM-to-four-member qualification pending. |
 
 Port narrowly scoped implementations and tests. Each increment must be
 independently reviewable and tested before dependent increments merge. Inspect
@@ -1935,9 +1937,59 @@ and all six verified owned-job cleanup reports. Qualification including retries
 finished within 27 minutes of first preparation, inside the original two-hour
 queue-inclusive deadline. Each allocation retained its 30-minute limit.
 
-Next work starts with E3 multi-state training and E4 external initial geometries;
+Increment 9 continues with E3 multi-state training and E4 external initial geometries;
 the E1–E6 sequence below remains the feature roadmap. No increment 8 training,
 dynamics, cpp9 campaign, NeuroChem testing, or user-guide update is required.
+
+### Increment 9 — E3–E4 implementation and qualification (2026-11-05)
+
+User-approved boundary: fixed-composition nonperiodic molecular training and
+a small integrated PySEQM CIS qualification. E5 dynamics/acquisition and E6 cpp
+remain later work. All excited-state training code lives in the existing
+`ml_interfaces/hippynn_interface.py`, as requested; there is no separate
+excited-state interface or database module.
+
+- **E4:** `builders/external_geometry.py` adds the single/multi-structure
+  `external_geometry_builder_task`. Ordered XYZ/extxyz and geometry-only HDF5
+  sources support stateless deterministic-hash selection or exhaustive
+  sequential selection. It preserves geometry, cells/PBC, supplied topology
+  IDs, and source provenance; it carries no source labels/calculators.
+  Sequential exhaustion is explicit. Builder acceptance: 19 CPU tests passed.
+- **E3:** `train_excited_state_HIPPYNN_ensemble_task` preserves the ordinary
+  ML task arguments, adds `properties_list`, and returns the standard
+  `(completed, training_id)` with `model-XX` directories. HipNN/HipHopNN trunks
+  share per-state energy heads and analytic force gradients. Gap losses are
+  derived upper-minus-lower differences. NAC/optical properties are not trained.
+- The existing `ALFPyAniDirectoryDB` gains opt-in schema-directed reading,
+  explicit topology canonicalization, and retained-row checkpoint restarts.
+  Its ground-state defaults and trainer are unchanged. Requested state/gap
+  datasets are validated before float32 conversion; unrelated NAC datasets
+  are never read. Manifests retain file hashes, original IDs, filtering, and
+  train/valid/test membership.
+- The new trainer uses spawn workers and visible local GPU ordinals by member
+  ID without rewriting scheduler masks. Member failures remain unsuccessful
+  completion flags; owned children are joined/terminated on error. It refuses
+  nonempty output directories.
+- Focused implementation checks: **123 passed**, including actual CPU HipNN
+  and HipHopNN training, checkpoint/database reload with identical filtering
+  and splits, force finite differences, gap graphs, topology permutations,
+  upstream filtering parity, and ground-state loader/storage regressions.
+- Qualification lives exclusively in the separate `alf_validation` repository,
+  at `examples/excited_state_training/`. It imports 32 formaldehydes from XYZ
+  and geometry-only HDF5, labels S0–S3 and adjacent gaps with eight native
+  width-four PySEQM submissions, stores all IDs, then trains four HipHopNN
+  members for five epochs with 24/4/4 splits. Completion requires four loadable
+  members on distinct local GPU ordinals, finite metrics/predictions, derived
+  gaps, force finite differences <= 1e-3 eV/Angstrom, and exact ID traceability.
+- A new frozen training environment was installed at
+  `/vast/home/pjlohr/ALF_LANL/environments/20261105/inc9-training-cuda`:
+  HIPPYNN 0.1.3, Torch 2.15.0+cu132, NumPy 2.5.4, Parsl 2026.11.2;
+  dependency compatibility passes. The accepted Increment 8 PySEQM environment
+  and official revision `66021961` remain frozen and are reused.
+- Execution is **pending**: two sequential 30-minute allocations, two hours
+  overall including queue waits, persistent Darwin supervision, numeric owned
+  job journals and verified cleanup. ml4chem nodes are authorized if needed.
+  Generated evidence stays under `validation/inc9_20261105/`, outside Git.
 
 #### Excited-state ALF plan (E1–E6)
 

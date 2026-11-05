@@ -1,8 +1,9 @@
 # Living roadmap for integration into ALF development
 
-Last updated: November 4, 2026 (Increments 0–6 and the Increment 7 prerequisites merged at `24028da`;
-core water, cohort/summed, MI250, and PySEQM matrices passed; two controlled-failure
-cases passed, while the trajectory-failure case remains incomplete. MI350 is deferred outside
+Last updated: November 5, 2026 (Increments 0–6 and the Increment 7 prerequisites merged at `24028da`;
+core water, cohort/summed, MI250, and PySEQM matrices passed; all three controlled-failure
+cases passed. Fresh-dependency matrices passed; original-example compatibility remains incomplete.
+Legacy NeuroChem is excluded from current acceptance by user decision. MI350 is deferred outside
 current acceptance. Post-release order decided: excited-state ALF, then
 composable sampling with batched UDD/gap ALF, then staged campaigns, with
 multi-node training and teacher labeling as parallel tracks; see **Decided
@@ -701,6 +702,27 @@ accepted in their recorded environments. MI350 and user-guide updates remain
 deferred. No newly launched gate is claimed passed before its actual result.
 
 #### Increment 7 close-out
+
+November 5 scope decision: the user excluded legacy ANI/NeuroChem (the UO2
+example) from current Increment 7 acceptance. Retain its unavailable-backend
+record as unverified; it is not a passing qualification and no longer blocks
+close-out. This does not remove the backend or change its production interface.
+
+The November 4 relaunch finished with verified resource cleanup for every stage:
+the controlled trajectory failure passed, the fresh water matrix passed 12/12,
+native PySEQM passed 2/2, MI250 passed 4/4, and both hardware smoke stages passed.
+Original-example compatibility remains incomplete: simple water and fine-tuning
+passed; multi-builder water and seeded active learning stopped at the seed
+architecture guard; IL, reactive sampling, and molten salt reached their case
+deadlines. The shared water seed has a vector model, whereas multi-builder
+water requests a larger scalar model and seeded active learning omits that
+architecture setting. These are harness seed-reuse failures before execution,
+not evidence that those example workflows failed. IL completed one bootstrap
+QM label; molten salt had two VASP calculations started and no returned labels;
+reactive sampling completed 16 bootstrap labels and four-member initial
+training, then had no returned sampling tasks by the deadline. These timeouts
+do not establish either successful end-to-end compatibility or an ALF defect.
+The retained evidence is under `inc7_relaunch_20261104/fresh-examples/`.
 
 1. Record the retry's PySEQM and controlled-failure results and cleanup
    evidence; repair only demonstrated failures, as focused changes.

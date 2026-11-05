@@ -193,7 +193,7 @@ def test_partition_names_cannot_substitute_for_actual_target_hardware():
 
 
 def test_fresh_worker_initializes_selected_gpu_before_resetting_allocator_stats(monkeypatch):
-    import torch
+    torch = pytest.importorskip('torch')
     calls = []
     class Device:
         def __init__(self, device):

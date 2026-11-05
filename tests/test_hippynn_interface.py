@@ -291,6 +291,7 @@ def test_multistate_cpu_training_reload_and_force_gradients(tmp_path, network_ch
     summary = json.loads((member / 'training_summary.json').read_text())
     manifest = json.loads((member / 'training_input_manifest.json').read_text())
     assert summary['epochs'] == 2 and summary['parameters_changed']
+    assert summary['hippynn_kernel'] == 'pytorch'
     assert manifest['filtered_indices'] == [11]
     assert sorted(i for split in manifest['splits'].values() for i in split) == list(range(11))
     bundle = load_checkpoint(str(member / 'experiment_structure.pt'),

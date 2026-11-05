@@ -1017,6 +1017,8 @@ def validate_excited_state_training_config(
             "The isolated excited-state trainer currently supports "
             "optimizer='AdamW' only."
         )
+    if config.get('hippynn_kernel', 'pytorch') not in {'pytorch', 'auto', 'numba', 'cupy', 'triton', 'sparse'}:
+        raise ValueError('hippynn_kernel must name a supported HIPPYNN kernel implementation')
     if config.get("n_atoms") is not None and int(config["n_atoms"]) < 1:
         raise ValueError("n_atoms must be positive when configured.")
 
@@ -1669,6 +1671,11 @@ def train_single_excited_state_model(
     )
     from hippynn.graphs import inputs
 
+    # Torch kernels execute on the selected CPU/GPU and support force
+    # derivatives without HIPPYNN's optional accelerated-kernel adapters.
+    # Other implementations remain an explicit choice; never silently retry.
+    active_kernel = hippynn.custom_kernels.set_custom_kernels(config.get('hippynn_kernel', 'pytorch'))
+
     device = torch.device(selected_device)
     if device.type == 'cuda':
         torch.cuda.set_device(device)
@@ -1925,6 +1932,7 @@ def train_single_excited_state_model(
                 "model_id": int(model_id),
                 "seed": seed,
                 "device": str(device),
+                "hippynn_kernel": active_kernel,
                 "cuda_visible_devices": recorded_device,
                 "state_table": state_table,
                 "gap_table": gap_table,

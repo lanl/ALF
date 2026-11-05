@@ -1991,6 +1991,18 @@ excited-state interface or database module.
   job journals and verified cleanup. ml4chem nodes are authorized if needed.
   Generated evidence stays under `validation/inc9_20261105/`, outside Git.
 
+First real attempt: all 32 geometries converged and stored, with eight actual
+native width-four solves on ml4chem cn4072 (job 17378861). Training job 17378867
+failed before the first optimizer step: HIPPYNN 0.1.3's Triton config pruner
+returns a generator, while Triton 3.9.0 expects a sized list. Both jobs are
+verified terminated. The new trainer now explicitly defaults to HIPPYNN's
+public `pytorch` kernels, records the active implementation, and permits an
+explicit `hippynn_kernel` override; ground-state training is unchanged.
+No upstream source or frozen dependency was patched or downgraded. All 67
+HIPPYNN tests pass with GCC 11 (PyTorch's compiled path requires C++20).
+A training-only retry will reuse fingerprint-verified accepted labels and
+the original queue-inclusive deadline; the failed attempt remains incomplete.
+
 #### Excited-state ALF plan (E1–E6)
 
 Each step is a separate local change with its own CPU tests. Existing

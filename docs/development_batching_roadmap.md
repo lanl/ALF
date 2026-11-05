@@ -2,7 +2,8 @@
 
 Last updated: November 5, 2026 (Increments 0–6 and the Increment 7 prerequisites merged at `24028da`;
 core water, cohort/summed, MI250, and PySEQM matrices passed; all three controlled-failure
-cases passed. Fresh-dependency matrices passed; original-example compatibility remains incomplete.
+cases passed. Increment 7 is closed by user acceptance on November 5; fresh-dependency
+matrices passed and remaining original-example gaps are accepted without further reruns.
 Legacy NeuroChem is excluded from current acceptance by user decision. MI350 is deferred outside
 current acceptance. Post-release order decided: excited-state ALF, then
 composable sampling with batched UDD/gap ALF, then staged campaigns, with
@@ -16,8 +17,8 @@ Read these sections before starting work:
 1. **Guiding constraints**
 2. **Branch and maintenance workflow**
 3. **Development and test environments**
-4. The current increment's section: **Increment 7 close-out**, then
-   **Decided priority order** and its E1–E6 table.
+4. **Increment 7 close-out** for accepted evidence and exclusions, then
+   **Decided priority order** and its E1–E6 table. Next work starts at E1.
 
 Standing rules:
 - Commit locally on `development`. Never push; the user pushes.
@@ -311,7 +312,11 @@ independently reviewable and tested before dependent increments merge. Inspect
 PBC propagation in the multi-structure condensed-phase builder as a focused
 prerequisite; retain the recent main fixes. (Done in Increment 0; see below.)
 
-### Increment 7 — core water matrix accepted; remaining release validation open
+### Increment 7 — closed by user acceptance (2026-11-05)
+
+The November 5 close-out decision below supersedes earlier open-gate and retry
+instructions in this section. Preserve historical outcomes as recorded; no
+additional Increment 7 campaigns or harness repairs are required to move on.
 
 The engine work is merged, and the twelve-case Darwin water campaign now
 validates first-trigger active learning across all three engines. Cohort/summed
@@ -703,6 +708,20 @@ deferred. No newly launched gate is claimed passed before its actual result.
 
 #### Increment 7 close-out
 
+**Closed by user acceptance, November 5.** Following the successful batching,
+failure-handling, and fresh-dependency campaigns, the user directed development
+to move on without further example-harness fixes or campaign reruns. The five
+incomplete original-example checks below are accepted validation gaps, not
+passing results. Their logs and outcomes remain unchanged. This decision
+supersedes the previous requirement to complete every existing-example smoke
+check before new feature implementation. The current-release gate is accepted
+with these explicit gaps; fresh-install CPU CI is prepared locally and remote
+CI execution still awaits the user's push.
+
+Next work is excited-state ALF, starting at E1 in the E1–E6 plan. Trained
+cell-input checkpoints, long-time potential stability, MI350, and user-guide
+updates remain deferred. NeuroChem is excluded as recorded below.
+
 November 5 scope decision: the user excluded legacy ANI/NeuroChem (the UO2
 example) from current Increment 7 acceptance. Retain its unavailable-backend
 record as unverified; it is not a passing qualification and no longer blocks
@@ -723,6 +742,9 @@ reactive sampling completed 16 bootstrap labels and four-member initial
 training, then had no returned sampling tasks by the deadline. These timeouts
 do not establish either successful end-to-end compatibility or an ALF defect.
 The retained evidence is under `inc7_relaunch_20261104/fresh-examples/`.
+
+The original close-out checklist is retained for context and is superseded by
+the acceptance decision above:
 
 1. Record the retry's PySEQM and controlled-failure results and cleanup
    evidence; repair only demonstrated failures, as focused changes.

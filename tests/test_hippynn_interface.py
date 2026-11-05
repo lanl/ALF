@@ -320,6 +320,46 @@ def test_multistate_cpu_training_reload_and_force_gradients(tmp_path, network_ch
     with pytest.raises(FileExistsError):
         ml.train_single_excited_state_model(model_id=0, model_dir=str(member), h5_train_dir=str(data),
                                             properties_list=_properties(with_gap=True), ML_config=config)
+    ml.train_single_excited_state_model(model_id=1, model_dir=str(tmp_path/'model-01'),
+                                        h5_train_dir=str(data), properties_list=_properties(with_gap=True),
+                                        ML_config=config)
+    from ase import Atoms
+    evaluator = ml.load_hippynn_excited_state_ensemble(tmp_path, 'cpu', _properties(with_gap=True))
+    atoms = Atoms('OHH', positions=coordinates[0])
+    atoms.set_array('topology_atom_ids', np.arange(3))
+    other = atoms.copy(); other.positions[1, 0] += .02
+    packed = evaluator.predict_states([atoms, other])
+    assert packed['state_energies'].shape == (2, 2, 2)
+    assert packed['state_forces'][0].shape == (2, 2, 3, 3)
+    for index, a in enumerate([atoms, other]):
+        single = evaluator.predict_states([a])
+        np.testing.assert_allclose(single['state_energies'][:, :, 0],
+                                   packed['state_energies'][:, :, index], rtol=1e-5, atol=1e-5)
+        np.testing.assert_allclose(single['state_forces'][0], packed['state_forces'][index], rtol=1e-5, atol=1e-5)
+    order = [2, 0, 1]
+    permuted = evaluator.predict_states([atoms[order]])
+    np.testing.assert_allclose(permuted['state_energies'], packed['state_energies'][:, :, :1], rtol=1e-5, atol=1e-5)
+    np.testing.assert_allclose(permuted['state_forces'][0], packed['state_forces'][0][:, :, order], rtol=1e-5, atol=1e-5)
+    scaled_schema = {k: [v[0], v[1], 2.] for k, v in _properties(with_gap=True).items()}
+    scaled = ml.load_hippynn_excited_state_ensemble(tmp_path, 'cpu', scaled_schema).predict_states([atoms])
+    np.testing.assert_allclose(scaled['state_energies']*2, packed['state_energies'][:, :, :1], rtol=1e-5, atol=1e-5)
+    np.testing.assert_allclose(scaled['state_forces'][0]*2, packed['state_forces'][0], rtol=1e-5, atol=1e-5)
+    for graph, _ in evaluator._graphs:
+        graph.to(torch.float64)
+    plus, minus = atoms.copy(), atoms.copy()
+    plus.positions[1, 0] += step; minus.positions[1, 0] -= step
+    fd = -(evaluator.predict_states([plus])['state_energies'] -
+           evaluator.predict_states([minus])['state_energies']) / (2*step)
+    np.testing.assert_allclose(fd[:, :, 0], evaluator.predict_states([atoms])['state_forces'][0][:, :, 1, 0], atol=1e-3)
+    periodic = atoms.copy(); periodic.pbc = True
+    with pytest.raises(ValueError, match='nonperiodic'):
+        evaluator.predict_states([periodic])
+    bad = atoms.copy(); bad.numbers[0] = 6
+    with pytest.raises(ValueError, match='composition'):
+        evaluator.predict_states([bad])
+    bad = atoms.copy(); bad.arrays['topology_atom_ids'][:] = 0
+    with pytest.raises(ValueError, match='permutation'):
+        evaluator.predict_states([bad])
 
 
 def test_multistate_devices_preserve_visibility(monkeypatch):

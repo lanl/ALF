@@ -904,6 +904,110 @@ class HippynnBatchedEnsemble:
         return torch.stack(energies), torch.stack(forces)
 
 
+def load_hippynn_excited_state_ensemble(model_directory, device, properties_list, hippynn_kernel="pytorch"):
+    """Load molecular state heads in physical eV and eV/Angstrom units."""
+    return HippynnExcitedStateEnsemble(model_directory, device, properties_list, hippynn_kernel)
+
+
+class HippynnExcitedStateEnsemble:
+    """Ordered member/state/system predictions; packed forces keep caller atom order."""
+
+    def __init__(self, model_directory, device, properties_list, hippynn_kernel="pytorch"):
+        import torch
+        import hippynn
+        from hippynn.graphs import GraphModule
+        from hippynn.graphs.nodes.inputs import SpeciesNode, PositionsNode
+        self.state_table = validate_excited_state_training_properties(properties_list)
+        self.n_states = len(self.state_table)
+        self.device = torch.device(device)
+        hippynn.custom_kernels.set_custom_kernels(hippynn_kernel)
+        self.hippynn_kernel = hippynn_kernel
+        self._graphs = []
+        self._composition = None
+        self._scales = []
+        for row in self.state_table:
+            scales = [float(properties_list[row[key]][2]) if len(properties_list[row[key]]) > 2 else 1.
+                      for key in ('energy_key', 'force_key')]
+            if any(not math.isfinite(s) or s <= 0 for s in scales):
+                raise ValueError('Excited-state inference requires finite positive property scales')
+            self._scales.append(scales)
+        directories = sorted(Path(model_directory).glob('model-*/'))
+        if len(directories) < 2:
+            raise ValueError('Excited-state uncertainty requires at least two model-* members')
+        for directory in directories:
+            summary = json.loads((directory / 'training_summary.json').read_text())
+            composition = sorted(summary['data']['atomic_numbers'])
+            if self._composition is not None and self._composition != composition:
+                raise ValueError('Ensemble members disagree on molecular composition')
+            self._composition = composition
+            model = _load_member(str(directory.resolve()), self.device)
+            outputs = [_target(model, row[key]) for key in ('energy_db_name', 'force_db_name')
+                       for row in self.state_table]
+            kinds = []
+            for node in model.input_nodes:
+                if isinstance(node, SpeciesNode):
+                    kinds.append('species')
+                elif isinstance(node, PositionsNode):
+                    kinds.append('positions')
+                else:
+                    raise ValueError('Excited-state inference supports nonperiodic species/positions graphs only')
+            graph = GraphModule(model.input_nodes, outputs).to(self.device)
+            graph.eval()
+            self._graphs.append((graph, kinds))
+        self.n_models = len(self._graphs)
+
+    def evaluate_states(self, numbers, positions, cells, pbc, counts):
+        """Return tensors E[M,K,S], F[M,K,atoms,3], without changing input order."""
+        import torch
+        if bool(torch.as_tensor(pbc).any()):
+            raise ValueError('Excited-state inference supports nonperiodic molecules only')
+        if not counts or any(int(n) != len(self._composition) for n in counts):
+            raise ValueError('Excited-state inference requires the trained molecular composition')
+        numbers = torch.as_tensor(numbers, device=self.device, dtype=torch.long)
+        positions = torch.as_tensor(positions, device=self.device)
+        if numbers.shape != (sum(counts),) or positions.shape != (sum(counts), 3):
+            raise ValueError('Invalid packed species/positions shape')
+        if not bool(torch.isfinite(positions).all()):
+            raise ValueError('Nonfinite molecular positions')
+        species = numbers.reshape(len(counts), counts[0])
+        if any(sorted(row) != self._composition for row in species.cpu().tolist()):
+            raise ValueError('Molecule differs from trained composition')
+        energies, forces = [], []
+        for graph, kinds in self._graphs:
+            dtype = next(p.dtype for p in graph.parameters() if p.is_floating_point())
+            values = dict(species=species, positions=positions.detach().to(dtype).reshape(len(counts), counts[0], 3)
+                          .clone().requires_grad_(True))
+            with torch.enable_grad():
+                outputs = graph(*(values[k] for k in kinds))
+            energy = torch.stack([outputs[k].reshape(len(counts)) / self._scales[k][0]
+                                  for k in range(self.n_states)])
+            force = torch.stack([outputs[self.n_states+k].reshape(sum(counts), 3) / self._scales[k][1]
+                                 for k in range(self.n_states)])
+            if not bool(torch.isfinite(energy).all() and torch.isfinite(force).all()):
+                raise FloatingPointError('Nonfinite excited-state prediction')
+            energies.append(energy.detach()); forces.append(force.detach())
+        return torch.stack(energies), torch.stack(forces)
+
+    def predict_states(self, atoms_list):
+        """Return state_energies[M,K,S] and a list of state_forces[M,K,atoms_i,3]."""
+        import torch
+        from alframework.tools.atom_order import validated_atom_ids
+        if not atoms_list:
+            raise ValueError('State prediction requires at least one molecule')
+        for atoms in atoms_list:
+            if TOPOLOGY_ATOM_IDS in atoms.arrays:
+                validated_atom_ids(atoms.arrays[TOPOLOGY_ATOM_IDS], len(atoms))
+        counts = [len(a) for a in atoms_list]
+        energies, forces = self.evaluate_states(
+            torch.as_tensor(np.concatenate([a.numbers for a in atoms_list])),
+            torch.as_tensor(np.concatenate([a.positions for a in atoms_list])),
+            None, np.stack([a.pbc for a in atoms_list]), counts)
+        offsets = np.cumsum([0, *counts])
+        return dict(state_energies=energies.cpu().numpy(),
+                    state_forces=[forces[:, :, start:end].cpu().numpy()
+                                  for start, end in zip(offsets[:-1], offsets[1:])])
+
+
 # Multi-state molecular training. Ground-state entry points above are unchanged.
 
 def validate_excited_state_training_properties(

@@ -4,6 +4,8 @@ Last updated: November 5, 2026 (Increments 0–6 and the Increment 7 prerequisit
 core water, cohort/summed, MI250, and PySEQM matrices passed; all three controlled-failure
 cases passed. Increment 7 is closed by user acceptance on November 5; fresh-dependency
 matrices passed and remaining original-example gaps are accepted without further reruns.
+Increment 8 (E1–E2 contracts/storage and excited-state labeling) is complete;
+next work is E3–E4 multi-state training and external geometries.
 Legacy NeuroChem is excluded from current acceptance by user decision. MI350 is deferred outside
 current acceptance. Post-release order decided: excited-state ALF, then
 composable sampling with batched UDD/gap ALF, then staged campaigns, with
@@ -1786,84 +1788,77 @@ excited-state sources match `feature/unified-sampling-drivers` byte for byte.
   - Per-state keys are atom-first (`F#` is `[atoms, 3]` per frame), so the
     existing `"atomic"` sorting handles them. Only NACs need the new scope.
 
-### Increment 8 — excited-state contracts and labeling (in progress, 2026-11-05)
+### Increment 8 — completed: excited-state contracts and labeling (2026-11-05)
 
-The user approved E1–E2, including native PySEQM CIS batching. E3–E6,
-training, dynamics, cpp9 execution, and user-guide updates remain outside this
-increment. Preserve Increment 7 acceptance without rerunning its campaigns.
+The user approved E1–E2, including native PySEQM CIS batching. Both backend
+qualification gates passed. E3–E6, training, dynamics, cpp9 execution, and
+user-guide updates remain outside this increment. Increment 7 acceptance is
+preserved; its campaigns were not repeated.
 
-E1 is implemented: dependency-free state/gap contracts, explicit topology
-identity helpers, and opt-in `pair_atomic` NAC storage with a constant
-`nac_pairs` index. Tagged frames retain identities through species sorting;
-untagged frames retain the existing ordering behavior. Missing, inconsistent,
-noninteger, or duplicate pair mappings are rejected before writing. Focused
-contract/storage and existing storage checks passed (29 tests).
+- **E1:** dependency-free contiguous state/gap contracts, explicit topology
+  identity helpers, and opt-in `pair_atomic` NAC storage with a constant
+  `nac_pairs` index. Tagged frames preserve same-element identities through
+  species sorting; ordinary untagged ordering is unchanged. Invalid or
+  inconsistent pair mappings are rejected before writing.
+- **GPU4PySCF:** an ordinary single-molecule QM task with sequential packing,
+  RKS/TDA energies and analytic forces, optional gaps, excited–excited NACs,
+  transition dipoles, and oscillator strengths. Offsets apply once. Backend
+  execution uses ALF's selected local device via upstream's single-device
+  configuration hook, without rewriting visibility masks. Previously imported
+  multi-GPU mode is rejected. The new `tda_lindep` setting defaults to 1e-20
+  so corrections needed for the 1e-8 residual tolerance are retained.
+- **PySEQM:** separate single/native AM1/CIS tasks, managed child-process
+  timeouts and reaping, explicit SCF/CIS convergence, atom/order restoration,
+  and per-member exception retries. Existing ground-state tasks are unchanged.
+  Both old `52850b45` and current `66021961` reject all-state analytic CIS
+  forces for mixed compositions. The user approved composition-grouped native
+  solves with original submission order restored. Reports distinguish submitted
+  width, compatibility groups, actual backend widths, retries, and failed IDs.
+  True mixed-composition native CIS forces remain deferred.
 
-E2 GPU4PySCF single/sequential labeling is implemented with optional optical/NAC
-properties. Its focused adapter, device, and labeling-coordinator checks passed
-(109 tests). Real backend qualification remains pending. Separate single/native
-PySEQM CIS tasks and an opt-in preparation/execution qualification runner are
-implemented. Current stable new environments use GPU4PySCF 1.9.1, PySCF 2.15.0,
-CuPy 14.2.0, Torch 2.15.0 CUDA, and official PySEQM master `66021961`.
-Both environments pass dependency consistency checks; dependencies are frozen.
+**Accepted qualification.** The final focused suite passed 124 tests, including
+existing storage/ground-state labeling regressions, state/atom/pair mappings,
+optional-dependency errors, child cleanup, and qualification deadlines/owned-job
+cleanup. Real NVIDIA checks passed on the fixed small formaldehyde/ethene
+fixtures, requesting S0–S3:
 
-A real CPU probe confirmed homogeneous native CIS works. Both old `52850b45`
-and current `66021961` explicitly reject all-state analytic CIS forces for
-mixed compositions. The user approved composition-grouped native solves:
-partition by sorted species, execute each compatible group natively, and restore
-original submission order. Qualify homogeneous native widths 1/2/4/8 and a
-mixed-composition request split into actual width-four solves. True mixed-
-composition native forces are deferred, not claimed supported. Ground-state
-mixed native batching remains unchanged. Batch failures retry individual
-members; reports distinguish grouping from exception retries. Native qualification
-must record actual successful backend widths, including mixed molecule sizes.
-Target current stable GPU4PySCF/PySCF and official PySEQM master (verified
-`66021961` at implementation start), in new isolated environments. Existing
-accepted environments and external source checkouts remain unchanged.
+- PySEQM homogeneous native widths 1/2/4/8, and a mixed request split into two
+  width-four solves, matched singles within 2.2e-13 eV and eV/Angstrom.
+  Maximum finite-difference error was 1.44e-6 eV/Angstrom. Single,
+  sequential-four, and native-four Parsl labeling through HDF5 storage passed;
+  a current-version ground-state compatibility check also passed.
+- GPU4PySCF CPU/GPU errors were 9.82e-7 eV and 6.23e-5 eV/Angstrom, below
+  the required 1e-5 and 1e-4 limits. Maximum representative finite-difference
+  error was 1.34e-5 eV/Angstrom, below 1e-3. NAC pair order, finite optical
+  outputs, nonnegative oscillator strengths, and actual single/sequential-four
+  Parsl labeling through HDF5 storage passed. Each solve recorded single-device
+  backend execution with four visible GPUs.
 
-Implementation commits are `49f6c6e` (E1), `fc7118e` (GPU4PySCF), and
-`f89b722` (native CIS and qualification), with focused runner correction
-`039b9d9`. The final focused suite passed 120 tests; the runner correction's
-five focused tests also passed. New environments and evidence live under
-`ALF_LANL/environments/20261105/inc8/` and
-`ALF_LANL/validation/inc8_20261105/`, outside Git.
+CPU PySCF lacks analytic DF-TDDFT gradients. Its independent force reference
+therefore central-differences energies from the complete small TDA response
+matrix, with the same functional, basis, density fitting, and numerical grid.
+Qualification uses grid level 5 on CPU and GPU to reduce quadrature-response
+error; the production grid default remains unchanged. No acceptance tolerance
+was relaxed. Earlier incomplete attempts remain preserved as incomplete.
 
-The real PySEQM GPU qualification passed in `run-001/pyseqm/result.json`:
-native widths 1/2/4/8, a mixed request partitioned into two width-four solves,
-finite-difference forces on S0–S3, ground-state compatibility, and actual Parsl
-single/sequential-four/native-four labeling through HDF5 storage. Native
-energy/force discrepancies were below 2.2e-13 eV and eV/Angstrom; maximum
-finite-difference error was 1.44e-6 eV/Angstrom. Job 17378058 terminated and its
-cleanup report is verified. The first GPU4PySCF attempt failed before invoking
-the adapter because of a runner keyword-call mistake; it was corrected and
-regression-tested. Only that backend was retried from frozen `039b9d9` in
-`run-002/`, after the PySEQM allocation, retaining the original overall deadline.
-GPU4PySCF's second attempt correctly rejected unconverged TDA roots 2 and 3;
-cleanup was verified. Upstream's default linear-dependence threshold can
-truncate corrections above a requested 1e-8 residual, so the adapter now exposes
-`tda_lindep` (default 1e-20), without relaxing the residual tolerance. The CPU
-reference uses the same setting. GPU4PySCF also defaults to all visible GPUs:
-the adapter configures its supported PySCF `num_devices=1` hook before first
-import, then restores the PySCF setting; backend kernels use ALF's selected
-local CuPy device. A previously imported multi-GPU backend fails explicitly
-rather than rewriting masks or patching backend module constants. All four GPU geometries passed labeling after this fix, including NACs and
-optical outputs. The next attempt stopped at CPU-reference Davidson convergence;
-that small reference now uses the complete excitation basis at the same
-Hamiltonian and residual criterion. Initial GPU labels are persisted before
-later checks. CPU PySCF does not implement analytic DF-TDDFT gradients, so its reference
-now diagonalizes the full small TDA response matrix and central-differences
-those same density-fitted energies for forces. A grid-3 diagnostic separated
-quadrature response from adapter errors: CPU/GPU ground-state analytic forces
-agreed within 2.2e-6 eV/Angstrom, while grid response contributed 6.24e-4.
-Qualification therefore uses grid level 5 on both CPU and GPU, retaining the
-1e-5 eV energy, 1e-4 eV/Angstrom force, and 1e-3 finite-difference tolerances.
-Real full qualification remains pending until result and cleanup.
+New isolated environments are under `ALF_LANL/environments/20261105/inc8/`:
+GPU4PySCF 1.9.1, PySCF 2.15.0, CuPy 14.2.0, Torch 2.15.0 CUDA, and official
+PySEQM master `66021961`. Both environments passed dependency consistency
+checks and retain exact resolutions. Existing environments/checkouts were not
+modified. Core implementation commits are `49f6c6e`, `fc7118e`, and `f89b722`;
+focused verification fixes are recorded in subsequent local commits.
 
-Completion requires focused CPU checks, small-molecule CPU/GPU comparisons,
-native CIS single/packed parity at widths 1/2/4/8, and actual Parsl labeling
-through HDF5 storage. Each GPU allocation defaults to 30 minutes; the overall
-qualification deadline is two hours including queue waits. Unresolved checks
-remain explicit, with cleanup restricted to owned jobs and termination verified.
+The consolidated accepted evidence is
+`/vast/home/pjlohr/ALF_LANL/validation/inc8_20261105/qualification-result.json`.
+It references the accepted PySEQM result in `run-001/`, GPU4PySCF result in
+`run-005/`, exact source/dependency fingerprints, numerical errors, HDF5 hashes,
+and all six verified owned-job cleanup reports. Qualification including retries
+finished within 27 minutes of first preparation, inside the original two-hour
+queue-inclusive deadline. Each allocation retained its 30-minute limit.
+
+Next work starts with E3 multi-state training and E4 external initial geometries;
+the E1–E6 sequence below remains the feature roadmap. No increment 8 training,
+dynamics, cpp9 campaign, NeuroChem testing, or user-guide update is required.
 
 #### Excited-state ALF plan (E1–E6)
 
@@ -1873,8 +1868,8 @@ Steps E1–E4 can proceed in parallel once E1 lands.
 
 | Step | Deliverable | Acceptance gate |
 | --- | --- | --- |
-| E1. Contract and storage | Port the state/gap key contract, `atom_order`, and the `pair_atomic`/`nac_pairs` storage scope. | Multi-state and NAC HDF5 round-trip tests; atom order restored; existing `properties_list` behavior unchanged. |
-| E2. Excited-state labelers | GPU4PySCF TDA as an ordinary `QM_task`, with single and sequential packing (no native batch). Promote cpp9's transition dipoles and oscillator strengths into the interface. PySEQM CIS excited states. | Mocked CPU tests and a CPU PySCF comparison; then real A100 GPU4PySCF labels with the cpp9 label checks (shapes, finiteness, offset applied once, oscillator strengths ≥ 0, NAC pair order). |
+| E1. Contract and storage — complete in Increment 8 | Port the state/gap key contract, `atom_order`, and the `pair_atomic`/`nac_pairs` storage scope. | Multi-state and NAC HDF5 round-trip tests; atom order restored; existing `properties_list` behavior unchanged. |
+| E2. Excited-state labelers — complete in Increment 8 | GPU4PySCF TDA as an ordinary `QM_task`, with single and sequential packing (no native batch). Promote cpp9's transition dipoles and oscillator strengths into the interface. PySEQM CIS single and composition-grouped native batches. | Mocked CPU tests and a CPU PySCF comparison; then real A100 GPU4PySCF labels with the cpp9 label checks (shapes, finiteness, offset applied once, oscillator strengths ≥ 0, NAC pair order). |
 | E3. Multi-state training | The excited-state HIPPYNN trainer as a separate `ML_task`. Reconcile its loader with dev's small-molecule `ALFPyAniDirectoryDB` rather than keeping two readers. | Real four-member GPU training; members reload; the ground-state trainer is unchanged. |
 | E4. External initial geometries | A builder that admits externally generated, unlabeled geometries (xyz or geometry-only HDF5) as bootstrap/sampling seeds. Uses the scoped parts of `h5_replay_builder` (row 6). The random ring generator stays outside ALF. | Identities, atom order, and provenance survive into labeling inputs; no stored labels are carried into new labeling. |
 | E5. Sampling on a chosen state | Multi-state evaluator output (per-state member arrays; existing ground-state shapes remain the default). A `selected_state` from metadata or `fixed`/`batch_cycle`, with a selected-state batch key. Per-state diagnostics and a named gap signal with its own cutoff as a `SCORE_TERMS` entry. Eligibility reads configured signal/cutoff pairs; `Es`/`Fs`/`Fsmax` keep their meaning. | CPU parity with fakes across ASE, TorchSim, and ALCHEMI; a bounded molecular excited-state loop through the real coordinator. |
@@ -1882,8 +1877,8 @@ Steps E1–E4 can proceed in parallel once E1 lands.
 
 E6 is the first point where dev can do the cpp ring work, so it follows
 sampling (E5) rather than preceding it. Open decisions:
-- whether PySEQM CIS uses dev's native batch path or the fork's one-molecule
-  child process;
+- resolved in Increment 8: PySEQM CIS uses native composition-grouped solves,
+  each isolated in a managed child process;
 - which state(s) the ring campaign propagates;
 - whether its first campaign enables gap-uncertainty ranking.
 

@@ -9,7 +9,9 @@ Increment 9 (E3–E4 multi-state training and external geometries) is complete;
 Increment 10 (E5 selected-state sampling and gap acquisition) is complete:
 all six real ASE/TorchSim CUDA/ALCHEMI width-one/four cases passed; twelve
 new sampled labels entered a promoted four-member ensemble. Next work is
-Increment 11 (E6 cpp-ring ordinary ALF).
+Increment 11: qualify opt-in chemical topology screening across all three
+engines before the E6 cpp-ring ordinary ALF campaign. Single-member excited-state
+sampling is a separate future capability, added by user decision November 5.
 Legacy NeuroChem is excluded from current acceptance by user decision. MI350 is deferred outside
 current acceptance. Post-release order decided: excited-state ALF, then
 composable sampling with batched UDD/gap ALF, then staged campaigns, with
@@ -385,7 +387,7 @@ pushes.
 | 8. Excited-state contracts and labeling (E1–E2) | merged (`401fc89`) | State/gap contracts, topology-aware NAC storage, GPU4PySCF TDA labels, and native PySEQM CIS batching. | Backend qualification gates passed; see **Increment 8**. |
 | 9. Multi-state training and external geometries (E3–E4) | merged (`7c24cb2`, live remote verified 2026-11-05) | Shared-trunk state heads and force gradients in the existing HIPPYNN interface; unlabeled XYZ/HDF5 geometry builder. | 402 library tests pass; real 32-frame import/label/store/four-member GPU training and reload passed. |
 | 10. Selected-state sampling and acquisition (E5) | complete locally (`a5090e0`, `6c2751d`, `1c367ba`); not pushed | Multi-state inference, state selection and grouping, and named gap uncertainty across ASE, TorchSim CUDA, and ALCHEMI. | Focused compatibility/parity tests; real widths one/four on each engine; one shared small acquisition/label/store/retraining qualification. |
-| 11. cpp-ring active learning (E6) | planned; follows Increment 10 | Ordinary ALF loop with external ring inputs, GPU4PySCF labels, multi-state training, and selected-state sampling. | Newly sampled ring IDs enter a promoted, loadable four-member ensemble. Campaign settings are decided after E5. |
+| 11. Chemical topology screening, then cpp-ring active learning (E6) | planned; follows Increment 10 | First qualify opt-in reference-based chemical topology screening across ASE, TorchSim, and ALCHEMI; then run the ordinary ring ALF loop. | Chemical topology gate passes before campaign submission; newly sampled ring IDs enter a promoted, loadable four-member ensemble. |
 
 Port narrowly scoped implementations and tests. Each increment must be
 independently reviewable and tested before dependent increments merge. Inspect
@@ -2224,9 +2226,43 @@ checks, and the shared sampled-label-retraining qualification pass. It has no
 cpp-ring, repeated water campaign, GPU4PySCF requalification, MI350, NeuroChem,
 long-time stability, multi-node training, or user-guide requirement.
 
-### Increment 11 — planned: cpp-ring ordinary ALF loop (E6)
+### Increment 11 — planned: chemical topology screening, then cpp-ring ALF (E6)
 
-After Increment 10, use the existing E6 gate below: externally generated ring
+User decision, November 5: add the opt-in chemical topology checker across
+ASE, TorchSim, and ALCHEMI before launching the cpp-ring campaign. Increment
+10's accepted topology coverage validates atom identities/order and composition;
+its minimum-distance screen rejects close contacts. It does not check chemical
+connectivity, bond breaking/formation, or ring opening. Increment 10 remains
+accepted within that boundary.
+
+Prerequisite implementation and gate:
+
+- Adapt the fork's reference-based `tools/molecular_topology.py` checker into
+  shared development helpers, with one opt-in `topology_check` configuration
+  used by all three engines. Keep reference bond/connectivity inference and
+  optional dependencies outside the coordinator and behind the opt-in path.
+- Validate the reference structure and supplied atom identities. Check expected
+  bond-length bounds and unexpected connectivity against that reference;
+  preserve identical-element identities through permutations. This adds
+  chemical geometry screening, without changing propagation forces.
+- Evaluate the screen at trajectory initialization and existing observation
+  points, before candidate eligibility/ranking. A violation ends the affected
+  trajectory, records a structured rejection reason/violations, and excludes
+  the invalid frame from labeling. Previously valid candidates remain governed
+  by the existing cohort policy. Keep screen behavior opt-in for both excited-
+  and ground-state multi-trajectory sampling.
+- Require common-fixture tests across ASE, TorchSim, and ALCHEMI for valid
+  geometry, stretched/compressed reference bonds, new connectivity, ring
+  opening, invalid reference/identity mappings, and atom permutations. Verify
+  identical decisions on common recorded structures, independent stopping in
+  packed tasks, and unchanged behavior with the checker disabled.
+- Complete bounded real width-one/four screening checks across all three
+  engines using the external validation harness before the ring campaign.
+  Preserve the accepted Increment 10 evidence; a full campaign rerun is not
+  required for this prerequisite. Fix the exact screen configuration and
+  rejection/candidate semantics in the implementation plan before coding.
+
+After this prerequisite passes, use the existing E6 gate below: externally generated ring
 geometries, GPU4PySCF labels including stored NACs/optical properties as
 requested, four-member multi-state training, selected-state sampling, and at
 least one acquisition/label/store/retraining promotion through ordinary
@@ -2243,7 +2279,8 @@ teacher labeling remain independent tracks rather than E5/E6 prerequisites.
 
 Each step is a separate local change with its own CPU tests. Existing
 configurations, task signatures, and ground-state results stay unchanged.
-E1–E5 are complete; E6 is next as Increment 11.
+E1–E5 are complete; Increment 11 first qualifies chemical topology screening,
+then proceeds to E6.
 
 | Step | Deliverable | Acceptance gate |
 | --- | --- | --- |
@@ -2252,7 +2289,7 @@ E1–E5 are complete; E6 is next as Increment 11.
 | E3. Multi-state training — complete in Increment 9 | Separate excited-state `ML_task` in the existing `hippynn_interface.py`, sharing its opt-in `ALFPyAniDirectoryDB`; derived gap losses and fixed-composition nonperiodic data. | Four GPU-trained members reload with exact input/split manifests; ground-state trainer unchanged. |
 | E4. External initial geometries — complete in Increment 9 | `external_geometry_builder_task` imports unlabeled XYZ/extxyz or geometry-only HDF5 with sequential or deterministic-hash selection. The random ring generator stays outside ALF. | Identities, atom order, and provenance survived real labeling inputs; source labels/calculators are stripped. |
 | E5. Sampling on a chosen state — complete in Increment 10 | Multi-state evaluator output (per-state member arrays; existing ground-state shapes remain the default). A `selected_state` from metadata or `fixed`/`batch_cycle`, with a selected-state batch key. Per-state diagnostics and a named gap signal with its own cutoff as a `SCORE_TERMS` entry. Eligibility reads configured signal/cutoff pairs; `Es`/`Fs`/`Fsmax` keep their meaning. | CPU parity with fakes across ASE, TorchSim, and ALCHEMI; a bounded molecular excited-state loop through the real coordinator. |
-| E6. cpp ring full ALF example | An ordinary master configuration run through `alframework.__main__`: (1) bootstrap from a random initial dataset of ring structures made by an external generator; (2) cpp9-science GPU4PySCF labels, with NACs stored but not trained; (3) multi-state training; (4) excited-state MLMD and acquisition; (5) iterate. The fork's standalone driver is not ported as-is; its settings and checks are reused. | A real, bounded Darwin campaign like the water matrix: at least one round selects new sampled ring structures, labels them with converged GPU4PySCF, stores them, and promotes a retrained, loadable four-member ensemble. |
+| E6. cpp ring full ALF example | After the chemical topology prerequisite passes, run an ordinary master configuration through `alframework.__main__`: external ring bootstrap, GPU4PySCF labels with stored NACs, multi-state training, selected-state MLMD/acquisition, and iteration. Reuse the fork's scientific settings rather than its standalone driver. | Opt-in chemical topology screening is enabled and qualified; a bounded real campaign selects new ring structures, labels/stores them, and promotes a retrained, loadable four-member ensemble. |
 
 E6 is the first point where dev can do the cpp ring work, so it follows
 sampling (E5) rather than preceding it. Open decisions:
@@ -2263,6 +2300,18 @@ sampling (E5) rather than preceding it. Open decisions:
 
 #### Later steps (outline; detail after E5)
 
+- **Single-member excited-state sampling (user addition, November 5).**
+  - Allow selection/loading of one ensemble member for selected-state
+    propagation, at trajectory widths one/four across ASE, TorchSim, and
+    ALCHEMI. Keep full-ensemble sampling as the default.
+  - Define the acquisition policy explicitly when committee uncertainty is
+    unavailable: support sampling without committee acquisition or a separately
+    qualified uncertainty signal. Specify any optional full-ensemble checks
+    separately from the single-member propagation path.
+  - Gate: only the requested checkpoint is loaded for single-member execution;
+    propagation matches that member's selected-state forces, single/batched
+    observations agree, and existing ensemble/ground-state paths remain valid.
+    This is future work, not an additional cpp-ring prerequisite.
 - **Composable sampling with batched UDD and gap ALF.**
   - Start with the bias/control interface in the packed engines (row 1). Each
     control:
@@ -2445,9 +2494,10 @@ sampling (E5) rather than preceding it. Open decisions:
   retained-label budgets. The fork's `run_control`, `workflow_io`,
   `staged_workflow`, and `dataset_screening` are source material.
 
-The excited-state increment includes explicit topology validation and
-topology-aware replay/storage where configured. Existing ordinary workflows
-must not acquire a new fixed-topology requirement.
+Current excited-state coverage includes atom-identity validation and
+topology-aware replay/storage. Chemical topology screening is the explicit
+Increment 11 prerequisite above. Existing ordinary workflows must not acquire
+a new fixed-topology requirement when screening is disabled.
 
 Budgeted workflows must distinguish selected candidates, labeling attempts,
 successful labels, stored/retained frames, and rows surviving trainer filters.

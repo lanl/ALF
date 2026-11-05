@@ -1015,3 +1015,16 @@ def test_invalid_optics_cannot_mark_frame_converged(monkeypatch, strength):
     m = label_gpu4pyscf_excited_state_molecule(_molecule(), QM_config={'nroots': 1}, properties_list=props)
     assert not m.check_convergence()
     assert m.get_results() == {}
+
+
+def test_masked_gpu_selection_uses_shared_visibility_rules(monkeypatch):
+    class Device:
+        def __init__(self, index): self.index=index
+        def use(self): pass
+    fake = SimpleNamespace(cuda=SimpleNamespace(runtime=SimpleNamespace(getDeviceCount=lambda: 4), Device=Device))
+    monkeypatch.setattr(gpu4pyscf_module, '_import_cupy', lambda: fake)
+    monkeypatch.setenv('CUDA_VISIBLE_DEVICES', '3,4,6,7')
+    monkeypatch.setenv('PARSL_WORKER_RANK', '3')
+    selected = gpu4pyscf_module.select_gpu4pyscf_device(1)
+    assert selected['index'] == 3
+    assert selected['cuda_visible_devices'] == '3,4,6,7'

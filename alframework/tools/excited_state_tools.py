@@ -53,6 +53,12 @@ def derive_state_property_table(
             f"Excited-state energy keys must be contiguous from zero; found {states}."
         )
 
+    orphan_forces = sorted(set(forces) - set(energies))
+    if orphan_forces:
+        raise ValueError(f"Force properties reference states without energies: {orphan_forces}.")
+    scales = {_property_scale(properties_list, energies[state]["energy_key"]) for state in states}
+    if len(scales) != 1:
+        raise ValueError("State energies must use identical property scales.")
     rows: list[dict[str, Any]] = []
     for state in states:
         row = dict(energies[state])

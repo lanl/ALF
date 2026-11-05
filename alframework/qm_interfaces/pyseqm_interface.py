@@ -159,3 +159,244 @@ def pyseqm_task(molecule_objects, QM_config):
         (list): The labeled MoleculesObject instances, in input order.
     """
     return label_pyseqm_batch(molecule_objects, QM_config)
+
+
+# Excited-state entrypoints are separate so ground-state configurations and
+# their native batching retain the original contract.
+def run_pyseqm_cis(coordinates, species, parameters, device):
+    """One native AM1/CIS solve on current upstream PySEQM (float64).
+
+    Returns absolute state energies [molecules, states], negative gradients
+    [molecules, states, padded_atoms, 3], and explicit convergence flags.
+    """
+    import torch
+    from seqm.ElectronicStructure import Electronic_Structure
+    from seqm.Molecule import Molecule
+    from seqm.seqm_functions.constants import Constants
+
+    previous = torch.get_default_dtype()
+    torch.set_default_dtype(torch.float64)
+    try:
+        torch.set_num_threads(int(parameters.pop('_num_threads', 1)))
+        dev = torch.device(device)
+        mol = Molecule(Constants().to(dev), parameters,
+                       torch.as_tensor(coordinates, dtype=torch.float64, device=dev),
+                       torch.as_tensor(species, dtype=torch.int64, device=dev)).to(dev)
+        driver = Electronic_Structure(parameters).to(dev)
+        driver(mol)
+        width = len(coordinates)
+        def flag(obj, name):
+            value = getattr(obj, name, None)
+            if value is None:
+                raise RuntimeError(f'PySEQM omitted required convergence flag {name}')
+            arr = np.asarray(value.detach().cpu().numpy(), dtype=bool)
+            if arr.shape != (width,):
+                raise RuntimeError(f'Invalid PySEQM {name} shape {arr.shape}')
+            return arr
+        ok = ~flag(driver, 'notconverged') & flag(mol, 'cis_converged')
+        ok &= ~flag(mol, 'cis_unstable')
+        energies = torch.cat((mol.Etot[:, None], mol.Etot[:, None] + mol.cis_energies), dim=1)
+        return (energies.detach().cpu().numpy(), mol.all_forces.detach().cpu().numpy(), ok)
+    finally:
+        torch.set_default_dtype(previous)
+
+
+def _cis_child(connection, coordinates, species, parameters, device, runner):
+    try:
+        connection.send(('ok', runner(coordinates, species, parameters, device)))
+    except BaseException as exc:
+        connection.send(('error', f'{type(exc).__name__}: {exc}'))
+    finally:
+        connection.close()
+
+
+def _stop_cis_child(process):
+    """Always reap the owned child, escalating only when necessary."""
+    process.join(timeout=1)
+    if process.is_alive():
+        process.terminate()
+        process.join(timeout=5)
+    if process.is_alive():
+        process.kill()
+        process.join(timeout=5)
+    if process.is_alive():
+        raise RuntimeError('PySEQM child did not terminate')
+
+
+def run_pyseqm_cis_isolated(coordinates, species, parameters, device, timeout=300,
+                            runner=run_pyseqm_cis):
+    """Spawn one child for the entire native solve, with bounded lifetime."""
+    import multiprocessing as mp
+    context = mp.get_context('spawn')
+    receiver, sender = context.Pipe(duplex=False)
+    process = context.Process(target=_cis_child,
+        args=(sender, coordinates, species, parameters, device, runner))
+    try:
+        process.start()
+        sender.close()
+        if not receiver.poll(timeout):
+            raise TimeoutError(f'PySEQM CIS native solve exceeded {timeout:g} seconds')
+        try:
+            status, result = receiver.recv()
+        except EOFError as exc:
+            raise RuntimeError('PySEQM CIS child exited without results') from exc
+        if status != 'ok':
+            raise RuntimeError(result)
+        return result
+    finally:
+        receiver.close()
+        sender.close()
+        if process.pid is not None:
+            _stop_cis_child(process)
+            process.close()
+
+
+def label_pyseqm_excited_batch(molecule_objects, QM_config, properties_list,
+                               sampler_config=None, gpus_per_node=None, runner=None):
+    """Native CIS labeling with per-member fallback, stable IDs and atom order.
+
+    Current support: neutral, restricted AM1/CIS molecules without PBC. Every
+    requested state must have a force and converge for the frame to be stored.
+    ``qm_backend_width`` is nonzero only for an actual successful native solve.
+    """
+    import time
+    from alframework.tools.excited_state_tools import derive_state_property_table, derive_gap_property_table
+    from alframework.tools.gpu import sampling_device
+
+    molecules = list(molecule_objects)
+    if not molecules:
+        return []
+    if not all(isinstance(m, MoleculesObject) for m in molecules):
+        raise TypeError('molecule_objects must contain MoleculesObject instances')
+    start = time.monotonic()
+    config = dict(QM_config or {})
+    widths = []
+    batch_errors = []
+    compatibility_groups = []
+    retries = 0
+    offset = config.get('energy_offset_eV', (sampler_config or {}).get('energy_offset_eV', 0.))
+    try:
+        table = derive_state_property_table(properties_list, require_forces=True)
+        gaps = derive_gap_property_table(properties_list)
+        if len(table) < 2:
+            raise ValueError('CIS requires at least S0 and S1')
+        supported = {row[k] for row in table for k in ('energy_key', 'force_key')}
+        supported.update(g['gap_key'] for g in gaps)
+        if set(properties_list) - supported:
+            raise ValueError('PySEQM CIS supports only sE#/F#/dE# properties')
+        for row in table:
+            for key, scope in ((row['energy_key'], 'system'), (row['force_key'], 'atomic')):
+                schema = properties_list[key]
+                if len(schema) != 3 or schema[1] != scope or not np.isfinite(float(schema[2])):
+                    raise ValueError(f'Invalid CIS property schema for {key}')
+        scales = [float(properties_list[r['energy_key']][2]) for r in table]
+        if len(set(scales)) != 1:
+            raise ValueError('State energies must use identical property scales')
+        if config.get('method', 'AM1').upper() != 'AM1':
+            raise ValueError('Excited-state PySEQM currently supports AM1/CIS only')
+        if any(m.get_metadata().get('charge', 0) != 0 or
+               m.get_metadata().get('mult', 1) != 1 for m in molecules):
+            raise ValueError('PySEQM CIS requires neutral closed-shell molecules')
+        if config.get('charge', 0) != 0 or config.get('multiplicity', 1) != 1:
+            raise ValueError('PySEQM CIS requires neutral closed-shell molecules')
+        offset = float(offset)
+        if not np.isfinite(offset):
+            raise ValueError('energy_offset_eV must be finite')
+        tolerance = float(config.get('cis_tol', 1e-8))
+        scf_eps = float(config.get('scf_eps', 1e-10))
+        timeout = float(config.get('timeout_seconds', 300))
+        if not all(np.isfinite(x) and x > 0 for x in (tolerance, scf_eps, timeout)):
+            raise ValueError('CIS/SCF tolerances and timeout must be finite and positive')
+        parameters = {'method': 'AM1', 'scf_eps': min(scf_eps, .1*tolerance),
+                      'scf_converger': [2], 'analytical_gradient': [True],
+                      'do_all_forces': True,
+                      'excited_states': {'method': 'cis', 'n_states': len(table)-1,
+                                         'tolerance': tolerance},
+                      '_num_threads': int(config.get('num_threads', 1))}
+        if parameters['_num_threads'] < 1:
+            raise ValueError('num_threads must be positive')
+        # Injected runners permit dependency-free tests. Real GPU selection is
+        # local to the inherited mask; this never edits visibility variables.
+        device = sampling_device({'device': config.get('device', 'cpu')}, gpus_per_node)
+        def evaluate(group):
+            nonlocal retries
+            try:
+                xyz, numbers, orders = pack_molecules(group)
+                if not np.isfinite(xyz).all():
+                    raise ValueError('PySEQM coordinates must be finite')
+                widths.append(len(group))
+                if runner is None:
+                    energy, force, ok = run_pyseqm_cis_isolated(
+                        xyz, numbers, dict(parameters), device, timeout)
+                else:
+                    energy, force, ok = runner(xyz, numbers, dict(parameters), device)
+                energy, force, ok = np.asarray(energy), np.asarray(force), np.asarray(ok)
+                if (energy.shape != (len(group), len(table)) or
+                    force.shape != (len(group), len(table), numbers.shape[1], 3) or
+                    ok.shape != (len(group),)):
+                    raise ValueError('Malformed PySEQM CIS batch output')
+                for i, m in enumerate(group):
+                    member_forces = np.stack([restore_atom_order(f, orders[i]) for f in force[i]])
+                    valid = bool(ok[i] and np.isfinite(energy[i]).all() and np.isfinite(member_forces).all())
+                    if not valid:
+                        fail(m, 'SCF/CIS failed or returned nonfinite results')
+                        continue
+                    results = {r['energy_key']: float(energy[i,j]-offset) for j,r in enumerate(table)}
+                    results.update({r['force_key']: member_forces[j] for j,r in enumerate(table)})
+                    results.update({g['gap_key']: results[g['upper_energy_key']]-results[g['lower_energy_key']] for g in gaps})
+                    m.store_results(results)
+                    m.set_converged_flag(True)
+                    m.update_metadata({'qm_backend_width': len(group), 'qm_scf_converged': True,
+                                       'qm_cis_converged': True, 'qm_device': device,
+                                       'energy_offset_eV': offset})
+            except Exception as exc:
+                batch_errors.append({'width': len(group), 'error': f'{type(exc).__name__}: {exc}'})
+                if len(group) == 1:
+                    fail(group[0], f'{type(exc).__name__}: {exc}')
+                else:
+                    retries += len(group)
+                    for m in group:
+                        evaluate([m])
+        def fail(m, message):
+            for key in properties_list:
+                m.get_results().pop(key, None)
+            m.set_converged_flag(False)
+            m.update_metadata({'qm_error': message, 'qm_backend_width': 0,
+                               'qm_scf_converged': False, 'qm_cis_converged': False})
+        # Upstream all-state analytic CIS gradients require identical sorted
+        # species in a solve, even though its ground-state API accepts mixed
+        # sizes. Partition before the backend call; this is not an error retry.
+        groups = {}
+        for m in molecules:
+            key = tuple(sorted(map(int, m.get_atoms().numbers)))
+            groups.setdefault(key, []).append(m)
+        compatibility_groups = [[m.get_moleculeid() for m in group] for group in groups.values()]
+        for group in groups.values():
+            evaluate(group)
+    except Exception as exc:
+        for m in molecules:
+            for key in properties_list:
+                m.get_results().pop(key, None)
+            m.set_converged_flag(False)
+            m.update_metadata({'qm_error': f'{type(exc).__name__}: {exc}', 'qm_backend_width': 0})
+    for m in molecules:
+        m.update_metadata({'qm_backend': 'pyseqm_cis', 'qm_submitted_width': len(molecules),
+                           'qm_solve_widths': list(widths), 'qm_retry_count': retries,
+                           'qm_batch_errors': batch_errors, 'qm_compatibility_groups': compatibility_groups,
+                           'qm_failed_ids': [x.get_moleculeid() for x in molecules if not x.check_convergence()],
+                           'qm_elapsed_seconds': time.monotonic()-start})
+    return molecules
+
+
+@python_app(executors=['alf_QM_executor'])
+def pyseqm_excited_state_task(molecule_object, QM_config, properties_list,
+                              sampler_config=None, gpus_per_node=None):
+    return label_pyseqm_excited_batch([molecule_object], QM_config, properties_list,
+                                     sampler_config, gpus_per_node)[0]
+
+
+@python_app(executors=['alf_QM_executor'])
+def pyseqm_excited_state_batch_task(molecule_objects, QM_config, properties_list,
+                                    sampler_config=None, gpus_per_node=None):
+    return label_pyseqm_excited_batch(molecule_objects, QM_config, properties_list,
+                                     sampler_config, gpus_per_node)

@@ -1802,7 +1802,20 @@ contract/storage and existing storage checks passed (29 tests).
 E2 GPU4PySCF single/sequential labeling is implemented with optional optical/NAC
 properties. Its focused adapter, device, and labeling-coordinator checks passed
 (109 tests). Real backend qualification remains pending. Separate single/native
-PySEQM CIS tasks are being implemented. Native qualification
+PySEQM CIS tasks and an opt-in preparation/execution qualification runner are
+implemented. Current stable new environments use GPU4PySCF 1.9.1, PySCF 2.15.0,
+CuPy 14.2.0, Torch 2.15.0 CUDA, and official PySEQM master `66021961`.
+Both environments pass dependency consistency checks; dependencies are frozen.
+
+A real CPU probe confirmed homogeneous native CIS works. Both old `52850b45`
+and current `66021961` explicitly reject all-state analytic CIS forces for
+mixed compositions. The user approved composition-grouped native solves:
+partition by sorted species, execute each compatible group natively, and restore
+original submission order. Qualify homogeneous native widths 1/2/4/8 and a
+mixed-composition request split into actual width-four solves. True mixed-
+composition native forces are deferred, not claimed supported. Ground-state
+mixed native batching remains unchanged. Batch failures retry individual
+members; reports distinguish grouping from exception retries. Native qualification
 must record actual successful backend widths, including mixed molecule sizes.
 Target current stable GPU4PySCF/PySCF and official PySEQM master (verified
 `66021961` at implementation start), in new isolated environments. Existing

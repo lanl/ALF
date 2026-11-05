@@ -116,3 +116,10 @@ def test_gap_table_rejects_invalid_configured_pairs(pairs, message):
             gap_config={"pairs": pairs},
             require_properties=True,
         )
+
+
+def test_state_scales_and_orphan_forces_cannot_silently_disagree():
+    with pytest.raises(ValueError, match='identical'):
+        derive_state_property_table({'sE0': ['e0', 'system', 1.], 'sE1': ['e1', 'system', 2.]})
+    with pytest.raises(ValueError, match='without energies'):
+        derive_state_property_table({'sE0': ['e0', 'system', 1.], 'F1': ['f1', 'atomic', 1.]})

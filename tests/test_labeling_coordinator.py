@@ -11,7 +11,7 @@ from parsl import python_app
 
 from alframework.tools import labeling as labeling_module
 from alframework.tools import tools as tool_module
-from alframework.tools.batching import BatchBuffer, BatchedTaskQueue
+from alframework.tools.batching import BatchBuffer, BatchedSubmitter, BatchedTaskQueue
 from alframework.tools.labeling import LabelingCoordinator, labeling_batch_settings
 from alframework.tools.molecules_class import MoleculesObject
 from tests.helpers.driver import MODEL_PATTERN, loaded_parsl, run_alf_driver, stored_ids
@@ -44,6 +44,13 @@ def native_qm(molecule_objects, QM_config):
         if mol.get_moleculeid() == FAILING_ID:
             mol.set_converged_flag(False)
     return labeled
+
+
+@python_app(executors=["alf_QM_executor"])
+def native_qm_failing_whole_batch(molecule_objects, QM_config):
+    if FAILING_ID in [mol.get_moleculeid() for mol in molecule_objects]:
+        raise RuntimeError("mock worker loss")
+    return [label(mol) for mol in molecule_objects]
 
 
 @pytest.mark.parametrize(
@@ -114,11 +121,13 @@ def test_labeling_completes_a_full_training_cycle(tmp_path, monkeypatch, mode, b
     if mode is None:
         # The single-structure labeler fails one whole task, as before.
         assert run.status["lifetime_failed_QM_tasks"] >= 1
+        assert run.status["lifetime_failed_QM_structures"] == run.status["lifetime_failed_QM_tasks"]
         assert not packed_calls and not native_calls
         assert any(seconds == 60 for seconds in run.sleeps)
     else:
         # The failed member is recorded but does not discard its batch-mates' labels.
         assert run.status["lifetime_failed_QM_tasks"] == 0
+        assert run.status["lifetime_failed_QM_structures"] == 0
         batches = packed_calls if mode == "sequential" else native_calls
         assert not (packed_calls and native_calls)
         assert batches and all(1 <= len(batch) <= batch_size for batch in batches)
@@ -134,6 +143,47 @@ def test_labeling_completes_a_full_training_cycle(tmp_path, monkeypatch, mode, b
     with h5py.File(tmp_path / "h5/data-0000.h5") as handle:
         group = next(iter(handle.values()))
         assert group["species"].asstr()[()].tolist() == ["H", "H", "O"]
+
+
+def test_status_counts_every_structure_in_a_failed_batch(tmp_path, monkeypatch):
+    @python_app(executors=["alf_builder_executor"])
+    def builder(moleculeid):
+        return MoleculesObject(WATER.copy(), moleculeid)
+
+    @python_app(executors=["alf_sampler_executor"])
+    def sampler(molecule_object):
+        return molecule_object
+
+    @python_app(executors=["alf_ML_executor"])
+    def ml(current_training_id):
+        (tmp_path / MODEL_PATTERN.format(current_training_id)).mkdir(parents=True)
+        return [True] * 4, current_training_id
+
+    run = run_alf_driver(
+        tmp_path,
+        monkeypatch,
+        builder=builder,
+        sampler=sampler,
+        ml=ml,
+        qm=native_qm_failing_whole_batch,
+        qm_config={"batching": {"mode": "native", "batch_size": 2, "partial_policy": "full_only"}},
+        bootstrap_set=4,
+        parallel_samplers=2,
+        target_queued_QM=2,
+        save_h5_threshold=3,
+        maximum_completed_QM=8,
+    )
+
+    assert run.status["lifetime_failed_QM_tasks"] == 1
+    assert run.status["lifetime_failed_QM_structures"] == 2
+
+
+def test_failed_structures_are_only_counted_once():
+    submitter = BatchedSubmitter(FakeTask("exec_done"), {"batch_size": 2, "partial_policy": "timeout", "max_wait_seconds": 1.0})
+    submitter.queue.add_task(FakeTask("failed", exception=RuntimeError("worker lost")), width=3)
+    _, failed = submitter.queue.get_task_results()
+    assert submitter.take_failed_structures(failed) == 3
+    assert submitter.take_failed_structures(0) == 0
 
 
 def test_one_failed_label_keeps_the_others():

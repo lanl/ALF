@@ -345,6 +345,7 @@ class BatchedSubmitter:
         self.task = task
         self.settings = settings
         self.buffer = None
+        self._failed_structures_read = 0
         if settings is None:
             self.queue = parsl_task_queue()
         else:
@@ -361,6 +362,17 @@ class BatchedSubmitter:
             return "one structure per task"
         return "batches of up to {batch_size} structures ({partial_policy}, {max_wait_seconds:g} s)".format(
             **self.settings)
+
+    def take_failed_structures(self, failed_tasks):
+        """Return the structures lost since the last call, given the ``failed_tasks`` just harvested.
+
+        A plain queue's tasks hold one structure each, so ``failed_tasks`` is already that count.
+        """
+        if not self.batched:
+            return failed_tasks
+        lost = self.queue.failed_structures - self._failed_structures_read
+        self._failed_structures_read = self.queue.failed_structures
+        return lost
 
     def submit(self, molecule_object, input_dicts):
         """Submit (or buffer) one structure.

@@ -315,6 +315,7 @@ if status['current_h5_id'] == 0 and status['current_model_id'] < 0:
     print("Saving Bootstrap and training model")
     results_list, failed = QM_task_queue.get_task_results()
     status['lifetime_failed_QM_tasks'] = status['lifetime_failed_QM_tasks'] + failed    
+    status['lifetime_failed_QM_structures'] = status.get('lifetime_failed_QM_structures', 0) + labeling.take_failed_structures(failed)
     store_current_data(master_config['h5_path'].format(status['current_h5_id']),
                        results_list,
                        master_config['properties_list'])
@@ -408,6 +409,7 @@ while True:
     if sampler_task_queue.get_completed_number() > master_config['minimum_QM']:
         sampler_results, failed = sampler_task_queue.get_task_results()
         status['lifetime_failed_sampler_tasks'] = status['lifetime_failed_sampler_tasks'] + failed
+        status['lifetime_failed_sampler_structures'] = status.get('lifetime_failed_sampler_structures', 0) + sampling.take_failed_structures(failed)
         for structure in sampler_results: #may need [0]
             assert isinstance(structure, MoleculesObject), 'structure must be a MoleculesObject instance'
         # Without cohort selection this is every result whose atoms is set, as before.
@@ -421,6 +423,7 @@ while True:
     	  #store_current_data(h5path, system_data, properties):
         results_list, failed = QM_task_queue.get_task_results()
         status['lifetime_failed_QM_tasks'] = status['lifetime_failed_QM_tasks'] + failed
+        status['lifetime_failed_QM_structures'] = status.get('lifetime_failed_QM_structures', 0) + labeling.take_failed_structures(failed)
         #with open('temp-{:04d}.pkl'.format(status['current_h5_id']),'wb') as pickle_file:
         #    pickle.dump(results_list,pickle_file)
         store_current_data(master_config['h5_path'].format(status['current_h5_id']), results_list, master_config['properties_list'])

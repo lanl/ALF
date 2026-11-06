@@ -2263,6 +2263,20 @@ indices and FPS ranks. Four isolated RDKit-enabled CPU/sampling environments
 are frozen under `environments/20261105/inc11a/`; existing environments remain
 unchanged. The external runner's five focused tests passed.
 
+Qualification launch, November 5 at 17:04 Mountain: persistent session
+`alf-inc11a-20261105` on `darwin-fe2` supervises
+`validation/inc11a_20261105/run-002/`. Frozen library revision `976d323` and
+external harness revision `d3f059d` are assembled in its source snapshot.
+The first corrected ASE allocation `17379283` entered Python/Parsl; later
+engine checks, preparation, and the ordinary AcAc pilot run sequentially.
+The original four-hour deadline is retained: November 5, 21:02:30 Mountain,
+with the last five minutes reserved for cleanup. The initial launch attempt
+failed before Python because the harness sourced the Darwin login profile
+twice under strict shell settings; this was reproduced and corrected in the
+external harness. All four jobs from that attempt are verified terminated.
+No real acceptance gate is claimed at launch; consult `run-002/result.json`
+and stage reports after completion. The user may disconnect while tmux runs.
+
 Real acceptance remains pending: all three engines must execute valid widths
 one/four and isolate an invalid input; prepare 1,920 accepted keto geometries
 and 192 FPS seeds; use ordinary `alframework.__main__` with native-four CIS

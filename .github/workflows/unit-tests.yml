@@ -16,7 +16,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        dependencies: [base, hippynn]
+        # base: no torch or HIPPYNN. hippynn: the common ML stack.
+        # engines: every optional package, so that no test is left skipping.
+        dependencies: [base, hippynn, engines]
 
     steps:
       - name: Checkout code
@@ -30,13 +32,38 @@ jobs:
       - name: Install package and test dependencies
         run: |
           python -m pip install --upgrade pip
-          if [ "${{ matrix.dependencies }}" = "hippynn" ]; then
-            python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
-            python -m pip install ".[tests,full]" "hippynn[full]"
-          else
-            python -m pip install ".[tests]"
-          fi
+          case "${{ matrix.dependencies }}" in
+            hippynn)
+              python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+              python -m pip install ".[tests,full]" "hippynn[full]"
+              ;;
+            engines)
+              python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+              python -m pip install ".[tests,full,topology,torchsim,alchemi]" "hippynn[full]" \
+                "git+https://github.com/lanl/PYSEQM@52850b4"
+              ;;
+            *)
+              python -m pip install ".[tests]"
+              ;;
+          esac
           python -m pip check
+
+      # Optional tests skip when a package is missing, so without this check a
+      # broken install would look like a passing job.
+      - name: Confirm every optional engine is usable
+        if: matrix.dependencies == 'engines'
+        run: |
+          python - <<'EOF'
+          from importlib.metadata import version
+
+          import rdkit
+          import seqm.ElectronicStructure
+          import torch_sim
+          from alframework.samplers.alchemi_engine import SUPPORTED_VERSIONS
+
+          installed = version('nvalchemi-toolkit')
+          assert installed in SUPPORTED_VERSIONS, f'ALCHEMI {installed} is not in {SUPPORTED_VERSIONS}'
+          EOF
 
       - name: Run pytest
         run: python -m pytest

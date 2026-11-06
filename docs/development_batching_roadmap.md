@@ -11,8 +11,10 @@ all six real ASE/TorchSim CUDA/ALCHEMI width-one/four cases passed; twelve
 new sampled labels entered a promoted four-member ensemble. Increment 11A is
 complete: all three engine screens and the ordinary fixed-keto AcAc ALF loop
 passed, with 192 stored bootstrap frames and 26 new sampled labels in a
-promoted four-member ensemble. Increment 11B is next, beginning with bounded
-CPP9 QM and 50,000-row training-memory calibration on A100 40 GB hardware. Single-member excited-state
+promoted four-member ensemble. Increment 11B is next. Its preliminary A100
+40 GB CPP9 QM/50,000-row training-memory calibration is complete: native
+cuTENSOR restored full labeling; batch/scheduler/evaluation size eight is the
+measured recommendation for the qualified public PyTorch training path. Single-member excited-state
 sampling is a separate future capability, added by user decision November 5.
 Legacy NeuroChem is excluded from current acceptance by user decision. MI350 is deferred outside
 current acceptance. Post-release order decided: excited-state ALF, then
@@ -2419,9 +2421,9 @@ User-owned documentation follow-up, now unblocked by the 11A pass: document the 
 and add `examples/keto_acac` as the worked excited-state example; see **User
 documentation pass (2026-11-06)**.
 
-### Increment 11B — planned: cpp-ring ALF (E6), after 11A
+### Increment 11B — calibration complete; cpp-ring ALF (E6) planned
 
-Next action approved November 6: brief A100 40 GB calibration before sizing the
+Calibration scope approved November 6: brief A100 40 GB measurements before sizing the
 full CPP9 ALF loop. The fork production trial accepted 1,000/1,000 CPP9 labels
 (median full calculation 185.6 seconds; cold smoke 234.5 seconds), and completed
 four HIP-HOP145 members. Preserve it as read-only historical evidence.
@@ -2452,9 +2454,115 @@ harness tests passed before submission, including the exact 40k/5k/5k split
 and a real coordinator/storage test with a mocked backend. The 50,000-row
 fixture is 581,460,752 bytes and records original source IDs and repeat ordinals;
 no new QM labels were invented by repetition. First owned QM job: `17381055`.
-Scientific outcomes and memory capacity remain unclaimed until measurements finish. Calibration code/tests belong in
-`alf_validation`; generated data/logs remain outside Git. This calibration does
-not launch or complete E6. User guides remain user-owned and are not edited here.
+The following results supersede the launch status. Calibration code/tests are
+in `alf_validation`; generated data/logs remain outside Git. This calibration
+neither launches nor completes E6. User guides remain user-owned and untouched.
+
+
+#### CPP9 A100 calibration results (2026-11-06)
+
+Calibration completed with measured capacity limits. Evidence:
+`validation/cpp9_calibration_20261106/run-003/result.json`,
+`calibration-summary.json`, `training-memory.csv`, and `qm/labels.h5`.
+The final QM source used library `aef5d24` and external harness `5b93641`;
+postprocessing is committed separately in the validation repository. Inputs,
+closed data, source fingerprints and retained training evidence were verified.
+All 17 focused harness tests passed; no ALF public API or user-guide change
+was needed.
+
+**Original-fork clue and dependency correction.** The fork used GPU4PySCF
+1.8.0/PySCF 2.14.0/CuPy 13.4.1 with cuTENSOR 2.2.0. The accepted Increment 8
+stack had GPU4PySCF 1.9.1/PySCF 2.15.0/CuPy 14.2.0 but lacked cuTENSOR.
+Its CuPy fallback converged SCF/TDA and then exhausted A100 memory in the NAC
+stage (178.45 seconds). The original adapter had no relaxed method, different
+NAC pairs, or special force omission; its staged optical contraction was
+already present in development.
+
+An isolated environment at
+`environments/20261106/cpp9-gpu4pyscf-cutensor/` adds only `cutensor-cu13==2.8.1`
+to the frozen QM package set; all earlier environments/checkouts are unchanged.
+Native loading additionally requires the wheel's `cutensor/lib` directory in
+worker `LD_LIBRARY_PATH`: the first installation-only retry was rejected by
+the strict backend guard, before calculation, because the shared libraries
+were undiscoverable. The final worker verifies native cuTENSOR is active;
+no fallback, scientific tolerance change, visibility-mask change, or density-
+fitting offload was used. Dependency sources and comparisons are recorded in
+`dependency-comparison.json` and `cutensor-environment.json` in the evidence root.
+
+**Real QM and storage.** Two sequential evaluations of the historical smoke
+geometry succeeded in one worker on `shared-redstone` (A100-SXM4-40GB):
+185.03 seconds for the first call and 137.63 seconds for the repeat. These
+are first/repeat calls after backend preflight; shared CUDA/compiler disk
+caches were retained. All S0–S3 energies/analytic forces, absolute energies,
+transition dipoles, oscillator strengths and NAC pairs (1,2)/(1,3)/(2,3) passed
+finiteness/convergence and HDF5 round-trip checks, including identity and
+pair/atom-axis ordering. The offset was applied once. Repeat errors were
+1.53e-10 eV and 4.34e-9 eV/Å (limits 1e-5 and 1e-4). Differences from the
+historical first label were 9.36e-9 eV and 1.46e-6 eV/Å. NAC signs are not
+forced to agree. Sampled QM device peaks were 38.985/38.983 GiB, close to the
+40 GB card's limit; this is representative-geometry coverage, not a claim
+that every future geometry fits.
+
+**Training capacity.** The 50,000-row fixture repeats 1,000 converged historical
+CPP9 geometries, with unique capacity IDs and source provenance. The real
+split is 40,000 train / 5,000 validation / 5,000 test. These are not 50,000 new
+scientific labels, and no benchmark model was promoted. The production
+HIP-HOP145 S0–S3 energy/force graph, AdamW, float32 arithmetic and public
+PyTorch kernels were exercised in fresh children with two warm-up and five
+measured updates. Successful training probes had finite losses and changed
+parameters. NACs/optics were excluded from training targets.
+
+| Rows | Mode | Batch | Result | Sampled GPU peak (GiB) | Median step (s) |
+| ---: | --- | ---: | --- | ---: | ---: |
+| 1,000 | train | 1 | passed | 5.18 | 0.1329 |
+| 50,000 | train | 1 | passed | 3.01 | 0.1318 |
+| 50,000 | train | 2 | passed | 7.48 | 0.1911 |
+| 50,000 | train | 4 | passed | 18.57 | 0.3381 |
+| 50,000 | train | 8 | passed | 27.76 | 0.7564 |
+| 50,000 | train | 16 | passed | 37.39 | 1.4844 |
+| 50,000 | train | 32 | oom | — | — |
+| 50,000 | eval | 32 | oom | — | — |
+| 50,000 | eval | 8 | passed | 27.75 | 0.1657 |
+
+Batch 64 was deliberately not attempted after the first OOM at 32. Evaluation
+at the production batch 32 also OOMed; the separate batch-eight evaluation
+probe above was added to measure a feasible evaluation rate. Preserve those
+OOMs as capacity findings, not harness failures. For this A100 40 GB/public-
+PyTorch profile, recommend training batch eight, scheduler maximum eight,
+and evaluation batch eight. Batch 16 ran but left little device headroom;
+there is no production-width or long-training qualification here.
+
+The CPU split tensors are 307,600,000 bytes (about 293 MiB), versus 6,152,000
+bytes at 1,000 rows. Peak host RSS at batch one grew from 2.07 to 2.69 GiB;
+the recommended batch-eight probe peaked at 2.80 GiB host RSS. Its CUDA peak
+allocated/reserved values were 11.22/27.25 GiB; sampled device usage was
+27.76 GiB. Thus dataset size primarily affects host RAM, while force-gradient
+workspaces and allocator reservations dominate per-GPU capacity. Full-epoch
+validation accumulation and checkpoint exports were not run.
+
+At batch eight, the measured step rate projects about 63.0 minutes for 5,000
+training updates plus 3.1 minutes for validation and the default 10% training
+subset evaluation: approximately 66.1 minutes per 50,000-row epoch. A full
+300-epoch ceiling projects about 330.7 hours (13.8 days) per member; this is
+an extrapolation, not a convergence prediction. Four independent members on
+four GPUs have a projected summed process RSS of about 11.2 GiB; the same
+per-epoch wall-time estimate assumes no contention and concurrent scaling
+was not measured. Plots/checkpoints, final testing and scheduling overhead
+are outside the projection.
+
+**Execution and cleanup.** All stages/retries used the original November 6
+09:38:43–11:38:43 Mountain deadline. Final job `17381111` completed at 10:09:06,
+about 30.4 minutes after the first submission. All five owned allocations
+(`17381055`, `17381062`, `17381096`, `17381099`, `17381111`) have terminal
+Slurm accounting and verified cleanup; the persistent session exited. Failed
+QM attempts and passed capacity measurements were retained under fingerprints.
+Other users' or unrelated jobs were not cancelled.
+
+Next: size and plan the bounded ordinary CPP9 ALF loop using these dependency
+and batch settings. Choose sampling states, acquisition/gap settings, bootstrap
+and new-label targets before E6 execution. No full CPP9 ALF campaign has been
+launched by this calibration.
+
 
 
 User decision, November 5: add the opt-in chemical topology checker across
@@ -2464,7 +2572,7 @@ its minimum-distance screen rejects close contacts. It does not check chemical
 connectivity, bond breaking/formation, or ring opening. Increment 10 remains
 accepted within that boundary.
 
-Prerequisite implementation and gate:
+Prerequisite implementation and gate (already passed in Increment 11A):
 
 - Adapt the fork's reference-based `tools/molecular_topology.py` checker into
   shared development helpers, with one opt-in `topology_check` configuration

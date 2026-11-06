@@ -48,7 +48,7 @@ def prepare(output_dir, *, ring_size=9, reference=None, energy_offset_ev=None,
     if isinstance(offset, bool) or not math.isfinite(float(offset)):
         raise ValueError('energy_offset_ev must be finite')
     from ase.io import read
-    from alframework.builders.ring_molecule import DEFAULT_SETTINGS, infer_topology
+    from initial_sampling import DEFAULT_SETTINGS, infer_topology
     atoms = read(reference, parallel=False)
     if infer_topology(atoms, DEFAULT_SETTINGS['screening'])['nring'] != ring_size:
         raise ValueError('Reference topology disagrees with requested CPP size')
@@ -84,7 +84,7 @@ def prepare(output_dir, *, ring_size=9, reference=None, energy_offset_ev=None,
         seed = dict(DEFAULT_SETTINGS, reference_geometry='reference.xyz', count=count)
         (temporary/'seed_config.json').write_text(json.dumps(seed, indent=2)+'\n')
         if generate_seeds:
-            from alframework.builders.ring_molecule import prepare_ring_pool
+            from initial_sampling import prepare_ring_pool
             prepare_ring_pool(seed, temporary/'seeds', config_directory=temporary)
             builder = temporary/'seeds/builder_config.json'
             builder.write_text(json.dumps(dict(seed_manifest_path='seeds/provenance.json', selection_seed=seed['seed']), indent=2)+'\n')

@@ -168,6 +168,35 @@ The smaller ensemble exposed a real ordering bug.
 | `alf_alchemi_02` | 357 | 22 |
 | Fresh torch-free install | 322 | 24 |
 
+### Test suite review and Actions coverage (2026-11-05)
+
+A coverage and readability review found 59 cases that no Actions job could run.
+A new `engines` job installs rdkit, TorchSim, ALCHEMI, and PySEQM `52850b4`, and
+fails if any of them is unusable, so that a broken install cannot pass by
+skipping. Actions now reports skip reasons.
+
+The review removed 17 cases that added no coverage, and moved shared driver setup
+and engine code into `tests/helpers/`. Unlike the earlier consolidation, it renamed
+tests, so older entries may cite earlier test names.
+
+**Naming tests.** State what should be true, one behavior per name, without `and`.
+Keep the name of the tool, method, or component under test, because a test name is
+the first thing seen when CI fails: `test_rdkit_seed_preparation_is_reproducible`,
+`test_langevin_holds_the_target_temperature`. Tests shared by both packed engines
+show the engine in their test ID, such as `[alchemi]`. Give parametrized cases
+readable `ids=`.
+
+Local results, with the Actions job environments simulated by hiding packages:
+
+| Environment | Passed | Skipped |
+| --- | ---: | ---: |
+| All engines | 533 | 0 |
+| `hippynn` job | 468 | 65 |
+| `base` job (torch-free) | 404 | 98 |
+
+These simulations matched real Actions counts exactly before this work. The
+`engines` job itself has not yet been confirmed on Actions.
+
 ## Development and test environments
 
 Policy, decided 2026-11-03: test development work against fresh installs with

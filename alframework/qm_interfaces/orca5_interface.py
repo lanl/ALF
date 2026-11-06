@@ -164,15 +164,15 @@ class orcaGenerator():
         outlog = open(job_path + prefix + '.log','r').read()
         outproperty = open(job_path + prefix + '_property.txt','r').read()
         
-        reTOTALenergy = re.compile("The current total energy in Eh\n#\n([\s\S]+?)#")
-        reSCFenergy = re.compile("SCF Energy:([\s\S]+?)\n")
-        reCORRenergy = re.compile("Correlation Energy:([\s\S]+?)\n")
-        reEnergy = re.compile("Total[\s\S]+?Energy:([\s\S]+?)\n")
-        reDipole = re.compile("Electric_Properties\n[\s\S]+?Total Dipole moment:\n([\s\S]+?)---------------------")
-        reQuad = re.compile("Electric_Properties\n[\s\S]+?Total quadrupole moment\n([\s\S]+?)# --------------")
-        reGrad = re.compile('The current gradient in Eh\/bohr\n#\n([\s\S]+?)#')
+        reTOTALenergy = re.compile(r"The current total energy in Eh\n#\n([\s\S]+?)#")
+        reSCFenergy = re.compile(r"SCF Energy:([\s\S]+?)\n")
+        reCORRenergy = re.compile(r"Correlation Energy:([\s\S]+?)\n")
+        reEnergy = re.compile(r"Total[\s\S]+?Energy:([\s\S]+?)\n")
+        reDipole = re.compile(r"Electric_Properties\n[\s\S]+?Total Dipole moment:\n([\s\S]+?)---------------------")
+        reQuad = re.compile(r"Electric_Properties\n[\s\S]+?Total quadrupole moment\n([\s\S]+?)# --------------")
+        reGrad = re.compile(r'The current gradient in Eh\/bohr\n#\n([\s\S]+?)#')
         reHirshTrue = re.compile("HIRSHFELD ANALYSIS")
-        reHirsh = re.compile("HIRSHFELD ANALYSIS\n[\s\S]+?SPIN  \n([\s\S]+?)TOTAL")
+        reHirsh = re.compile(r"HIRSHFELD ANALYSIS\n[\s\S]+?SPIN  \n([\s\S]+?)TOTAL")
         
         #Always pull in energies and forces from engrad
         outproperties = {}

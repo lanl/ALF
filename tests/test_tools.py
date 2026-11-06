@@ -1,6 +1,8 @@
 """General helpers in alframework.tools.tools: schedules, config loading, HDF5 storage, and the Parsl task queue."""
 
 import json
+import warnings
+from pathlib import Path
 
 import h5py
 import numpy as np
@@ -176,3 +178,11 @@ def test_parsl_queue_collects_finished_results():
     assert failed == 2
     assert queue.get_number() == 1 + len(intermediate_statuses)
     assert queue.get_task_status() == ["running"] + intermediate_statuses
+
+
+def test_alframework_modules_compile_without_syntax_warnings():
+    """Invalid escape sequences warn today and become errors in a future Python."""
+    for path in (Path(__file__).resolve().parents[1] / "alframework").rglob("*.py"):
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", SyntaxWarning)
+            compile(path.read_text(), str(path), "exec")

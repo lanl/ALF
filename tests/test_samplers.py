@@ -7,12 +7,10 @@ from ase import Atoms
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator, Well_Potential
 from alframework.tools.molecules_class import MoleculesObject
 from alframework.tools.tools import annealing_schedule
-from tests.helpers.fakes import FakeLangevin, FakeUncertaintyCalculator
-from tests.helpers.interface_checks import check_ase_calculator_interface, check_energy_force_results
-from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator
 from alframework.samplers.batched_mlmd import minimum_distance, sample_trajectories
 from alframework.samplers.mlmd_sampling import mlmd_sampling
-from tests.helpers.fakes import FixedCalculator
+from tests.helpers.fakes import FakeLangevin, FakeUncertaintyCalculator, FixedCalculator
+from tests.helpers.interface_checks import check_ase_calculator_interface, check_energy_force_results
 
 
 def test_well_potential():
@@ -69,6 +67,8 @@ def test_mlmd_calculator_reports_ensemble_means_and_uncertainties(fixed_calculat
     assert calc.results["energy_stdev"] == 1.0
     assert calc.results["forces_stdev_max"] == 1.0
     assert calc.results["forces_stdev_mean"] == 1.0 / 3.0
+    assert "E_en_bias" not in calc.results
+    assert "F_en_bias" not in calc.results
 
 
 def test_mlmd_calculator_single_model_has_zero_uncertainty(fixed_calculator_factory):
@@ -83,20 +83,6 @@ def test_mlmd_calculator_single_model_has_zero_uncertainty(fixed_calculator_fact
     assert calc.results["energy_stdev"] == 0.0
     assert calc.results["forces_stdev_mean"] == 0.0
     assert calc.results["forces_stdev_max"] == 0.0
-
-
-def test_mlmd_calculator_without_udd(fixed_calculator_factory):
-    atoms = Atoms("H2", positions=[[0.0, 0.0, 0.0], [0.0, 0.0, 0.7]])
-    model_a = fixed_calculator_factory(energy=1.0, forces=[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
-    model_b = fixed_calculator_factory(energy=3.0, forces=[[3.0, 0.0, 0.0], [0.0, 3.0, 0.0]])
-    calc = MLMD_calculator([model_a, model_b])
-
-    calc.calculate(atoms, ["energy", "forces", "energy_stdev"])
-
-    assert "E_en_bias" not in calc.results
-    assert "F_en_bias" not in calc.results
-    assert calc.results["energy"] == 2.0
-    np.testing.assert_allclose(calc.results["forces"], [[2.0, 0.0, 0.0], [0.0, 2.0, 0.0]])
 
 
 def test_mlmd_calculator_applies_udd_energy_and_force_bias(fixed_calculator_factory):

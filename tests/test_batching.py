@@ -32,15 +32,23 @@ def test_batching_is_not_selected_without_block():
     assert BatchBuffer.from_config({"md_settings": []}) is None
 
 
-def test_batching_settings_defaults_and_validation():
+def test_batching_settings_defaults():
     assert batching_settings({"batching": {"batch_size": 4}}) == {
         "batch_size": 4, "partial_policy": "timeout", "max_wait_seconds": 5.0}
-    for bad in ({}, {"batch_size": 0}, {"batch_size": 2.5}, {"batch_size": True},
-                {"batch_size": 2, "partial_policy": "eventually"},
-                {"batch_size": 2, "max_wait_seconds": -1},
-                {"batch_size": 2, "unknown": 1}):
-        with pytest.raises(ValueError):
-            batching_settings({"batching": bad})
+
+
+@pytest.mark.parametrize("block, reason", [
+    ({}, "batch_size is required"),
+    ({"batch_size": 0}, "positive integer"),
+    ({"batch_size": 2.5}, "positive integer"),
+    ({"batch_size": True}, "positive integer"),
+    ({"batch_size": 2, "partial_policy": "eventually"}, "partial_policy"),
+    ({"batch_size": 2, "max_wait_seconds": -1}, "max_wait_seconds"),
+    ({"batch_size": 2, "unknown": 1}, "Unknown"),
+], ids=["no_size", "zero_size", "fractional_size", "boolean_size", "unknown_policy", "negative_wait", "unknown_key"])
+def test_invalid_batching_settings_are_rejected(block, reason):
+    with pytest.raises(ValueError, match=reason):
+        batching_settings({"batching": block})
 
 
 def test_flatten_preserves_order_and_identity():
@@ -49,7 +57,7 @@ def test_flatten_preserves_order_and_identity():
     assert [m.get_moleculeid() for m in flat] == ["a", "b", "c"]
     assert flat[1] is b
     assert flatten_molecule_output(None) == []
-    with pytest.raises(TypeError):
+    with pytest.raises(TypeError, match="MoleculesObject"):
         flatten_molecule_output([a, "not a molecule"])
 
 
@@ -137,7 +145,7 @@ def test_task_widths_count_actual_inputs_and_default_to_one():
     widths.prune([partial])
     assert widths.total([partial]) == 3
     assert widths.width(full) == 1
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="nonnegative"):
         widths.record(full, -1)
 
 

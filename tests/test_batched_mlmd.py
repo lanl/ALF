@@ -1,14 +1,10 @@
-from pathlib import Path
-
 import numpy as np
 import pytest
 from ase import Atoms
 
-from alframework.samplers import batched_mlmd
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator
 from alframework.samplers.batched_mlmd import (
     ASEEngine,
-    mlmd_trajectories_task,
     run_mlmd_trajectories,
     sample_trajectories,
     trajectory_rng,
@@ -180,15 +176,13 @@ def test_seeds_are_reproducible_and_id_specific():
     assert trajectory_rng(trajectory_seed("a", 1)).rand() == trajectory_rng(trajectory_seed("a", 1)).rand()
 
 
-def test_metadata_files_and_task_signature(tmp_path):
+def test_metadata_files_are_written_per_trajectory(tmp_path):
     config = dict(GROUP_CONFIG, meta_dir=str(tmp_path), trajectory_frequency=1.0, trajectory_interval=1)
     molecules = [MoleculesObject(m.get_atoms().copy(), m.get_moleculeid()) for m in mixed_inputs()[:2]]
     sample_trajectories(molecules, fake_ensemble(), config)
     for molecule in molecules:
         assert (tmp_path / f"metadata-{molecule.get_moleculeid()}.p").exists()
         assert (tmp_path / f"metadata-{molecule.get_moleculeid()}.traj").stat().st_size > 0
-    import inspect
-    assert "molecule_objects" in inspect.signature(mlmd_trajectories_task.func).parameters
 
 
 def test_trained_ensemble_single_and_batched_agree(trained_ensemble):
@@ -215,17 +209,6 @@ def test_trained_ensemble_single_and_batched_agree(trained_ensemble):
         np.testing.assert_array_equal(single[name]["positions"], batched[name]["positions"])
 
 
-def test_device_defaults_and_overrides(monkeypatch):
-    import os
-    monkeypatch.delenv("PARSL_WORKER_RANK", raising=False)
-    assert batched_mlmd.sampling_device({"device": "cpu"}) == "cpu"
-    assert batched_mlmd.sampling_device({}) in ("cpu", "cuda:0")
-    monkeypatch.setenv("PARSL_WORKER_RANK", "5")
-    before = dict(os.environ)
-    assert batched_mlmd.sampling_device({"device": "cpu"}, gpus_per_node=4) == 'cpu'
-    assert dict(os.environ) == before
-
-
 def test_excited_ase_propagates_selected_force_and_preserves_cohort_identity():
     pytest.importorskip('torch')
     from tests.helpers.fakes import QuadraticStateEnsemble
@@ -250,9 +233,10 @@ def test_excited_ase_propagates_selected_force_and_preserves_cohort_identity():
     assert frame.get_metadata()['selected_state'] == 1 and frame.get_metadata()['source'] == 'fixture'
     np.testing.assert_array_equal(frame.atoms.arrays['topology_atom_ids'], [0,2,1])
     assert 'dE12_stdev' in frame.get_metadata()
-    for bad in ({'mode':'batch_cycle','states':[0,1]}, {'mode':'fixed','state':9}):
+    for bad, reason in (({'mode':'batch_cycle','states':[0,1]}, 'state cycling'),
+                        ({'mode':'fixed','state':9}, 'absent')):
         config['state_selection'] = bad
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=reason):
             sample_trajectories([MoleculesObject(WATER.copy(), 'bad')], QuadraticStateEnsemble(), config)
     config['state_selection'] = {'mode':'fixed','state':1}
     config['MLMD_calculator_options'] = {'udd_bias_weight': .1}

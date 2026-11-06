@@ -80,17 +80,18 @@ def _write_rdkit_references(mol_path: Path, sdf_path: Path):
 
 
 @pytest.mark.parametrize(
-    ("filename", "reference_format"),
+    ("filename", "reference_format", "atomic_numbers"),
     [
-        ("reference.xyz", "xyz"),
-        ("reference.mol", "mol"),
-        ("reference.sdf", "sdf"),
+        ("reference.xyz", "xyz", (8, 1, 1)),
+        ("reference.mol", "mol", (6, 6, 6)),
+        ("reference.sdf", "sdf", (6, 6, 6)),
     ],
 )
 def test_rdkit_loads_supported_reference_formats(
     tmp_path,
     filename,
     reference_format,
+    atomic_numbers,
 ):
     pytest.importorskip("rdkit")
     xyz_path = tmp_path / "reference.xyz"
@@ -106,7 +107,7 @@ def test_rdkit_loads_supported_reference_formats(
     assert loaded.reference_format == reference_format
     assert loaded.reference_sha256
     assert loaded.bonds
-    assert loaded.atomic_numbers in {(8, 1, 1), (6, 6, 6)}
+    assert loaded.atomic_numbers == atomic_numbers
 
 
 def test_relative_reference_uses_master_directory_and_hash_refresh(tmp_path):

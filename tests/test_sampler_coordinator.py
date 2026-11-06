@@ -20,6 +20,7 @@ from alframework.samplers.mlmd_sampling import simple_mlmd_sampling_task
 from alframework.tools import tools as tool_module
 from alframework.tools.molecules_class import MoleculesObject
 from alframework.tools.sampler_coordinator import SamplerCoordinator, driver_settings
+from tests.helpers.engines import require_engine
 
 WATER = Atoms("OH2", positions=[[0, 0, 0], [1.2, 0, 0], [0.6, 1.0392, 0]])
 SAMPLER = dict(dt=0.5, maxt=0.05, Escut=0.012, Fscut=100.0, Ncheck=5, distcut=0.5, random_seed=3,
@@ -50,17 +51,7 @@ ALCHEMI = {"strategy": "batched", "engine": "alchemi"}
                               "torchsim-cohort-continue", "alchemi", "alchemi-cohort-stop",
                               "alchemi-cohort-continue", "alchemi-single"])
 def test_coordinator_bootstraps_samples_batches_labels_and_retrains(tmp_path, monkeypatch, driver, policy):
-    if driver.get("engine") == "torchsim":
-        pytest.importorskip("torch_sim")
-    if driver.get("engine") == "alchemi":
-        from importlib.metadata import PackageNotFoundError, version
-        try:
-            from alframework.samplers.alchemi_engine import SUPPORTED_VERSIONS
-            qualified = version('nvalchemi-toolkit') in SUPPORTED_VERSIONS
-        except PackageNotFoundError:
-            qualified = False
-        if not qualified:
-            pytest.skip('ALCHEMI 0.2 has its own worker environment.')
+    require_engine(driver.get("engine"))
     monkeypatch.chdir(tmp_path)
     model_pattern = str(tmp_path / "models/model-{:04d}")
     training_calls, sampler_widths, labeled, engines = [], [], [], []

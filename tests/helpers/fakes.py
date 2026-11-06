@@ -1,4 +1,8 @@
 import copy
+import importlib
+from pathlib import Path
+import sys
+from types import ModuleType, SimpleNamespace
 
 import numpy as np
 from ase.calculators.calculator import Calculator, all_changes
@@ -96,6 +100,52 @@ class FakeTask:
         if self._exception is not None:
             raise self._exception
         return self._result
+
+
+def fake_training_pool(member_log=lambda index: "Training complete\n", result=lambda params: None):
+    """Build a ``multiprocessing.Pool`` stand-in that writes member logs instead of training.
+
+    ``member_log(index)`` gives each member's log text, or ``None`` to write no log.
+    ``result(params)`` gives the value the worker would have returned. Returns the
+    pool class and a namespace recording how the code under test used it.
+    """
+    record = SimpleNamespace(processes=None, func=None, params_list=None, calls=[])
+
+    class FakePool:
+        def __init__(self, processes):
+            record.processes = processes
+
+        def map(self, func, params_list):
+            record.func, record.params_list = func, params_list
+            for index, params in enumerate(params_list):
+                member = Path(params["model_dir"])
+                member.mkdir(parents=True)
+                log = member_log(index)
+                if log is not None:
+                    (member / "training_log.txt").write_text(log)
+            return [result(params) for params in params_list]
+
+        def close(self):
+            record.calls.append("close")
+
+        def join(self):
+            record.calls.append("join")
+
+    return FakePool, record
+
+
+def import_neurochem_with_fake_backend(monkeypatch):
+    """Import ``neurochem_interface`` against stand-ins, since its backend can't be installed in CI."""
+    fake_ase_interface = ModuleType("ase_interface")
+    fake_ase_interface.aniensloader = object()
+    fake_ase_interface.ANIENS = lambda model: ("ANIENS", model)
+    fake_ase_interface.batchedensemblemolecule = lambda *args: ("batchedensemblemolecule", args)
+
+    monkeypatch.setitem(sys.modules, "anitraintools", ModuleType("anitraintools"))
+    monkeypatch.setitem(sys.modules, "ase_interface", fake_ase_interface)
+    monkeypatch.delitem(sys.modules, "alframework.ml_interfaces.neurochem_interface", raising=False)
+
+    return importlib.import_module("alframework.ml_interfaces.neurochem_interface")
 
 
 class PairSpringCalculator(Calculator):

@@ -63,7 +63,7 @@ def test_evaluator_shapes_support_mixed_sizes():
     prediction = ASEEnsembleEvaluator(fake_ensemble(3)).predict([WATER, METHANE])
     assert prediction["energies"].shape == (3, 2)
     assert [forces.shape for forces in prediction["forces"]] == [(3, 3, 3), (3, 5, 3)]
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="at least two"):
         ASEEnsembleEvaluator(fake_ensemble(1))
 
 

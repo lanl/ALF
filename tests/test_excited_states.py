@@ -31,20 +31,19 @@ def test_flattened_excited_state_contract():
     assert table[1]["force_db_name"] == "singlet_1_forces"
 
 
-def test_excited_state_contract_requires_contiguous_energies():
-    with pytest.raises(ValueError, match="contiguous"):
-        derive_state_property_table(
-            {"sE0": ["e0"], "F0": ["f0"], "sE2": ["e2"], "F2": ["f2"]},
-            require_forces=True,
-        )
-
-
-def test_excited_state_contract_requires_each_force_for_sampling():
-    with pytest.raises(ValueError, match="F1"):
-        derive_state_property_table(
-            {"sE0": ["e0"], "F0": ["f0"], "sE1": ["e1"]},
-            require_forces=True,
-        )
+@pytest.mark.parametrize(
+    ("properties", "require_forces", "message"),
+    [
+        ({"sE0": ["e0"], "F0": ["f0"], "sE2": ["e2"], "F2": ["f2"]}, True, "contiguous"),
+        ({"sE0": ["e0"], "F0": ["f0"], "sE1": ["e1"]}, True, "F1"),
+        ({"sE0": ["e0", "system", 1.0], "sE1": ["e1", "system", 2.0]}, False, "identical"),
+        ({"sE0": ["e0", "system", 1.0], "F1": ["f1", "atomic", 1.0]}, False, "without energies"),
+    ],
+    ids=["skipped_state", "missing_force", "different_energy_scales", "force_without_energy"],
+)
+def test_state_table_rejects_inconsistent_properties(properties, require_forces, message):
+    with pytest.raises(ValueError, match=message):
+        derive_state_property_table(properties, require_forces=require_forces)
 
 
 def _gap_properties():
@@ -125,13 +124,6 @@ def test_gap_table_rejects_invalid_configured_pairs(pairs, message):
         )
 
 
-def test_state_scales_and_orphan_forces_cannot_silently_disagree():
-    with pytest.raises(ValueError, match='identical'):
-        derive_state_property_table({'sE0': ['e0', 'system', 1.], 'sE1': ['e1', 'system', 2.]})
-    with pytest.raises(ValueError, match='without energies'):
-        derive_state_property_table({'sE0': ['e0', 'system', 1.], 'F1': ['f1', 'atomic', 1.]})
-
-
 PROPERTIES = {'sE0': ['e0', 'system', 2.0], 'sE1': ['e1', 'system', 2.0],
               'F1': ['f1', 'atomic', 3.0], 'nacr': ['nac', 'pair_atomic', 4.0]}
 
@@ -167,11 +159,12 @@ def test_multistate_pair_atomic_and_same_element_identity_roundtrip(tmp_path):
 
 
 @pytest.mark.parametrize('pairs', [None, [[1, 2]], [[1, 2], [1, 2]],
-                                   [[2, 1], [1, 3]], [[1.5, 2], [1, 3]]])
+                                   [[2, 1], [1, 3]], [[1.5, 2], [1, 3]]],
+                         ids=['missing', 'too_few', 'duplicate', 'out_of_order', 'non_integer'])
 def test_bad_pair_index_rejected_before_write(tmp_path, pairs):
     mol = molecule()
     mol.update_metadata({'nac_pairs': pairs})
-    with pytest.raises((ValueError, RuntimeError)):
+    with pytest.raises((ValueError, RuntimeError), match='nac_pairs'):
         store_current_data(str(tmp_path/'bad.h5'), [mol], PROPERTIES)
     assert not (tmp_path/'bad.h5').exists()
 
@@ -187,5 +180,5 @@ def test_changed_pair_mapping_and_mixed_topology_are_rejected(tmp_path):
 
 def test_topology_ids_require_explicit_permutation():
     for ids in ([0, 0, 2], [0., 1., 2.], [0, 1, 3]):
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match='permutation'):
             validated_atom_ids(ids, 3)

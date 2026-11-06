@@ -1,8 +1,7 @@
-import numpy as np
 import pytest
 from ase import Atoms
 
-from alframework.tools.molecules_class import MoleculesObject
+from tests.helpers.engines import require_engine
 from tests.helpers.fakes import FixedCalculator
 
 
@@ -17,21 +16,15 @@ def water_atoms():
 
 
 @pytest.fixture
-def periodic_water_atoms(water_atoms):
-    atoms = water_atoms.copy()
-    atoms.set_cell(np.eye(3) * 8.0)
-    atoms.set_pbc(True)
-    return atoms
-
-
-@pytest.fixture
-def water_molecule(periodic_water_atoms):
-    return MoleculesObject(periodic_water_atoms, "water-0")
-
-
-@pytest.fixture
 def fixed_calculator_factory():
     return FixedCalculator
+
+
+@pytest.fixture(params=["torchsim", "alchemi"])
+def engine_name(request):
+    """Run the test once per packed engine, skipping any engine that isn't installed."""
+    require_engine(request.param)
+    return request.param
 
 
 @pytest.fixture(scope="session")

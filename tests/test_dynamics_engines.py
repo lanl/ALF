@@ -1,7 +1,5 @@
 """Shared numerical conformance for optional TorchSim and ALCHEMI engines."""
 import copy
-from functools import partial
-import os
 
 import numpy as np
 import pytest
@@ -14,54 +12,14 @@ pytest.importorskip("torch")
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator  # noqa: E402
 from alframework.samplers.batched_mlmd import sample_trajectories  # noqa: E402
 from alframework.tools.molecules_class import MoleculesObject  # noqa: E402
+from tests.helpers.engines import DEVICE, Tether, engine_class  # noqa: E402
 from tests.helpers.fakes import spring_ensemble  # noqa: E402
-
-DEVICE = os.environ.get("ALF_TEST_ENGINE_DEVICE", "cpu")
-
-
-def engine_class(name):
-    if name == 'torchsim':
-        from alframework.samplers.torchsim_engine import TorchSimEngine
-        return partial(TorchSimEngine, device=DEVICE)
-    from alframework.samplers.alchemi_engine import AlchemiEngine
-    return partial(AlchemiEngine, device=DEVICE)
-
-
-@pytest.fixture(params=['torchsim', 'alchemi'])
-def engine_name(request):
-    if request.param == 'torchsim':
-        pytest.importorskip('torch_sim')
-    else:
-        from importlib.metadata import PackageNotFoundError, version
-        try:
-            from alframework.samplers.alchemi_engine import SUPPORTED_VERSIONS
-            qualified = version('nvalchemi-toolkit') in SUPPORTED_VERSIONS
-        except PackageNotFoundError:
-            qualified = False
-        if not qualified:
-            pytest.skip('ALCHEMI 0.2 has its own worker environment.')
-    return request.param
-
 
 WATER = Atoms("OH2", positions=[[0, 0, 0], [1.25, 0, 0], [0.6, 1.0392, 0.05]])
 CONFIG = dict(dt=0.5, maxt=0.1, Ncheck=5, distcut=0.5, min_time=0.0, Escut=0.012, Fscut=100.0, random_seed=4,
               srt_temp=[2500.0, 3500.0], end_temp=[2500.0, 3500.0], amp_temp=[0.0, 200.0], per_temp=[0.01, 0.05],
               amp_dens=None, per_dens=None, end_dens=None,
               driver={"strategy": "batched", "engine": "torchsim"}, batching={"batch_size": 8})
-
-
-class Tether(Calculator):
-    """Harmonic tether to the origin, for thermostat checks."""
-    implemented_properties = ["energy", "forces"]
-
-    def __init__(self, k):
-        super().__init__()
-        self.k = k
-
-    def calculate(self, atoms=None, properties=("energy",), system_changes=all_changes):
-        super().calculate(atoms, properties, system_changes)
-        x = atoms.get_positions()
-        self.results = {"energy": 0.5 * self.k * (x ** 2).sum(), "forces": -self.k * x}
 
 
 def inputs():
@@ -183,7 +141,6 @@ def test_langevin_temperature(engine_name):
     measured = {float(target): float(changed[:, targets == target].mean()) for target in (200., 400.)}
     for target, mean in measured.items():
         assert mean == pytest.approx(target, rel=0.03)
-    print('THERMOSTAT', engine_name, DEVICE, {'initial_300_K': initial, 'updated': measured}, flush=True)
 
 
 def test_density_schedule_scales_cells(engine_name):

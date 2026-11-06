@@ -6,6 +6,7 @@ import multiprocessing as mp
 import time
 
 from alframework.qm_interfaces import pyseqm_interface as pyseqm
+from alframework.tools.labeling import LabelingCoordinator
 from alframework.tools.molecules_class import MoleculesObject
 
 
@@ -102,8 +103,7 @@ def test_forces_are_negative_energy_gradient_in_input_order(seqm):
 
 
 def test_pyseqm_task_accepts_molecule_objects():
-    import inspect
-    assert list(inspect.signature(pyseqm.pyseqm_task.func).parameters) == ["molecule_objects", "QM_config"]
+    assert LabelingCoordinator(pyseqm.pyseqm_task, "pyseqm", {"batching": {"mode": "native", "batch_size": 2}}).batched
 
 
 PROPS = {**{f'sE{i}': [f'e{i}', 'system', 1.] for i in range(4)},
@@ -177,12 +177,16 @@ def test_periodic_batch_member_does_not_lose_good_member():
     assert [m.check_convergence() for m in out] == [True, False]
 
 
-@pytest.mark.parametrize('config', [{'method': 'PM3'}, {'timeout_seconds': 0},
-                                  {'charge': 1}, {'cis_tol': float('nan')}])
-def test_unsupported_science_and_bad_settings_fail_explicitly(config):
+@pytest.mark.parametrize('config, reason', [
+    ({'method': 'PM3'}, 'AM1/CIS'),
+    ({'timeout_seconds': 0}, 'finite and positive'),
+    ({'charge': 1}, 'neutral'),
+    ({'cis_tol': float('nan')}, 'finite and positive'),
+], ids=['other_method', 'zero_timeout', 'charged', 'nan_tolerance'])
+def test_unsupported_science_and_bad_settings_fail_explicitly(config, reason):
     out = pyseqm.label_pyseqm_excited_batch(molecules(WATER), config, PROPS, runner=fake)
     assert not out[0].check_convergence()
-    assert out[0].get_metadata()['qm_error']
+    assert reason in out[0].get_metadata()['qm_error']
 
 
 @pytest.mark.parametrize('runner, match', [(sleep_child, 'exceeded'), (crash_child, 'without results')])
@@ -204,9 +208,11 @@ def test_child_success_transfers_results_and_reaps():
 
 
 def test_both_task_signatures_match_labeling_coordinator():
-    import inspect
-    assert 'molecule_object' in inspect.signature(pyseqm.pyseqm_excited_state_task.func).parameters
-    assert 'molecule_objects' in inspect.signature(pyseqm.pyseqm_excited_state_batch_task.func).parameters
+    single = LabelingCoordinator(pyseqm.pyseqm_excited_state_task, 'single',
+                                 {'batching': {'mode': 'sequential', 'batch_size': 2}})
+    batch = LabelingCoordinator(pyseqm.pyseqm_excited_state_batch_task, 'batch',
+                                {'batching': {'mode': 'native', 'batch_size': 2}})
+    assert single.batched and batch.batched
 
 
 def test_mixed_compositions_partition_native_solves_and_restore_submission_order():

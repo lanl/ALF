@@ -39,9 +39,8 @@ def runtime(monkeypatch, count, hip=None):
     ({'ROCR_VISIBLE_DEVICES': 'GPU-one,GPU-two', 'CUDA_VISIBLE_DEVICES': '1'},
      1, '5', 4, 'cuda:0'),
 ])
-@pytest.mark.parametrize('hip', [None, '6.4'])
-def test_automatic_assignment_preserves_visibility(monkeypatch, masks, count, rank, cap, expected, hip):
-    runtime(monkeypatch, count, hip)
+def test_automatic_assignment_preserves_visibility(monkeypatch, masks, count, rank, cap, expected):
+    runtime(monkeypatch, count)
     for key, value in masks.items():
         monkeypatch.setenv(key, value)
     if rank is not None:
@@ -51,6 +50,14 @@ def test_automatic_assignment_preserves_visibility(monkeypatch, masks, count, ra
         assert sampling_device({}, cap) == expected
         assert sampling_device({'device': 'cuda'}, cap) == expected
     assert dict(os.environ) == before
+
+
+def test_amd_runtime_follows_the_same_assignment_rules(monkeypatch):
+    runtime(monkeypatch, 2, hip='6.4')
+    monkeypatch.setenv('ROCR_VISIBLE_DEVICES', '2,5')
+    monkeypatch.setenv('PARSL_WORKER_RANK', '5')
+    assert sampling_device({}, 4) == 'cuda:1'
+    assert os.environ['ROCR_VISIBLE_DEVICES'] == '2,5'
 
 
 @pytest.mark.parametrize('mask', ['', '-1', 'NoDevFiles'])
@@ -81,7 +88,7 @@ def test_explicit_local_device_overrides_rank_and_cap(monkeypatch):
     monkeypatch.setenv('PARSL_WORKER_RANK', '0')
     assert sampling_device({'device': 'cuda:1'}, 1) == 'cuda:1'
     for value in ['cuda:2', 'cuda:-1', 'cuda:bad']:
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match='CUDA device'):
             sampling_device({'device': value}, 4)
 
 

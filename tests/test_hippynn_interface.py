@@ -13,6 +13,7 @@ import h5py
 import json
 
 from alframework.ml_interfaces.hippynn_interface import HIPNN_ASE_calculator
+from tests.helpers.fakes import fake_training_pool
 
 
 def test_interface_import_defers_hippynn_and_torch():
@@ -378,28 +379,18 @@ def test_multistate_devices_preserve_visibility(monkeypatch):
 
 
 def test_multistate_partial_failure_and_pool_cleanup(tmp_path, monkeypatch):
-    events = []
-    class Pool:
-        def __init__(self, processes):
-            assert processes == 1
-        def map(self, function, params):
-            results = []
-            for p in params:
-                member = Path(p['model_dir'])
-                member.mkdir(parents=True)
-                success = p['model_id'] == 0
-                if success:
-                    (member / 'training_log.txt').write_text('Training complete')
-                results.append(dict(ok=success, payload=dict(model_dir=str(member), model_id=p['model_id'], error='bad member')))
-            return results
-        def close(self): events.append('close')
-        def join(self): events.append('join')
-    monkeypatch.setattr(ml.multiprocessing, 'get_context', lambda kind: SimpleNamespace(Pool=Pool))
+    def worker_result(params):
+        return dict(ok=params['model_id'] == 0, payload=dict(model_dir=params['model_dir'],
+                                                             model_id=params['model_id'], error='bad member'))
+    FakePool, pool = fake_training_pool(member_log=lambda index: 'Training complete' if index == 0 else None,
+                                        result=worker_result)
+    monkeypatch.setattr(ml.multiprocessing, 'get_context', lambda kind: SimpleNamespace(Pool=FakePool))
     completed, identity = ml.train_excited_state_ensemble(ML_config=_config(), h5_dir='unused',
                             model_path=str(tmp_path / 'ensemble-{:d}'), current_training_id=3,
                             gpus_per_node=0, properties_list=_properties())
     assert completed == [True, False] and identity == 3
-    assert events == ['close', 'join']
+    assert pool.processes == 1
+    assert pool.calls == ['close', 'join']
     assert json.loads((tmp_path / 'ensemble-3/model-01/training_error.json').read_text())['error'] == 'bad member'
 
 
@@ -559,39 +550,24 @@ def test_explicit_h5_loader_rejects_inconsistent_gap_targets(tmp_path):
 
 
 @pytest.mark.parametrize(
-    ("missing", "nonfinite", "message"),
+    ("problem", "with_gap", "message"),
     [
-        ("dE01", None, "missing required datasets"),
-        (None, "dE01", "nonfinite"),
+        ({"missing": "dE01"}, True, "missing required datasets"),
+        ({"nonfinite": "dE01"}, True, "nonfinite"),
+        ({"missing": "F1"}, False, "F1"),
+        ({"nonfinite": "coordinates"}, False, "nonfinite"),
+        ({"nonfinite": "sE0"}, False, "nonfinite"),
+        ({"nonfinite": "F1"}, False, "nonfinite"),
     ],
+    ids=["gap_missing", "gap_nonfinite", "force_missing", "coordinates_nonfinite", "energy_nonfinite",
+         "force_nonfinite"],
 )
-def test_explicit_h5_loader_rejects_missing_or_nonfinite_gap(
-    tmp_path,
-    missing,
-    nonfinite,
-    message,
-):
+def test_explicit_h5_loader_rejects_bad_datasets(tmp_path, problem, with_gap, message):
     pytest.importorskip('hippynn')
-    _write_group(
-        tmp_path / "data.h5",
-        "HO",
-        missing=missing,
-        nonfinite=nonfinite,
-    )
+    _write_group(tmp_path / "data.h5", "HO", **problem)
 
     with pytest.raises((KeyError, ValueError), match=message):
-        ml.load_excited_state_h5_arrays(
-            str(tmp_path),
-            _properties(with_gap=True),
-        )
-
-
-def test_explicit_h5_loader_rejects_missing_target(tmp_path):
-    pytest.importorskip('hippynn')
-    _write_group(tmp_path / "data.h5", "HO", missing="F1")
-
-    with pytest.raises(KeyError, match="F1"):
-        ml.load_excited_state_h5_arrays(str(tmp_path), _properties())
+        ml.load_excited_state_h5_arrays(str(tmp_path), _properties(with_gap=with_gap))
 
 
 def test_explicit_h5_loader_rejects_mixed_atomic_ordering(tmp_path):
@@ -601,15 +577,6 @@ def test_explicit_h5_loader_rejects_mixed_atomic_ordering(tmp_path):
     _write_group(shard, "second", species=("O", "H"))
 
     with pytest.raises(ValueError, match="exact atomic-number sequence"):
-        ml.load_excited_state_h5_arrays(str(tmp_path), _properties())
-
-
-@pytest.mark.parametrize("field", ["coordinates", "sE0", "F1"])
-def test_explicit_h5_loader_rejects_nonfinite_data(tmp_path, field):
-    pytest.importorskip('hippynn')
-    _write_group(tmp_path / "data.h5", "HO", nonfinite=field)
-
-    with pytest.raises(ValueError, match="nonfinite"):
         ml.load_excited_state_h5_arrays(str(tmp_path), _properties())
 
 
@@ -720,8 +687,7 @@ def test_loss_adds_weighted_derived_gap_terms():
     assert actual == pytest.approx(expected)
 
 
-def test_graph_uses_one_shared_trunk_and_all_state_database_names():
-    hippynn = pytest.importorskip("hippynn")
+def _small_shared_network():
     from hippynn.graphs import inputs
 
     species = inputs.SpeciesNode(db_name="species")
@@ -744,6 +710,12 @@ def test_graph_uses_one_shared_trunk_and_all_state_database_names():
             "resnet": True,
         },
     )
+    return network, positions
+
+
+def test_graph_uses_one_shared_trunk_and_all_state_database_names():
+    hippynn = pytest.importorskip("hippynn")
+    network, positions = _small_shared_network()
     table = ml.validate_excited_state_training_config(
         _config(),
         _properties(),
@@ -776,29 +748,9 @@ def test_graph_uses_one_shared_trunk_and_all_state_database_names():
 
 def test_graph_exposes_derived_gap_target_without_independent_head():
     hippynn = pytest.importorskip("hippynn")
-    from hippynn.graphs import inputs
     from alframework.tools.excited_state_tools import derive_gap_property_table
 
-    species = inputs.SpeciesNode(db_name="species")
-    positions = inputs.PositionsNode(db_name="coordinates")
-    positions.requires_grad = True
-    network = ml._build_shared_network(
-        species,
-        positions,
-        network_choice=0,
-        network_params={
-            "possible_species": [0, 1],
-            "n_features": 4,
-            "n_sensitivities": 4,
-            "dist_soft_min": 0.5,
-            "dist_soft_max": 2.0,
-            "dist_hard_max": 2.5,
-            "n_interaction_layers": 1,
-            "n_atom_layers": 1,
-            "sensitivity_type": "inverse",
-            "resnet": True,
-        },
-    )
+    network, positions = _small_shared_network()
     properties = _properties(with_gap=True)
     state_table = ml.validate_excited_state_training_config(
         _config(
@@ -835,30 +787,17 @@ def test_graph_exposes_derived_gap_target_without_independent_head():
     assert {"dE01_RMSE", "dE01_MAE"}.issubset(validation)
 
 
-def test_gap_training_config_rejects_independent_heads_and_bad_weight():
-    properties = _properties(with_gap=True)
-    with pytest.raises(ValueError, match="derived"):
-        ml.validate_excited_state_training_config(
-            _config(
-                gap_targets={
-                    "enabled": True,
-                    "mode": "head",
-                    "pairs": [[0, 1]],
-                }
-            ),
-            properties,
-        )
-    with pytest.raises(ValueError, match="weight"):
-        ml.validate_excited_state_training_config(
-            _config(
-                gap_targets={
-                    "enabled": True,
-                    "pairs": [[0, 1]],
-                    "weight": -1.0,
-                }
-            ),
-            properties,
-        )
+@pytest.mark.parametrize(
+    ("gap_targets", "message"),
+    [
+        ({"enabled": True, "mode": "head", "pairs": [[0, 1]]}, "derived"),
+        ({"enabled": True, "pairs": [[0, 1]], "weight": -1.0}, "weight"),
+    ],
+    ids=["independent_head", "negative_weight"],
+)
+def test_gap_training_config_rejects_independent_heads_and_bad_weight(gap_targets, message):
+    with pytest.raises(ValueError, match=message):
+        ml.validate_excited_state_training_config(_config(gap_targets=gap_targets), _properties(with_gap=True))
 
 
 def test_model_member_seeds_are_deterministic():
@@ -887,7 +826,6 @@ def test_task_signature_and_destructive_options(tmp_path, monkeypatch):
 
 
 def test_nacr_datasets_in_a_shard_are_never_loaded_for_training(tmp_path, monkeypatch):
-    pytest.importorskip('hippynn')
     """A shard labeled with coupling trains exactly as an E/F-only shard does.
 
     NACR is stored so a dataset need not be relabeled later, but the MLIP must
@@ -895,6 +833,7 @@ def test_nacr_datasets_in_a_shard_are_never_loaded_for_training(tmp_path, monkey
     only the names derived from the sE#/F#/dE# patterns, so the extra datasets
     are invisible rather than merely unused.
     """
+    pytest.importorskip('hippynn')
 
     plain = tmp_path / "plain"
     with_nacr = tmp_path / "with_nacr"

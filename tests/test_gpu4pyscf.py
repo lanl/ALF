@@ -267,7 +267,7 @@ def test_atomic_unit_conversion_has_energy_scale_and_negative_gradient():
 def test_atomic_unit_conversion_rejects_malformed_outputs(
     energies, gradients, message
 ):
-    with pytest.raises(Exception, match=message):
+    with pytest.raises(GPU4PySCFOutputError, match=message):
         convert_gpu4pyscf_atomic_units(
             energies,
             gradients,
@@ -331,6 +331,13 @@ def test_device_selection_uses_worker_rank_and_requires_cuda(
     assert pinned["visible_count"] == 1
     assert pinned["cuda_visible_devices"] == "3"
     assert selected[-1] == 0
+
+    # A mask listing several GPUs: the rank picks among them, whatever gpus_per_node says.
+    fake_cupy.cuda.runtime.getDeviceCount = lambda: 4
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "3,4,6,7")
+    masked = select_gpu4pyscf_device(1)
+    assert masked["index"] == 3
+    assert masked["cuda_visible_devices"] == "3,4,6,7"
 
     fake_cupy.cuda.runtime.getDeviceCount = lambda: 0
     with pytest.raises(GPU4PySCFDeviceError, match="CPU fallback"):
@@ -1015,19 +1022,6 @@ def test_invalid_optics_cannot_mark_frame_converged(monkeypatch, strength):
     m = label_gpu4pyscf_excited_state_molecule(_molecule(), QM_config={'nroots': 1}, properties_list=props)
     assert not m.check_convergence()
     assert m.get_results() == {}
-
-
-def test_masked_gpu_selection_uses_shared_visibility_rules(monkeypatch):
-    class Device:
-        def __init__(self, index): self.index=index
-        def use(self): pass
-    fake = SimpleNamespace(cuda=SimpleNamespace(runtime=SimpleNamespace(getDeviceCount=lambda: 4), Device=Device))
-    monkeypatch.setattr(gpu4pyscf_module, '_import_cupy', lambda: fake)
-    monkeypatch.setenv('CUDA_VISIBLE_DEVICES', '3,4,6,7')
-    monkeypatch.setenv('PARSL_WORKER_RANK', '3')
-    selected = gpu4pyscf_module.select_gpu4pyscf_device(1)
-    assert selected['index'] == 3
-    assert selected['cuda_visible_devices'] == '3,4,6,7'
 
 
 def test_backend_sets_single_device_config_only_during_import(monkeypatch):

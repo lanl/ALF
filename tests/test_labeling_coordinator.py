@@ -192,8 +192,9 @@ def test_sequential_packing_keeps_successful_labels():
 def test_labeling_settings_require_explicit_mode():
     assert labeling_batch_settings({}) is None
     assert labeling_batch_settings({"batching": {"mode": "native", "batch_size": 2}})["mode"] == "native"
-    for bad in ({"batch_size": 2}, {"mode": "packed", "batch_size": 2}, {"mode": "native"}, []):
-        with pytest.raises(ValueError):
+    for bad, reason in (({"batch_size": 2}, "mode"), ({"mode": "packed", "batch_size": 2}, "mode"),
+                        ({"mode": "native"}, "batch_size"), ([], "dictionary")):
+        with pytest.raises(ValueError, match=reason):
             labeling_batch_settings({"batching": bad})
 
 

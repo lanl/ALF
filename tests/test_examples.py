@@ -10,6 +10,7 @@ from alframework.samplers.acquisition import acquisition_settings
 from alframework.tools.batching import batching_settings
 from alframework.tools.labeling import labeling_batch_settings
 from alframework.tools.sampler_coordinator import driver_settings
+from tests.helpers.fakes import import_neurochem_with_fake_backend
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -52,13 +53,10 @@ def test_tracked_example_task_imports(path, monkeypatch):
     monkeypatch.syspath_prepend(str(path.parent))
     for field in TASKS:
         module, name = read(path)[field].rsplit('.', 1)
-        try:
+        if module == 'alframework.ml_interfaces.neurochem_interface':
+            loaded = import_neurochem_with_fake_backend(monkeypatch)
+        else:
             loaded = importlib.import_module(module)
-        except ModuleNotFoundError as exc:
-            if module == 'alframework.ml_interfaces.neurochem_interface' and exc.name in (
-                    'anitraintools', 'ase_interface', 'pyNeuroChem'):
-                pytest.skip(f'NeuroChem task import unverified: backend unavailable ({exc.name})')
-            raise
         assert callable(getattr(loaded, name))
 
 

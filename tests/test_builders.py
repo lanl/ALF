@@ -73,7 +73,7 @@ def test_construct_simulation_box_can_return_scaled_coordinates():
 
 
 def test_construct_simulation_box_rejects_too_dense_system():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Density is too high"):
         construct_simulation_box({"Na": 10}, min_distance=2.0, box_length=3.0)
 
 
@@ -169,13 +169,15 @@ def test_external_geometry_hash_selection_is_stateless(geometry_sources):
         np.testing.assert_array_equal(x.atoms.positions, y.atoms.positions)
 
 
-@pytest.mark.parametrize('ids,mode,error', [
-    (['new-2'], 'sequential', IndexError), (['new'], 'sequential', ValueError),
-    (['a', 'a'], 'deterministic_hash', ValueError), (['a'], 'bad', ValueError),
-])
-def test_external_geometry_rejects_invalid_selection(geometry_sources, ids, mode, error):
+@pytest.mark.parametrize('ids,mode,error,reason', [
+    (['new-2'], 'sequential', IndexError, 'exhausted'),
+    (['new'], 'sequential', ValueError, 'trailing integer'),
+    (['a', 'a'], 'deterministic_hash', ValueError, 'Duplicate'),
+    (['a'], 'bad', ValueError, 'selection_mode'),
+], ids=['past_the_end', 'id_without_number', 'duplicate_ids', 'unknown_mode'])
+def test_external_geometry_rejects_invalid_selection(geometry_sources, ids, mode, error, reason):
     from alframework.builders.external_geometry import build_external_geometries
-    with pytest.raises(error):
+    with pytest.raises(error, match=reason):
         build_external_geometries(ids, dict(sources=['source.xyz', 'source.h5'], selection_mode=mode),
                                   str(geometry_sources))
 
@@ -245,12 +247,15 @@ def test_rdkit_quotas_descriptor_and_fps_are_deterministic():
         seed.farthest_point_order(features, 5)
 
 
-@pytest.mark.parametrize('override', [
-    {'seed_size': 50001}, {'threads': True}, {'bond_scales': [0., float('nan')]},
-    {'angle_scales': [0.]}, {'geometry_screen': {'typo': 1.}},
-])
-def test_rdkit_invalid_configuration_is_rejected(override):
-    with pytest.raises(ValueError):
+@pytest.mark.parametrize('override, reason', [
+    ({'seed_size': 50001}, 'seed_size'),
+    ({'threads': True}, 'threads'),
+    ({'bond_scales': [0., float('nan')]}, 'bond_scales'),
+    ({'angle_scales': [0.]}, 'same length'),
+    ({'geometry_screen': {'typo': 1.}}, 'geometry_screen'),
+], ids=['seed_larger_than_pool', 'boolean_threads', 'nan_scale', 'mismatched_ladders', 'unknown_screen_setting'])
+def test_rdkit_invalid_configuration_is_rejected(override, reason):
+    with pytest.raises(ValueError, match=reason):
         seed.resolve_config({**example_config('keto'), **override}, base_directory=EXAMPLES)
 
 

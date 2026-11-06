@@ -8,7 +8,6 @@ from ase import Atoms
 from alframework.tools.molecules_class import MoleculesObject
 from alframework.tools.tools import (
     annealing_schedule,
-    build_input_dict,
     compute_empirical_formula,
     load_config_file,
     random_rotation_matrix,
@@ -19,16 +18,13 @@ from alframework.tools.tools import is_final_task, parsl_task_queue
 from tests.helpers.fakes import FakeTask
 
 
-def test_annealing_schedule_linear():
-    assert annealing_schedule(t=0.0, tmax=10.0, amp=0.0, per=2.0, srt=100.0, end=300.0) == 100.0
-    assert annealing_schedule(t=5.0, tmax=10.0, amp=0.0, per=2.0, srt=100.0, end=300.0) == 200.0
-    assert annealing_schedule(t=10.0, tmax=10.0, amp=0.0, per=2.0, srt=100.0, end=300.0) == 300.0
-
-
-def test_annealing_schedule_with_sinusoidal_oscillation():
-    result = annealing_schedule(t=1.0, tmax=10.0, amp=50.0, per=2.0, srt=100.0, end=300.0)
-
-    assert np.isclose(result, 170.0)
+@pytest.mark.parametrize(
+    "t, amp, expected",
+    [(0.0, 0.0, 100.0), (5.0, 0.0, 200.0), (10.0, 0.0, 300.0), (1.0, 50.0, 170.0)],
+    ids=["start", "midpoint", "end", "with_oscillation"],
+)
+def test_annealing_schedule(t, amp, expected):
+    assert annealing_schedule(t=t, tmax=10.0, amp=amp, per=2.0, srt=100.0, end=300.0) == pytest.approx(expected)
 
 
 def test_compute_empirical_formula():

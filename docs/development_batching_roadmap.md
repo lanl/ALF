@@ -9,8 +9,9 @@ Increment 9 (E3–E4 multi-state training and external geometries) is complete;
 Increment 10 (E5 selected-state sampling and gap acquisition) is complete:
 all six real ASE/TorchSim CUDA/ALCHEMI width-one/four cases passed; twelve
 new sampled labels entered a promoted four-member ensemble. Next work is
-Increment 11: qualify opt-in chemical topology screening across all three
-engines before the E6 cpp-ring ordinary ALF campaign. Single-member excited-state
+Increment 11A: implement and qualify shared chemical topology/physical-force
+screens, RDKit/FPS initialization, and an ordinary fixed-keto AcAc ALF loop.
+The E6 cpp-ring campaign follows as Increment 11B. Single-member excited-state
 sampling is a separate future capability, added by user decision November 5.
 Legacy NeuroChem is excluded from current acceptance by user decision. MI350 is deferred outside
 current acceptance. Post-release order decided: excited-state ALF, then
@@ -2226,7 +2227,69 @@ checks, and the shared sampled-label-retraining qualification pass. It has no
 cpp-ring, repeated water campaign, GPU4PySCF requalification, MI350, NeuroChem,
 long-time stability, multi-node training, or user-guide requirement.
 
-### Increment 11 — planned: chemical topology screening, then cpp-ring ALF (E6)
+### Increment 11A — implementation complete; real qualification pending: keto AcAc ALF
+
+User-approved scope, November 5: place a fixed-keto AcAc stage before cpp.
+Shared runtime screens (`0844678`), the prepared RDKit/FPS replay builder and
+finite bootstrap (`49705b0`), and state-specific cohorts/friction/production
+profiles (`d241a1b`) are implemented. The opt-in harness lives separately in
+`alf_validation/examples/acac_qualification/`, not in ALF.
+
+The topology checker requires explicit atom identities, preserves caller atom
+order, and checks reference bond windows 0.85–1.50 and unexpected connectivity
+at 1.25 times summed covalent radii. The independent physical-force cutoff
+uses the maximum atom-vector norm of the ensemble-mean unbiased force over
+all available states. Both screens operate before integration and at existing
+observation points. Earlier valid candidates retain their own check metadata.
+Existing `distcut` timing remains unchanged. Runtime screens are opt-in and
+nonperiodic fixed-connectivity chemistry is required for topology checking.
+
+`examples/keto_acac/` ships the fork's six-level reference-centred KDG/FPS
+50,000-to-5,000 preset, keto/enol references, AM1/CIS labels and offset,
+four-member HIP-HOP145 architecture, fork training settings (300 epochs,
+patience 50), and AcAc dynamics/scientific cutoffs. Production sampling width
+50, capacity 200, per-state cohort size 50 and top-K 500 are shipped settings;
+width-four qualification does not establish production-scale coverage.
+Builder tasks replay prepared seeds and subsequently closed labeled shards;
+they never regenerate or rerun FPS. `finite_bootstrap` caps admitted IDs and
+reports exhaustion with failed work instead of requesting nonexistent seeds.
+
+Local evidence under `validation/inc11a_20261105/`: the available full library
+suite passed (456 passed, 46 skipped), with a subsequent additional candidate
+retention test passing; focused builder/finite-driver and cross-engine fake
+screen tests passed. Reduced keto and enol preparations matched the fork
+exactly in RDKit 2026.9.1, including coordinates, identities, strata, selected
+indices and FPS ranks. Four isolated RDKit-enabled CPU/sampling environments
+are frozen under `environments/20261105/inc11a/`; existing environments remain
+unchanged. The external runner's five focused tests passed.
+
+Real acceptance remains pending: all three engines must execute valid widths
+one/four and isolate an invalid input; prepare 1,920 accepted keto geometries
+and 192 FPS seeds; use ordinary `alframework.__main__` with native-four CIS
+labeling and fresh four-GPU training. Require at least 128 converged stored
+bootstrap frames, eight genuinely propagated sampled IDs covering S0–S3,
+and a promoted four-member ensemble retaining them with actual training-split
+contributions from every state. Pilot training batch/scheduler maximum is 16;
+ALCHEMI width four, capacity 16, per-state cohorts four/top-two, continue
+policy, 0.2 ps maximum and 0.1 ps acquisition minimum. Cutoffs are frozen.
+Require reloads, changed parameters, real epochs, and representative force
+finite differences within 1e-3 eV/Å. No acceptance is inferred from CPU tests.
+
+The first qualification submission starts one four-hour queue-inclusive budget
+with five minutes reserved for owned-job cleanup. Supervise in persistent
+Darwin tmux, journal exact job IDs, and verify termination. QM/sampling
+allocations are capped at 30 minutes and training at one hour, at most one
+allocation per executor; existing qualified Torch/HIPPYNN/PySEQM versions,
+explicit interpreters, pinned source, GCC 11 and public PyTorch kernels apply.
+Generated inputs/models/logs remain outside Git. Commit locally; never push.
+
+Deferred: post-QM force/distance/topology filtering of converged labels,
+GALF/LCM, staged handoffs, single-member excited-state sampling, full-scale
+production qualification, and user-guide updates. Runtime force cutoffs do
+not filter stored QM labels in this stage.
+
+### Increment 11B — planned: cpp-ring ALF (E6), after 11A
+
 
 User decision, November 5: add the opt-in chemical topology checker across
 ASE, TorchSim, and ALCHEMI before launching the cpp-ring campaign. Increment
@@ -2279,8 +2342,8 @@ teacher labeling remain independent tracks rather than E5/E6 prerequisites.
 
 Each step is a separate local change with its own CPU tests. Existing
 configurations, task signatures, and ground-state results stay unchanged.
-E1–E5 are complete; Increment 11 first qualifies chemical topology screening,
-then proceeds to E6.
+E1–E5 are complete; Increment 11A qualifies topology/RDKit and keto AcAc ALF,
+then Increment 11B proceeds to E6.
 
 | Step | Deliverable | Acceptance gate |
 | --- | --- | --- |

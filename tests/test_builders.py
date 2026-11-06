@@ -241,7 +241,6 @@ ROOT = Path(__file__).resolve().parents[1]
 EXAMPLES = ROOT / "examples/AcAc_excited_pyseqm"
 
 
-
 def example_config(name):
     return json.loads((EXAMPLES / f"seed_{name}.json").read_text())
 

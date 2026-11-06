@@ -6,10 +6,12 @@ Submits no jobs and needs no QM programs. NeuroChem examples are imported agains
 import ast
 import importlib
 import json
+import sys
 from pathlib import Path
 
 import pytest
 
+from alframework.qm_interfaces.gpu4pyscf_interface import validate_gpu4pyscf_config
 from alframework.samplers.acquisition import acquisition_settings
 from alframework.tools.batching import batching_settings
 from alframework.tools.labeling import labeling_batch_settings
@@ -18,6 +20,8 @@ from tests.helpers.fakes import import_neurochem_with_fake_backend
 
 ROOT = Path(__file__).resolve().parents[1]
 FAMILIES = (
+    "AcAc_excited_pyseqm",
+    "CPP_excited_gpu4pyscf",
     "IL",
     "UO2",
     "fine_tuning",
@@ -63,6 +67,8 @@ def test_example_configs_are_valid(path):
 @pytest.mark.parametrize("path", MASTERS, ids=lambda p: str(p.relative_to(ROOT / "examples")))
 def test_example_tasks_can_be_imported(path, monkeypatch):
     monkeypatch.syspath_prepend(str(path.parent))
+    # Several examples have their own custom_modules.py.
+    monkeypatch.delitem(sys.modules, "custom_modules", raising=False)
     for field in TASKS:
         module, name = read(path)[field].rsplit(".", 1)
         if module == "alframework.ml_interfaces.neurochem_interface":
@@ -78,3 +84,8 @@ def test_packed_water_configs_are_valid(name):
     assert driver_settings(config)["strategy"] == "batched"
     batching_settings(config)
     acquisition_settings(config)
+
+
+@pytest.mark.parametrize("name", ["QM_config.json", "QM_config_dcm.json"])
+def test_cpp_gpu4pyscf_configs_are_valid(name):
+    validate_gpu4pyscf_config(read(ROOT / "examples/CPP_excited_gpu4pyscf" / name))

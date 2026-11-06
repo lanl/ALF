@@ -3,12 +3,7 @@
 GPU4PySCF, PySCF, and CuPy are replaced with fakes, so this needs no GPU. It checks ALF's settings,
 unit conversions, failure handling, and storage, not the quantum chemistry itself.
 
-This module runs in GitHub's CPU unit-test matrix without GPU4PySCF, CuPy,
-CUDA, or cuTENSOR. Passing these tests does not establish real GPU numerical
-agreement or memory capacity. The external alf_validation CPP/PCM qualification
-requires native cuTENSOR: its frozen CUDA 13 stack uses cutensor-cu13==2.8.1,
-exposes the wheel's cutensor/lib directory through worker LD_LIBRARY_PATH,
-and rejects a CuPy contraction fallback before calculation.
+Passing these tests does not establish real GPU numerical agreement or memory capacity.
 """
 
 import importlib
@@ -43,15 +38,42 @@ from alframework.qm_interfaces.gpu4pyscf_interface import (
     validate_gpu4pyscf_config,
     validate_gpu4pyscf_properties,
 )
+from alframework.tools.labeling import LabelingCoordinator
 from alframework.tools.molecules_class import MoleculesObject
 from alframework.tools.tools import build_input_dict, store_current_data
+from tests.helpers.driver import loaded_parsl
 
 
-@pytest.mark.parametrize('solvent', [{}, 'dichloromethane', {'method':'IEF-PCM'}, {'optical_dielectric':0.}, {'optical_dielectric':10.}, {'lebedev_order':30}, {'unknown':1}])
-def test_invalid_solvent_cannot_silently_label_in_vacuum(solvent):
+@pytest.mark.parametrize(
+    "solvent",
+    [
+        {},
+        "dichloromethane",
+        {"method": "IEF-PCM"},
+        {"optical_dielectric": 0.0},
+        {"optical_dielectric": 10.0},
+        {"lebedev_order": 30},
+        {"unknown": 1},
+    ],
+    ids=[
+        "empty",
+        "not_a_dictionary",
+        "unsupported_method",
+        "zero_optical_dielectric",
+        "optical_above_static",
+        "unsupported_lebedev_order",
+        "unknown_setting",
+    ],
+)
+def test_gpu4pyscf_rejects_invalid_solvent_settings(solvent):
     with pytest.raises(ValueError):
-        validate_gpu4pyscf_config({'solvent': solvent})
-    assert validate_gpu4pyscf_config({'solvent': {'enabled': False}})['xc'] == DEFAULT_GPU4PYSCF_CONFIG['xc']
+        validate_gpu4pyscf_config({"solvent": solvent})
+
+
+def test_gpu4pyscf_disabled_solvent_keeps_gas_defaults():
+    config = validate_gpu4pyscf_config({"solvent": {"enabled": False}})
+    assert config["solvent"] is None
+    assert config["xc"] == DEFAULT_GPU4PYSCF_CONFIG["xc"]
 
 
 def _properties(nroots=1, *, include_gap=False, include_nacr=False):
@@ -88,13 +110,14 @@ def _molecule(molecule_id="water"):
     )
 
 
-def _device(index=1):
+def _device(index=0):
+    """A worker bound to one GPU, which it sees as local device 0."""
     return {
         "index": index,
         "label": f"cuda:{index}",
-        "visible_count": 4,
-        "worker_rank": index,
-        "cuda_visible_devices": "0,1,2,3",
+        "visible_count": 1,
+        "worker_rank": 2,
+        "cuda_visible_devices": "2",
     }
 
 
@@ -372,6 +395,8 @@ def test_worker_rank_picks_the_gpu(
     monkeypatch.setattr(gpu4pyscf_module, "_import_cupy", lambda: fake_cupy)
     monkeypatch.setenv("PARSL_WORKER_RANK", "6")
 
+    # Selection alone follows the rank. The backend then accepts only device 0; see
+    # test_gpu4pyscf_worker_on_nonzero_device_returns_failed_label.
     device = select_gpu4pyscf_device(4)
 
     assert device["index"] == 2
@@ -449,13 +474,20 @@ def fake_gpu_stack(monkeypatch):
             self.e = np.asarray([0.1, 0.2])
             self.equilibrium = equilibrium
             if not equilibrium:
-                self.e += .05
+                self.e += 0.05
 
         def nac_method(self):
             def kernel(states):
-                calls.setdefault('nac_pairs', []).append(states)
-                return [np.zeros((3,3))]*3+[np.full((3,3), .125)]
+                calls.setdefault("nac_pairs", []).append(states)
+                return [np.zeros((3, 3))] * 3 + [np.full((3, 3), 0.125)]
+
             return SimpleNamespace(kernel=kernel)
+
+        def nac_gradient_method(self):
+            def kernel():
+                return {(1, 2): {"de_etf_scaled": np.full((3, 3), 0.125)}}
+
+            return SimpleNamespace(kernel=kernel, grad_result=np.full((3, 3), 1.0))
 
         def kernel(self):
             calls["tda_kernel"] = True
@@ -471,7 +503,7 @@ def fake_gpu_stack(monkeypatch):
             self.with_solvent = SimpleNamespace()
 
         def PCM(self):
-            calls['pcm'] = self.with_solvent
+            calls["pcm"] = self.with_solvent
             return self
 
         def density_fit(self, **kwargs):
@@ -486,7 +518,7 @@ def fake_gpu_stack(monkeypatch):
             calls["scf_kernel"] = True
 
         def TDA(self, equilibrium_solvation=True):
-            calls.setdefault('response_modes', []).append(equilibrium_solvation)
+            calls.setdefault("response_modes", []).append(equilibrium_solvation)
             calls["tda"] = FakeTD(equilibrium_solvation)
             return calls["tda"]
 
@@ -523,95 +555,272 @@ def fake_gpu_stack(monkeypatch):
         "import_module",
         lambda name: modules[name] if name in modules else real_import(name),
     )
-    calls['mf'] = fake_mf
+    calls["mf"] = fake_mf
     return calls
 
 
-def test_failed_vertical_tda_is_not_accepted_as_a_complete_label(fake_gpu_stack, monkeypatch):
-    original = fake_gpu_stack['mf'].TDA
+def _pcm_options(**settings):
+    return validate_gpu4pyscf_config({"nroots": 2, "solvent": {"enabled": True}, **settings})
+
+
+def _change_tda(monkeypatch, calls, change):
+    """Let a test alter each TDA object the fake mean-field object creates."""
+    original = calls["mf"].TDA
+
     def tda(equilibrium_solvation=True):
-        value = original(equilibrium_solvation)
-        if not equilibrium_solvation:
-            value.converged = np.array([False,True])
-        return value
-    monkeypatch.setattr(fake_gpu_stack['mf'], 'TDA', tda)
-    options = validate_gpu4pyscf_config(dict(nroots=2, solvent={'enabled':True}))
-    options['_compute_vertical'] = True
+        td = original(equilibrium_solvation)
+        change(td)
+        return td
+
+    monkeypatch.setattr(calls["mf"], "TDA", tda)
+
+
+def _vertical_properties(energy_scale):
+    """Properties with vertical arrays, with every energy on one stored scale."""
+    properties = _properties(2, include_gap=True)
+    for key in gpu4pyscf_module.VERTICAL_PROPERTIES:
+        properties[key] = [key, "system", energy_scale]
+    for key in ("sE0", "sE1", "sE2", "dE01"):
+        properties[key][2] = energy_scale
+    return properties
+
+
+def _vertical_outputs():
+    """A new dictionary each time, because labeling removes these keys from it."""
+    return {
+        "_vertical_excitation_energies": np.array([0.3, 0.5]),
+        "_vertical_transition_dipoles": np.ones((2, 3)),
+        "_vertical_oscillator_strengths": np.array([0.1, 0.2]),
+    }
+
+
+def test_gpu4pyscf_failed_vertical_tda_reports_vertical_stage(fake_gpu_stack, monkeypatch):
+    def fail_vertical_roots(td):
+        if not td.equilibrium:
+            td.converged = np.array([False, True])
+
+    _change_tda(monkeypatch, fake_gpu_stack, fail_vertical_roots)
+    options = _pcm_options()
+    options["_compute_vertical"] = True
     with pytest.raises(GPU4PySCFTDAError) as error:
         run_gpu4pyscf_states(_molecule().atoms, options, device_index=0)
-    assert error.value.stage == 'vertical_tda'
+    assert error.value.stage == "vertical_tda"
 
 
-def test_pcm_sequential_batch_retains_successful_members(fake_backend, tmp_path):
-    from tests.helpers.driver import loaded_parsl
-    from alframework.tools.labeling import LabelingCoordinator
+def test_gpu4pyscf_failed_vertical_optics_reports_vertical_stage(fake_gpu_stack, monkeypatch):
+    def fail(td, cupy):
+        raise RuntimeError("contraction failed")
+
+    monkeypatch.setattr(gpu4pyscf_module, "transition_dipoles_staged", fail)
+    options = _pcm_options()
+    options.update(_compute_vertical=True, _compute_vertical_optical=True)
+    with pytest.raises(GPU4PySCFOutputError) as error:
+        run_gpu4pyscf_states(_molecule().atoms, options, device_index=0)
+    assert error.value.stage == "vertical_optical"
+
+
+def test_gpu4pyscf_pcm_nac_with_missing_arrays_reports_nac_failure(fake_gpu_stack, monkeypatch):
+    def return_too_few_arrays(td):
+        td.nac_method = lambda: SimpleNamespace(kernel=lambda states: [np.zeros((3, 3))] * 3)
+
+    _change_tda(monkeypatch, fake_gpu_stack, return_too_few_arrays)
+    with pytest.raises(GPU4PySCFNACError, match="Expected four NAC arrays"):
+        run_gpu4pyscf_states(_molecule().atoms, _pcm_options(compute_nacr=True), device_index=0)
+
+
+def test_gpu4pyscf_pcm_sequential_batch_keeps_successful_members(fake_backend, tmp_path):
     def run(atoms, options, **kwargs):
-        if atoms.positions[0,0] < 0:
-            raise GPU4PySCFTDAError('synthetic vertical failure', stage='vertical_tda')
+        if atoms.positions[0, 0] < 0:
+            raise GPU4PySCFTDAError("synthetic vertical failure", stage="vertical_tda")
         return (*_predictions(2), _no_nac(), _no_pairs(), {})
+
     fake_backend(run)
-    config=dict(nroots=2, solvent={'enabled':True}, batching=dict(mode='sequential',batch_size=4))
-    props=_properties(2)
-    with loaded_parsl(tmp_path/'runinfo', 'alf_QM_executor'):
-        coordinator=LabelingCoordinator(gpu4pyscf_excited_state_task,
-            'alframework.qm_interfaces.gpu4pyscf_interface.gpu4pyscf_excited_state_task',config)
-        kwargs=[dict(QM_config=config,properties_list=props,gpus_per_node=1)]
+    config = {
+        "nroots": 2,
+        "solvent": {"enabled": True},
+        "batching": {"mode": "sequential", "batch_size": 4},
+    }
+    task_kwargs = [{"QM_config": config, "properties_list": _properties(2), "gpus_per_node": 1}]
+    with loaded_parsl(tmp_path / "runinfo", "alf_QM_executor"):
+        coordinator = LabelingCoordinator(
+            gpu4pyscf_excited_state_task,
+            "alframework.qm_interfaces.gpu4pyscf_interface.gpu4pyscf_excited_state_task",
+            config,
+        )
         for index in range(4):
-            molecule=_molecule(str(index))
-            if index==1:molecule.atoms.positions[0,0]=-1.
-            coordinator.submit(molecule,kwargs)
-        coordinator.submit_ready(kwargs)
-        result=coordinator.queue.task_list[-1].result(timeout=30)
-    assert [m.get_moleculeid() for m in result]==['0','1','2','3']
-    assert [m.check_convergence() for m in result]==[True,False,True,True]
+            molecule = _molecule(str(index))
+            if index == 1:
+                molecule.atoms.positions[0, 0] = -1.0
+            coordinator.submit(molecule, task_kwargs)
+        coordinator.submit_ready(task_kwargs)
+        result = coordinator.queue.task_list[-1].result(timeout=30)
+    assert [m.get_moleculeid() for m in result] == ["0", "1", "2", "3"]
+    assert [m.check_convergence() for m in result] == [True, False, True, True]
 
 
-def test_pcm_routes_equilibrium_forces_nacs_and_separate_vertical_spectrum(fake_gpu_stack, monkeypatch):
-    calls = fake_gpu_stack
-    monkeypatch.setattr(gpu4pyscf_module, 'transition_dipoles_staged', lambda td, cupy: np.full((2,3), 1. if td.equilibrium else 2.))
-    options = validate_gpu4pyscf_config(dict(nroots=2, compute_nacr=True, solvent={'enabled':True}))
+def _run_pcm_with_vertical_spectrum(monkeypatch):
+    monkeypatch.setattr(
+        gpu4pyscf_module,
+        "transition_dipoles_staged",
+        lambda td, cupy: np.full((2, 3), 1.0 if td.equilibrium else 2.0),
+    )
+    options = _pcm_options(compute_nacr=True)
     options.update(_compute_optical=True, _compute_vertical=True, _compute_vertical_optical=True)
-    energy, forces, nac, pairs, metadata = run_gpu4pyscf_states(_molecule().atoms, options, device_index=0)
-    assert calls['pcm'].eps == 9.02 and calls['pcm'].eps_optical == 2.03
-    assert calls['response_modes'] == [True, False]
-    assert calls['nac_pairs'] == [(1,2)] and calls['gradient_states'] == [1,2]
-    np.testing.assert_allclose(energy, [-4.,-3.8,-3.6])
-    np.testing.assert_allclose(metadata['_vertical_excitation_energies'], [.3,.5])
-    np.testing.assert_allclose(metadata['_transition_dipoles'], 1.)
-    np.testing.assert_allclose(metadata['_vertical_transition_dipoles'], 2.)
-    np.testing.assert_allclose(nac, .25)
-    assert metadata['qm_nac_solver']=='solvent_pairwise' and metadata['s1_gradient_source']=='tda_gradient'
+    return run_gpu4pyscf_states(_molecule().atoms, options, device_index=0)
 
 
-def test_vertical_units_offset_and_hdf5_roundtrip(fake_backend, tmp_path):
-    props = _properties(2, include_gap=True)
-    for key in gpu4pyscf_module.VERTICAL_PROPERTIES:
-        props[key] = [key, 'system', 2.]
-    # All energies share the same stored scale; offsets never touch excitations.
-    for key in ('sE0','sE1','sE2','dE01'):
-        props[key][2] = 2.
-    values = dict(_vertical_excitation_energies=np.array([.3,.5]),
-        _vertical_transition_dipoles=np.ones((2,3)), _vertical_oscillator_strengths=np.array([.1,.2]))
-    fake_backend(_returns(*_predictions(2), versions=values))
-    molecule = label_gpu4pyscf_excited_state_molecule(_molecule(), QM_config=dict(nroots=2, solvent={'enabled':True}, energy_offset_eV=-100.), properties_list=props)
+def test_gpu4pyscf_pcm_labels_use_equilibrium_response(fake_gpu_stack, monkeypatch):
+    calls = fake_gpu_stack
+    energy, forces, nac, pairs, metadata = _run_pcm_with_vertical_spectrum(monkeypatch)
+    assert calls["pcm"].eps == 9.02
+    assert calls["pcm"].eps_optical == 2.03
+    assert calls["response_modes"][0] is True
+    assert calls["nac_pairs"] == [(1, 2)]
+    assert calls["gradient_states"] == [1, 2]
+    np.testing.assert_allclose(energy, [-4.0, -3.8, -3.6])
+    np.testing.assert_allclose(metadata["_transition_dipoles"], 1.0)
+    np.testing.assert_allclose(nac, 0.25)
+    assert metadata["qm_nac_solver"] == "solvent_pairwise"
+    assert metadata["s1_gradient_source"] == "tda_gradient"
+
+
+def test_gpu4pyscf_pcm_vertical_spectrum_uses_nonequilibrium_response(fake_gpu_stack, monkeypatch):
+    calls = fake_gpu_stack
+    *_, metadata = _run_pcm_with_vertical_spectrum(monkeypatch)
+    assert calls["response_modes"] == [True, False]
+    np.testing.assert_allclose(metadata["_vertical_excitation_energies"], [0.3, 0.5])
+    np.testing.assert_allclose(metadata["_vertical_transition_dipoles"], 2.0)
+
+
+def test_gpu4pyscf_custom_dielectrics_reach_the_pcm_solver(fake_gpu_stack):
+    options = _pcm_options(
+        solvent={
+            "name": "water",
+            "static_dielectric": 78.4,
+            "optical_dielectric": 1.78,
+            "lebedev_order": 17,
+            "vdw_scale": 1.1,
+            "pcm_conv_tol": 1e-6,
+        }
+    )
+    *_, metadata = run_gpu4pyscf_states(_molecule().atoms, options, device_index=0)
+    pcm = fake_gpu_stack["pcm"]
+    assert (pcm.eps, pcm.eps_optical, pcm.lebedev_order) == (78.4, 1.78, 17)
+    assert (pcm.vdw_scale, pcm.conv_tol) == (1.1, 1e-6)
+    assert metadata["qm_solvent"]["name"] == "water"
+
+
+def test_gpu4pyscf_gas_vertical_spectrum_reuses_the_tda_roots(fake_gpu_stack):
+    options = validate_gpu4pyscf_config({"nroots": 2})
+    options["_compute_vertical"] = True
+    *_, metadata = run_gpu4pyscf_states(_molecule().atoms, options, device_index=0)
+    assert fake_gpu_stack["response_modes"] == [True]
+    np.testing.assert_allclose(metadata["_vertical_excitation_energies"], [0.2, 0.4])
+    assert metadata["qm_vertical_response"] == "gas"
+
+
+def test_gpu4pyscf_gas_nac_uses_the_multistate_solver(fake_gpu_stack):
+    options = validate_gpu4pyscf_config({"nroots": 2, "compute_nacr": True})
+    *_, metadata = run_gpu4pyscf_states(_molecule().atoms, options, device_index=0)
+    assert "nac_pairs" not in fake_gpu_stack
+    assert fake_gpu_stack["gradient_states"] == [2]
+    assert metadata["qm_nac_solver"] == "gas_multistate"
+    assert metadata["s1_gradient_source"] == "nac_solver"
+
+
+def test_gpu4pyscf_energy_offset_skips_vertical_excitations(fake_backend):
+    fake_backend(_returns(*_predictions(2), versions=_vertical_outputs()))
+    molecule = label_gpu4pyscf_excited_state_molecule(
+        _molecule(),
+        QM_config={"nroots": 2, "solvent": {"enabled": True}, "energy_offset_eV": -100.0},
+        properties_list=_vertical_properties(1.0),
+    )
     assert molecule.check_convergence()
-    assert molecule.get_results()['sE0']==10.
-    np.testing.assert_allclose(molecule.get_results()['vertical_excitation_energies'], [.3,.5])
-    path = tmp_path/'labels.h5'
-    store_current_data(str(path), [molecule], props)
+    assert molecule.get_results()["sE0"] == 10.0
+    np.testing.assert_allclose(molecule.get_results()["vertical_excitation_energies"], [0.3, 0.5])
+
+
+def test_gpu4pyscf_vertical_properties_store_with_their_scale(fake_backend, tmp_path):
+    fake_backend(_returns(*_predictions(2), versions=_vertical_outputs()))
+    properties = _vertical_properties(2.0)
+    molecule = label_gpu4pyscf_excited_state_molecule(
+        _molecule(),
+        QM_config={"nroots": 2, "solvent": {"enabled": True}},
+        properties_list=properties,
+    )
+    path = tmp_path / "labels.h5"
+    store_current_data(str(path), [molecule], properties)
     with h5py.File(path) as handle:
         group = next(iter(handle.values()))
-        np.testing.assert_allclose(group['vertical_excitation_energies'][0], [.6,1.])
+        np.testing.assert_allclose(group["vertical_excitation_energies"][0], [0.6, 1.0])
 
 
-@pytest.mark.parametrize('property_name,value', [('vertical_excitation_energies',[float('nan'),1.]), ('vertical_transition_dipoles',[[1,2,3]]), ('vertical_oscillator_strengths',[-1.,0.])])
-def test_invalid_vertical_output_is_unconverged(fake_backend, property_name, value):
-    props = _properties(2)
-    props[property_name] = [property_name,'system',1.]
-    fake_backend(_returns(*_predictions(2), versions={'_'+property_name:value}))
-    molecule = label_gpu4pyscf_excited_state_molecule(_molecule(), QM_config={'nroots':2}, properties_list=props)
+def test_gpu4pyscf_vertical_energy_scale_must_match_state_energies():
+    properties = _properties(2)
+    properties["vertical_excitation_energies"] = ["vertical_excitation_energies", "system", 2.0]
+    with pytest.raises(ValueError, match="consistent scales"):
+        validate_gpu4pyscf_properties(properties, nroots=2)
+
+
+@pytest.mark.parametrize(
+    "property_name,value",
+    [
+        ("vertical_excitation_energies", [float("nan"), 1.0]),
+        ("vertical_transition_dipoles", [[1, 2, 3]]),
+        ("vertical_oscillator_strengths", [-1.0, 0.0]),
+    ],
+    ids=["nan_energy", "wrong_dipole_shape", "negative_oscillator_strength"],
+)
+def test_gpu4pyscf_invalid_vertical_output_is_unconverged(fake_backend, property_name, value):
+    properties = _properties(2)
+    properties[property_name] = [property_name, "system", 1.0]
+    fake_backend(_returns(*_predictions(2), versions={"_" + property_name: value}))
+    molecule = label_gpu4pyscf_excited_state_molecule(
+        _molecule(), QM_config={"nroots": 2}, properties_list=properties
+    )
     assert not molecule.check_convergence()
     assert property_name not in molecule.get_results()
+
+
+@pytest.mark.parametrize(
+    "stage,nac_converged",
+    [("optical", False), ("vertical_tda", True), ("vertical_optical", True)],
+    ids=["optical", "vertical_tda", "vertical_optical"],
+)
+def test_gpu4pyscf_late_failure_keeps_earlier_stages_converged(fake_backend, stage, nac_converged):
+    fake_backend(_raises(GPU4PySCFOutputError("late failure", stage=stage)))
+    failed = label_gpu4pyscf_excited_state_molecule(
+        _molecule(), QM_config={"nroots": 1}, properties_list=_properties(1)
+    )
+    metadata = failed.get_metadata()
+    assert metadata["qm_failed_stage"] == stage
+    assert metadata["qm_scf_converged"] is True
+    assert metadata["qm_tda_converged"] is True
+    assert metadata["qm_nac_converged"] is nac_converged
+
+
+def test_gpu4pyscf_worker_on_nonzero_device_returns_failed_label(monkeypatch):
+    """Real device selection and the real backend, on a worker seeing all four GPUs."""
+    fake_cupy = SimpleNamespace(
+        cuda=SimpleNamespace(
+            runtime=SimpleNamespace(getDeviceCount=lambda: 4),
+            Device=lambda index: SimpleNamespace(use=lambda: None),
+        )
+    )
+    monkeypatch.setattr(gpu4pyscf_module, "_import_cupy", lambda: fake_cupy)
+    monkeypatch.setenv("PARSL_WORKER_RANK", "2")
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0,1,2,3")
+    failed = label_gpu4pyscf_excited_state_molecule(
+        _molecule(),
+        QM_config={"nroots": 1},
+        properties_list=_properties(1),
+        gpus_per_node=4,
+    )
+    metadata = failed.get_metadata()
+    assert failed.check_convergence() is False
+    assert metadata["qm_failed_stage"] == "device"
+    assert "local CUDA device 0" in metadata["qm_error"]
+    assert metadata["qm_device"] == "cuda:2"
 
 
 def test_backend_runs_rks_tda_for_every_state(fake_gpu_stack):
@@ -659,7 +868,7 @@ def test_labeling_stores_every_state(fake_backend):
     def fake_run(atoms, options, *, device_index):
         seen_numbers.append(atoms.get_atomic_numbers().tolist())
         assert options["nroots"] == 2
-        assert device_index == 1
+        assert device_index == 0
         return (
             energies.copy(),
             forces.copy(),
@@ -693,7 +902,7 @@ def test_labeling_stores_every_state(fake_backend):
         np.testing.assert_allclose(labeled.get_results()[f"F{state}"], forces[state])
     metadata = labeled.get_metadata()
     assert metadata["qm_backend"] == "gpu4pyscf"
-    assert metadata["qm_device"] == "cuda:1"
+    assert metadata["qm_device"] == "cuda:0"
     assert metadata["qm_scf_converged"] is True
     assert metadata["qm_tda_converged"] is True
     assert metadata["nroots"] == 2
@@ -1100,7 +1309,7 @@ def test_tight_tda_tolerance_keeps_small_corrections():
 
 
 @pytest.mark.parametrize("device", [1, 2, 3])
-def test_nonzero_backend_device_fails_before_import(monkeypatch, device):
+def test_gpu4pyscf_rejects_nonzero_device_before_import(monkeypatch, device):
     def forbidden(name):
         pytest.fail("GPU backend must not import on a nonzero local device")
     monkeypatch.setattr(gpu4pyscf_module.importlib, "import_module", forbidden)

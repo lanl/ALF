@@ -250,7 +250,7 @@ def prepare_ring_pool(config, output_dir, *, config_directory=None):
             group['_id'] = np.asarray([f'cpp{report["ring_size"]}-seed-{i:010d}' for i in range(settings['count'])], dtype='S40')
             for key in ('rotation_angles_degrees', 'rattle_rms_angstrom', 'requested_rattle_rms_angstrom', 'tier_index', 'attempt_count'):
                 group[key] = samples[key]
-        (temporary/'builder_config.json').write_text(json.dumps(dict(seed_manifest_path='seeds/provenance.json', selection_seed=settings['seed']), indent=2)+'\n')
+        (temporary/'builder_config.json').write_text(json.dumps(dict(seed_manifest_path=str(output/'provenance.json'), selection_seed=settings['seed']), indent=2)+'\n')
         report['artifacts_sha256'] = {name:_sha256(temporary/name) for name in ('seed.h5', 'reference.xyz', 'builder_config.json')}
         (temporary/'provenance.json').write_text(json.dumps(report, indent=2, allow_nan=False)+'\n')
         temporary.rename(output)

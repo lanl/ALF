@@ -86,6 +86,12 @@ def prepare(output_dir, *, ring_size=9, reference=None, energy_offset_ev=None,
         if generate_seeds:
             from alframework.builders.ring_molecule import prepare_ring_pool
             prepare_ring_pool(seed, temporary/'seeds', config_directory=temporary)
+            builder = temporary/'seeds/builder_config.json'
+            builder.write_text(json.dumps(dict(seed_manifest_path='seeds/provenance.json', selection_seed=seed['seed']), indent=2)+'\n')
+            manifest_path = temporary/'seeds/provenance.json'
+            manifest = json.loads(manifest_path.read_text())
+            manifest['artifacts_sha256']['builder_config.json'] = hashlib.sha256(builder.read_bytes()).hexdigest()
+            manifest_path.write_text(json.dumps(manifest, indent=2)+'\n')
         record.update(ring_size=ring_size, energy_offset_eV=float(offset), model=model,
                       seeds_prepared=generate_seeds, count=count, campaign_submitted=False,
                       solvent='gas phase; implicit solvent requires a separately qualified adapter')

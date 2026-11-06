@@ -379,6 +379,17 @@ def test_failed_ring_preparation_is_atomic(tmp_path, monkeypatch):
     assert not (tmp_path/'failed').exists()
 
 
+def test_standalone_ring_preparation_emits_a_usable_builder_configuration(tmp_path):
+    from alframework.builders import ring_molecule as ring
+    config = json.loads((CPP_EXAMPLE/'seed_cpp6.json').read_text())
+    config['count'] = 2
+    output = tmp_path/'arbitrary-pool-name'
+    ring.prepare_ring_pool(config, output, config_directory=CPP_EXAMPLE)
+    builder = json.loads((output/'builder_config.json').read_text())
+    molecules = ring.build_ring_molecules(['mol-boot-0000000000'], builder)
+    assert len(molecules) == 1 and len(molecules[0].atoms) == 60
+
+
 def test_ring_attempt_exhaustion_publishes_nothing(tmp_path, monkeypatch):
     from alframework.builders import ring_molecule as ring
     config = json.loads((CPP_EXAMPLE/'seed_cpp9.json').read_text())

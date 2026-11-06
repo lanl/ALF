@@ -43,9 +43,12 @@ def __getattr__(name):
                 self.restarter.kwargs.update(excited_state_properties=excited_state_properties,
                                             retained_indices=retained_indices)
 
-        def extract_full_file(self, file, species_key='species'):
+        def extract_full_file(self, file, species_key='species', permit_only=None):
+            # Newer HIPPYNN passes permit_only; older releases do not accept it.
             if self.excited_state_properties is None:
-                return super().extract_full_file(file, species_key=species_key)
+                extra = {} if permit_only is None else {'permit_only': permit_only}
+                return super().extract_full_file(file, species_key=species_key, **extra)
+            # The excited-state path selects its datasets explicitly below.
             states = validate_excited_state_training_properties(self.excited_state_properties)
             gaps = derive_gap_property_table(self.excited_state_properties)
             # Select datasets before reading: pair indices/NACs and optics may

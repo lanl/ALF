@@ -57,6 +57,8 @@ pieces to a concrete run.
    examples/il
    examples/uo2
    examples/reactive_sampling
+   examples/acac_excited_pyseqm
+   examples/cpp_excited_gpu4pyscf
 
 .. toctree::
    :maxdepth: 2

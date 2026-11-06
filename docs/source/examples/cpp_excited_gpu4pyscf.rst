@@ -1,0 +1,198 @@
+Excited-State Cycloparaphenylene With GPU4PySCF
+===============================================
+
+This example runs active learning over the S0-S3 states of a cycloparaphenylene
+(CPP) ring with TDDFT labels, in the gas phase or in implicit dichloromethane (DCM).
+It includes minimized references for CPP6 (60 atoms) and CPP9 (90 atoms), and can
+prepare other para-linked ring sizes. For a smaller first run, see
+:doc:`acac_excited_pyseqm`. The pieces are explained in
+:doc:`../user_guide/excited_states`.
+
+The files needed to run the example are located in
+``examples/CPP_excited_gpu4pyscf``.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 24 76
+
+   * - Stage
+     - What this example uses
+   * - Initial geometries
+     - ``custom_modules.ring_molecule_builder_task``, replaying phenyl rotations and
+       rattles of the minimized reference.
+   * - QM labels
+     - ``custom_modules.gpu4pyscf_label_task``: CAM-B3LYP/6-31G with TDA, forces for
+       every state, and coupling vectors. It wraps
+       ``gpu4pyscf_excited_state_task``.
+   * - Training
+     - ``train_excited_state_HIPPYNN_ensemble_task``: a four-member ensemble with one
+       head per state. Couplings and optical data are stored but not trained on.
+   * - Sampling
+     - ``mlmd_trajectories_task`` on the ALCHEMI engine in batches of 4, cycling through
+       S0-S3.
+   * - Acquisition
+     - Summed ranking with ``cohort_top_k``, keeping a separate cohort for each state.
+
+Before You Run
+--------------
+
+* Install HIPPYNN, RDKit, and ALCHEMI (``.[full,topology,alchemi]``) for training and
+  sampling, and GPU4PySCF, PySCF, and CuPy for labeling; see
+  :doc:`../getting_started/installation`. Preparation only needs ALF and ASE.
+* **QM workers need native cuTENSOR.** Install a wheel matching your CUDA runtime, and
+  put the wheel's ``cutensor/lib`` directory on ``LD_LIBRARY_PATH`` through
+  ``ALF_QM_WORKER_INIT``. ``gpu4pyscf_label_task`` fails before calculating if it's
+  missing, because CPP9 coupling calculations run out of memory on a 40 GB GPU without
+  it. This example has been run with GPU4PySCF 1.9.1, PySCF 2.15.0, CuPy 14.2.0, and
+  ``cutensor-cu13`` 2.8.1.
+* Plan for a large GPU. See the memory notes below.
+
+Prepare A Run
+-------------
+
+``prepare.py`` copies the example into a new directory, so the tracked files stay
+unchanged. It runs on a CPU and submits nothing.
+
+.. code-block:: bash
+
+   cd examples/CPP_excited_gpu4pyscf
+   python prepare.py --ring-size 9 --solvent dcm --output-dir /scratch/cpp9 --generate-seeds
+
+.. list-table::
+   :header-rows: 1
+   :widths: 28 16 56
+
+   * - Option
+     - Default
+     - Meaning
+   * - ``--output-dir``
+     - Required
+     - The new run directory. An existing directory is never overwritten.
+   * - ``--ring-size``
+     - ``9``
+     - Number of phenylene rings. Sizes 6 and 9 use the included references.
+   * - ``--solvent``
+     - ``gas``
+     - ``gas`` or ``dcm``. ``dcm`` selects ``QM_config_dcm.json`` and adds the
+       ``vertical_*`` properties to ``properties_list``.
+   * - ``--count``
+     - ``1000``
+     - Number of seed geometries, which also sets ``bootstrap_set``.
+   * - ``--generate-seeds``
+     - Off
+     - Prepare the seeds now. Otherwise, prepare them yourself with
+       ``python initial_sampling.py --config seed_config.json --output-dir seeds``.
+   * - ``--model``
+     - ``hiphop145``
+     - Network size: ``hiphop145``, ``hiphop100``, ``hiphop64``, or ``hipnn64``.
+   * - ``--reference``, ``--energy-offset-ev``
+     - None
+     - For another ring size, a minimized S0 XYZ file and its energy offset. Don't reuse
+       the offset from another size. The method only supports para-linked CPP rings.
+
+The included references are gas-phase minima, and ``--solvent dcm`` uses them too.
+Seed preparation applies phenyl rotations and small rattles to the reference, half in
+a narrow range and half in a broad one. It runs no QM or optimization. Edit
+``seed_config.json`` to change those ranges.
+
+Configure Parsl
+---------------
+
+``parsl_configs.py`` is a Slurm template that reads its settings from the environment,
+with the variables listed in :doc:`acac_excited_pyseqm`. Importing it submits no jobs.
+It adds ``ALF_QM_MAX_BLOCKS``, ``ALF_ML_MAX_BLOCKS``, and ``ALF_SAMPLER_MAX_BLOCKS``.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 18 18 64
+
+   * - Role
+     - Most nodes
+     - Layout on each node
+   * - QM
+     - 8
+     - Four workers, each with one GPU and eight CPU threads.
+   * - Training
+     - 1
+     - One task that trains four members on four local GPUs.
+   * - Sampling
+     - 1
+     - Four workers.
+
+All three start with no nodes. Parsl requests nodes as work arrives, and releases them
+when they are idle, so a smaller run can lower the limits instead of reserving nodes.
+
+**GPU binding.** GPU4PySCF needs each QM worker to see one GPU as its local device 0;
+see :ref:`parsl-gpu4pyscf-workers`. ``parsl_configs.py`` handles this by launching QM
+workers through ``qm_worker_pool.py``, which looks up the GPUs the scheduler allocated
+and has Parsl bind one to each worker. Training and sampling assign their devices as
+usual. To use this binding at another site, keep that launch command and copy
+``qm_worker_pool.py`` along with it.
+
+Run The Example
+---------------
+
+From the prepared directory:
+
+.. code-block:: bash
+
+   python -m alframework --master master_config.json
+
+ALF labels all the seeds in order, then trains the first ensemble. After that, it
+samples from each state, labels the selected frames, and retrains. New sampler starting
+geometries come from the stored label files. Labels take minutes each at this size, so
+run the coordinator somewhere that survives disconnecting, such as ``tmux``.
+
+``finite_bootstrap`` is on, so ALF stops with an error if the seeds run out before the
+bootstrap finishes. If that happens, look for failed labels in the logs and metadata.
+
+Solvent
+-------
+
+``--solvent dcm`` turns on C-PCM with the settings in ``QM_config_dcm.json``:
+dielectrics of 9.02 and 2.03, Lebedev order 29, and a radius scale of 1.2. See
+:ref:`excited-states-solvent` for what each field does.
+
+In DCM, state energies, forces, couplings, and the ordinary optical properties use
+equilibrium linear-response PCM. The ``vertical_*`` properties come from a separate
+nonequilibrium solve and are meant for vertical spectra. Each DCM label takes longer
+than a gas-phase one, because of the solvent and the extra solve.
+
+Memory
+------
+
+These are measurements on a 40 GB A100, for CPP9 with the default ``hiphop145`` network:
+
+* **QM:** a gas-phase label reached about 39 GiB, close to the card's limit, so a harder
+  geometry may not fit. A CPP6 label reached about 30 GiB.
+* **Training:** ``hippynn_config.json`` uses a batch size of 8 for training, evaluation,
+  and the scheduler limit, which peaked near 28 GiB. A batch of 16 reached about 37 GiB,
+  and a batch of 32 ran out of memory. Dataset size mainly affects host memory.
+
+Memory use for the smaller networks hasn't been measured.
+
+Expected Outputs
+----------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Path
+     - Purpose
+   * - ``status.json``
+     - Restart state, including current HDF5 and model ids.
+   * - ``seeds/``
+     - Selected seeds, reference, and provenance.
+   * - ``preparation.json``
+     - The ring size, solvent, model, and energy offset used to prepare this run.
+   * - ``h5store/data-*.h5``
+     - Labeled batches, including coupling vectors and optical data.
+   * - ``models/model-*``
+     - Trained four-member ensembles.
+   * - ``sampling/screen_audit/``
+     - Initial, last valid, and rejected frames from the runtime screens.
+
+The example's settings are a starting point. A run shows that the workflow operates on
+your machine, not that the trained potential is accurate or stable over long dynamics,
+so check the model against reference data before relying on it.

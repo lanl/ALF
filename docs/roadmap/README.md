@@ -224,6 +224,13 @@ running ALF, so they don't mention increments or campaigns.
 `examples/keto_acac`. These still appear on the auto-generated API pages. The
 `excited_states.rst` page has no worked example until `keto_acac` can be documented.
 
+**Hold-back closed the same day.** After 11A passed, the guide gained these features,
+DCM C-PCM labeling and `vertical_*` properties, the one-GPU-per-worker requirement for
+GPU4PySCF, and pages for `examples/AcAc_excited_pyseqm` (renamed from `keto_acac`) and
+`examples/CPP_excited_gpu4pyscf`. By user decision, the CPP page documents the whole
+example and says nothing about E6, whose status stays in
+[`excited_states.md`](excited_states.md).
+
 `sphinx-docs.yml` now also builds for `development`, while deployment stays limited
 to `main`. The public site therefore keeps describing `main` until `development`
 merges.
@@ -233,6 +240,27 @@ renders the code's Google-style `Args:` sections, and uses real Parsl during the
 build with `python_app` replaced by a shim that keeps the plain function. Mocking
 `parsl` had made autodoc skip every `*_task` entry point. The build has no warnings,
 and the docs job now runs with `-W`, so a new warning fails it.
+
+### Recent test review (2026-11-06)
+
+A review of the tests added since `b995c15` found them passing but with gaps:
+
+- Tests still asserted that GPU4PySCF labeling works on `cuda:1`, which the backend now
+  rejects. They now use device 0, and a new test runs real device selection with the
+  real backend.
+- `test_examples.py` claimed every tracked example but left out the AcAc and CPP
+  examples. It now loads their configs. Portability checks stay in `alf_validation`.
+- New tests cover the gas vertical spectrum, vertical-optics and PCM NAC failures, the
+  vertical scale check, late-stage convergence metadata, the gas NAC solver, and custom
+  dielectrics. Each was shown to fail when its library branch is broken.
+- Eight tests were renamed to the naming rule above. `alf_validation` selectors that name
+  the old tests need updating.
+
+Local result: 569 passed, 2 skipped (`seqm` not installed).
+
+Two library points were noted but not changed: `select_gpu4pyscf_device` still chooses
+and activates a nonzero GPU that the backend then rejects, and `qm_vertical_response`
+records a nonequilibrium response even when no vertical solve ran.
 
 ## Development and test environments
 

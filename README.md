@@ -50,7 +50,7 @@ To control job flow in the active learning framework, 5 json files are used:
 4. Sampler configuration, such as `mlmd_config.json`
 5. QM configuration, such as `orca_config.json`
 
-The master configuration file controls how all pieces of the framework are assembled and defines where to find the other 4 files, so their names are up to you. Each of the other 4 files passes inputs to one of the four subtasks enumerated in the first section. To see how these files relate to one another, please see the `examples` folder and the [configuration guide](https://lanl.github.io/ALF/user_guide/configuration.html).
+The master configuration file controls how all pieces of the framework are assembled and defines where to find the other 4 files, so their names are up to you. Each of the other 4 files passes inputs to one of the four subtasks enumerated in the first section. To see how these files relate to one another, please see the `examples` folder and the [configuration guide](https://lanl.github.io/ALF/user_guide/configuration.html). For active learning over excited states, see the [excited states guide](https://lanl.github.io/ALF/user_guide/excited_states.html) and the `examples/AcAc_excited_pyseqm` and `examples/CPP_excited_gpu4pyscf` examples.
 
 ## 🧪 Testing: 
 

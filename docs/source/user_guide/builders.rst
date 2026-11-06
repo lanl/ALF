@@ -62,6 +62,11 @@ Supported Builder Tasks
        stored with them.
      - Starting from structures you already have, including frames from an existing
        dataset that need relabeling.
+   * - ``alframework.builders.rdkit_molecule.rdkit_molecule_builder_task``
+     - Replays molecular seed geometries prepared ahead of time with RDKit, then
+       geometries from stored labels.
+     - Single molecules that need varied starting geometries; see
+       :ref:`builders-rdkit-seeds`.
    * - ``alframework.builders.defect_crystal_builder.defect_cell_builder_task``
      - Loads a random ``.cfg`` crystal structure, then applies random vacancies,
        interstitials, replacements, atom displacements, and cell scaling.
@@ -245,6 +250,92 @@ Batched builders
    ``external_geometry_builder_task``. See :doc:`batching` for how builder width
    relates to sampler and QM batches.
 
+.. _builders-rdkit-seeds:
+
+Preparing Molecular Seeds With RDKit
+------------------------------------
+
+``rdkit_molecule_builder_task`` doesn't generate geometries during a run. You prepare
+them first on a CPU, which needs the ``topology`` extra:
+
+.. code-block:: bash
+
+   python -m alframework.builders.rdkit_molecule --config seed_config.json --output-dir seeds
+
+Preparation embeds a large pool of geometries around your reference at increasing
+levels of distortion, screens them, and uses farthest-point sampling (FPS) to pick a
+varied subset. It runs no QM, dynamics, or force-field optimization, and it won't
+overwrite an existing directory.
+
+.. code-block:: json
+
+   {
+     "smiles": "CC(=O)CC(C)=O",
+     "reference_geometry": "keto.xyz",
+     "reference_charge": 0,
+     "pool_size": 50000,
+     "seed_size": 5000
+   }
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 16 50
+
+   * - Field
+     - Default
+     - Meaning
+   * - ``smiles``, ``reference_geometry``
+     - Required
+     - The molecule, and its explicit-hydrogen reference geometry. A relative path
+       starts from the seed configuration file.
+   * - ``reference_charge``
+     - From the SMILES
+     - Molecular charge of the reference. It must match the SMILES formal charge.
+   * - ``pool_size``, ``seed_size``
+     - ``50000``, ``5000``
+     - Geometries to accept into the pool, and how many to select from it.
+   * - ``seed``, ``threads``
+     - ``42``, ``1``
+     - Random seed and RDKit embedding threads.
+   * - ``box_size_mult``, ``max_embedding_rounds``, ``polar_h``
+     - ``4.0``, ``5``, ``true``
+     - Embedding box size, embedding attempts at each distortion level, and whether
+       hydrogens on N, O, or S use the heavy-atom scales. Preparation fails if a level
+       can't fill its share of the pool.
+   * - ``bond_scales``, ``angle_scales``, ``xh_bond_scales``, ``xh_angle_scales``,
+       ``torsion_scales``
+     - Six levels each
+     - How far each distortion level widens the bounds around the reference. All five
+       lists must be the same length, one entry per level.
+   * - ``geometry_screen``
+     - See below
+     - Rejects bad pool geometries, using ``bond_min_scale`` (``0.85``),
+       ``bond_max_scale`` (``1.5``), ``nonbonded_min_scale`` (``1.4``),
+       ``connectivity_scale`` (``1.25``), and ``min_distance_A`` (``0.7``).
+
+The output directory holds ``pool.h5``, ``seed.h5``, a copy of the reference,
+``builder_config.json``, and ``provenance.json``. The last file records every setting
+and file fingerprint, and suggests the matching settings under ``alf_configuration``.
+Add them to your run:
+
+.. code-block:: json
+
+   {
+     "builder_task": "alframework.builders.rdkit_molecule.rdkit_molecule_builder_task",
+     "builder_config_path": "seeds/builder_config.json",
+     "bootstrap_set": 5000,
+     "finite_bootstrap": true
+   }
+
+Set ``bootstrap_set`` to ``seed_size``. The builder config needs ``seed_manifest_path``,
+pointing at ``provenance.json``, and can set ``selection_seed`` (default ``42``).
+
+The builder stops if the prepared files have changed. It labels ``seed.h5`` in order
+during the bootstrap. After that, it picks geometries from the stored label files,
+keeping only the geometry and atom identities. Its atoms carry the
+``topology_atom_ids`` that the sampler's ``topology_check`` needs; see
+:ref:`samplers-runtime-screens`.
+
 Related Examples
 ----------------
 
@@ -273,6 +364,9 @@ Related Examples
    * - ``examples/IL``
      - ``alframework.builders.builders.simple_condensed_phase_builder_task``
      - Condensed-phase ionic-liquid style mixtures.
+   * - ``examples/AcAc_excited_pyseqm``
+     - ``alframework.builders.rdkit_molecule.rdkit_molecule_builder_task``
+     - RDKit seeds for one molecule.
 
 Builder API Links
 -----------------
@@ -284,4 +378,5 @@ You can link from this guide directly to API pages:
 * :doc:`Molten-salt builder module <../api_documentation/alframework.builders.moltensalt_builder>`
 * :doc:`Reactive builder module <../api_documentation/alframework.builders.reactive_builder>`
 * :doc:`External geometry module <../api_documentation/alframework.builders.external_geometry>`
+* :doc:`RDKit molecule module <../api_documentation/alframework.builders.rdkit_molecule>`
 * :doc:`Defect crystal module <../api_documentation/alframework.builders.defect_crystal_builder>`

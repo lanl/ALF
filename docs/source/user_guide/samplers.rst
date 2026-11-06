@@ -275,6 +275,13 @@ Select it in ``master_config.json``, then add its settings to the sampler config
      - Optional. How frames are chosen for QM; see :doc:`acquisition`.
    * - ``MLMD_calculator_options``
      - As above. Set ``udd_bias_weight`` here for uncertainty-driven dynamics.
+   * - ``friction_per_fs``
+     - Optional. Langevin friction per femtosecond, for all three engines. It must
+       be zero or more. Without it, the engines use a friction of ``0.02`` in ASE
+       units.
+   * - ``topology_check``, ``max_force_cutoff``, ``screen_audit_dir``
+     - Optional. End trajectories that break or develop unphysical forces; see
+       :ref:`samplers-runtime-screens`.
 
 Dynamics engines
    All three engines use the same checks, schedules, stopping rules, and
@@ -316,6 +323,78 @@ Other differences from ``simple_mlmd_sampling_task``:
 * ALF stops at startup if a single-structure sampler task is given ``driver``,
   ``batching``, or ``acquisition.selection``.
 * For excited-state sampling, see :doc:`excited_states`.
+
+.. _samplers-runtime-screens:
+
+Runtime Screens
+---------------
+
+``mlmd_trajectories_task`` can end a trajectory that has left the chemistry you
+meant to sample, so that its broken geometries never reach QM. Both screens are off
+by default, work with all three engines, and run when a trajectory starts and at each
+uncertainty check, every ``Ncheck`` steps.
+
+.. code-block:: json
+
+   {
+     "topology_check": {
+       "enabled": true,
+       "reference_conformer_path": "seeds/reference.xyz",
+       "reference_charge": 0,
+       "bond_min_scale": 0.85,
+       "bond_max_scale": 1.5,
+       "connectivity_scale": 1.25
+     },
+     "max_force_cutoff": 16.0,
+     "screen_audit_dir": "sampling/screen_audit"
+   }
+
+.. list-table::
+   :header-rows: 1
+   :widths: 40 60
+
+   * - Field
+     - Meaning
+   * - ``topology_check.enabled``
+     - Turns the bond check on. The default is ``false``.
+   * - ``topology_check.reference_conformer_path``
+     - Required. XYZ, MOL, or SDF file that defines the expected bonds. A relative
+       path starts from the master directory.
+   * - ``topology_check.reference_format``
+     - ``"xyz"``, ``"mol"``, ``"mdl"``, or ``"sdf"``. The default, ``"auto"``, uses
+       the file extension.
+   * - ``topology_check.reference_charge``
+     - Molecular charge, used to work out bonds from an XYZ file. The default is
+       ``0``.
+   * - ``topology_check.bond_min_scale``, ``topology_check.bond_max_scale``
+     - Required. Limits on each bond's length as a fraction of its length in the
+       reference. They must satisfy ``0 < bond_min_scale <= 1 <= bond_max_scale``.
+   * - ``topology_check.connectivity_scale``
+     - Required. Two atoms that aren't bonded in the reference count as a new bond
+       when they come within this multiple of the sum of their covalent radii.
+   * - ``max_force_cutoff``
+     - Largest allowed force on any atom, in eV/Angstrom, using the ensemble-mean
+       forces from unbiased predictions. In excited-state mode, it applies to every
+       state, not only the selected one. Forces that aren't finite always fail.
+   * - ``screen_audit_dir``
+     - Where each task writes one JSON file with the initial, last valid, and rejected
+       frames of its trajectories. It doesn't record whole trajectories. Without it,
+       ALF stores the same record in each molecule's metadata.
+
+When a frame fails, ALF ends that trajectory, records why in the molecule's metadata
+as ``screen_reject_reason``, and doesn't label the frame. Earlier frames from the
+same trajectory stay eligible if ``"trajectory_policy": "continue"`` kept them in a
+cohort; see :doc:`acquisition`.
+
+The bond check has these requirements:
+
+* Structures must be nonperiodic.
+* Each structure's atoms must carry ``topology_atom_ids``, which map them to the
+  reference. ``rdkit_molecule_builder_task`` provides them, and
+  ``external_geometry_builder_task`` keeps them when its source files have them. Without
+  them, every trajectory fails with ``topology_identity``. See :doc:`builders`.
+* Sampler workers need the ``topology`` extra, because RDKit reads the reference; see
+  :doc:`../getting_started/installation`.
 
 GPU Selection
 -------------

@@ -573,9 +573,9 @@ GALF/LCM, staged handoffs, single-member excited-state sampling, full-scale
 production qualification, and user-guide updates. Runtime force cutoffs do
 not filter stored QM labels in this stage.
 
-User-owned documentation follow-up, now unblocked by the 11A pass: document the held-back features,
-and add `examples/AcAc_excited_pyseqm` as the worked excited-state example; see **User
-documentation pass (2026-11-06)**.
+Documentation follow-up, done November 6: the guide now covers the held-back features,
+with `examples/AcAc_excited_pyseqm` as the worked excited-state example; see
+[User documentation pass](README.md#user-documentation-pass-2026-11-06).
 
 ## Increment 11B — calibration and DCM labeling qualified; cpp-ring ALF (E6) planned
 
@@ -912,6 +912,11 @@ convergence, training, acquisition and promotion acceptance remain pending.
 verified.** Ten-node scaling, predictive accuracy, long-time stability,
 production-scale qualification and post-QM filtering remain unclaimed.
 CPP6 remains an additional transferable example. User guides remain untouched.
+
+User decision, November 6: the guide's page for `examples/CPP_excited_gpu4pyscf`
+documents the whole example now, ahead of this result, and says nothing about E6. This
+section is where E6 status is recorded. If the pilot changes the example's settings or
+shows a limit users need, update that page too.
 
 
 

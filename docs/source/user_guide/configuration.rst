@@ -98,6 +98,11 @@ The master config controls the workflow wiring. Common fields include:
        ``save_h5_threshold``, ``bootstrap_set``
      - Queue-depth and retraining controls for the active-learning loop. These
        count structures, including when tasks are batched. See :doc:`batching`.
+   * - ``finite_bootstrap``
+     - Optional. ``true`` builds exactly ``bootstrap_set`` structures, for a builder
+       reading a fixed list of seeds. ALF stops with an error if builders run out
+       before that many are labeled. The default is ``false``, which keeps building
+       until enough labeling tasks have finished.
    * - ``maximum_builder_structures``
      - Optional number of structures one builder task returns. The default is
        ``1``. See :doc:`builders`.

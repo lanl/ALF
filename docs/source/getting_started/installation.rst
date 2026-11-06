@@ -84,7 +84,8 @@ install the Python packages that ALF can pull in directly:
      - HIPPYNN training and sampling.
    * - ``topology``
      - ``rdkit``
-     - The RDKit condensed-phase builder, ``rdkit_condensed_phase_builder_task``.
+     - The RDKit builders, ``rdkit_condensed_phase_builder_task`` and
+       ``rdkit_molecule_builder_task``, and the sampler's ``topology_check``.
    * - ``torchsim``
      - ``torch-sim-atomistic``
      - The TorchSim dynamics engine. Needs Python 3.12 or newer.
@@ -117,7 +118,10 @@ Other backends are installed separately:
 * **PySEQM:** install from `its repository <https://github.com/lanl/PYSEQM>`__.
   ALF's automated tests run against commit ``52850b4``.
 * **GPU4PySCF:** needs ``gpu4pyscf``, ``pyscf``, and a CuPy build that matches the
-  worker's CUDA runtime.
+  worker's CUDA runtime. Large molecules also need native cuTENSOR, from a wheel
+  matching that runtime such as ``cutensor-cu13``, with the wheel's ``cutensor/lib``
+  directory on the worker's ``LD_LIBRARY_PATH``. Without it, GPU4PySCF falls back to
+  CuPy contractions, which use much more GPU memory.
 * **ORCA, VASP, and Q-Chem:** install the executables yourself. These and other
   ASE-supported QM engines can also require environment variables,
   pseudopotential paths, and license or module setup.

@@ -209,6 +209,32 @@ assignment when no visibility mask is set; an existing allocation takes
 precedence. GPU numbering inside a worker is relative to that allocation.
 See :doc:`samplers` for explicit device overrides and legacy defaults.
 
+.. _parsl-gpu4pyscf-workers:
+
+GPU4PySCF Workers
+^^^^^^^^^^^^^^^^^
+
+GPU4PySCF is different: each QM worker must see exactly one GPU, as its local device
+0, before CUDA starts. If a worker can see several GPUs, its rank may select a nonzero
+device, and ALF then marks those labels as failed with a device error.
+
+When ALF has the whole node, use Parsl's ``available_accelerators``, which pins each
+worker to one GPU:
+
+.. code-block:: python
+
+   HighThroughputExecutor(
+       label="alf_QM_executor",
+       max_workers_per_node=4,
+       available_accelerators=4,
+       provider=provider,
+   )
+
+A number names GPUs from 0 upward, which can be wrong when the scheduler gave you
+only some of a node's GPUs. In that case, start workers with
+``examples/CPP_excited_gpu4pyscf/qm_worker_pool.py``, which looks up the allocated GPUs
+and binds one to each worker; see :doc:`../examples/cpp_excited_gpu4pyscf`.
+
 Globus Compute Endpoints
 ------------------------
 

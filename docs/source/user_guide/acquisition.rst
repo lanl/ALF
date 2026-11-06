@@ -162,6 +162,10 @@ to the most uncertain frames rather than to whichever frames triggered first:
      - Optional. The most frames one trajectory can keep in the pool. Only its
        highest-scoring frames are kept. Each trajectory is always limited to at
        most ``k``.
+   * - ``selection.group_by_selected_state``
+     - Optional. ``true`` keeps a separate cohort for each selected state, so each
+       state gets its own ``k`` frames rather than competing with the others. It
+       requires ``"model_mode": "excited_state"``; see :doc:`excited_states`.
    * - ``trajectory_policy``
      - ``"stop"`` (default) ends a trajectory at its first eligible frame, so it
        adds at most one frame. ``"continue"`` keeps sampling so it can add more,

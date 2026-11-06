@@ -27,9 +27,10 @@ stages fit together like this:
    * - Sampling
      - ``alframework.samplers.batched_mlmd.mlmd_trajectories_task``
 
-There is no worked excited-state example in this guide yet, so treat the snippets
-below as fragments to combine with a full configuration, such as the one in
-:doc:`../examples/simple_water`.
+The snippets below are fragments. For complete runs, see
+:doc:`../examples/acac_excited_pyseqm`, which uses PySEQM, and
+:doc:`../examples/cpp_excited_gpu4pyscf`, which uses GPU4PySCF with an optional
+solvent.
 
 Property Names
 --------------
@@ -72,6 +73,17 @@ Property Names
      - ``pair_atomic``
      - Optional nonadiabatic coupling vectors, from GPU4PySCF only. They are stored
        but not used in training.
+   * - ``transition_dipoles``, ``oscillator_strengths``, ``absolute_state_energies``
+     - ``system``
+     - Optional optical outputs, from GPU4PySCF only. Dipoles are in atomic units, and
+       absolute energies are in eV with no offset removed. They are stored but not
+       used in training.
+   * - ``vertical_excitation_energies``, ``vertical_transition_dipoles``,
+       ``vertical_oscillator_strengths``
+     - ``system``
+     - Optional vertical spectrum, from GPU4PySCF only; see
+       :ref:`excited-states-solvent`. The energies must use the same conversion factor
+       as the state energies. They are stored but not used in training.
 
 Both labelers report eV and eV/Angstrom, so the conversion factors above are
 ``1.0``. See :doc:`units` for how those factors work.
@@ -80,10 +92,10 @@ Labeling With GPU4PySCF
 -----------------------
 
 ``gpu4pyscf_excited_state_task`` runs singlet TDDFT within the Tamm-Dancoff
-approximation (TDA) for one molecule per task, on a GPU. It needs a visible CUDA
-device on the QM worker and a CuPy build matching the worker's CUDA runtime. To
-pack several molecules into a job, use ``"mode": "sequential"``; see
-:doc:`batching`.
+approximation (TDA) for one molecule per task, on a GPU. It needs a CuPy build
+matching the worker's CUDA runtime, and each QM worker must see exactly one GPU, as
+its local device 0; see :ref:`parsl-gpu4pyscf-workers`. To pack several molecules into
+a job, use ``"mode": "sequential"``; see :doc:`batching`.
 
 The number of states in ``properties_list`` must equal ``nroots + 1``.
 
@@ -129,6 +141,75 @@ The number of states in ``properties_list`` must equal ``nroots + 1``.
      - Also compute excited-excited coupling vectors. Requires ``nroots`` of at
        least 2 and a ``nacr`` entry in ``properties_list``. ALF records the state
        pair order in an HDF5 dataset named ``nac_pairs``.
+   * - ``solvent``
+     - ``null``
+     - Optional implicit solvent; see :ref:`excited-states-solvent`.
+
+Large molecules need a lot of GPU memory, and native cuTENSOR to stay within it; see
+:doc:`../getting_started/installation`. As a guide, a CPP9 ring (90 atoms at
+CAM-B3LYP/6-31G with four states and couplings) reaches about 39 GiB on a 40 GB A100
+in the gas phase, which leaves no margin for larger or harder geometries.
+
+.. _excited-states-solvent:
+
+Implicit Solvent
+^^^^^^^^^^^^^^^^
+
+``solvent`` adds a C-PCM solvent to GPU4PySCF labels. Setting ``{"enabled": true}``
+alone gives dichloromethane:
+
+.. code-block:: json
+
+   {
+     "solvent": {
+       "enabled": true,
+       "name": "dichloromethane",
+       "static_dielectric": 9.02,
+       "optical_dielectric": 2.03
+     }
+   }
+
+.. list-table::
+   :header-rows: 1
+   :widths: 36 20 44
+
+   * - Field
+     - Default
+     - Meaning
+   * - ``enabled``
+     - ``true``
+     - ``false`` runs in the gas phase. ALF rejects an empty ``solvent`` block, so a
+       mistake can't silently label in vacuum.
+   * - ``name``
+     - ``dichloromethane``
+     - Descriptive label, recorded in each molecule's metadata. It doesn't set any
+       physical values, so also set the dielectrics for another solvent.
+   * - ``static_dielectric``, ``optical_dielectric``
+     - ``9.02``, ``2.03``
+     - Must satisfy ``static_dielectric >= optical_dielectric >= 1``.
+   * - ``method``, ``surface_discretization_method``
+     - ``C-PCM``, ``SWIG``
+     - The only supported values.
+   * - ``lebedev_order``
+     - ``29``
+     - Cavity surface grid. Must be an order that PySCF supports.
+   * - ``vdw_scale``, ``pcm_conv_tol``
+     - ``1.2``, ``1e-7``
+     - Cavity radius scale and PCM tolerance.
+
+Two kinds of results come from a solvent calculation:
+
+* **State energies, forces, couplings, and the ordinary optical properties** use
+  equilibrium linear-response PCM. These are linear-response energies, not
+  state-specific PCM energies. Each coupling pair is solved separately.
+* **The ``vertical_*`` properties** come from a separate nonequilibrium TDA solve using
+  the optical dielectric. Their roots are ordered on their own, so a vertical root
+  isn't guaranteed to be the same state as the equilibrium root with that number.
+  ``energy_offset_eV`` doesn't apply to excitation energies.
+
+ALF computes the extra solve only if ``properties_list`` asks for a ``vertical_*``
+property. In the gas phase, these properties come from the same TDA solve as the
+state energies. Solvent calculations take longer than gas-phase ones.
 
 Labeling With PySEQM
 --------------------
@@ -290,6 +371,11 @@ Limits:
   startup if ``MLMD_calculator_options`` sets either one.
 * Each sampler task holds one state, so ALF batches trajectories by state.
 * Structures must be nonperiodic.
+
+Cohorts can also be kept separate for each state, with
+``selection.group_by_selected_state``; see :doc:`acquisition`. To end trajectories that
+break a bond or develop unphysical forces on any state, see
+:ref:`samplers-runtime-screens`.
 
 Excited-State API Links
 -----------------------

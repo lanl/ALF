@@ -246,8 +246,8 @@ and the docs job now runs with `-W`, so a new warning fails it.
 A review of the tests added since `b995c15` found them passing but with gaps:
 
 - Tests still asserted that GPU4PySCF labeling works on `cuda:1`, which the backend now
-  rejects. They now use device 0, and a new test runs real device selection with the
-  real backend.
+  rejects. They now use device 0, and a new test runs real device selection through
+  labeling.
 - `test_examples.py` claimed every tracked example but left out the AcAc and CPP
   examples. It now loads their configs. Portability checks stay in `alf_validation`.
 - New tests cover the gas vertical spectrum, vertical-optics and PCM NAC failures, the
@@ -258,9 +258,8 @@ A review of the tests added since `b995c15` found them passing but with gaps:
 
 Local result: 569 passed, 2 skipped (`seqm` not installed).
 
-Two library points were noted but not changed: `select_gpu4pyscf_device` still chooses
-and activates a nonzero GPU that the backend then rejects, and `qm_vertical_response`
-records a nonequilibrium response even when no vertical solve ran.
+The review also led to two GPU4PySCF library fixes; see
+[Increment 11B](excited_states.md#increment-11b--calibration-and-dcm-labeling-qualified-cpp-ring-alf-e6-planned).
 
 ## Development and test environments
 

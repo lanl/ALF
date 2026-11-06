@@ -215,11 +215,11 @@ GPU4PySCF Workers
 ^^^^^^^^^^^^^^^^^
 
 GPU4PySCF is different: each QM worker must see exactly one GPU, as its local device
-0, before CUDA starts. If a worker can see several GPUs, its rank may select a nonzero
-device, and ALF then marks those labels as failed with a device error.
+0, before CUDA starts. A worker that can see several GPUs marks every label as failed
+with a device error, whatever its rank, including when only one worker is running.
 
 When ALF has the whole node, use Parsl's ``available_accelerators``, which pins each
-worker to one GPU:
+worker to one GPU. ``gpus_per_node`` has no effect on this:
 
 .. code-block:: python
 

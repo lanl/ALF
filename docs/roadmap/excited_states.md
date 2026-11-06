@@ -918,6 +918,24 @@ documents the whole example now, ahead of this result, and says nothing about E6
 section is where E6 status is recorded. If the pilot changes the example's settings or
 shows a limit users need, update that page too.
 
+GPU4PySCF library fixes after the test review, November 6 (user decision). CPU tests
+with fakes only; the running pilot's frozen snapshot doesn't include them.
+
+- `select_gpu4pyscf_device` now rejects any worker that sees more than one GPU, at any
+  rank, and no longer selects by rank. Before this, rank 0 labeled normally while other
+  ranks failed every label, the pattern in the first pilot attempt. Workers bound by
+  `qm_worker_pool.py` see one GPU, so they take the same path as before. A single rank-0
+  worker on a node exposing several GPUs now needs `available_accelerators=1` or a
+  one-GPU allocation. `gpus_per_node` remains in the signatures but is unused here.
+- `qm_optical_response`, `qm_vertical_response`, and `qm_vertical_root_order` now record
+  `none` when that calculation didn't run. Gas-phase vertical root order is now
+  `same as state TDA roots`, because those energies come from the state TDA solve.
+
+Still to check on Darwin: a short real run confirming that a bound worker labels and an
+unbound multi-GPU worker fails with the new message, and that `alf_validation` has
+nothing expecting several visible GPUs at rank 0 or reading these fields on runs without
+those properties.
+
 
 
 User decision, November 5: add the opt-in chemical topology checker across

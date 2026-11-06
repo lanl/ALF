@@ -454,37 +454,13 @@ their affected stacks without upgrading an environment used by an active run.
 
 Status values: **planned**, **in progress**, **done locally** (committed on
 local `development`, not yet pushed), and **merged** (in official
-`lanl/ALF:development`). Rows 0-7 are detailed in [`batching.md`](batching.md) and
-rows 8-11B in [`excited_states.md`](excited_states.md).
+`lanl/ALF:development`).
 
-On 2026-11-02 the user pushed local `development` directly to official
-`development` (tip `d5a0395`), rather than through separate fork PRs.
-Increments 0–3 and 4a–4b are therefore merged. The user pushed again the same day
-(tip `86f62ca`), merging 4c and Increment 5. A live remote check on November 2
-confirmed official development at `be7fb64`, including Increment 6 and the
-shared-test rename. A later push (tip `24028da`, verified November 2) merged the
-Increment 7 prerequisite fixes and their acceptance record. Main remains
-`206ea44`, already included in development.
-On November 3, a live remote check confirmed development at `d4bf99d`, including
-the core campaign harness and MPI/deadline repair; main remains `206ea44`.
-Older progress entries retain their dated status at the time of writing; the
-table below is the current status. Agents still commit locally only; the user
-pushes.
+When an increment finishes, move its row to [`batching.md`](batching.md#delivered-increments) or
+[`excited_states.md`](excited_states.md#delivered-increments), which hold the delivered ones.
 
 | Increment | Status | Deliverable | Acceptance gate |
 | --- | --- | --- | --- |
-| 0. Roadmap and baseline | merged (`d5a0395`) | Publish this document, synchronize development with main, and record existing-example/test behavior. | Baseline results and unavailable dependencies are documented. |
-| 1. Shared batching helpers | merged (`d5a0395`) | Compatible grouping, waiting buffers, timeout submission, actual-width accounting, output normalization, and batch-builder ID preservation. | Focused tests pass; existing execution is unchanged until batching is selected. |
-| 2. Labeling coordination | merged (`d5a0395`) | Batched labeling during bootstrap and active learning; explicit sequential compatibility for existing single-structure labelers. | Actual coordinator tests cover labeling, partial batches, storage, and retraining. |
-| 3. Native PySEQM labeling | merged (`d5a0395`) | Ground-state batch energies/forces, adapter-local padding and atom-order restoration, and per-member convergence handling. | Native batch results agree with individual evaluations; successful labels survive partial failures. |
-| 4. Ground-state sampling and acquisition | merged (`86f62ca`) | Minimal physical-inference/MLMD contracts, uncertainty and summed ranking, first-trigger returns, and an in-memory logical-cohort selector. | Shared observations produce equivalent screening, scores, stopping, and selection across execution strategies. |
-| 5. TorchSim dynamics | merged (`86f62ca`) | Supported NVIDIA/AMD ground-state batched MLMD. | CPU, NVIDIA, and Darwin MI250 mechanics and integration acceptance pass. |
-| 6. ALCHEMI dynamics | merged (`be7fb64`) | ALCHEMI 0.2.0 NVIDIA batched MLMD through the same contracts, in its separate environment. | Shared conformance tests and NVIDIA acceptance pass; TorchSim CUDA/ROCm regressions pass. |
-| 7. Combined release validation | merged (`401fc89`); closed by user acceptance 2026-11-05 | Opt-in examples and integration/performance results. | All single/batched dynamics x single/batched labeling combinations complete representative ALF workflows. |
-| 8. Excited-state contracts and labeling (E1–E2) | merged (`401fc89`) | State/gap contracts, topology-aware NAC storage, GPU4PySCF TDA labels, and native PySEQM CIS batching. | Backend qualification gates passed; see [Increment 8](excited_states.md#increment-8--completed-excited-state-contracts-and-labeling-2026-11-05). |
-| 9. Multi-state training and external geometries (E3–E4) | merged (`7c24cb2`, live remote verified 2026-11-05) | Shared-trunk state heads and force gradients in the existing HIPPYNN interface; unlabeled XYZ/HDF5 geometry builder. | 402 library tests pass; real 32-frame import/label/store/four-member GPU training and reload passed. |
-| 10. Selected-state sampling and acquisition (E5) | merged (`a5090e0`, `6c2751d`, `1c367ba`) | Multi-state inference, state selection and grouping, and named gap uncertainty across ASE, TorchSim CUDA, and ALCHEMI. | Focused compatibility/parity tests; real widths one/four on each engine; one shared small acquisition/label/store/retraining qualification. |
-| 11A. Chemical topology screening and fixed-keto AcAc ALF | merged (`4a1caba`) | Opt-in reference-based chemical topology screening across ASE, TorchSim, and ALCHEMI; an ordinary AcAc ALF loop. | Screens passed on all three engines; newly sampled labels entered a promoted four-member ensemble. |
 | 11B. cpp-ring active learning (E6) | in progress; calibration and DCM labeling qualified, E6 pilot pending | Run the ordinary ring ALF loop. | Newly sampled ring IDs enter a promoted, loadable four-member ensemble. |
 
 ## Compatibility and acceptance

@@ -2,6 +2,33 @@
 
 The E1-E6 plan and Increments 8-11B: excited-state contracts, labeling, training, sampling, and the AcAc and CPP work. See the [roadmap index](README.md) for current status and standing rules.
 
+## Delivered increments
+
+Moved from [`README.md`](README.md) on November 6, 2026. **Merged** means in official `lanl/ALF:development`. Increment 11B is still in progress; see [Increment status](README.md#increment-status).
+
+| Increment | Status | Deliverable | Acceptance gate |
+| --- | --- | --- | --- |
+| 8. Excited-state contracts and labeling (E1–E2) | merged (`401fc89`) | State/gap contracts, topology-aware NAC storage, GPU4PySCF TDA labels, and native PySEQM CIS batching. | Backend qualification gates passed; see [Increment 8](#increment-8--completed-excited-state-contracts-and-labeling-2026-11-05). |
+| 9. Multi-state training and external geometries (E3–E4) | merged (`7c24cb2`, live remote verified 2026-11-05) | Shared-trunk state heads and force gradients in the existing HIPPYNN interface; unlabeled XYZ/HDF5 geometry builder. | 402 library tests pass; real 32-frame import/label/store/four-member GPU training and reload passed. |
+| 10. Selected-state sampling and acquisition (E5) | merged (`a5090e0`, `6c2751d`, `1c367ba`) | Multi-state inference, state selection and grouping, and named gap uncertainty across ASE, TorchSim CUDA, and ALCHEMI. | Focused compatibility/parity tests; real widths one/four on each engine; one shared small acquisition/label/store/retraining qualification. |
+| 11A. Chemical topology screening and fixed-keto AcAc ALF | merged (`4a1caba`) | Opt-in reference-based chemical topology screening across ASE, TorchSim, and ALCHEMI; an ordinary AcAc ALF loop. | Screens passed on all three engines; newly sampled labels entered a promoted four-member ensemble. |
+
+## Delivered capabilities
+
+Moved from [`future.md`](future.md) on November 6, 2026. LCM gap seeking is the one part still open; see [Group B](future.md#group-b-biased-dynamics-on-excited-states).
+
+| Capability | What it covers | Important boundary | Where it landed |
+| --- | --- | --- | --- |
+| Molecular excited states | PySEQM/GPU4PySCF labeling, multi-state HIPPYNN training, derived gap targets, state selection, gap diagnostics, and LCM. | Preserve per-state convergence, state/atom mappings, physical screening, and the distinction between predictions and propagation controls. | Increments 8-10 |
+| RDKit initialization | Reference-centered KDG geometry generation, seed-specific screening, and FPS selection, with reproducible settings/provenance. | Optional preprocessing/builders; unlabeled seed geometries are not labeled training rows. | Increment 11A, `builders/rdkit_molecule.py` |
+| Geometry-only HDF5 replay | Reuse stored geometries for sampling or relabeling, with original identities and source provenance. | Do not accidentally carry old labels into a newly requested labeling operation. | Increment 9, `builders/external_geometry.py` |
+| Optional additional labels | Preserve optional nonadiabatic-coupling labeling and storage, including state-pair and atom-axis mappings. | Computing/storing NACs does not automatically make them energy/force training targets. | Increment 8 |
+
+Also delivered from the later plan:
+
+- Physical-force and chemical topology screening: Increment 11A, `tools/force_screen.py` and `tools/molecular_topology.py`.
+- Gap-aware summed acquisition, named signals, and configured eligibility: Increment 10, `SCORE_TERMS` and `acquisition.eligibility`.
+
 ## Excited-state ALF plan (E1–E6)
 
 Each step is a separate local change with its own CPU tests. Existing

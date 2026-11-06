@@ -171,6 +171,12 @@ def validate_gpu4pyscf_config(QM_config: dict[str, Any] | None) -> dict[str, Any
 
     if QM_config is not None and not isinstance(QM_config, dict):
         raise TypeError("QM_config must be a dictionary.")
+    solvent = (QM_config or {}).get('solvent')
+    if solvent is not None and not (isinstance(solvent, dict) and solvent.get('enabled') is False):
+        raise ValueError(
+            'GPU4PySCF excited-state implicit solvent is not implemented in ALF. '
+            'A solvent configuration must not silently produce gas-phase labels.'
+        )
     options = dict(DEFAULT_GPU4PYSCF_CONFIG)
     options.update(dict(QM_config or {}))
 

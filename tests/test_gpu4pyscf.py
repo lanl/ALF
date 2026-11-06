@@ -40,6 +40,13 @@ from alframework.tools.molecules_class import MoleculesObject
 from alframework.tools.tools import build_input_dict, store_current_data
 
 
+@pytest.mark.parametrize('solvent', [{'method': 'C-PCM', 'static_dielectric': 9.02}, {}, 'dichloromethane'])
+def test_unsupported_solvent_cannot_silently_label_in_vacuum(solvent):
+    with pytest.raises(ValueError, match='implicit solvent is not implemented'):
+        validate_gpu4pyscf_config({'solvent': solvent})
+    assert validate_gpu4pyscf_config({'solvent': {'enabled': False}})['xc'] == DEFAULT_GPU4PYSCF_CONFIG['xc']
+
+
 def _properties(nroots=1, *, include_gap=False, include_nacr=False):
     properties = {}
     for state in range(nroots + 1):

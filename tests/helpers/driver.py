@@ -3,12 +3,13 @@
 The coordinator (``python -m alframework``) is a script with an endless loop, so
 these helpers run it with ``runpy`` and stop it from inside its own ``time.sleep``.
 """
-from contextlib import contextmanager
+
 import json
-from pathlib import Path
 import runpy
 import sys
 import time
+from contextlib import contextmanager
+from pathlib import Path
 from types import SimpleNamespace
 
 import h5py
@@ -34,8 +35,11 @@ def stored_ids(h5_dir):
 
 
 def local_parsl_config(run_dir, executors=EXECUTORS):
-    return Config(executors=[ThreadPoolExecutor(label=label, max_threads=2) for label in executors],
-                  strategy="none", run_dir=str(run_dir))
+    return Config(
+        executors=[ThreadPoolExecutor(label=label, max_threads=2) for label in executors],
+        strategy="none",
+        run_dir=str(run_dir),
+    )
 
 
 @contextmanager
@@ -57,8 +61,21 @@ def retrained_once(status):
     return status["current_model_id"] >= 1
 
 
-def run_alf_driver(tmp_path, monkeypatch, *, builder, sampler, qm, ml, sampler_config=None, qm_config=None,
-                   executors=EXECUTORS, stop_when=retrained_once, timeout=120, **master_settings):
+def run_alf_driver(
+    tmp_path,
+    monkeypatch,
+    *,
+    builder,
+    sampler,
+    qm,
+    ml,
+    sampler_config=None,
+    qm_config=None,
+    executors=EXECUTORS,
+    stop_when=retrained_once,
+    timeout=120,
+    **master_settings,
+):
     """Run the coordinator in ``tmp_path`` until ``stop_when(status)`` holds.
 
     ``builder``, ``sampler``, ``qm`` and ``ml`` are Parsl apps, and ``master_settings``
@@ -68,16 +85,33 @@ def run_alf_driver(tmp_path, monkeypatch, *, builder, sampler, qm, ml, sampler_c
     Errors raised by the driver propagate.
     """
     monkeypatch.chdir(tmp_path)
-    modules = {"mock.config": local_parsl_config(tmp_path / "runinfo", executors), "mock.builder": builder,
-               "mock.sampler": sampler, "mock.qm": qm, "mock.ml": ml}
+    modules = {
+        "mock.config": local_parsl_config(tmp_path / "runinfo", executors),
+        "mock.builder": builder,
+        "mock.sampler": sampler,
+        "mock.qm": qm,
+        "mock.ml": ml,
+    }
     monkeypatch.setattr(tool_module, "load_module_from_string", modules.__getitem__)
 
-    master = dict(master_directory="pwd", builder_task="mock.builder", sampler_task="mock.sampler",
-                  QM_task="mock.qm", ML_task="mock.ml", parsl_configuration="mock.config",
-                  builder_config_path="builder.json", sampler_config_path="sampler.json",
-                  QM_config_path="qm.json", ML_config_path="ml.json", status_path="status.json",
-                  model_path=str(tmp_path / MODEL_PATTERN), h5_path=str(tmp_path / "h5/data-{:04d}.h5"),
-                  properties_list=PROPERTIES, minimum_QM=0, **master_settings)
+    master = dict(
+        master_directory="pwd",
+        builder_task="mock.builder",
+        sampler_task="mock.sampler",
+        QM_task="mock.qm",
+        ML_task="mock.ml",
+        parsl_configuration="mock.config",
+        builder_config_path="builder.json",
+        sampler_config_path="sampler.json",
+        QM_config_path="qm.json",
+        ML_config_path="ml.json",
+        status_path="status.json",
+        model_path=str(tmp_path / MODEL_PATTERN),
+        h5_path=str(tmp_path / "h5/data-{:04d}.h5"),
+        properties_list=PROPERTIES,
+        minimum_QM=0,
+        **master_settings,
+    )
     configs = {"master": master, "builder": {}, "sampler": sampler_config or {}, "qm": qm_config or {}, "ml": {}}
     for name, values in configs.items():
         (tmp_path / f"{name}.json").write_text(json.dumps(values))

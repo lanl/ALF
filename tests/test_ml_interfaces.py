@@ -1,5 +1,5 @@
-from tests.helpers.fakes import fake_training_pool, import_neurochem_with_fake_backend
 from alframework.ml_interfaces import hippynn_interface
+from tests.helpers.fakes import fake_training_pool, import_neurochem_with_fake_backend
 
 
 def test_hippynn_training_configures_each_member(tmp_path, monkeypatch):
@@ -159,9 +159,7 @@ def test_neurochem_calculator_builds_ani_ensemble(monkeypatch):
     monkeypatch.setattr(neurochem_interface, "ANIENS", fake_aniens)
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "3,5,7")
 
-    calculator = neurochem_interface.NeuroChemCalculator(
-        {"model_path": "/models/model-0006", "Nn": 8, "gpu": "2"}
-    )
+    calculator = neurochem_interface.NeuroChemCalculator({"model_path": "/models/model-0006", "Nn": 8, "gpu": "2"})
 
     assert calculator == "aniens-calculator"
     assert captured["aniens_model"] == "batched-model"

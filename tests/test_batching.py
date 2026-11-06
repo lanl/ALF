@@ -1,3 +1,5 @@
+import json
+
 import numpy as np
 import pytest
 from ase import Atoms
@@ -6,14 +8,13 @@ from alframework.tools.batching import (
     BatchBuffer,
     TaskWidths,
     batching_settings,
+    bootstrap_molecule_ids,
     default_batch_key,
     flatten_molecule_output,
     poll_delay,
 )
 from alframework.tools.molecules_class import MoleculesObject
 from tests.helpers.fakes import FakeTask
-import json
-from alframework.tools.batching import bootstrap_molecule_ids
 
 
 def molecule(name, symbols="OH2", pbc=False):
@@ -36,18 +37,25 @@ def test_batching_is_off_by_default():
 
 def test_default_settings():
     assert batching_settings({"batching": {"batch_size": 4}}) == {
-        "batch_size": 4, "partial_policy": "timeout", "max_wait_seconds": 5.0}
+        "batch_size": 4,
+        "partial_policy": "timeout",
+        "max_wait_seconds": 5.0,
+    }
 
 
-@pytest.mark.parametrize("block, reason", [
-    ({}, "batch_size is required"),
-    ({"batch_size": 0}, "positive integer"),
-    ({"batch_size": 2.5}, "positive integer"),
-    ({"batch_size": True}, "positive integer"),
-    ({"batch_size": 2, "partial_policy": "eventually"}, "partial_policy"),
-    ({"batch_size": 2, "max_wait_seconds": -1}, "max_wait_seconds"),
-    ({"batch_size": 2, "unknown": 1}, "Unknown"),
-], ids=["no_size", "zero_size", "fractional_size", "boolean_size", "unknown_policy", "negative_wait", "unknown_key"])
+@pytest.mark.parametrize(
+    "block, reason",
+    [
+        ({}, "batch_size is required"),
+        ({"batch_size": 0}, "positive integer"),
+        ({"batch_size": 2.5}, "positive integer"),
+        ({"batch_size": True}, "positive integer"),
+        ({"batch_size": 2, "partial_policy": "eventually"}, "partial_policy"),
+        ({"batch_size": 2, "max_wait_seconds": -1}, "max_wait_seconds"),
+        ({"batch_size": 2, "unknown": 1}, "Unknown"),
+    ],
+    ids=["no_size", "zero_size", "fractional_size", "boolean_size", "unknown_policy", "negative_wait", "unknown_key"],
+)
 def test_invalid_settings_are_rejected(block, reason):
     with pytest.raises(ValueError, match=reason):
         batching_settings({"batching": block})
@@ -73,8 +81,7 @@ def test_full_batch_releases_immediately():
 
 def test_periodic_molecules_batch_separately():
     buffer = BatchBuffer(2)
-    buffer.extend([molecule("gas0"), molecule("pbc0", pbc=True),
-                   molecule("gas1"), molecule("pbc1", pbc=True)], now=0.0)
+    buffer.extend([molecule("gas0"), molecule("pbc0", pbc=True), molecule("gas1"), molecule("pbc1", pbc=True)], now=0.0)
     assert ids(buffer.pop_ready(now=0.0)) == [["gas0", "gas1"], ["pbc0", "pbc1"]]
 
 
@@ -160,6 +167,6 @@ def test_driver_wakes_for_nearest_timeout():
 
 
 def test_finite_bootstrap_ids_never_wrap():
-    assert bootstrap_molecule_ids(8,10,4,True)==['mol-boot-0000000008','mol-boot-0000000009']
-    assert bootstrap_molecule_ids(10,10,4,True)==[]
-    assert len(bootstrap_molecule_ids(8,10,4,False))==4
+    assert bootstrap_molecule_ids(8, 10, 4, True) == ["mol-boot-0000000008", "mol-boot-0000000009"]
+    assert bootstrap_molecule_ids(10, 10, 4, True) == []
+    assert len(bootstrap_molecule_ids(8, 10, 4, False)) == 4

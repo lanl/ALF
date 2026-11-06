@@ -1,14 +1,16 @@
 """Legacy ASE samplers: MLMD_calculator, wells, UDD, mlmd_sampling, and shared distance screening."""
+
 import importlib
+
 import numpy as np
 import pytest
 from ase import Atoms
 
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator, Well_Potential
-from alframework.tools.molecules_class import MoleculesObject
-from alframework.tools.tools import annealing_schedule
 from alframework.samplers.batched_mlmd import minimum_distance, sample_trajectories
 from alframework.samplers.mlmd_sampling import mlmd_sampling
+from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.tools import annealing_schedule
 from tests.helpers.fakes import FakeLangevin, FakeUncertaintyCalculator, FixedCalculator
 from tests.helpers.interface_checks import check_ase_calculator_interface, check_energy_force_results
 
@@ -60,7 +62,9 @@ def test_mlmd_calculator_averages_the_ensemble(fixed_calculator_factory):
     model_b = fixed_calculator_factory(energy=3.0, forces=[[3.0, 0.0, 0.0], [0.0, 3.0, 0.0]])
     calc = MLMD_calculator([model_a, model_b])
 
-    check_ase_calculator_interface(calc, atoms, ["energy", "forces", "energy_stdev", "forces_stdev_mean", "forces_stdev_max"])
+    check_ase_calculator_interface(
+        calc, atoms, ["energy", "forces", "energy_stdev", "forces_stdev_mean", "forces_stdev_max"]
+    )
     check_energy_force_results(calc.results, len(atoms))
     assert calc.results["energy"] == 2.0
     np.testing.assert_allclose(calc.results["forces"], [[2.0, 0.0, 0.0], [0.0, 2.0, 0.0]])
@@ -242,18 +246,40 @@ def test_udd_task_passes_bias_to_the_sampler(monkeypatch, h2_atoms):
     assert original_config["MLMD_calculator_options"] == {"well_params": None}
 
 
-@pytest.mark.parametrize('atoms, expected', [
-    (Atoms('H2', positions=[[.1, 0, 0], [9.9, 0, 0]], cell=[10]*3, pbc=True), .2),
-    (Atoms('H2', positions=[[.1, 0, 0], [9.9, 0, 0]], cell=[10]*3), 9.8),
-    (Atoms('H3', positions=[[0, 0, 0], [0, 0, 0], [2, 0, 0]]), 0.),
-    (Atoms('H2', positions=[[0, 0, 0], [10, 0, 0]], cell=[10]*3, pbc=True), 0.),
-    (Atoms('H2', positions=[[.1, .1, 0], [9.9, 9.9, 0]], cell=[10]*3,
-           pbc=[True, False, False]), np.hypot(.2, 9.8)),
-    (Atoms('H2', scaled_positions=[[.1, .01, .1], [.1, .99, .1]],
-           cell=[[8, 0, 0], [2, 7, 0], [1, .5, 6]], pbc=True), .02*np.sqrt(53)),
-    (Atoms('He', cell=[.1]*3, pbc=True), np.inf),
-    (Atoms(), np.inf),
-], ids=['periodic_image', 'nonperiodic_cell', 'overlapping_atoms', 'atoms_one_cell_apart', 'partly_periodic', 'triclinic_cell', 'single_atom', 'no_atoms'])
+@pytest.mark.parametrize(
+    "atoms, expected",
+    [
+        (Atoms("H2", positions=[[0.1, 0, 0], [9.9, 0, 0]], cell=[10] * 3, pbc=True), 0.2),
+        (Atoms("H2", positions=[[0.1, 0, 0], [9.9, 0, 0]], cell=[10] * 3), 9.8),
+        (Atoms("H3", positions=[[0, 0, 0], [0, 0, 0], [2, 0, 0]]), 0.0),
+        (Atoms("H2", positions=[[0, 0, 0], [10, 0, 0]], cell=[10] * 3, pbc=True), 0.0),
+        (
+            Atoms("H2", positions=[[0.1, 0.1, 0], [9.9, 9.9, 0]], cell=[10] * 3, pbc=[True, False, False]),
+            np.hypot(0.2, 9.8),
+        ),
+        (
+            Atoms(
+                "H2",
+                scaled_positions=[[0.1, 0.01, 0.1], [0.1, 0.99, 0.1]],
+                cell=[[8, 0, 0], [2, 7, 0], [1, 0.5, 6]],
+                pbc=True,
+            ),
+            0.02 * np.sqrt(53),
+        ),
+        (Atoms("He", cell=[0.1] * 3, pbc=True), np.inf),
+        (Atoms(), np.inf),
+    ],
+    ids=[
+        "periodic_image",
+        "nonperiodic_cell",
+        "overlapping_atoms",
+        "atoms_one_cell_apart",
+        "partly_periodic",
+        "triclinic_cell",
+        "single_atom",
+        "no_atoms",
+    ],
+)
 def test_minimum_distance_handles_every_cell_type(atoms, expected):
     positions, cell, pbc = atoms.positions.copy(), atoms.cell.copy(), atoms.pbc.copy()
     assert minimum_distance(atoms) == pytest.approx(expected)
@@ -262,28 +288,55 @@ def test_minimum_distance_handles_every_cell_type(atoms, expected):
     np.testing.assert_array_equal(atoms.pbc, pbc)
 
 
-@pytest.mark.parametrize('legacy', [True, False], ids=['legacy', 'batched'])
-@pytest.mark.parametrize('positions, periodic, cutoff, rejected, expected', [
-    ([[.1, 0, 0], [9.9, 0, 0]], True, .5, True, .2),
-    ([[.1, 0, 0], [9.9, 0, 0]], False, .5, False, 9.8),
-    ([[0, 0, 0], [0, 0, 0]], False, .5, True, 0.),
-    ([[0, 0, 0], [10, 0, 0]], True, .5, True, 0.),
-    ([[0, 0, 0], [1, 0, 0]], False, 1., False, 1.),
-], ids=['across_periodic_boundary', 'same_distance_without_periodicity', 'overlapping_atoms', 'overlapping_periodic_image', 'exactly_at_cutoff'])
+@pytest.mark.parametrize("legacy", [True, False], ids=["legacy", "batched"])
+@pytest.mark.parametrize(
+    "positions, periodic, cutoff, rejected, expected",
+    [
+        ([[0.1, 0, 0], [9.9, 0, 0]], True, 0.5, True, 0.2),
+        ([[0.1, 0, 0], [9.9, 0, 0]], False, 0.5, False, 9.8),
+        ([[0, 0, 0], [0, 0, 0]], False, 0.5, True, 0.0),
+        ([[0, 0, 0], [10, 0, 0]], True, 0.5, True, 0.0),
+        ([[0, 0, 0], [1, 0, 0]], False, 1.0, False, 1.0),
+    ],
+    ids=[
+        "across_periodic_boundary",
+        "same_distance_without_periodicity",
+        "overlapping_atoms",
+        "overlapping_periodic_image",
+        "exactly_at_cutoff",
+    ],
+)
 def test_close_contacts_are_rejected(legacy, positions, periodic, cutoff, rejected, expected):
-    atoms = Atoms('H2', positions=positions, cell=[10]*3, pbc=periodic)
-    molecule = MoleculesObject(atoms, 'screen')
-    models = [FixedCalculator(0., np.zeros((2, 3))) for _ in range(2)]
-    config = dict(dt=.5, maxt=.001, Ncheck=1, Escut=1., Fscut=1., distcut=cutoff, min_time=0.)
+    atoms = Atoms("H2", positions=positions, cell=[10] * 3, pbc=periodic)
+    molecule = MoleculesObject(atoms, "screen")
+    models = [FixedCalculator(0.0, np.zeros((2, 3))) for _ in range(2)]
+    config = dict(dt=0.5, maxt=0.001, Ncheck=1, Escut=1.0, Fscut=1.0, distcut=cutoff, min_time=0.0)
     if legacy:
-        result = mlmd_sampling(molecule, MLMD_calculator(models, well_params=None), **config,
-                               Tamp=0., Tper=1., Tsrt=0., Tend=0., Ramp=None, Rper=None, Rend=None)
+        result = mlmd_sampling(
+            molecule,
+            MLMD_calculator(models, well_params=None),
+            **config,
+            Tamp=0.0,
+            Tper=1.0,
+            Tsrt=0.0,
+            Tend=0.0,
+            Ramp=None,
+            Rper=None,
+            Rend=None,
+        )
     else:
-        config.update(srt_temp=[0., 0.], end_temp=[0., 0.], amp_temp=[0., 0.], per_temp=[1., 1.],
-                      amp_dens=None, per_dens=None, end_dens=None,
-                      MLMD_calculator_options={'well_params': None})
-        result, = sample_trajectories([molecule], models, config)
-        assert result.get_metadata()['trajectory_outcome'] == ('rejected' if rejected else 'completed')
-    assert bool(result.get_metadata()['distcrit']) is rejected
-    assert result.get_metadata()['distmin'] == pytest.approx(expected)
+        config.update(
+            srt_temp=[0.0, 0.0],
+            end_temp=[0.0, 0.0],
+            amp_temp=[0.0, 0.0],
+            per_temp=[1.0, 1.0],
+            amp_dens=None,
+            per_dens=None,
+            end_dens=None,
+            MLMD_calculator_options={"well_params": None},
+        )
+        (result,) = sample_trajectories([molecule], models, config)
+        assert result.get_metadata()["trajectory_outcome"] == ("rejected" if rejected else "completed")
+    assert bool(result.get_metadata()["distcrit"]) is rejected
+    assert result.get_metadata()["distmin"] == pytest.approx(expected)
     assert result.get_atoms() is None

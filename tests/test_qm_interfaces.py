@@ -1,8 +1,10 @@
 """ORCA, Q-Chem, and ASE-calculator labeling interfaces and task wrappers."""
+
 import numpy as np
 import pytest
 from ase import Atoms
 
+from alframework.qm_interfaces import ase_calculator_interface, orca5_interface, qchem_DFT_interface
 from alframework.qm_interfaces.orca5_interface import orcaGenerator
 from alframework.qm_interfaces.qchem_DFT_interface import qchemGenerator
 from alframework.tools.molecules_class import MoleculesObject
@@ -13,9 +15,6 @@ from tests.helpers.interface_checks import (
     check_scratch_directory,
     check_task_convergence,
 )
-from alframework.qm_interfaces import ase_calculator_interface
-from alframework.qm_interfaces import orca5_interface
-from alframework.qm_interfaces import qchem_DFT_interface
 
 
 def write_orca_outputs(path):
@@ -106,7 +105,8 @@ def test_orca_writes_input_reads_output(tmp_path):
         ({"energy": "hartree", "length": "bohr"}, 1.0, 1.0),
         ({"energy": "ev", "length": "angstrom"}, 27.2113834, 27.2113834 / 0.5291772083),
     ],
-ids=['hartree_bohr', 'ev_angstrom'])
+    ids=["hartree_bohr", "ev_angstrom"],
+)
 def test_orca_parser_converts_units(tmp_path, unit, energy_scale, force_scale):
     write_orca_outputs(tmp_path)
     generator = orcaGenerator(unit=unit)
@@ -146,7 +146,9 @@ def test_ase_task_stores_calculator_results(tmp_path, monkeypatch, h2_atoms):
         lambda config, field: FakeASECalculator,
     )
 
-    task_func = getattr(ase_calculator_interface.ase_calculator_task, "func", ase_calculator_interface.ase_calculator_task)
+    task_func = getattr(
+        ase_calculator_interface.ase_calculator_task, "func", ase_calculator_interface.ase_calculator_task
+    )
     molecule = MoleculesObject(h2_atoms, "h2")
     result = task_func(
         molecule,
@@ -183,7 +185,9 @@ def test_orca_double_run_averages_results(tmp_path, monkeypatch, h2_atoms):
 
     monkeypatch.setattr(orca5_interface.orcaGenerator, "single_point", fake_single_point)
 
-    task_func = getattr(orca5_interface.orca_double_calculator_task, "func", orca5_interface.orca_double_calculator_task)
+    task_func = getattr(
+        orca5_interface.orca_double_calculator_task, "func", orca5_interface.orca_double_calculator_task
+    )
     result = task_func(
         MoleculesObject(h2_atoms, "h2"),
         {
@@ -216,7 +220,9 @@ def test_qchem_task_stores_results(tmp_path, monkeypatch, water_atoms):
         return expected
 
     monkeypatch.setattr(qchem_DFT_interface.qchemGenerator, "single_point", fake_single_point)
-    task_func = getattr(qchem_DFT_interface.qchem_dft_calculator_task, "func", qchem_DFT_interface.qchem_dft_calculator_task)
+    task_func = getattr(
+        qchem_DFT_interface.qchem_dft_calculator_task, "func", qchem_DFT_interface.qchem_dft_calculator_task
+    )
 
     result = task_func(
         MoleculesObject(water_atoms, "water"),

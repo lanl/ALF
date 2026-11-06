@@ -37,6 +37,7 @@ def trained_ensemble(tmp_path_factory):
     pytest.importorskip("torch")
     pytest.importorskip("hippynn")
     from tests.helpers.hippynn import train_cpu_ensemble
+
     directory = tmp_path_factory.mktemp("trained") / "ensemble"
     train_cpu_ensemble(directory)
     return directory

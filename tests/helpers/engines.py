@@ -3,9 +3,10 @@
 Nothing here imports torch at module level, so test files using it still run in
 the torch-free CI job. An engine's packages are only needed once a test asks for it.
 """
+
+import os
 from functools import partial
 from importlib.metadata import PackageNotFoundError, version
-import os
 
 import pytest
 from ase.calculators.calculator import Calculator, all_changes
@@ -19,6 +20,7 @@ def require_engine(name):
         pytest.importorskip("torch_sim")
     elif name == "alchemi":
         from alframework.samplers.alchemi_engine import SUPPORTED_VERSIONS
+
         try:
             installed = version("nvalchemi-toolkit")
         except PackageNotFoundError:
@@ -30,13 +32,16 @@ def require_engine(name):
 def engine_class(name):
     if name == "torchsim":
         from alframework.samplers.torchsim_engine import TorchSimEngine
+
         return partial(TorchSimEngine, device=DEVICE)
     from alframework.samplers.alchemi_engine import AlchemiEngine
+
     return partial(AlchemiEngine, device=DEVICE)
 
 
 class Tether(Calculator):
     """Harmonic tether to the origin, for thermostat checks."""
+
     implemented_properties = ["energy", "forces"]
 
     def __init__(self, k):
@@ -46,4 +51,4 @@ class Tether(Calculator):
     def calculate(self, atoms=None, properties=("energy",), system_changes=all_changes):
         super().calculate(atoms, properties, system_changes)
         x = atoms.get_positions()
-        self.results = {"energy": 0.5 * self.k * (x ** 2).sum(), "forces": -self.k * x}
+        self.results = {"energy": 0.5 * self.k * (x**2).sum(), "forces": -self.k * x}

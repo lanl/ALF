@@ -1,4 +1,5 @@
 """Batched labeling through the real ALF coordinator with local mock tasks."""
+
 import h5py
 import numpy as np
 import pytest
@@ -42,8 +43,11 @@ def native_qm(molecule_objects, QM_config):
     return labeled
 
 
-@pytest.mark.parametrize("mode,batch_size", [(None, None), ("sequential", 2), ("sequential", 5),
-                                             ("native", 2), ("native", 5)], ids=['unbatched', 'sequential_2', 'sequential_5', 'native_2', 'native_5'])
+@pytest.mark.parametrize(
+    "mode,batch_size",
+    [(None, None), ("sequential", 2), ("sequential", 5), ("native", 2), ("native", 5)],
+    ids=["unbatched", "sequential_2", "sequential_5", "native_2", "native_5"],
+)
 def test_labeling_completes_a_full_training_cycle(tmp_path, monkeypatch, mode, batch_size):
     # Waiting structures count as queued QM, so with target_queued_QM=2 a batch of 5
     # cannot fill during bootstrap; bootstrap can only finish through timed-out partial batches.
@@ -79,9 +83,20 @@ def test_labeling_completes_a_full_training_cycle(tmp_path, monkeypatch, mode, b
     if mode is not None:
         qm_config["batching"] = {"mode": mode, "batch_size": batch_size, "max_wait_seconds": 0.05}
 
-    run = run_alf_driver(tmp_path, monkeypatch, builder=builder, sampler=sampler, ml=ml,
-                         qm=native_qm if mode == "native" else single_qm, qm_config=qm_config, bootstrap_set=4,
-                         parallel_samplers=2, target_queued_QM=2, save_h5_threshold=3, maximum_completed_QM=8)
+    run = run_alf_driver(
+        tmp_path,
+        monkeypatch,
+        builder=builder,
+        sampler=sampler,
+        ml=ml,
+        qm=native_qm if mode == "native" else single_qm,
+        qm_config=qm_config,
+        bootstrap_set=4,
+        parallel_samplers=2,
+        target_queued_QM=2,
+        save_h5_threshold=3,
+        maximum_completed_QM=8,
+    )
 
     bootstrap_ids = training_calls[0][1]
     assert training_calls[0][0] == 0 and len(bootstrap_ids) >= 3
@@ -130,8 +145,12 @@ def test_one_failed_label_keeps_the_others():
 def test_batching_requires_an_explicit_mode():
     assert labeling_batch_settings({}) is None
     assert labeling_batch_settings({"batching": {"mode": "native", "batch_size": 2}})["mode"] == "native"
-    for bad, reason in (({"batch_size": 2}, "mode"), ({"mode": "packed", "batch_size": 2}, "mode"),
-                        ({"mode": "native"}, "batch_size"), ([], "dictionary")):
+    for bad, reason in (
+        ({"batch_size": 2}, "mode"),
+        ({"mode": "packed", "batch_size": 2}, "mode"),
+        ({"mode": "native"}, "batch_size"),
+        ([], "dictionary"),
+    ):
         with pytest.raises(ValueError, match=reason):
             labeling_batch_settings({"batching": bad})
 
@@ -179,19 +198,22 @@ def test_batched_queue_counts_molecules_not_tasks():
     assert queue.get_number() == 5 and queue.get_task_number() == 1
 
 
-@pytest.mark.parametrize('width', [1, 2])
+@pytest.mark.parametrize("width", [1, 2])
 def test_leftover_molecules_submit_after_timeout(tmp_path, width):
-    @python_app(executors=['tail'])
+    @python_app(executors=["tail"])
     def label(molecule_object):
         return molecule_object
 
-    with loaded_parsl(tmp_path / 'parsl', 'tail') as dfk:
-        coordinator = LabelingCoordinator(label, 'test.label', dict(batching=dict(
-            mode='sequential', batch_size=4, partial_policy='timeout', max_wait_seconds=0)))
+    with loaded_parsl(tmp_path / "parsl", "tail") as dfk:
+        coordinator = LabelingCoordinator(
+            label,
+            "test.label",
+            dict(batching=dict(mode="sequential", batch_size=4, partial_policy="timeout", max_wait_seconds=0)),
+        )
         for i in range(width):
-            coordinator.submit(MoleculesObject(Atoms('H'), str(i)), [])
+            coordinator.submit(MoleculesObject(Atoms("H"), str(i)), [])
         assert coordinator.submit_ready([]) == 1
         for task in list(dfk.tasks.values()):
-            task['app_fu'].result()
+            task["app_fu"].result()
         results, failures = coordinator.queue.get_task_results()
         assert failures == 0 and len(results) == width

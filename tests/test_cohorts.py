@@ -8,9 +8,23 @@ from alframework.tools.molecules_class import MoleculesObject
 from tests.helpers.fakes import spring_ensemble
 from tests.helpers.molecules import SPRING_WATER
 
-SAMPLER = dict(dt=0.5, maxt=0.05, Ncheck=5, distcut=0.5, min_time=0.0, Escut=0.012, Fscut=100.0, random_seed=9,
-               srt_temp=[2500.0, 3500.0], end_temp=[2500.0, 3500.0], amp_temp=[0.0, 200.0],
-               per_temp=[0.01, 0.05], amp_dens=None, per_dens=None, end_dens=None)
+SAMPLER = dict(
+    dt=0.5,
+    maxt=0.05,
+    Ncheck=5,
+    distcut=0.5,
+    min_time=0.0,
+    Escut=0.012,
+    Fscut=100.0,
+    random_seed=9,
+    srt_temp=[2500.0, 3500.0],
+    end_temp=[2500.0, 3500.0],
+    amp_temp=[0.0, 200.0],
+    per_temp=[0.01, 0.05],
+    amp_dens=None,
+    per_dens=None,
+    end_dens=None,
+)
 
 
 def member(name):
@@ -29,9 +43,9 @@ def inputs(count):
     for index in range(count):
         atoms = SPRING_WATER.copy()
         if index % 7 == 3:
-            atoms.positions[2] = atoms.positions[1] + [0.0, 0.3, 0.0]   # distcut rejection
+            atoms.positions[2] = atoms.positions[1] + [0.0, 0.3, 0.0]  # distcut rejection
         if index % 7 == 5:
-            atoms = Atoms("H2", positions=[[0, 0, 0], [1.2, 0, 0]])     # low spread: few or no candidates
+            atoms = Atoms("H2", positions=[[0, 0, 0], [1.2, 0, 0]])  # low spread: few or no candidates
         molecules.append(MoleculesObject(atoms, f"mol-0000-{index:010d}"))
     return molecules
 
@@ -55,20 +69,22 @@ def replay(results, cohort_size, k, width, order):
     ids = sorted(results)
     for name in ids:
         pool.admit(member(name), model_id=0)
-    tasks = [ids[start:start + width] for start in range(0, len(ids), width)]
+    tasks = [ids[start : start + width] for start in range(0, len(ids), width)]
     if order == "reversed":
         tasks.reverse()
     elif order == "shuffled":
         tasks = [tasks[i] for i in np.random.default_rng(width).permutation(len(tasks))]
     frames = []
     for task in tasks:
-        for name in (reversed(task) if order == "reversed" else task):
+        for name in reversed(task) if order == "reversed" else task:
             pool.record(results[name])
         frames.extend(pool.ready())
     return frames, pool
 
 
-@pytest.mark.parametrize("policy,cap", [("stop", None), ("continue", None), ("continue", 2)], ids=['stop', 'continue', 'continue_capped'])
+@pytest.mark.parametrize(
+    "policy,cap", [("stop", None), ("continue", None), ("continue", 2)], ids=["stop", "continue", "continue_capped"]
+)
 def test_selection_ignores_how_trajectories_finish(policy, cap):
     results = sampled(50, cohort_config(50, 8, policy, cap))
     outcomes = {r.get_metadata()["trajectory_outcome"] for r in results.values()}
@@ -110,10 +126,19 @@ def test_worker_pruning_keeps_the_selection():
 
 
 def candidate(trajectory_id, step, score):
-    return {"trajectory_id": trajectory_id, "step": step, "frame_id": f"{trajectory_id}:step-{step:09d}",
-            "time_ps": 0.0, "ranking_score": score, "signals": {"Es": 1.0}, "flags": {"Ecrit": True},
-            "numbers": np.array([1, 1]), "positions": np.zeros((2, 3)), "cell": np.zeros((3, 3)),
-            "pbc": np.array([False] * 3)}
+    return {
+        "trajectory_id": trajectory_id,
+        "step": step,
+        "frame_id": f"{trajectory_id}:step-{step:09d}",
+        "time_ps": 0.0,
+        "ranking_score": score,
+        "signals": {"Es": 1.0},
+        "flags": {"Ecrit": True},
+        "numbers": np.array([1, 1]),
+        "positions": np.zeros((2, 3)),
+        "cell": np.zeros((3, 3)),
+        "pbc": np.array([False] * 3),
+    }
 
 
 def returned(trajectory_id, outcome, candidates=()):
@@ -131,11 +156,14 @@ def test_cohort_edge_cases_still_select_correctly():
     # A later failure does not discard frames the trajectory already returned.
     pool.record(returned("a", "failed", [candidate("a", 10, 2.0), candidate("a", 5, 2.0)]))
     pool.record(returned("c", "rejected"))
-    assert pool.ready() == []                            # "d" has not finished
-    pool.record_failed([member("d")])   # whole-task failure: no candidates
+    assert pool.ready() == []  # "d" has not finished
+    pool.record_failed([member("d")])  # whole-task failure: no candidates
     frames = pool.ready()
     assert [f.get_metadata()["frame_id"] for f in frames] == [
-        "a:step-000000005", "a:step-000000010", "b:step-000000005"]
+        "a:step-000000005",
+        "a:step-000000010",
+        "b:step-000000005",
+    ]
     summary = pool.finished[0]
     assert summary["outcomes"] == {"eligible": 1, "failed": 2, "rejected": 1} and summary["candidates"] == 3
     empty = CohortPool({"cohort_size": 1, "k": 3})
@@ -160,7 +188,7 @@ def test_cohort_can_exceed_running_capacity():
     pool = CohortPool({"cohort_size": 10, "k": 2})
     running, selections, admitted = [], [], 0
     while admitted < 10 or running:
-        while admitted < 10 and len(running) < 3:          # parallel_samplers = 3
+        while admitted < 10 and len(running) < 3:  # parallel_samplers = 3
             molecule = member(f"t{admitted}")
             pool.admit(molecule, model_id=0)
             running.append(molecule.get_moleculeid())
@@ -191,15 +219,17 @@ def test_open_cohort_finishes_on_its_original_model():
 
 
 def test_each_state_keeps_its_own_cohort_model():
-    pool=CohortPool(dict(cohort_size=2,k=1,group_by_selected_state=True))
-    items=[]
-    for name,state,model,expected in [('a',0,0,0),('b',1,1,1),('c',0,2,0),('d',1,2,1)]:
-        molecule=member(name);molecule.update_metadata(dict(selected_state=state,trajectory_outcome='completed'))
-        assert pool.admit(molecule,model)==expected
+    pool = CohortPool(dict(cohort_size=2, k=1, group_by_selected_state=True))
+    items = []
+    for name, state, model, expected in [("a", 0, 0, 0), ("b", 1, 1, 1), ("c", 0, 2, 0), ("d", 1, 2, 1)]:
+        molecule = member(name)
+        molecule.update_metadata(dict(selected_state=state, trajectory_outcome="completed"))
+        assert pool.admit(molecule, model) == expected
         items.append(molecule)
-    for molecule in reversed(items):pool.record(molecule)
-    assert pool.ready()==[]
-    assert {(c['selected_state'],c['model_id']) for c in pool.finished}=={(0,0),(1,1)}
-    assert pool._open=={}
-    with pytest.raises(ValueError,match='resolved'):
-        pool.admit(member('missing'),3)
+    for molecule in reversed(items):
+        pool.record(molecule)
+    assert pool.ready() == []
+    assert {(c["selected_state"], c["model_id"]) for c in pool.finished} == {(0, 0), (1, 1)}
+    assert pool._open == {}
+    with pytest.raises(ValueError, match="resolved"):
+        pool.admit(member("missing"), 3)

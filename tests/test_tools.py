@@ -1,5 +1,7 @@
 """alframework.tools.tools helpers, HDF5 storage, and the Parsl task queue."""
+
 import json
+
 import h5py
 import numpy as np
 import pytest
@@ -9,12 +11,13 @@ from alframework.tools.molecules_class import MoleculesObject
 from alframework.tools.tools import (
     annealing_schedule,
     compute_empirical_formula,
+    is_final_task,
     load_config_file,
+    parsl_task_queue,
     random_rotation_matrix,
     store_current_data,
     system_checker,
 )
-from alframework.tools.tools import is_final_task, parsl_task_queue
 from tests.helpers.fakes import FakeTask
 
 
@@ -123,8 +126,9 @@ def test_nonperiodic_frames_are_saved_without_a_cell(tmp_path):
     molecule.set_converged_flag(True)
 
     h5_path = tmp_path / "data.h5"
-    store_current_data(str(h5_path), [molecule],
-                       {"energy": ["energy", "system", 1.0], "forces": ["forces", "atomic", 1.0]})
+    store_current_data(
+        str(h5_path), [molecule], {"energy": ["energy", "system", 1.0], "forces": ["forces", "atomic", 1.0]}
+    )
 
     with h5py.File(h5_path, "r") as h5:
         group = h5["H02_O01"]

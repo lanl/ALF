@@ -1,7 +1,7 @@
 import copy
 import importlib
-from pathlib import Path
 import sys
+from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
 import numpy as np
@@ -11,8 +11,17 @@ from ase.calculators.calculator import Calculator, all_changes
 class FakeASECalculator(Calculator):
     implemented_properties = ["energy", "forces"]
 
-    def __init__(self, atoms=None, directory=None, command=None, fake_results=None,
-                 fake_converged=True, fake_expected_command=None, fake_expected_properties=None, **kwargs):
+    def __init__(
+        self,
+        atoms=None,
+        directory=None,
+        command=None,
+        fake_results=None,
+        fake_converged=True,
+        fake_expected_command=None,
+        fake_expected_properties=None,
+        **kwargs,
+    ):
         super().__init__()
         self.init_atoms = atoms
         self.directory = directory
@@ -184,24 +193,30 @@ def load_spring_ensemble(model_directory, device="cpu"):
 
 class QuadraticStateEnsemble:
     """Analytic multi-state forces with correlated member energy errors."""
+
     n_models = 2
     n_states = 3
 
     def evaluate_states(self, numbers, positions, cells, pbc, counts):
         import torch
+
         x = torch.as_tensor(positions)
-        k = x.new_tensor([[.5, 1., 1.5], [.8, 1.2, 2.]])
-        system = torch.repeat_interleave(torch.arange(len(counts), device=x.device),
-                                        torch.as_tensor(counts, device=x.device))
-        squared = x.new_zeros(len(counts)).index_add_(0, system, (x*x).sum(1))
-        offsets = x.new_tensor([0., 10.])[:, None, None]
-        return k[:, :, None]*squared + offsets, -2*k[:, :, None, None]*x[None, None]
+        k = x.new_tensor([[0.5, 1.0, 1.5], [0.8, 1.2, 2.0]])
+        system = torch.repeat_interleave(
+            torch.arange(len(counts), device=x.device), torch.as_tensor(counts, device=x.device)
+        )
+        squared = x.new_zeros(len(counts)).index_add_(0, system, (x * x).sum(1))
+        offsets = x.new_tensor([0.0, 10.0])[:, None, None]
+        return k[:, :, None] * squared + offsets, -2 * k[:, :, None, None] * x[None, None]
 
     def predict_states(self, atoms_list):
         import torch
+
         counts = [len(a) for a in atoms_list]
-        e, f = self.evaluate_states(None, torch.tensor(np.concatenate([a.positions for a in atoms_list])),
-                                    None, None, counts)
+        e, f = self.evaluate_states(
+            None, torch.tensor(np.concatenate([a.positions for a in atoms_list])), None, None, counts
+        )
         offsets = np.cumsum([0, *counts])
-        return dict(state_energies=e.numpy(), state_forces=[f[:, :, lo:hi].numpy()
-                    for lo, hi in zip(offsets[:-1], offsets[1:])])
+        return dict(
+            state_energies=e.numpy(), state_forces=[f[:, :, lo:hi].numpy() for lo, hi in zip(offsets[:-1], offsets[1:])]
+        )

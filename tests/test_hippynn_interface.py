@@ -1,27 +1,26 @@
 """HIPPYNN interface: deferred imports, checkpoint loading, the database adapter, and multi-state training."""
-from concurrent.futures import ThreadPoolExecutor
+
 import hashlib
 import json
 import os
-from pathlib import Path
 import pickle
 import subprocess
 import sys
 import threading
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
-from ase import Atoms
 import h5py
 import numpy as np
 import pytest
+from ase import Atoms, units
 
 from alframework.ml_interfaces import hippynn_interface as ml
-from alframework.ml_interfaces.hippynn_interface import HIPNN_ASE_calculator
+from alframework.ml_interfaces.hippynn_interface import HIPNN_ASE_calculator, HIPNN_ASE_load_ensemble
+from alframework.tools.excited_state_tools import derive_gap_property_table
 from tests.helpers.fakes import fake_training_pool
 from tests.helpers.molecules import WATER
-from alframework.ml_interfaces.hippynn_interface import HIPNN_ASE_load_ensemble
-from ase import units
-from alframework.tools.excited_state_tools import derive_gap_property_table
 
 
 def _properties(with_gap=False):
@@ -87,7 +86,11 @@ def _write_group(
 
 
 def test_importing_the_interface_defers_hippynn():
-    subprocess.run([sys.executable, '-c', """
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            """
 import builtins
 original_import = builtins.__import__
 def guarded_import(name, *args, **kwargs):
@@ -95,20 +98,30 @@ def guarded_import(name, *args, **kwargs):
     return original_import(name, *args, **kwargs)
 builtins.__import__ = guarded_import
 import alframework.ml_interfaces.hippynn_interface
-"""], capture_output=True, check=True)
+""",
+        ],
+        capture_output=True,
+        check=True,
+    )
 
 
 def test_trained_hippynn_checkpoints_reload_through_alf(tmp_path):
-    pytest.importorskip('hippynn')
-    from tests.helpers.hippynn import train_cpu_ensemble
+    pytest.importorskip("hippynn")
     from hippynn.experiment.serialization import load_checkpoint
-    reports = train_cpu_ensemble(tmp_path/'ensemble')
-    assert len(reports) == 2 and all(r['epochs'] >= 2 for r in reports)
-    for directory in sorted((tmp_path/'ensemble').glob('model-*')):
-        bundle = load_checkpoint(str(directory/'experiment_structure.pt'),
-                                 str(directory/'best_checkpoint.pt'), restart_db=True, map_location='cpu')
-        assert bundle['database'].coordinates_key == 'coordinates'
-    for calculator in HIPNN_ASE_load_ensemble(str(tmp_path/'ensemble'), device='cpu'):
+
+    from tests.helpers.hippynn import train_cpu_ensemble
+
+    reports = train_cpu_ensemble(tmp_path / "ensemble")
+    assert len(reports) == 2 and all(r["epochs"] >= 2 for r in reports)
+    for directory in sorted((tmp_path / "ensemble").glob("model-*")):
+        bundle = load_checkpoint(
+            str(directory / "experiment_structure.pt"),
+            str(directory / "best_checkpoint.pt"),
+            restart_db=True,
+            map_location="cpu",
+        )
+        assert bundle["database"].coordinates_key == "coordinates"
+    for calculator in HIPNN_ASE_load_ensemble(str(tmp_path / "ensemble"), device="cpu"):
         atoms = WATER.copy()
         atoms.calc = calculator
         assert np.isfinite(atoms.get_potential_energy())
@@ -122,19 +135,19 @@ def test_members_load_concurrently_without_changing_directory(tmp_path, monkeypa
     for index in range(2):
         member = tmp_path / str(index)
         member.mkdir()
-        (member / 'experiment_structure.pt').write_text(f'member-{index}')
-        (member / 'best_checkpoint.pt').write_text(f'checkpoint-{index}')
-        (member / 'best_model.pt').write_text('wrong-format')
+        (member / "experiment_structure.pt").write_text(f"member-{index}")
+        (member / "best_checkpoint.pt").write_text(f"checkpoint-{index}")
+        (member / "best_model.pt").write_text("wrong-format")
 
     def load(structure, state, map_location):
         assert Path(structure).is_absolute() and Path(state).is_absolute()
-        assert Path(state).name == 'best_checkpoint.pt'
-        assert map_location == 'cpu'
+        assert Path(state).name == "best_checkpoint.pt"
+        assert map_location == "cpu"
         barrier.wait(timeout=10)
         identity = (Path(structure).read_text(), Path(state).read_text())
         calls.append(identity)
         model = SimpleNamespace(node_from_name=lambda key: (identity, key))
-        return {'training_modules': SimpleNamespace(model=model)}
+        return {"training_modules": SimpleNamespace(model=model)}
 
     class Calculator:
         def __init__(self, energy_node, en_unit):
@@ -145,25 +158,31 @@ def test_members_load_concurrently_without_changing_directory(tmp_path, monkeypa
         def to(self, target):
             self.conversions.append(target)
 
-    serialization = ModuleType('hippynn.experiment.serialization')
+    serialization = ModuleType("hippynn.experiment.serialization")
     serialization.load_checkpoint = load
-    interface = ModuleType('hippynn.interfaces.ase_interface')
+    interface = ModuleType("hippynn.interfaces.ase_interface")
     interface.HippynnCalculator = Calculator
     monkeypatch.setitem(sys.modules, serialization.__name__, serialization)
     monkeypatch.setitem(sys.modules, interface.__name__, interface)
-    monkeypatch.setitem(sys.modules, 'torch', SimpleNamespace(float32='float32', device=lambda x: x))
+    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(float32="float32", device=lambda x: x))
 
     def forbidden(*args):
-        pytest.fail('Inference loading must not change process cwd')
+        pytest.fail("Inference loading must not change process cwd")
 
-    monkeypatch.setattr(os, 'chdir', forbidden)
+    monkeypatch.setattr(os, "chdir", forbidden)
     with ThreadPoolExecutor(max_workers=2) as pool:
-        results = list(pool.map(lambda i: HIPNN_ASE_calculator(
-            os.path.relpath(tmp_path / str(i), directory), energy_key='custom-energy', device='cpu'), range(2)))
+        results = list(
+            pool.map(
+                lambda i: HIPNN_ASE_calculator(
+                    os.path.relpath(tmp_path / str(i), directory), energy_key="custom-energy", device="cpu"
+                ),
+                range(2),
+            )
+        )
     for index, calc in enumerate(results):
-        assert calc.node == ((f'member-{index}', f'checkpoint-{index}'), 'custom-energy')
-        assert calc.unit == 1.
-        assert calc.conversions == ['float32', 'cpu']
+        assert calc.node == ((f"member-{index}", f"checkpoint-{index}"), "custom-energy")
+        assert calc.unit == 1.0
+        assert calc.conversions == ["float32", "cpu"]
     assert len(calls) == 2
     assert Path.cwd() == directory
 
@@ -172,7 +191,7 @@ def test_members_load_concurrently_without_changing_directory(tmp_path, monkeypa
 
     serialization.load_checkpoint = missing
     with pytest.raises(FileNotFoundError):
-        HIPNN_ASE_calculator(tmp_path / 'missing', device='cpu')
+        HIPNN_ASE_calculator(tmp_path / "missing", device="cpu")
     assert Path.cwd() == directory
 
 
@@ -182,16 +201,16 @@ def test_concurrent_loading_matches_legacy_predictions(monkeypatch, trained_ense
     from hippynn.interfaces.ase_interface import HippynnCalculator
     from hippynn.tools import active_directory
 
-    members = [trained_ensemble / f'model-{i:02d}' for i in range(2)]
+    members = [trained_ensemble / f"model-{i:02d}" for i in range(2)]
 
     expected = []
     # Capture the original loader's predictions before forbidding cwd changes.
     for member in members:
         with active_directory(str(member)):
-            bundle = serialization.load_checkpoint_from_cwd(map_location='cpu')
-        calc = HippynnCalculator(bundle['training_modules'].model.node_from_name('energy'), en_unit=units.eV)
+            bundle = serialization.load_checkpoint_from_cwd(map_location="cpu")
+        calc = HippynnCalculator(bundle["training_modules"].model.node_from_name("energy"), en_unit=units.eV)
         calc.to(torch.float32)
-        calc.to(torch.device('cpu'))
+        calc.to(torch.device("cpu"))
         atoms = WATER.copy()
         atoms.calc = calc
         expected.append((atoms.get_potential_energy(), atoms.get_forces()))
@@ -204,15 +223,15 @@ def test_concurrent_loading_matches_legacy_predictions(monkeypatch, trained_ense
         return original_load(*args, **kwargs)
 
     def forbidden(*args):
-        pytest.fail('Inference loading must not change process cwd')
+        pytest.fail("Inference loading must not change process cwd")
 
-    monkeypatch.setattr(serialization, 'load_checkpoint', concurrent_load)
-    monkeypatch.setattr(os, 'chdir', forbidden)
+    monkeypatch.setattr(serialization, "load_checkpoint", concurrent_load)
+    monkeypatch.setattr(os, "chdir", forbidden)
     before = Path.cwd()
 
     def predict(index):
         atoms = WATER.copy()
-        atoms.calc = HIPNN_ASE_calculator(os.path.relpath(members[index]), device='cpu')
+        atoms.calc = HIPNN_ASE_calculator(os.path.relpath(members[index]), device="cpu")
         return atoms.get_potential_energy(), atoms.get_forces()
 
     with ThreadPoolExecutor(max_workers=2) as pool:
@@ -229,64 +248,72 @@ def test_concurrent_loading_matches_legacy_predictions(monkeypatch, trained_ense
 
 @pytest.fixture
 def readers():
-    pytest.importorskip('hippynn')
-    from alframework.ml_interfaces.hippynn_interface import ALFPyAniDirectoryDB
+    pytest.importorskip("hippynn")
     from hippynn.databases.h5_pyanitools import PyAniDirectoryDB
+
+    from alframework.ml_interfaces.hippynn_interface import ALFPyAniDirectoryDB
+
     return ALFPyAniDirectoryDB, PyAniDirectoryDB
 
 
 def write_dataset(path, sizes=(3, 6), custom=False):
-    coordinates, forces, species = ('xyz', 'grad', 'Z') if custom else ('coordinates', 'forces', 'species')
-    with h5py.File(path, 'w') as handle:
+    coordinates, forces, species = ("xyz", "grad", "Z") if custom else ("coordinates", "forces", "species")
+    with h5py.File(path, "w") as handle:
         for index, size in enumerate(sizes):
-            group = handle.create_group(f'group-{index}')
-            group[species] = np.array(['H']*size, dtype='S')
-            group[coordinates] = np.arange(2*size*3, dtype=float).reshape(2, size, 3) + 100*index
-            group[forces] = np.full((2, size, 3), index+1.)
-            group['energy'] = [index+1., index+2.]
-            group['cell'] = np.repeat((np.eye(3)*10)[None], 2, axis=0)
-            group['dipole'] = np.full((2, 3), 7.)
-            group['quadrupole'] = np.full((2, 3, 3), 9.)
+            group = handle.create_group(f"group-{index}")
+            group[species] = np.array(["H"] * size, dtype="S")
+            group[coordinates] = np.arange(2 * size * 3, dtype=float).reshape(2, size, 3) + 100 * index
+            group[forces] = np.full((2, size, 3), index + 1.0)
+            group["energy"] = [index + 1.0, index + 2.0]
+            group["cell"] = np.repeat((np.eye(3) * 10)[None], 2, axis=0)
+            group["dipole"] = np.full((2, 3), 7.0)
+            group["quadrupole"] = np.full((2, 3, 3), 9.0)
     return dict(coordinates_key=coordinates, atom_keys=(coordinates, forces), species_key=species)
 
 
-@pytest.mark.parametrize('sizes', [(3,), (6,), (3, 6), (6, 3), (3, 9)], ids=['small_only', 'large_only', 'small_then_large', 'large_then_small', 'small_then_larger'])
+@pytest.mark.parametrize(
+    "sizes",
+    [(3,), (6,), (3, 6), (6, 3), (3, 9)],
+    ids=["small_only", "large_only", "small_then_large", "large_then_small", "small_then_larger"],
+)
 def test_small_molecules_are_padded_correctly(tmp_path, sizes, readers):
     ALFPyAniDirectoryDB, PyAniDirectoryDB = readers
-    schema = write_dataset(tmp_path/'data.h5', sizes)
-    db = ALFPyAniDirectoryDB(str(tmp_path), inputs=None, targets=None, allow_unfound=True,
-                            quiet=True, seed=1, **schema)
-    arrays = {k: v.numpy() for k,v in db.arr_dict.items()}
-    assert arrays['coordinates'].shape == (2*len(sizes), max(sizes), 3)
-    assert arrays['cell'].shape == (2*len(sizes), 3, 3)
-    assert arrays['dipole'].shape == (2*len(sizes), 3)
-    assert arrays['quadrupole'].shape == (2*len(sizes), 3, 3)
+    schema = write_dataset(tmp_path / "data.h5", sizes)
+    db = ALFPyAniDirectoryDB(str(tmp_path), inputs=None, targets=None, allow_unfound=True, quiet=True, seed=1, **schema)
+    arrays = {k: v.numpy() for k, v in db.arr_dict.items()}
+    assert arrays["coordinates"].shape == (2 * len(sizes), max(sizes), 3)
+    assert arrays["cell"].shape == (2 * len(sizes), 3, 3)
+    assert arrays["dipole"].shape == (2 * len(sizes), 3)
+    assert arrays["quadrupole"].shape == (2 * len(sizes), 3, 3)
     for index, size in enumerate(sizes):
-        frames = slice(2*index, 2*index+2)
-        np.testing.assert_array_equal(arrays['forces'][frames,:size], index+1.)
-        np.testing.assert_array_equal(arrays['forces'][frames,size:], 0.)
-        np.testing.assert_array_equal(arrays['species'][frames,:size], 1)
-        np.testing.assert_array_equal(arrays['species'][frames,size:], 0)
-        expected = np.arange(2*size*3).reshape(2,size,3) + 100*index
-        np.testing.assert_array_equal(arrays['coordinates'][frames,:size], expected)
-    np.testing.assert_array_equal(arrays['dipole'], 7.)
-    np.testing.assert_array_equal(arrays['quadrupole'], 9.)
+        frames = slice(2 * index, 2 * index + 2)
+        np.testing.assert_array_equal(arrays["forces"][frames, :size], index + 1.0)
+        np.testing.assert_array_equal(arrays["forces"][frames, size:], 0.0)
+        np.testing.assert_array_equal(arrays["species"][frames, :size], 1)
+        np.testing.assert_array_equal(arrays["species"][frames, size:], 0)
+        expected = np.arange(2 * size * 3).reshape(2, size, 3) + 100 * index
+        np.testing.assert_array_equal(arrays["coordinates"][frames, :size], expected)
+    np.testing.assert_array_equal(arrays["dipole"], 7.0)
+    np.testing.assert_array_equal(arrays["quadrupole"], 9.0)
 
 
 def test_custom_dataset_names_survive_restart(tmp_path, readers):
     ALFPyAniDirectoryDB, PyAniDirectoryDB = readers
-    schema = write_dataset(tmp_path/'data.h5', custom=True)
-    db = ALFPyAniDirectoryDB(str(tmp_path), inputs=None, targets=None, allow_unfound=True,
-                            quiet=True, seed=1, **schema)
-    assert type(db).__module__ == 'alframework.ml_interfaces.hippynn_interface'
-    assert type(db).__qualname__ == 'ALFPyAniDirectoryDB'
+    schema = write_dataset(tmp_path / "data.h5", custom=True)
+    db = ALFPyAniDirectoryDB(str(tmp_path), inputs=None, targets=None, allow_unfound=True, quiet=True, seed=1, **schema)
+    assert type(db).__module__ == "alframework.ml_interfaces.hippynn_interface"
+    assert type(db).__qualname__ == "ALFPyAniDirectoryDB"
     restarted = pickle.loads(pickle.dumps(db.restarter)).attempt_restart()
-    assert restarted.coordinates_key == 'xyz'
-    assert 'grad' in restarted.atom_keys
+    assert restarted.coordinates_key == "xyz"
+    assert "grad" in restarted.atom_keys
     for key, value in db.arr_dict.items():
         np.testing.assert_array_equal(value.numpy(), restarted.arr_dict[key].numpy())
     # A fresh worker must resolve the class without a previous explicit import.
-    subprocess.run([sys.executable, '-c', """
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            """
 import pickle
 import sys
 restarter = pickle.loads(sys.stdin.buffer.read())
@@ -294,14 +321,18 @@ database = restarter.attempt_restart()
 assert type(database).__module__ == 'alframework.ml_interfaces.hippynn_interface'
 assert database.coordinates_key == 'xyz'
 assert database.arr_dict['xyz'].shape == (4, 6, 3)
-"""], input=pickle.dumps(db.restarter), capture_output=True, check=True)
+""",
+        ],
+        input=pickle.dumps(db.restarter),
+        capture_output=True,
+        check=True,
+    )
 
 
 def test_larger_molecules_match_upstream_hippynn_reader(tmp_path, readers):
     ALFPyAniDirectoryDB, PyAniDirectoryDB = readers
-    write_dataset(tmp_path/'data.h5', sizes=(8, 10))
-    kwargs = dict(directory=str(tmp_path), inputs=None, targets=None, allow_unfound=True,
-                  quiet=True, seed=1)
+    write_dataset(tmp_path / "data.h5", sizes=(8, 10))
+    kwargs = dict(directory=str(tmp_path), inputs=None, targets=None, allow_unfound=True, quiet=True, seed=1)
     actual, expected = ALFPyAniDirectoryDB(**kwargs), PyAniDirectoryDB(**kwargs)
     assert set(actual.arr_dict) == set(expected.arr_dict)
     for key, value in expected.arr_dict.items():
@@ -310,13 +341,12 @@ def test_larger_molecules_match_upstream_hippynn_reader(tmp_path, readers):
 
 def test_unknown_property_is_rejected_not_guessed(tmp_path, readers):
     ALFPyAniDirectoryDB, PyAniDirectoryDB = readers
-    write_dataset(tmp_path/'data.h5')
-    with h5py.File(tmp_path/'data.h5', 'a') as handle:
-        handle['group-0']['custom_atomic'] = np.zeros((2, 3))
-        handle['group-1']['custom_atomic'] = np.zeros((2, 6))
-    with pytest.raises(ValueError, match='custom_atomic'):
-        ALFPyAniDirectoryDB(str(tmp_path), inputs=None, targets=None, allow_unfound=True,
-                            quiet=True, seed=1)
+    write_dataset(tmp_path / "data.h5")
+    with h5py.File(tmp_path / "data.h5", "a") as handle:
+        handle["group-0"]["custom_atomic"] = np.zeros((2, 3))
+        handle["group-1"]["custom_atomic"] = np.zeros((2, 6))
+    with pytest.raises(ValueError, match="custom_atomic"):
+        ALFPyAniDirectoryDB(str(tmp_path), inputs=None, targets=None, allow_unfound=True, quiet=True, seed=1)
 
 
 # ---- Multi-state training ----
@@ -330,11 +360,11 @@ def two_state_ensemble(request, tmp_path_factory):
     directory = tmp_path_factory.mktemp("two_state")
     data = directory / "data"
     data.mkdir()
-    coordinates = np.array([[[0., 0., 0.], [1., 0., 0.], [0., 1., 0.]]])
+    coordinates = np.array([[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]])
     coordinates = np.repeat(coordinates, 12, axis=0)
-    coordinates[:, 1, 0] += np.linspace(0., .1, 12)
-    coordinates[-1, 1] = [.1, 0., 0.]  # Too close together, so training must filter out this frame.
-    energies = .01 * (coordinates**2).sum(axis=(1, 2))
+    coordinates[:, 1, 0] += np.linspace(0.0, 0.1, 12)
+    coordinates[-1, 1] = [0.1, 0.0, 0.0]  # Too close together, so training must filter out this frame.
+    energies = 0.01 * (coordinates**2).sum(axis=(1, 2))
     with h5py.File(data / "data.h5", "w") as h:
         g = h.create_group("water")
         g["species"] = np.array(["O", "H", "H"], dtype="S")
@@ -342,36 +372,62 @@ def two_state_ensemble(request, tmp_path_factory):
         g["_id"] = np.array([f"frame-{i}" for i in range(12)], dtype="S")
         g["topology_atom_ids"] = np.tile(np.arange(3), (12, 1))
         for state in range(2):
-            g[f"sE{state}"] = energies + .1 * state
-            g[f"F{state}"] = -.02 * coordinates
-        g["dE01"] = np.full(12, .1)
+            g[f"sE{state}"] = energies + 0.1 * state
+            g[f"F{state}"] = -0.02 * coordinates
+        g["dE01"] = np.full(12, 0.1)
         g["nacr"] = np.zeros((12, 1, 3, 3))
         g["nac_pairs"] = [[0, 1]]
-    config = _config(network_choice=request.param, n_models=1, max_epochs=2,
-                     batch_size=4, eval_batch_size=4, termination_patience=10,
-                     gap_targets={"enabled": True}, torch_threads=1, fraction_train_eval=1.,
-                     network_params=dict(possible_species=[0, 1, 8], n_features=4,
-                                         n_sensitivities=4, n_interaction_layers=1, n_atom_layers=1,
-                                         dist_soft_min=.4, dist_soft_max=2., dist_hard_max=3.,
-                                         **({"l_max": 1, "n_max": 2} if request.param else {})))
+    config = _config(
+        network_choice=request.param,
+        n_models=1,
+        max_epochs=2,
+        batch_size=4,
+        eval_batch_size=4,
+        termination_patience=10,
+        gap_targets={"enabled": True},
+        torch_threads=1,
+        fraction_train_eval=1.0,
+        network_params=dict(
+            possible_species=[0, 1, 8],
+            n_features=4,
+            n_sensitivities=4,
+            n_interaction_layers=1,
+            n_atom_layers=1,
+            dist_soft_min=0.4,
+            dist_soft_max=2.0,
+            dist_hard_max=3.0,
+            **({"l_max": 1, "n_max": 2} if request.param else {}),
+        ),
+    )
     for index in range(2):
-        ml.train_single_excited_state_model(model_id=index, model_dir=str(directory / f"model-{index:02d}"),
-                                            h5_train_dir=str(data), properties_list=_properties(with_gap=True),
-                                            ML_config=config)
-    return SimpleNamespace(directory=directory, data=data, member=directory / "model-00",
-                           coordinates=coordinates, config=config)
+        ml.train_single_excited_state_model(
+            model_id=index,
+            model_dir=str(directory / f"model-{index:02d}"),
+            h5_train_dir=str(data),
+            properties_list=_properties(with_gap=True),
+            ML_config=config,
+        )
+    return SimpleNamespace(
+        directory=directory, data=data, member=directory / "model-00", coordinates=coordinates, config=config
+    )
 
 
 def _reload_checkpoint(ensemble):
     from hippynn.experiment.serialization import load_checkpoint
-    return load_checkpoint(str(ensemble.member / "experiment_structure.pt"),
-                           str(ensemble.member / "best_checkpoint.pt"), map_location="cpu", restart_db=True)
+
+    return load_checkpoint(
+        str(ensemble.member / "experiment_structure.pt"),
+        str(ensemble.member / "best_checkpoint.pt"),
+        map_location="cpu",
+        restart_db=True,
+    )
 
 
 def _reloaded_predictor(ensemble):
     """Reload one member, returning its sE0, sE1, F0 and dE01 outputs as a function of coordinates."""
     import torch
     from hippynn.graphs import GraphModule
+
     model = _reload_checkpoint(ensemble)["training_modules"].model.to(torch.float64)
     graph = GraphModule(model.input_nodes, [ml._target(model, key) for key in ("sE0", "sE1", "F0", "dE01")])
     species = torch.tensor([[8, 1, 1]])
@@ -407,6 +463,7 @@ def test_checkpoint_restores_the_training_database(two_state_ensemble):
 
 def test_predicted_gap_is_the_state_difference(two_state_ensemble):
     import torch
+
     predict = _reloaded_predictor(two_state_ensemble)
     e0, e1, f0, gap = predict(torch.tensor(two_state_ensemble.coordinates[:1], dtype=torch.float64, requires_grad=True))
     assert all(torch.isfinite(value).all() for value in (e0, e1, f0, gap))
@@ -415,6 +472,7 @@ def test_predicted_gap_is_the_state_difference(two_state_ensemble):
 
 def test_model_forces_match_numerical_derivative(two_state_ensemble):
     import torch
+
     predict = _reloaded_predictor(two_state_ensemble)
     xyz = torch.tensor(two_state_ensemble.coordinates[:1], dtype=torch.float64, requires_grad=True)
     force = predict(xyz)[2][0, 1, 0].item()
@@ -430,24 +488,28 @@ def test_model_forces_match_numerical_derivative(two_state_ensemble):
 
 def test_training_refuses_to_overwrite_a_member(two_state_ensemble):
     with pytest.raises(FileExistsError):
-        ml.train_single_excited_state_model(model_id=0, model_dir=str(two_state_ensemble.member),
-                                            h5_train_dir=str(two_state_ensemble.data),
-                                            properties_list=_properties(with_gap=True),
-                                            ML_config=two_state_ensemble.config)
+        ml.train_single_excited_state_model(
+            model_id=0,
+            model_dir=str(two_state_ensemble.member),
+            h5_train_dir=str(two_state_ensemble.data),
+            properties_list=_properties(with_gap=True),
+            ML_config=two_state_ensemble.config,
+        )
 
 
 def test_evaluator_gives_same_answer_batched(two_state_ensemble):
     evaluator = _load_evaluator(two_state_ensemble)
     atoms = _molecule_from(two_state_ensemble)
     other = atoms.copy()
-    other.positions[1, 0] += .02
+    other.positions[1, 0] += 0.02
     packed = evaluator.predict_states([atoms, other])
     assert packed["state_energies"].shape == (2, 2, 2)
     assert packed["state_forces"][0].shape == (2, 2, 3, 3)
     for index, a in enumerate([atoms, other]):
         single = evaluator.predict_states([a])
-        np.testing.assert_allclose(single["state_energies"][:, :, 0],
-                                   packed["state_energies"][:, :, index], rtol=1e-5, atol=1e-5)
+        np.testing.assert_allclose(
+            single["state_energies"][:, :, 0], packed["state_energies"][:, :, index], rtol=1e-5, atol=1e-5
+        )
         np.testing.assert_allclose(single["state_forces"][0], packed["state_forces"][index], rtol=1e-5, atol=1e-5)
 
 
@@ -458,14 +520,15 @@ def test_evaluator_undoes_atom_reordering(two_state_ensemble):
     order = [2, 0, 1]
     permuted = evaluator.predict_states([atoms[order]])
     np.testing.assert_allclose(permuted["state_energies"], reference["state_energies"], rtol=1e-5, atol=1e-5)
-    np.testing.assert_allclose(permuted["state_forces"][0], reference["state_forces"][0][:, :, order],
-                               rtol=1e-5, atol=1e-5)
+    np.testing.assert_allclose(
+        permuted["state_forces"][0], reference["state_forces"][0][:, :, order], rtol=1e-5, atol=1e-5
+    )
 
 
 def test_evaluator_applies_property_scales(two_state_ensemble):
     atoms = _molecule_from(two_state_ensemble)
     reference = _load_evaluator(two_state_ensemble).predict_states([atoms])
-    doubled = {key: [value[0], value[1], 2.] for key, value in _properties(with_gap=True).items()}
+    doubled = {key: [value[0], value[1], 2.0] for key, value in _properties(with_gap=True).items()}
     scaled = _load_evaluator(two_state_ensemble, doubled).predict_states([atoms])
     np.testing.assert_allclose(scaled["state_energies"] * 2, reference["state_energies"], rtol=1e-5, atol=1e-5)
     np.testing.assert_allclose(scaled["state_forces"][0] * 2, reference["state_forces"][0], rtol=1e-5, atol=1e-5)
@@ -473,6 +536,7 @@ def test_evaluator_applies_property_scales(two_state_ensemble):
 
 def test_evaluator_forces_match_numerical_derivative(two_state_ensemble):
     import torch
+
     evaluator = _load_evaluator(two_state_ensemble)
     for graph, _ in evaluator._graphs:
         graph.to(torch.float64)
@@ -481,8 +545,9 @@ def test_evaluator_forces_match_numerical_derivative(two_state_ensemble):
     plus, minus = atoms.copy(), atoms.copy()
     plus.positions[1, 0] += step
     minus.positions[1, 0] -= step
-    numerical = -(evaluator.predict_states([plus])["state_energies"] -
-                  evaluator.predict_states([minus])["state_energies"]) / (2 * step)
+    numerical = -(
+        evaluator.predict_states([plus])["state_energies"] - evaluator.predict_states([minus])["state_energies"]
+    ) / (2 * step)
     forces = evaluator.predict_states([atoms])["state_forces"][0]
     np.testing.assert_allclose(numerical[:, :, 0], forces[:, :, 1, 0], atol=1e-3)
 
@@ -499,11 +564,15 @@ def _duplicate_atom_ids(atoms):
     atoms.arrays["topology_atom_ids"][:] = 0
 
 
-@pytest.mark.parametrize("corrupt, reason", [
-    (_make_periodic, "nonperiodic"),
-    (_change_element, "composition"),
-    (_duplicate_atom_ids, "permutation"),
-], ids=["periodic", "wrong_element", "duplicate_atom_ids"])
+@pytest.mark.parametrize(
+    "corrupt, reason",
+    [
+        (_make_periodic, "nonperiodic"),
+        (_change_element, "composition"),
+        (_duplicate_atom_ids, "permutation"),
+    ],
+    ids=["periodic", "wrong_element", "duplicate_atom_ids"],
+)
 def test_evaluator_rejects_unsupported_structures(two_state_ensemble, corrupt, reason):
     atoms = _molecule_from(two_state_ensemble)
     corrupt(atoms)
@@ -513,53 +582,63 @@ def test_evaluator_rejects_unsupported_structures(two_state_ensemble, corrupt, r
 
 def test_training_gpu_choice_respects_visibility(monkeypatch):
     fake = SimpleNamespace(cuda=SimpleNamespace(device_count=lambda: 2))
-    monkeypatch.setitem(sys.modules, 'torch', fake)
-    monkeypatch.setenv('CUDA_VISIBLE_DEVICES', 'GPU-one,GPU-two')
-    assert ml.excited_training_device('from_multiprocessing', 3, 4) == 'cuda:1'
-    assert ml.excited_training_device('cuda:0', 3, 4) == 'cuda:0'
-    assert os.environ['CUDA_VISIBLE_DEVICES'] == 'GPU-one,GPU-two'
-    with pytest.raises(ValueError, match='outside'):
-        ml.excited_training_device('cuda:2', 0, 4)
+    monkeypatch.setitem(sys.modules, "torch", fake)
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "GPU-one,GPU-two")
+    assert ml.excited_training_device("from_multiprocessing", 3, 4) == "cuda:1"
+    assert ml.excited_training_device("cuda:0", 3, 4) == "cuda:0"
+    assert os.environ["CUDA_VISIBLE_DEVICES"] == "GPU-one,GPU-two"
+    with pytest.raises(ValueError, match="outside"):
+        ml.excited_training_device("cuda:2", 0, 4)
     fake.cuda.device_count = lambda: 0
-    with pytest.raises(RuntimeError, match='No GPU'):
-        ml.excited_training_device('cuda', 0, 4)
-    assert ml.excited_training_device('cpu', 0, 0) == 'cpu'
+    with pytest.raises(RuntimeError, match="No GPU"):
+        ml.excited_training_device("cuda", 0, 4)
+    assert ml.excited_training_device("cpu", 0, 0) == "cpu"
 
 
 def test_one_failed_member_is_recorded(tmp_path, monkeypatch):
     def worker_result(params):
-        return dict(ok=params['model_id'] == 0, payload=dict(model_dir=params['model_dir'],
-                                                             model_id=params['model_id'], error='bad member'))
-    FakePool, pool = fake_training_pool(member_log=lambda index: 'Training complete' if index == 0 else None,
-                                        result=worker_result)
-    monkeypatch.setattr(ml.multiprocessing, 'get_context', lambda kind: SimpleNamespace(Pool=FakePool))
-    completed, identity = ml.train_excited_state_ensemble(ML_config=_config(), h5_dir='unused',
-                            model_path=str(tmp_path / 'ensemble-{:d}'), current_training_id=3,
-                            gpus_per_node=0, properties_list=_properties())
+        return dict(
+            ok=params["model_id"] == 0,
+            payload=dict(model_dir=params["model_dir"], model_id=params["model_id"], error="bad member"),
+        )
+
+    FakePool, pool = fake_training_pool(
+        member_log=lambda index: "Training complete" if index == 0 else None, result=worker_result
+    )
+    monkeypatch.setattr(ml.multiprocessing, "get_context", lambda kind: SimpleNamespace(Pool=FakePool))
+    completed, identity = ml.train_excited_state_ensemble(
+        ML_config=_config(),
+        h5_dir="unused",
+        model_path=str(tmp_path / "ensemble-{:d}"),
+        current_training_id=3,
+        gpus_per_node=0,
+        properties_list=_properties(),
+    )
     assert completed == [True, False] and identity == 3
     assert pool.processes == 1
-    assert pool.calls == ['close', 'join']
-    assert json.loads((tmp_path / 'ensemble-3/model-01/training_error.json').read_text())['error'] == 'bad member'
+    assert pool.calls == ["close", "join"]
+    assert json.loads((tmp_path / "ensemble-3/model-01/training_error.json").read_text())["error"] == "bad member"
 
 
 def test_h5_loader_restores_atom_order(tmp_path):
-    pytest.importorskip('hippynn')
-    _write_group(tmp_path / 'data.h5', 'HH', species=('H', 'H'), count=3)
-    with h5py.File(tmp_path / 'data.h5', 'a') as h:
-        g = h['HH']
-        g['topology_atom_ids'] = [[0, 1], [1, 0], [0, 1]]
-        positions = g['coordinates'][:]
-        forces = np.arange(18.).reshape(3, 2, 3)
-        g['F1'][...] = forces
+    pytest.importorskip("hippynn")
+    _write_group(tmp_path / "data.h5", "HH", species=("H", "H"), count=3)
+    with h5py.File(tmp_path / "data.h5", "a") as h:
+        g = h["HH"]
+        g["topology_atom_ids"] = [[0, 1], [1, 0], [0, 1]]
+        positions = g["coordinates"][:]
+        forces = np.arange(18.0).reshape(3, 2, 3)
+        g["F1"][...] = forces
     arrays, _ = ml.load_excited_state_h5_arrays(str(tmp_path), _properties())
-    np.testing.assert_array_equal(arrays['coordinates'][1], positions[1, ::-1])
-    np.testing.assert_array_equal(arrays['F1'][1], forces[1, ::-1])
+    np.testing.assert_array_equal(arrays["coordinates"][1], positions[1, ::-1])
+    np.testing.assert_array_equal(arrays["F1"][1], forces[1, ::-1])
+
 
 # ---- Reading multi-state training data ----
 
 
 def test_h5_loader_reads_two_states(tmp_path):
-    pytest.importorskip('hippynn')
+    pytest.importorskip("hippynn")
     shard = tmp_path / "data-0000.h5"
     _write_group(shard, "HO", count=4)
 
@@ -586,7 +665,7 @@ def test_h5_loader_reads_two_states(tmp_path):
 
 
 def test_h5_loader_uses_configured_names(tmp_path):
-    pytest.importorskip('hippynn')
+    pytest.importorskip("hippynn")
     properties = {
         "sE0": ["state_zero_energy", "system", 1.0],
         "F0": ["state_zero_force", "atomic", 1.0],
@@ -615,7 +694,7 @@ def test_h5_loader_uses_configured_names(tmp_path):
 
 
 def test_h5_loader_reads_gap_targets(tmp_path):
-    pytest.importorskip('hippynn')
+    pytest.importorskip("hippynn")
     _write_group(tmp_path / "data.h5", "HO")
 
     arrays, summary = ml.load_excited_state_h5_arrays(
@@ -628,7 +707,7 @@ def test_h5_loader_reads_gap_targets(tmp_path):
 
 
 def test_h5_loader_rejects_inconsistent_gaps(tmp_path):
-    pytest.importorskip('hippynn')
+    pytest.importorskip("hippynn")
     path = tmp_path / "data.h5"
     _write_group(path, "HO")
     with h5py.File(path, "a") as store:
@@ -651,11 +730,17 @@ def test_h5_loader_rejects_inconsistent_gaps(tmp_path):
         ({"nonfinite": "sE0"}, False, "nonfinite"),
         ({"nonfinite": "F1"}, False, "nonfinite"),
     ],
-    ids=["gap_missing", "gap_nonfinite", "force_missing", "coordinates_nonfinite", "energy_nonfinite",
-         "force_nonfinite"],
+    ids=[
+        "gap_missing",
+        "gap_nonfinite",
+        "force_missing",
+        "coordinates_nonfinite",
+        "energy_nonfinite",
+        "force_nonfinite",
+    ],
 )
 def test_h5_loader_rejects_bad_datasets(tmp_path, problem, with_gap, message):
-    pytest.importorskip('hippynn')
+    pytest.importorskip("hippynn")
     _write_group(tmp_path / "data.h5", "HO", **problem)
 
     with pytest.raises((KeyError, ValueError), match=message):
@@ -663,7 +748,7 @@ def test_h5_loader_rejects_bad_datasets(tmp_path, problem, with_gap, message):
 
 
 def test_h5_loader_rejects_mixed_atom_order(tmp_path):
-    pytest.importorskip('hippynn')
+    pytest.importorskip("hippynn")
     shard = tmp_path / "data.h5"
     _write_group(shard, "first", species=("H", "O"))
     _write_group(shard, "second", species=("O", "H"))
@@ -673,7 +758,7 @@ def test_h5_loader_rejects_mixed_atom_order(tmp_path):
 
 
 def test_h5_loader_checks_configured_atoms(tmp_path):
-    pytest.importorskip('hippynn')
+    pytest.importorskip("hippynn")
     _write_group(tmp_path / "data.h5", "HO")
 
     with pytest.raises(ValueError, match="n_atoms=3"):
@@ -722,7 +807,18 @@ def test_too_few_structures_after_filtering_is_rejected(count):
         ({"remove_high_energy_cut": -1.0}, "remove_high_energy_cut"),
         ({"remove_high_forces_std": np.inf}, "remove_high_forces_std"),
     ],
-ids=['periodic_cell', 'no_force_training', 'no_force_gradients', 'unknown_network', 'unsupported_optimizer', 'gap_targets_without_properties', 'csv_export', 'negative_energy_cut', 'infinite_force_std'])
+    ids=[
+        "periodic_cell",
+        "no_force_training",
+        "no_force_gradients",
+        "unknown_network",
+        "unsupported_optimizer",
+        "gap_targets_without_properties",
+        "csv_export",
+        "negative_energy_cut",
+        "infinite_force_std",
+    ],
+)
 def test_unsupported_training_settings_are_rejected(override, message):
     with pytest.raises((ValueError, TypeError), match=message):
         ml.validate_excited_state_training_config(
@@ -756,11 +852,7 @@ def test_loss_combines_weighted_errors():
         force_weight=3.0,
         l2_weight=0.5,
     )
-    expected = (
-        2.0 * ((2.0 + 1.0) + (4.0 + 3.0))
-        + 3.0 * ((6.0 + 5.0) + (8.0 + 7.0)) / np.sqrt(6.0)
-        + 0.5 * 9.0
-    )
+    expected = 2.0 * ((2.0 + 1.0) + (4.0 + 3.0)) + 3.0 * ((6.0 + 5.0) + (8.0 + 7.0)) / np.sqrt(6.0) + 0.5 * 9.0
     assert actual == pytest.approx(expected)
 
 
@@ -776,12 +868,7 @@ def test_loss_can_include_gap_errors():
         gap_weight=0.25,
         l2_weight=0.5,
     )
-    expected = (
-        2.0 * (2.0 + 1.0)
-        + 3.0 * (6.0 + 5.0) / np.sqrt(6.0)
-        + 0.25 * (4.0 + 3.0)
-        + 0.5 * 9.0
-    )
+    expected = 2.0 * (2.0 + 1.0) + 3.0 * (6.0 + 5.0) / np.sqrt(6.0) + 0.25 * (4.0 + 3.0) + 0.5 * 9.0
     assert actual == pytest.approx(expected)
 
 
@@ -818,16 +905,14 @@ def test_all_states_share_one_network():
         _config(),
         _properties(),
     )
-    energy_outputs, force_outputs, total_loss, validation = (
-        ml.build_excited_state_training_graph(
-            network,
-            positions,
-            table,
-            n_atoms=2,
-            energy_weight=1.0,
-            force_weight=1.0,
-            l2_weight=2.0e-5,
-        )
+    energy_outputs, force_outputs, total_loss, validation = ml.build_excited_state_training_graph(
+        network,
+        positions,
+        table,
+        n_atoms=2,
+        energy_weight=1.0,
+        force_weight=1.0,
+        l2_weight=2.0e-5,
     )
     _, db_info = hippynn.experiment.assemble_for_training(
         total_loss,
@@ -838,10 +923,7 @@ def test_all_states_share_one_network():
     assert [output.db_name for _, output in force_outputs] == ["F0", "F1"]
     assert set(db_info["inputs"]) == {"species", "coordinates"}
     assert {"sE0", "F0", "sE1", "F1"}.issubset(db_info["targets"])
-    assert all(
-        network in output.parents[0].parents
-        for _, output in energy_outputs
-    )
+    assert all(network in output.parents[0].parents for _, output in energy_outputs)
 
 
 def test_gap_target_is_derived_from_states():
@@ -907,9 +989,7 @@ def test_each_member_gets_a_predictable_seed():
 
 
 def test_unsafe_task_options_are_rejected(tmp_path, monkeypatch):
-    assert ml.train_excited_state_HIPPYNN_ensemble_task.executors == [
-        "alf_ML_executor"
-    ]
+    assert ml.train_excited_state_HIPPYNN_ensemble_task.executors == ["alf_ML_executor"]
     with pytest.raises(ValueError, match="remove_existing=True"):
         ml.validate_excited_state_task_options(
             remove_existing=True,
@@ -930,7 +1010,7 @@ def test_nacr_is_never_loaded_for_training(tmp_path, monkeypatch):
     only the names derived from the sE#/F#/dE# patterns, so the extra datasets
     are invisible rather than merely unused.
     """
-    pytest.importorskip('hippynn')
+    pytest.importorskip("hippynn")
 
     plain = tmp_path / "plain"
     with_nacr = tmp_path / "with_nacr"
@@ -942,25 +1022,21 @@ def test_nacr_is_never_loaded_for_training(tmp_path, monkeypatch):
     # Add coupling datasets exactly as store_current_data would.
     with h5py.File(with_nacr / "data-0000.h5", "a") as store:
         store["HO"].create_dataset("nacr", data=np.ones((4, 1, 2, 3)))
-        store["HO"].create_dataset(
-            "nac_pairs", data=np.asarray([[1, 2]], dtype=np.int64)
-        )
+        store["HO"].create_dataset("nac_pairs", data=np.asarray([[1, 2]], dtype=np.int64))
 
     loader_kwargs = {
         "configured_n_atoms": 2,
         "configured_possible_species": [0, 1, 8],
     }
     original_read = h5py.Dataset.__getitem__
+
     def guarded_read(dataset, key):
-        assert not dataset.name.endswith(('/nacr', '/nac_pairs'))
+        assert not dataset.name.endswith(("/nacr", "/nac_pairs"))
         return original_read(dataset, key)
-    monkeypatch.setattr(h5py.Dataset, '__getitem__', guarded_read)
-    plain_arrays, plain_summary = ml.load_excited_state_h5_arrays(
-        str(plain), _properties(), **loader_kwargs
-    )
-    nacr_arrays, nacr_summary = ml.load_excited_state_h5_arrays(
-        str(with_nacr), _properties(), **loader_kwargs
-    )
+
+    monkeypatch.setattr(h5py.Dataset, "__getitem__", guarded_read)
+    plain_arrays, plain_summary = ml.load_excited_state_h5_arrays(str(plain), _properties(), **loader_kwargs)
+    nacr_arrays, nacr_summary = ml.load_excited_state_h5_arrays(str(with_nacr), _properties(), **loader_kwargs)
 
     assert set(nacr_arrays) == set(plain_arrays)
     assert "nacr" not in nacr_arrays
@@ -974,175 +1050,232 @@ def test_nacr_is_never_loaded_for_training(tmp_path, monkeypatch):
 # ---- Filtering training data, compared with upstream HIPPYNN ----
 
 
-PROPERTIES = {'sE0': ['sE0', 'system', 1.], 'F0': ['F0', 'atomic', 1.]}
+PROPERTIES = {"sE0": ["sE0", "system", 1.0], "F0": ["F0", "atomic", 1.0]}
 TABLE = ml.validate_excited_state_training_properties(PROPERTIES)
 
 
 def arrays(count=12):
-    coordinates = np.zeros((count,2,3), dtype=np.float64)
-    coordinates[:,1,0] = 1.
-    return {'coordinates': coordinates,
-            'species': np.tile([1,1], (count,1)).astype(np.int64),
-            'sE0': np.full(count, -2.), 'F0': np.full((count,2,3),10.),
-            'indices': np.arange(count), 'frame_ids': 500 + np.arange(count)}
+    coordinates = np.zeros((count, 2, 3), dtype=np.float64)
+    coordinates[:, 1, 0] = 1.0
+    return {
+        "coordinates": coordinates,
+        "species": np.tile([1, 1], (count, 1)).astype(np.int64),
+        "sE0": np.full(count, -2.0),
+        "F0": np.full((count, 2, 3), 10.0),
+        "indices": np.arange(count),
+        "frame_ids": 500 + np.arange(count),
+    }
 
 
 def upstream_selection(data, options):
-    torch = pytest.importorskip('torch')
-    Database = pytest.importorskip('hippynn.databases.database').Database
-    values = {key: torch.as_tensor(value.copy()) for key,value in data.items()}
-    values['sE0'] = values['sE0'].reshape(-1,1)
-    database = Database(values, inputs=['species','coordinates'], targets=['sE0','F0'],
-                        seed=42, quiet=True)
-    database.remove_high_property('F0', True, species_key='species',
-                                  cut=options.get('remove_high_forces_cut'),
-                                  std_factor=options.get('remove_high_forces_std'))
-    database.remove_high_property('sE0', False, species_key='species',
-                                  cut=options.get('remove_high_energy_cut'),
-                                  std_factor=options.get('remove_high_energy_std'))
-    return database.arr_dict['indices'].cpu().numpy()
+    torch = pytest.importorskip("torch")
+    Database = pytest.importorskip("hippynn.databases.database").Database
+    values = {key: torch.as_tensor(value.copy()) for key, value in data.items()}
+    values["sE0"] = values["sE0"].reshape(-1, 1)
+    database = Database(values, inputs=["species", "coordinates"], targets=["sE0", "F0"], seed=42, quiet=True)
+    database.remove_high_property(
+        "F0",
+        True,
+        species_key="species",
+        cut=options.get("remove_high_forces_cut"),
+        std_factor=options.get("remove_high_forces_std"),
+    )
+    database.remove_high_property(
+        "sE0",
+        False,
+        species_key="species",
+        cut=options.get("remove_high_energy_cut"),
+        std_factor=options.get("remove_high_energy_std"),
+    )
+    return database.arr_dict["indices"].cpu().numpy()
 
 
 def compare(data, options):
-    before = {key: value.copy() for key,value in data.items()}
+    before = {key: value.copy() for key, value in data.items()}
     expected = upstream_selection(data, options)
     filtered, summary = ml.filter_excited_state_training_arrays(
-        data, TABLE, coordinates_key='coordinates', dist_soft_min=.5, **options)
-    np.testing.assert_array_equal(filtered['indices'], expected)
-    for key,value in before.items():
+        data, TABLE, coordinates_key="coordinates", dist_soft_min=0.5, **options
+    )
+    np.testing.assert_array_equal(filtered["indices"], expected)
+    for key, value in before.items():
         np.testing.assert_array_equal(data[key], value)  # Source arrays are unchanged.
         np.testing.assert_array_equal(filtered[key], value[expected])
     return filtered, summary
 
 
-@pytest.mark.parametrize('options', [
-    {'remove_high_forces_cut':40., 'remove_high_energy_cut':4.},
-    {'remove_high_forces_std':2., 'remove_high_energy_std':2.},
-    {'remove_high_forces_cut':40., 'remove_high_forces_std':2.,
-     'remove_high_energy_cut':4., 'remove_high_energy_std':2.},
-    {'remove_high_forces_cut':None, 'remove_high_forces_std':None},
-], ids=['fixed', 'standardized', 'combined', 'disabled'])
+@pytest.mark.parametrize(
+    "options",
+    [
+        {"remove_high_forces_cut": 40.0, "remove_high_energy_cut": 4.0},
+        {"remove_high_forces_std": 2.0, "remove_high_energy_std": 2.0},
+        {
+            "remove_high_forces_cut": 40.0,
+            "remove_high_forces_std": 2.0,
+            "remove_high_energy_cut": 4.0,
+            "remove_high_energy_std": 2.0,
+        },
+        {"remove_high_forces_cut": None, "remove_high_forces_std": None},
+    ],
+    ids=["fixed", "standardized", "combined", "disabled"],
+)
 def test_filters_match_upstream_hippynn(options):
     data = arrays()
-    data['F0'][-1] = 110.
-    data['F0'][-2] = 20.
-    data['sE0'][-3] = 8.
+    data["F0"][-1] = 110.0
+    data["F0"][-2] = 20.0
+    data["sE0"][-3] = 8.0
     compare(data, options)
 
 
-@pytest.mark.parametrize('cut, expected', [(2., list(range(6))),
-                                         (np.nextafter(2.,0.), list(range(2,6)))], ids=['at_cutoff', 'just_below_cutoff'])
+@pytest.mark.parametrize(
+    "cut, expected",
+    [(2.0, list(range(6))), (np.nextafter(2.0, 0.0), list(range(2, 6)))],
+    ids=["at_cutoff", "just_below_cutoff"],
+)
 def test_force_cutoff_measures_distance_from_the_mean(cut, expected):
     data = arrays(6)
-    data['F0'][0], data['F0'][1] = 8., 12.
-    filtered, _ = compare(data, {'remove_high_forces_cut':cut})
-    assert filtered['indices'].tolist() == expected
+    data["F0"][0], data["F0"][1] = 8.0, 12.0
+    filtered, _ = compare(data, {"remove_high_forces_cut": cut})
+    assert filtered["indices"].tolist() == expected
 
 
-@pytest.mark.parametrize('options', [{'remove_high_forces_cut':0.}, {'remove_high_forces_std':0.},
-                                    {'remove_high_forces_cut':0.,'remove_high_forces_std':2.}], ids=['fixed_cut', 'std_cut', 'both_cuts'])
+@pytest.mark.parametrize(
+    "options",
+    [
+        {"remove_high_forces_cut": 0.0},
+        {"remove_high_forces_std": 0.0},
+        {"remove_high_forces_cut": 0.0, "remove_high_forces_std": 2.0},
+    ],
+    ids=["fixed_cut", "std_cut", "both_cuts"],
+)
 def test_uniform_large_forces_are_kept(options):
     data = arrays()
     # Every vector has a large norm, but every component equals the mean.
-    data['F0'][:] = 1000.
+    data["F0"][:] = 1000.0
     filtered, _ = compare(data, options)
-    assert len(filtered['indices']) == 12
+    assert len(filtered["indices"]) == 12
 
 
 def test_std_filter_runs_after_fixed_cut():
     data = arrays()
-    data['F0'][-1], data['F0'][-2] = 110.,20.
-    filtered, summary = compare(data, {'remove_high_forces_cut':40., 'remove_high_forces_std':2.})
-    assert filtered['indices'].tolist() == list(range(10))
-    assert summary['static_cut_failures']['F0'] == 1
-    assert summary['standard_deviation_failures']['F0'] == 1
+    data["F0"][-1], data["F0"][-2] = 110.0, 20.0
+    filtered, summary = compare(data, {"remove_high_forces_cut": 40.0, "remove_high_forces_std": 2.0})
+    assert filtered["indices"].tolist() == list(range(10))
+    assert summary["static_cut_failures"]["F0"] == 1
+    assert summary["standard_deviation_failures"]["F0"] == 1
 
 
 def test_filtering_leaves_the_data_file_untouched(tmp_path):
-    pytest.importorskip('hippynn')
-    path = tmp_path/'data-0000.h5'
+    pytest.importorskip("hippynn")
+    path = tmp_path / "data-0000.h5"
     data = arrays()
-    data['F0'][-1] = 110.
-    data['F0'][-2] = 20.
-    with h5py.File(path,'w') as handle:
-        group = handle.create_group('H02')
-        for key in ('coordinates','sE0','F0'):
+    data["F0"][-1] = 110.0
+    data["F0"][-2] = 20.0
+    with h5py.File(path, "w") as handle:
+        group = handle.create_group("H02")
+        for key in ("coordinates", "sE0", "F0"):
             group[key] = data[key]
-        group['species'] = np.array([b'H',b'H'])
+        group["species"] = np.array([b"H", b"H"])
     before = hashlib.sha256(path.read_bytes()).hexdigest()
     loaded, _ = ml.load_excited_state_h5_arrays(str(tmp_path), PROPERTIES)
     filtered, _ = ml.filter_excited_state_training_arrays(
-        loaded, TABLE, coordinates_key='coordinates', dist_soft_min=.5,
-        remove_high_forces_cut=40., remove_high_forces_std=2.)
-    assert len(filtered['coordinates']) == 10
+        loaded,
+        TABLE,
+        coordinates_key="coordinates",
+        dist_soft_min=0.5,
+        remove_high_forces_cut=40.0,
+        remove_high_forces_std=2.0,
+    )
+    assert len(filtered["coordinates"]) == 10
     assert hashlib.sha256(path.read_bytes()).hexdigest() == before
 
 
 def multistate_arrays():
     data = arrays(20)
-    data['sE1'] = data['sE0'] + .5
-    data['F1'] = data['F0'].copy()
-    data['dE01'] = data['sE1'] - data['sE0']
-    properties = {**PROPERTIES, 'sE1': ['sE1', 'system', 1.],
-                  'F1': ['F1', 'atomic', 1.], 'dE01': ['dE01', 'system', 1.]}
+    data["sE1"] = data["sE0"] + 0.5
+    data["F1"] = data["F0"].copy()
+    data["dE01"] = data["sE1"] - data["sE0"]
+    properties = {
+        **PROPERTIES,
+        "sE1": ["sE1", "system", 1.0],
+        "F1": ["F1", "atomic", 1.0],
+        "dE01": ["dE01", "system", 1.0],
+    }
     return data, ml.validate_excited_state_training_properties(properties)
 
 
-@pytest.mark.parametrize('options', [
-    {'remove_high_forces_cut': 5., 'remove_high_energy_cut': 5.},
-    {'remove_high_forces_std': 2., 'remove_high_energy_std': 2.},
-    {'remove_high_forces_cut': 5., 'remove_high_forces_std': 2.,
-     'remove_high_energy_cut': 5., 'remove_high_energy_std': 2.},
-    {'remove_high_forces_cut': None, 'remove_high_forces_std': None},
-], ids=['fixed', 'standardized', 'combined', 'disabled'])
+@pytest.mark.parametrize(
+    "options",
+    [
+        {"remove_high_forces_cut": 5.0, "remove_high_energy_cut": 5.0},
+        {"remove_high_forces_std": 2.0, "remove_high_energy_std": 2.0},
+        {
+            "remove_high_forces_cut": 5.0,
+            "remove_high_forces_std": 2.0,
+            "remove_high_energy_cut": 5.0,
+            "remove_high_energy_std": 2.0,
+        },
+        {"remove_high_forces_cut": None, "remove_high_forces_std": None},
+    ],
+    ids=["fixed", "standardized", "combined", "disabled"],
+)
 def test_frame_failing_any_state_is_dropped(options):
     data, table = multistate_arrays()
-    data['sE1'][16] = 20.
-    data['F0'][17] = 30.
-    data['F1'][18] = -10.
-    data['dE01'] = data['sE1'] - data['sE0']
+    data["sE1"][16] = 20.0
+    data["F0"][17] = 30.0
+    data["F1"][18] = -10.0
+    data["dE01"] = data["sE1"] - data["sE0"]
     before = {key: value.copy() for key, value in data.items()}
     forward, summary = ml.filter_excited_state_training_arrays(
-        data, table, coordinates_key='coordinates', dist_soft_min=.5, **options)
+        data, table, coordinates_key="coordinates", dist_soft_min=0.5, **options
+    )
     reverse, _ = ml.filter_excited_state_training_arrays(
-        data, list(reversed(table)), coordinates_key='coordinates', dist_soft_min=.5, **options)
-    expected = [i for i in range(20) if i not in (16, 17, 18)] if any(
-        value is not None for value in options.values()) else list(range(20))
-    assert forward['indices'].tolist() == expected
+        data, list(reversed(table)), coordinates_key="coordinates", dist_soft_min=0.5, **options
+    )
+    expected = (
+        [i for i in range(20) if i not in (16, 17, 18)]
+        if any(value is not None for value in options.values())
+        else list(range(20))
+    )
+    assert forward["indices"].tolist() == expected
     for key, value in before.items():
         np.testing.assert_array_equal(data[key], value)
         np.testing.assert_array_equal(forward[key], reverse[key])
         np.testing.assert_array_equal(forward[key], value[expected])
-    np.testing.assert_array_equal(forward['dE01'], forward['sE1'] - forward['sE0'])
-    if len(expected) < len(data['indices']):
-        stage = 'static_cut' if options.get('remove_high_forces_cut') is not None else 'standard_deviation'
-        assert summary['per_state_failures']['0']['forces'][stage] == 1
-        assert summary['per_state_failures']['1']['forces'][stage] == 1
-        assert summary['per_state_failures']['1']['energy'][stage] == 1
-        assert summary['removed_static_cut_union'] + summary['removed_standard_deviation_union'] == 3
-    assert summary['final_structures'] == len(expected)
+    np.testing.assert_array_equal(forward["dE01"], forward["sE1"] - forward["sE0"])
+    if len(expected) < len(data["indices"]):
+        stage = "static_cut" if options.get("remove_high_forces_cut") is not None else "standard_deviation"
+        assert summary["per_state_failures"]["0"]["forces"][stage] == 1
+        assert summary["per_state_failures"]["1"]["forces"][stage] == 1
+        assert summary["per_state_failures"]["1"]["energy"][stage] == 1
+        assert summary["removed_static_cut_union"] + summary["removed_standard_deviation_union"] == 3
+    assert summary["final_structures"] == len(expected)
 
 
 def test_close_contacts_are_removed_first():
     data, table = multistate_arrays()
-    data['coordinates'][0, 1, 0] = .4
-    data['sE1'][0] = 1000.
-    data['dE01'] = data['sE1'] - data['sE0']
+    data["coordinates"][0, 1, 0] = 0.4
+    data["sE1"][0] = 1000.0
+    data["dE01"] = data["sE1"] - data["sE0"]
     filtered, summary = ml.filter_excited_state_training_arrays(
-        data, table, coordinates_key='coordinates', dist_soft_min=.5,
-        remove_high_energy_std=2.)
+        data, table, coordinates_key="coordinates", dist_soft_min=0.5, remove_high_energy_std=2.0
+    )
     expected = list(range(1, 20))
     for key, value in data.items():
         np.testing.assert_array_equal(filtered[key], value[expected])
-    assert summary['removed_min_distance'] == 1
-    assert summary['removed_standard_deviation_union'] == 0
+    assert summary["removed_min_distance"] == 1
+    assert summary["removed_standard_deviation_union"] == 0
 
 
 def test_uniform_multistate_data_is_kept():
     data, table = multistate_arrays()
     filtered, summary = ml.filter_excited_state_training_arrays(
-        data, table, coordinates_key='coordinates', dist_soft_min=.5,
-        remove_high_energy_std=2., remove_high_forces_std=2.)
+        data,
+        table,
+        coordinates_key="coordinates",
+        dist_soft_min=0.5,
+        remove_high_energy_std=2.0,
+        remove_high_forces_std=2.0,
+    )
     for key, value in data.items():
         np.testing.assert_array_equal(filtered[key], value)
-    assert summary['final_structures'] == len(data['indices'])
+    assert summary["final_structures"] == len(data["indices"])

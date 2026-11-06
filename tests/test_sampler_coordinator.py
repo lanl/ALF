@@ -1,4 +1,5 @@
 """Multi-trajectory sampling through the real ALF coordinator with local tasks."""
+
 import os
 
 import numpy as np
@@ -15,23 +16,56 @@ from tests.helpers.driver import MODEL_PATTERN, loaded_parsl, run_alf_driver, st
 from tests.helpers.engines import require_engine
 from tests.helpers.molecules import SPRING_WATER
 
-SAMPLER = dict(dt=0.5, maxt=0.05, Escut=0.012, Fscut=100.0, Ncheck=5, distcut=0.5, random_seed=3,
-               srt_temp=[2500.0, 3500.0], end_temp=[2500.0, 3500.0], amp_temp=[0.0, 200.0],
-               per_temp=[0.01, 0.05], amp_dens=None, per_dens=None, end_dens=None, device="cpu",
-               ase_calculator="tests.helpers.fakes.load_spring_ensemble")
+SAMPLER = dict(
+    dt=0.5,
+    maxt=0.05,
+    Escut=0.012,
+    Fscut=100.0,
+    Ncheck=5,
+    distcut=0.5,
+    random_seed=3,
+    srt_temp=[2500.0, 3500.0],
+    end_temp=[2500.0, 3500.0],
+    amp_temp=[0.0, 200.0],
+    per_temp=[0.01, 0.05],
+    amp_dens=None,
+    per_dens=None,
+    end_dens=None,
+    device="cpu",
+    ase_calculator="tests.helpers.fakes.load_spring_ensemble",
+)
 TORCHSIM = {"strategy": "batched", "engine": "torchsim"}
 ALCHEMI = {"strategy": "batched", "engine": "alchemi"}
 PARALLEL_SAMPLERS = 4
 
 
-@pytest.mark.parametrize("driver,policy", [({"strategy": "single"}, None), ({"strategy": "batched"}, None),
-                                           ({"strategy": "batched"}, "stop"), ({"strategy": "batched"}, "continue"),
-                                           (TORCHSIM, None), (TORCHSIM, "continue"),
-                                           (ALCHEMI, None), (ALCHEMI, "stop"), (ALCHEMI, "continue"),
-                                           ({"strategy": "single", "engine": "alchemi"}, None)],
-                         ids=["single", "batched", "cohort-stop", "cohort-continue", "torchsim",
-                              "torchsim-cohort-continue", "alchemi", "alchemi-cohort-stop",
-                              "alchemi-cohort-continue", "alchemi-single"])
+@pytest.mark.parametrize(
+    "driver,policy",
+    [
+        ({"strategy": "single"}, None),
+        ({"strategy": "batched"}, None),
+        ({"strategy": "batched"}, "stop"),
+        ({"strategy": "batched"}, "continue"),
+        (TORCHSIM, None),
+        (TORCHSIM, "continue"),
+        (ALCHEMI, None),
+        (ALCHEMI, "stop"),
+        (ALCHEMI, "continue"),
+        ({"strategy": "single", "engine": "alchemi"}, None),
+    ],
+    ids=[
+        "single",
+        "batched",
+        "cohort-stop",
+        "cohort-continue",
+        "torchsim",
+        "torchsim-cohort-continue",
+        "alchemi",
+        "alchemi-cohort-stop",
+        "alchemi-cohort-continue",
+        "alchemi-single",
+    ],
+)
 def test_active_learning_loop_completes_a_full_cycle(tmp_path, monkeypatch, driver, policy):
     require_engine(driver.get("engine"))
     training_calls, sampler_widths, labeled, engines = [], [], [], []
@@ -63,21 +97,34 @@ def test_active_learning_loop_completes_a_full_cycle(tmp_path, monkeypatch, driv
         return [True] * 4, current_training_id
 
     sampler_config = dict(SAMPLER, driver=driver)
-    if driver.get('engine') in {'torchsim', 'alchemi'}:
-        sampler_config['device'] = os.environ.get('ALF_TEST_ENGINE_DEVICE', 'cpu')
+    if driver.get("engine") in {"torchsim", "alchemi"}:
+        sampler_config["device"] = os.environ.get("ALF_TEST_ENGINE_DEVICE", "cpu")
     if policy is not None:
         # Cohorts of 6 with capacity 4: admission must continue while members run.
-        sampler_config["acquisition"] = {"trajectory_policy": policy,
-                                         "selection": {"mode": "cohort_top_k", "cohort_size": 6, "k": 2}}
+        sampler_config["acquisition"] = {
+            "trajectory_policy": policy,
+            "selection": {"mode": "cohort_top_k", "cohort_size": 6, "k": 2},
+        }
     if policy == "continue" and driver.get("engine") == "alchemi":
-        sampler_config['acquisition'].update(strategy='summed', weights={'energy': 1., 'force_rms': 1.})
+        sampler_config["acquisition"].update(strategy="summed", weights={"energy": 1.0, "force_rms": 1.0})
     if driver["strategy"] == "batched":
         sampler_config["batching"] = {"batch_size": 3, "max_wait_seconds": 0.05}
 
-    run = run_alf_driver(tmp_path, monkeypatch, builder=builder, sampler=batched_mlmd.mlmd_trajectories_task,
-                         qm=qm, ml=ml, sampler_config=sampler_config, bootstrap_set=2,
-                         parallel_samplers=PARALLEL_SAMPLERS, target_queued_QM=4, save_h5_threshold=3,
-                         maximum_completed_QM=8, gpus_per_node=0)
+    run = run_alf_driver(
+        tmp_path,
+        monkeypatch,
+        builder=builder,
+        sampler=batched_mlmd.mlmd_trajectories_task,
+        qm=qm,
+        ml=ml,
+        sampler_config=sampler_config,
+        bootstrap_set=2,
+        parallel_samplers=PARALLEL_SAMPLERS,
+        target_queued_QM=4,
+        save_h5_threshold=3,
+        maximum_completed_QM=8,
+        gpus_per_node=0,
+    )
 
     assert run.status["lifetime_failed_sampler_tasks"] == 0 and run.status["lifetime_failed_QM_tasks"] == 0
     assert training_calls[0][0] == 0 and training_calls[1][0] == 1
@@ -130,112 +177,144 @@ def test_batched_sampler_counts_molecules():
     cutoffs = {"Escut": 0.5, "Fscut": 0.3}
     single = SamplerCoordinator(batched_mlmd.mlmd_trajectories_task, "batched", cutoffs)
     assert single.batched and single.settings["batch_size"] == 1 and single.poll_delay(60) == 60
-    batched = SamplerCoordinator(batched_mlmd.mlmd_trajectories_task, "batched",
-                                 {**cutoffs, "driver": {"strategy": "batched"}, "batching": {"batch_size": 4}})
+    batched = SamplerCoordinator(
+        batched_mlmd.mlmd_trajectories_task,
+        "batched",
+        {**cutoffs, "driver": {"strategy": "batched"}, "batching": {"batch_size": 4}},
+    )
     batched.submit(MoleculesObject(SPRING_WATER.copy(), "a"), [{"current_model_id": 0}])
     assert batched.queue.get_number() == 1 and batched.poll_delay(60) == pytest.approx(5.0, abs=0.1)
 
 
 def test_cohort_stays_on_the_model_it_started_with(tmp_path):
-    @python_app(executors=['pinning'])
+    @python_app(executors=["pinning"])
     def sampler(molecule_objects, sampler_config, current_model_id):
         for m in molecule_objects:
-            m.update_metadata(dict(executed_model_id=current_model_id, trajectory_outcome='completed',
-                                   acquisition_candidates=[]))
+            m.update_metadata(
+                dict(executed_model_id=current_model_id, trajectory_outcome="completed", acquisition_candidates=[])
+            )
         return molecule_objects
 
-    config = dict(driver=dict(engine='ase', strategy='batched'),
-                  batching=dict(batch_size=2, partial_policy='timeout', max_wait_seconds=0),
-                  acquisition=dict(selection=dict(mode='cohort_top_k', cohort_size=3, k=1)), Escut=20, Fscut=.3)
-    with loaded_parsl(tmp_path / 'parsl', 'pinning') as dfk:
-        coordinator = SamplerCoordinator(sampler, 'test.sampler', config)
-        for name, model in [('a', 0), ('b', 0), ('c', 1), ('d', 1)]:
-            coordinator.submit(MoleculesObject(Atoms('H'), name), [dict(sampler_config=config, current_model_id=model)])
+    config = dict(
+        driver=dict(engine="ase", strategy="batched"),
+        batching=dict(batch_size=2, partial_policy="timeout", max_wait_seconds=0),
+        acquisition=dict(selection=dict(mode="cohort_top_k", cohort_size=3, k=1)),
+        Escut=20,
+        Fscut=0.3,
+    )
+    with loaded_parsl(tmp_path / "parsl", "pinning") as dfk:
+        coordinator = SamplerCoordinator(sampler, "test.sampler", config)
+        for name, model in [("a", 0), ("b", 0), ("c", 1), ("d", 1)]:
+            coordinator.submit(MoleculesObject(Atoms("H"), name), [dict(sampler_config=config, current_model_id=model)])
         coordinator.submit_ready([dict(sampler_config=config, current_model_id=1)])
         # Wait through actual Parsl results, then use the normal harvest path.
         for task in list(dfk.tasks.values()):
-            task['app_fu'].result()
+            task["app_fu"].result()
         results, failed = coordinator.queue.get_task_results()
         assert failed == 0
-        assert {m.get_moleculeid(): m.get_metadata()['executed_model_id'] for m in results} == dict(a=0, b=0, c=0, d=1)
+        assert {m.get_moleculeid(): m.get_metadata()["executed_model_id"] for m in results} == dict(a=0, b=0, c=0, d=1)
         assert coordinator.harvest(results) == []
-        assert coordinator.pool.finished[0]['model_id'] == 0
-        assert coordinator.status()['open'][0]['model_id'] == 1
+        assert coordinator.pool.finished[0]["model_id"] == 0
+        assert coordinator.status()["open"][0]["model_id"] == 1
 
 
 def test_state_assignment_ignores_batch_size(tmp_path):
-    @python_app(executors=['state_admission'])
+    @python_app(executors=["state_admission"])
     def capture(molecule_objects, current_model_id):
-        assert len({m.get_metadata()['selected_state'] for m in molecule_objects}) == 1
-        assert all(m.get_metadata()['sampling_model_id'] == current_model_id for m in molecule_objects)
+        assert len({m.get_metadata()["selected_state"] for m in molecule_objects}) == 1
+        assert all(m.get_metadata()["sampling_model_id"] == current_model_id for m in molecule_objects)
         return molecule_objects
 
-    with loaded_parsl(tmp_path / 'parsl', 'state_admission'):
+    with loaded_parsl(tmp_path / "parsl", "state_admission"):
         snapshots = []
         for width in (1, 2, 4):
-            config = dict(Escut=1., Fscut=1., model_mode='excited_state',
-                          state_selection={'mode': 'batch_cycle', 'states': [0, 1]},
-                          driver={'strategy': 'single' if width == 1 else 'batched'})
+            config = dict(
+                Escut=1.0,
+                Fscut=1.0,
+                model_mode="excited_state",
+                state_selection={"mode": "batch_cycle", "states": [0, 1]},
+                driver={"strategy": "single" if width == 1 else "batched"},
+            )
             if width > 1:
-                config['batching'] = {'batch_size': width, 'partial_policy': 'timeout', 'max_wait_seconds': 60}
-            coordinator = SamplerCoordinator(capture, 'test.capture', config)
+                config["batching"] = {"batch_size": width, "partial_policy": "timeout", "max_wait_seconds": 60}
+            coordinator = SamplerCoordinator(capture, "test.capture", config)
             for index in range(8):
-                molecule = MoleculesObject(SPRING_WATER.copy(), f'state-{index}')
+                molecule = MoleculesObject(SPRING_WATER.copy(), f"state-{index}")
                 if index == 2:
-                    molecule.update_metadata({'selected_state': 1})
-                coordinator.submit(molecule, [{'current_model_id': 7}])
-            coordinator.submit_ready([{'current_model_id': 7}], flush=True)
+                    molecule.update_metadata({"selected_state": 1})
+                coordinator.submit(molecule, [{"current_model_id": 7}])
+            coordinator.submit_ready([{"current_model_id": 7}], flush=True)
             results = [m for future in reversed(coordinator.queue.task_list) for m in future.result()]
-            snapshots.append(sorted((m.get_moleculeid(), m.get_metadata()['selected_state'],
-                                     m.get_metadata()['sampling_admission_ordinal']) for m in results))
+            snapshots.append(
+                sorted(
+                    (
+                        m.get_moleculeid(),
+                        m.get_metadata()["selected_state"],
+                        m.get_metadata()["sampling_admission_ordinal"],
+                    )
+                    for m in results
+                )
+            )
         assert snapshots[0] == snapshots[1] == snapshots[2]
         assert [state for _, state, _ in snapshots[0]] == [0, 1, 1, 1, 0, 1, 0, 1]
 
 
-@pytest.mark.parametrize('failure', [None, 'builder', 'qm'], ids=['all_succeed', 'builder_fails', 'qm_fails'])
+@pytest.mark.parametrize("failure", [None, "builder", "qm"], ids=["all_succeed", "builder_fails", "qm_fails"])
 def test_finite_bootstrap_stops_when_structures_run_out(tmp_path, monkeypatch, failure):
     requested, training, sampled = [], [], []
 
-    @python_app(executors=['finite_executor'])
+    @python_app(executors=["finite_executor"])
     def builder(moleculeid=None, moleculeids=None):
         ids = moleculeids if moleculeids is not None else [moleculeid]
         requested.extend(ids)
-        if failure == 'builder':
-            raise RuntimeError('deliberate builder failure')
+        if failure == "builder":
+            raise RuntimeError("deliberate builder failure")
         return [MoleculesObject(SPRING_WATER.copy(), name) for name in ids]
 
-    @python_app(executors=['finite_executor'])
+    @python_app(executors=["finite_executor"])
     def label(molecule_objects):
-        if failure == 'qm':
-            raise RuntimeError('deliberate label failure')
+        if failure == "qm":
+            raise RuntimeError("deliberate label failure")
         for m in molecule_objects:
-            m.store_results(dict(energy=-1., forces=np.zeros((3, 3))))
+            m.store_results(dict(energy=-1.0, forces=np.zeros((3, 3))))
             m.set_converged_flag(True)
         return molecule_objects
 
-    @python_app(executors=['finite_executor'])
+    @python_app(executors=["finite_executor"])
     def train(current_training_id):
-        training.extend(stored_ids(tmp_path / 'h5'))
+        training.extend(stored_ids(tmp_path / "h5"))
         return [True] * 4, current_training_id
 
-    @python_app(executors=['finite_executor'])
+    @python_app(executors=["finite_executor"])
     def sampler(molecule_object):
         sampled.append(molecule_object.get_moleculeid())
         return molecule_object
 
-    settings = dict(builder=builder, sampler=sampler, qm=label, ml=train, executors=('finite_executor',),
-                    qm_config={'batching': {'mode': 'native', 'batch_size': 4, 'partial_policy': 'timeout',
-                                            'max_wait_seconds': .001}},
-                    # Run until a list returned by the builder has also reached the sampler.
-                    stop_when=lambda status: status['current_model_id'] >= 0 and bool(sampled),
-                    bootstrap_set=5, finite_bootstrap=True, maximum_builder_structures=4, parallel_samplers=8,
-                    target_queued_QM=8, save_h5_threshold=7, gpus_per_node=0)
+    settings = dict(
+        builder=builder,
+        sampler=sampler,
+        qm=label,
+        ml=train,
+        executors=("finite_executor",),
+        qm_config={
+            "batching": {"mode": "native", "batch_size": 4, "partial_policy": "timeout", "max_wait_seconds": 0.001}
+        },
+        # Run until a list returned by the builder has also reached the sampler.
+        stop_when=lambda status: status["current_model_id"] >= 0 and bool(sampled),
+        bootstrap_set=5,
+        finite_bootstrap=True,
+        maximum_builder_structures=4,
+        parallel_samplers=8,
+        target_queued_QM=8,
+        save_h5_threshold=7,
+        gpus_per_node=0,
+    )
     if failure:
-        with pytest.raises(RuntimeError, match='Finite bootstrap exhausted'):
+        with pytest.raises(RuntimeError, match="Finite bootstrap exhausted"):
             run_alf_driver(tmp_path, monkeypatch, **settings)
     else:
         run_alf_driver(tmp_path, monkeypatch, **settings)
 
-    bootstrap = [name for name in requested if name.startswith('mol-boot-')]
-    assert sorted(bootstrap) == [f'mol-boot-{i:010d}' for i in range(5)]
+    bootstrap = [name for name in requested if name.startswith("mol-boot-")]
+    assert sorted(bootstrap) == [f"mol-boot-{i:010d}" for i in range(5)]
     assert len(training) == (0 if failure else 5)

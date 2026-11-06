@@ -1,19 +1,29 @@
 """PySEQM labeling: ground-state native batching and native CIS excited states."""
+
+import multiprocessing as mp
+import os
+import time
+
 import numpy as np
 import pytest
 from ase import Atoms
-import multiprocessing as mp
-import time
 
 from alframework.qm_interfaces import pyseqm_interface as pyseqm
 from alframework.tools.labeling import LabelingCoordinator
 from alframework.tools.molecules_class import MoleculesObject
-import os
-
 
 # Deliberately not heaviest-first, so the adapter must sort and restore atom order.
-METHANOL = Atoms("HCOHHH", positions=[[-0.36, 1.03, 0.0], [0.0, 0.0, 0.0], [1.43, 0.0, 0.0],
-                                      [-0.36, -0.51, 0.89], [-0.36, -0.51, -0.89], [1.75, 0.9, 0.0]])
+METHANOL = Atoms(
+    "HCOHHH",
+    positions=[
+        [-0.36, 1.03, 0.0],
+        [0.0, 0.0, 0.0],
+        [1.43, 0.0, 0.0],
+        [-0.36, -0.51, 0.89],
+        [-0.36, -0.51, -0.89],
+        [1.75, 0.9, 0.0],
+    ],
+)
 WATER = Atoms("HOH", positions=[[0.96, 0.0, 0.0], [0.0, 0.0, 0.0], [-0.24, 0.93, 0.0]])
 QM_CONFIG = {"method": "AM1", "scf_eps": 1e-8, "device": "cpu"}
 
@@ -107,21 +117,23 @@ def test_ground_state_task_works_with_native_batching():
     assert LabelingCoordinator(pyseqm.pyseqm_task, "pyseqm", {"batching": {"mode": "native", "batch_size": 2}}).batched
 
 
-PROPS = {**{f'sE{i}': [f'e{i}', 'system', 1.] for i in range(4)},
-         **{f'F{i}': [f'f{i}', 'atomic', 1.] for i in range(4)},
-         'dE01': ['gap01', 'system', 1.]}
+PROPS = {
+    **{f"sE{i}": [f"e{i}", "system", 1.0] for i in range(4)},
+    **{f"F{i}": [f"f{i}", "atomic", 1.0] for i in range(4)},
+    "dE01": ["gap01", "system", 1.0],
+}
 
 
 def fake(coordinates, species, parameters, device):
-    assert parameters['excited_states'] == {'method': 'cis', 'n_states': 3, 'tolerance': 1e-8}
+    assert parameters["excited_states"] == {"method": "cis", "n_states": 3, "tolerance": 1e-8}
     energy = -species.sum(axis=1)[:, None] + np.arange(4)[None, :]
-    force = np.broadcast_to(species[:, None, :, None], (len(species), 4, species.shape[1], 3 )).astype(float).copy()
+    force = np.broadcast_to(species[:, None, :, None], (len(species), 4, species.shape[1], 3)).astype(float).copy()
     return energy, force, np.ones(len(species), bool)
 
 
 def fail_batch(coordinates, species, parameters, device):
     if len(species) > 1 or np.max(coordinates) > 10:
-        raise RuntimeError('failed batch or water')
+        raise RuntimeError("failed batch or water")
     return fake(coordinates, species, parameters, device)
 
 
@@ -135,90 +147,110 @@ def crash_child(*args):
 
 def test_cis_labels_keep_atom_order():
     permuted = METHANOL[[2, 1, 0, 3, 4, 5]]
-    labeled = pyseqm.label_pyseqm_excited_batch(molecules(METHANOL, permuted),
-        {'energy_offset_eV': 2.}, PROPS, runner=fake)
+    labeled = pyseqm.label_pyseqm_excited_batch(
+        molecules(METHANOL, permuted), {"energy_offset_eV": 2.0}, PROPS, runner=fake
+    )
     for mol, atoms in zip(labeled, (METHANOL, permuted)):
         assert mol.check_convergence()
-        assert mol.get_results()['sE0'] == -sum(atoms.numbers)-2
-        assert mol.get_results()['dE01'] == 1
+        assert mol.get_results()["sE0"] == -sum(atoms.numbers) - 2
+        assert mol.get_results()["dE01"] == 1
         for state in range(4):
-            np.testing.assert_array_equal(mol.get_results()[f'F{state}'][:, 0], atoms.numbers)
-        assert mol.get_metadata()['qm_backend_width'] == 2
-        assert mol.get_metadata()['qm_solve_widths'] == [2]
+            np.testing.assert_array_equal(mol.get_results()[f"F{state}"][:, 0], atoms.numbers)
+        assert mol.get_metadata()["qm_backend_width"] == 2
+        assert mol.get_metadata()["qm_solve_widths"] == [2]
 
 
 def test_failed_cis_batch_retries_one_at_a_time():
-    bad = METHANOL.copy(); bad.positions[0, 0] = 20.
+    bad = METHANOL.copy()
+    bad.positions[0, 0] = 20.0
     output = pyseqm.label_pyseqm_excited_batch(molecules(METHANOL, bad), {}, PROPS, runner=fail_batch)
     assert [m.check_convergence() for m in output] == [True, False]
-    assert output[0].get_metadata()['qm_backend_width'] == 1
-    assert output[0].get_metadata()['qm_solve_widths'] == [2, 1, 1]
-    assert output[0].get_metadata()['qm_retry_count'] == 2
-    assert output[0].get_metadata()['qm_failed_ids'] == ['mol-1']
+    assert output[0].get_metadata()["qm_backend_width"] == 1
+    assert output[0].get_metadata()["qm_solve_widths"] == [2, 1, 1]
+    assert output[0].get_metadata()["qm_retry_count"] == 2
+    assert output[0].get_metadata()["qm_failed_ids"] == ["mol-1"]
     assert output[1].get_results() == {}
 
 
-@pytest.mark.parametrize('problem', ['nonfinite', 'unconverged', 'shape'])
+@pytest.mark.parametrize("problem", ["nonfinite", "unconverged", "shape"])
 def test_invalid_results_cannot_pass(problem):
     def runner(*args):
         energy, force, ok = fake(*args)
-        if problem == 'nonfinite': force[1, 2, 0, 0] = np.nan
-        if problem == 'unconverged': ok[1] = False
-        if problem == 'shape': energy = energy[:, :-1]
+        if problem == "nonfinite":
+            force[1, 2, 0, 0] = np.nan
+        if problem == "unconverged":
+            ok[1] = False
+        if problem == "shape":
+            energy = energy[:, :-1]
         return energy, force, ok
+
     out = pyseqm.label_pyseqm_excited_batch(molecules(METHANOL, METHANOL), {}, PROPS, runner=runner)
     assert not out[1].check_convergence()
-    if problem != 'shape': assert out[0].check_convergence()
+    if problem != "shape":
+        assert out[0].check_convergence()
 
 
 def test_periodic_molecule_keeps_the_others():
-    a = WATER.copy(); a.pbc = True
+    a = WATER.copy()
+    a.pbc = True
     out = pyseqm.label_pyseqm_excited_batch(molecules(METHANOL, a), {}, PROPS, runner=fake)
     assert [m.check_convergence() for m in out] == [True, False]
 
 
-@pytest.mark.parametrize('config, reason', [
-    ({'method': 'PM3'}, 'AM1/CIS'),
-    ({'timeout_seconds': 0}, 'finite and positive'),
-    ({'charge': 1}, 'neutral'),
-    ({'cis_tol': float('nan')}, 'finite and positive'),
-], ids=['other_method', 'zero_timeout', 'charged', 'nan_tolerance'])
+@pytest.mark.parametrize(
+    "config, reason",
+    [
+        ({"method": "PM3"}, "AM1/CIS"),
+        ({"timeout_seconds": 0}, "finite and positive"),
+        ({"charge": 1}, "neutral"),
+        ({"cis_tol": float("nan")}, "finite and positive"),
+    ],
+    ids=["other_method", "zero_timeout", "charged", "nan_tolerance"],
+)
 def test_unsupported_settings_fail_with_a_reason(config, reason):
     out = pyseqm.label_pyseqm_excited_batch(molecules(WATER), config, PROPS, runner=fake)
     assert not out[0].check_convergence()
-    assert reason in out[0].get_metadata()['qm_error']
+    assert reason in out[0].get_metadata()["qm_error"]
 
 
-@pytest.mark.parametrize('runner, match', [(sleep_child, 'exceeded'), (crash_child, 'without results')])
+@pytest.mark.parametrize("runner, match", [(sleep_child, "exceeded"), (crash_child, "without results")])
 def test_stuck_or_crashed_cis_solver_is_cleaned_up(runner, match):
     before = {p.pid for p in mp.active_children()}
     with pytest.raises((TimeoutError, RuntimeError), match=match):
-        pyseqm.run_pyseqm_cis_isolated(np.zeros((1, 3, 3)), np.ones((1, 3)), {}, 'cpu',
-                                    timeout=.15 if runner is sleep_child else 10, runner=runner)
+        pyseqm.run_pyseqm_cis_isolated(
+            np.zeros((1, 3, 3)),
+            np.ones((1, 3)),
+            {},
+            "cpu",
+            timeout=0.15 if runner is sleep_child else 10,
+            runner=runner,
+        )
     assert {p.pid for p in mp.active_children()} == before
 
 
 def test_cis_solver_process_returns_its_results():
-    params = {'excited_states': {'method': 'cis', 'n_states': 3, 'tolerance': 1e-8}}
+    params = {"excited_states": {"method": "cis", "n_states": 3, "tolerance": 1e-8}}
     xyz, numbers, _ = pyseqm.pack_molecules(molecules(WATER))
-    energy, force, ok = pyseqm.run_pyseqm_cis_isolated(xyz, numbers, params, 'cpu', 10, fake)
+    energy, force, ok = pyseqm.run_pyseqm_cis_isolated(xyz, numbers, params, "cpu", 10, fake)
     assert energy.shape == (1, 4)
     assert force.shape == (1, 4, 3, 3)
     assert ok.tolist() == [True]
 
 
 def test_cis_tasks_work_with_the_labeling_coordinator():
-    single = LabelingCoordinator(pyseqm.pyseqm_excited_state_task, 'single',
-                                 {'batching': {'mode': 'sequential', 'batch_size': 2}})
-    batch = LabelingCoordinator(pyseqm.pyseqm_excited_state_batch_task, 'batch',
-                                {'batching': {'mode': 'native', 'batch_size': 2}})
+    single = LabelingCoordinator(
+        pyseqm.pyseqm_excited_state_task, "single", {"batching": {"mode": "sequential", "batch_size": 2}}
+    )
+    batch = LabelingCoordinator(
+        pyseqm.pyseqm_excited_state_batch_task, "batch", {"batching": {"mode": "native", "batch_size": 2}}
+    )
     assert single.batched and batch.batched
 
 
 def test_mixed_cis_molecules_return_in_submission_order():
     out = pyseqm.label_pyseqm_excited_batch(molecules(WATER, METHANOL, WATER, METHANOL), {}, PROPS, runner=fake)
-    assert [m.get_moleculeid() for m in out] == ['mol-0', 'mol-1', 'mol-2', 'mol-3']
-    assert all(m.check_convergence() and m.get_metadata()['qm_backend_width'] == 2 for m in out)
-    assert out[0].get_metadata()['qm_solve_widths'] == [2, 2]
-    assert out[0].get_metadata()['qm_retry_count'] == 0
-    assert out[0].get_metadata()['qm_compatibility_groups'] == [['mol-0', 'mol-2'], ['mol-1', 'mol-3']]
+    assert [m.get_moleculeid() for m in out] == ["mol-0", "mol-1", "mol-2", "mol-3"]
+    assert all(m.check_convergence() and m.get_metadata()["qm_backend_width"] == 2 for m in out)
+    assert out[0].get_metadata()["qm_solve_widths"] == [2, 2]
+    assert out[0].get_metadata()["qm_retry_count"] == 0
+    assert out[0].get_metadata()["qm_compatibility_groups"] == [["mol-0", "mol-2"], ["mol-1", "mol-3"]]

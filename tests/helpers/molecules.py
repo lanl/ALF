@@ -1,4 +1,5 @@
 """Shared test geometries. Always ``.copy()`` these before changing or attaching anything."""
+
 from ase import Atoms
 
 # Close to a real water molecule, for tests that care about ordinary bond lengths.

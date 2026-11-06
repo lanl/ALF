@@ -38,7 +38,8 @@ jobs:
               python -m pip install ".[tests,full]" "hippynn[full]"
               ;;
             engines)
-              python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+              # ALCHEMI pulls in torchvision, whose PyPI build doesn't work with CPU-only torch.
+              python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
               python -m pip install ".[tests,full,topology,torchsim,alchemi]" "hippynn[full]" \
                 "git+https://github.com/lanl/PYSEQM@52850b4"
               ;;
@@ -59,6 +60,7 @@ jobs:
           import rdkit
           import seqm.ElectronicStructure
           import torch_sim
+          import torchvision
           from alframework.samplers.alchemi_engine import SUPPORTED_VERSIONS
 
           installed = version('nvalchemi-toolkit')

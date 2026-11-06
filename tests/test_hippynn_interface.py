@@ -1031,6 +1031,7 @@ def test_std_statistics_are_recomputed_after_fixed_cut():
 
 
 def test_h5_training_force_filter_keeps_original_store(tmp_path):
+    pytest.importorskip('hippynn')
     path = tmp_path/'data-0000.h5'
     data = arrays()
     data['F0'][-1] = 110.

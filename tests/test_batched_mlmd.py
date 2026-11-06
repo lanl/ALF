@@ -227,6 +227,7 @@ def test_device_defaults_and_overrides(monkeypatch):
 
 
 def test_excited_ase_propagates_selected_force_and_preserves_cohort_identity():
+    pytest.importorskip('torch')
     from tests.helpers.fakes import QuadraticStateEnsemble
     from alframework.ml_interfaces.ensemble_inference import SelectedStateEvaluator, ensemble_statistics
     from alframework.tools.cohorts import CohortPool

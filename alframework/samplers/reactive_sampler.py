@@ -14,6 +14,7 @@ from alframework.tools.tools import system_checker
 from alframework.tools.tools import load_module_from_config
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator
 from alframework.tools.tools import build_input_dict
+from alframework.tools.gpu import sampling_device
 from ase.mep import DimerControl, MinModeAtoms, MinModeTranslate
 
 import sys
@@ -30,7 +31,7 @@ def reactive_sampling(molecule_object, sampler_config,model_path,current_model_i
 
     # NEB runs first and attempts to find structure above uncertainity
     if 'neb' in reactive_sampling_method.lower(): # NEB sampling
-        neb_images = neb_sampler(molecule_object, sampler_config, model_path, current_model_id, N_neb, neb_steps)
+        neb_images = neb_sampler(molecule_object, sampler_config, model_path, current_model_id, N_neb, neb_steps, gpus_per_node)
     
         for i in range(0,max_iter):
 
@@ -55,12 +56,12 @@ def reactive_sampling(molecule_object, sampler_config,model_path,current_model_i
                 break
         
             # Run neb again
-            neb_images = neb_sampler(molecule_object, sampler_config, model_path, current_model_id, N_neb, neb_steps)
+            neb_images = neb_sampler(molecule_object, sampler_config, model_path, current_model_id, N_neb, neb_steps, gpus_per_node)
 
     # Dimer sampling only occurs if NEB structure not identified or only dimer method passed in config file
     if failed == False and 'dimer' in reactive_sampling_method.lower():
         
-        dimer_struct = dimer_sampler(molecule_object, sampler_config, model_path, current_model_id, N_neb, neb_steps)
+        dimer_struct = dimer_sampler(molecule_object, sampler_config, model_path, current_model_id, N_neb, neb_steps, gpus_per_node)
 
         for i in range(0,max_iter):
             dimer_struct.calc.calculate(dimer_struct,properties=['energy_stdev','forces_stdev_mean','forces_stdev_max'])
@@ -77,7 +78,7 @@ def reactive_sampling(molecule_object, sampler_config,model_path,current_model_i
                 failed = True
                 break
 
-            dimer_struct = dimer_sampler(molecule_object, sampler_config, model_path, current_model_id, N_neb, neb_steps)
+            dimer_struct = dimer_sampler(molecule_object, sampler_config, model_path, current_model_id, N_neb, neb_steps, gpus_per_node)
 
 
     if failed:
@@ -106,13 +107,17 @@ def reactive_sampling(molecule_object, sampler_config,model_path,current_model_i
     
 
 
-def neb_sampler(molecule_object, sampler_config, model_path, current_model_id, N_neb, neb_steps):
+def _reactive_device(sampler_config, gpus_per_node):
+    """Pick a GPU within the worker's visibility, as simple_mlmd_sampling_task does; CPU is opt-in."""
+    return sampling_device(dict(sampler_config, device=sampler_config.get('device') or 'cuda'), gpus_per_node)
+
+
+def neb_sampler(molecule_object, sampler_config, model_path, current_model_id, N_neb, neb_steps, gpus_per_node):
     # ASE's neb sampler
     
     calc_class = load_module_from_config(sampler_config, 'ase_calculator')
     
-    gpu = '0' #os.environ.get('PARSL_WORKER_RANK') now using  cuda visible devices
-    calculator_list = calc_class(model_path.format(current_model_id) + '/',device='cuda:'+gpu)
+    calculator_list = calc_class(model_path.format(current_model_id) + '/', device=_reactive_device(sampler_config, gpus_per_node))
     
     # Read initial and final states:
     initial = molecule_object.metadata['reactant']
@@ -142,13 +147,12 @@ def neb_sampler(molecule_object, sampler_config, model_path, current_model_id, N
     
     return neb.images
 
-def dimer_sampler(molecule_object, sampler_config, model_path, current_model_id, N_neb, neb_steps):
+def dimer_sampler(molecule_object, sampler_config, model_path, current_model_id, N_neb, neb_steps, gpus_per_node):
     # ASE's dimer sampler
     
     calc_class = load_module_from_config(sampler_config, 'ase_calculator')
     
-    gpu = '0' #os.environ.get('PARSL_WORKER_RANK') now using  cuda visible devices
-    calculator_list = calc_class(model_path.format(current_model_id) + '/',device='cuda:'+gpu)
+    calculator_list = calc_class(model_path.format(current_model_id) + '/', device=_reactive_device(sampler_config, gpus_per_node))
 
     ts = molecule_object.metadata['ts']
     

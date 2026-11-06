@@ -399,8 +399,8 @@ The bond check has these requirements:
 GPU Selection
 -------------
 
-Legacy MLMD, UDD, and the multi-trajectory sampler select GPUs automatically
-within the worker's scheduler/Parsl allocation. ALF doesn't change the CUDA, HIP,
+Legacy MLMD, UDD, reactive sampling, and the multi-trajectory sampler select GPUs
+automatically within the worker's scheduler/Parsl allocation. ALF doesn't change the CUDA, HIP,
 or ROCr visibility variables it finds.
 
 .. list-table::
@@ -410,8 +410,8 @@ or ROCr visibility variables it finds.
    * - ``device``
      - Behavior
    * - not set
-     - ``simple_mlmd_sampling_task`` and ``simple_udd_sampling_task`` use a GPU
-       automatically and fail if none is available.
+     - ``simple_mlmd_sampling_task``, ``simple_udd_sampling_task``, and
+       ``reactive_sampling`` use a GPU automatically and fail if none is available.
        ``mlmd_trajectories_task`` uses a GPU automatically and falls back to CPU if
        none is available.
    * - ``"cuda"``
@@ -431,8 +431,7 @@ with no rank uses the first device.
 NeuroChem inference supports CUDA only, and its ``model_details['gpu']`` value is a
 local device number passed to its constructor. HIPPYNN training with
 ``"device_string": "from_multiprocessing"`` puts each ensemble member on its own
-visible device, also without changing those variables. Reactive samplers handle
-devices separately.
+visible device, also without changing those variables.
 
 What The Sampler Returns
 ------------------------

@@ -3,11 +3,14 @@ screen it shares with batched sampling.
 """
 
 import importlib
+import sys
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
 from ase import Atoms
 
+from alframework.samplers import reactive_sampler
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator, Well_Potential
 from alframework.samplers.batched_mlmd import minimum_distance, sample_trajectories
 from alframework.samplers.mlmd_sampling import mlmd_sampling
@@ -15,6 +18,39 @@ from alframework.tools.molecules_class import MoleculesObject
 from alframework.tools.tools import annealing_schedule
 from tests.helpers.fakes import FakeLangevin, FakeUncertaintyCalculator, FixedCalculator
 from tests.helpers.interface_checks import check_ase_calculator_interface, check_energy_force_results
+
+
+@pytest.mark.parametrize("sampler_name", ["neb_sampler", "dimer_sampler"])
+@pytest.mark.parametrize(
+    "config,rank,expected",
+    [({}, "2", "cuda:2"), ({"device": "cuda:1"}, "2", "cuda:1"), ({"device": "cpu"}, "2", "cpu")],
+    ids=["worker_rank", "explicit_gpu", "explicit_cpu"],
+)
+def test_reactive_sampler_selects_its_device_like_mlmd(monkeypatch, sampler_name, config, rank, expected):
+    fake_torch = SimpleNamespace(cuda=SimpleNamespace(is_available=lambda: True, device_count=lambda: 4))
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+    monkeypatch.setenv("PARSL_WORKER_RANK", rank)
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+    requested = []
+
+    class Loaded(Exception):
+        pass
+
+    def load_calculators(path, device):
+        requested.append(device)
+        raise Loaded
+
+    monkeypatch.setattr(reactive_sampler, "load_module_from_config", lambda *args: load_calculators)
+    with pytest.raises(Loaded):
+        getattr(reactive_sampler, sampler_name)(SimpleNamespace(metadata={}), config, "model-{:04d}", 0, 3, 1, 4)
+    assert requested == [expected]
+
+
+def test_reactive_sampler_fails_without_a_gpu_unless_cpu_is_requested(monkeypatch):
+    fake_torch = SimpleNamespace(cuda=SimpleNamespace(is_available=lambda: False, device_count=lambda: 0))
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+    with pytest.raises(RuntimeError, match="No GPU"):
+        reactive_sampler._reactive_device({}, 4)
 
 
 def test_well_pulls_outlying_atoms_inward():

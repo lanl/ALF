@@ -1,6 +1,6 @@
 # Living roadmap for integration into ALF development
 
-Last updated: November 5, 2026 (Increments 0–6 and the Increment 7 prerequisites merged at `24028da`;
+Last updated: November 6, 2026 (Increments 0–6 and the Increment 7 prerequisites merged at `24028da`;
 core water, cohort/summed, MI250, and PySEQM matrices passed; all three controlled-failure
 cases passed. Increment 7 is closed by user acceptance on November 5; fresh-dependency
 matrices passed and remaining original-example gaps are accepted without further reruns.
@@ -8,10 +8,11 @@ Increment 8 (E1–E2 contracts/storage and excited-state labeling) is complete;
 Increment 9 (E3–E4 multi-state training and external geometries) is complete;
 Increment 10 (E5 selected-state sampling and gap acquisition) is complete:
 all six real ASE/TorchSim CUDA/ALCHEMI width-one/four cases passed; twelve
-new sampled labels entered a promoted four-member ensemble. Next work is
-Increment 11A: implement and qualify shared chemical topology/physical-force
-screens, RDKit/FPS initialization, and an ordinary fixed-keto AcAc ALF loop.
-The E6 cpp-ring campaign follows as Increment 11B. Single-member excited-state
+new sampled labels entered a promoted four-member ensemble. Increment 11A is
+complete: all three engine screens and the ordinary fixed-keto AcAc ALF loop
+passed, with 192 stored bootstrap frames and 26 new sampled labels in a
+promoted four-member ensemble. Increment 11B is next, beginning with bounded
+CPP9 QM and 50,000-row training-memory calibration on A100 40 GB hardware. Single-member excited-state
 sampling is a separate future capability, added by user decision November 5.
 Legacy NeuroChem is excluded from current acceptance by user decision. MI350 is deferred outside
 current acceptance. Post-release order decided: excited-state ALF, then
@@ -2286,7 +2287,43 @@ checks, and the shared sampled-label-retraining qualification pass. It has no
 cpp-ring, repeated water campaign, GPU4PySCF requalification, MI350, NeuroChem,
 long-time stability, multi-node training, or user-guide requirement.
 
-### Increment 11A — implementation complete; real qualification pending: keto AcAc ALF
+### Increment 11A — completed: keto AcAc ALF (qualified November 5; reviewed November 6)
+
+Accepted evidence: `/vast/home/pjlohr/ALF_LANL/validation/inc11a_20261105/run-003/`,
+particularly `result.json`, `pilot/verification.json`, `pilot/accepted.json`,
+and the model training/input manifests. The frozen pilot used library revision
+`e919472` and external harness `a244a15`; prerequisite engine/seed evidence was
+retained from `run-002` after fingerprint verification. No cutoffs were tuned.
+
+- ASE, TorchSim CUDA, and ALCHEMI each passed real widths one/four and
+  invalid-input isolation. RDKit produced 1,920 accepted geometries and 192 FPS seeds.
+- All 192 bootstrap frames converged and were stored. Model generation 3 retained
+  26 distinct propagated sampled IDs across all four members: S0/S1/S2/S3 counts
+  2/8/8/8. All four states contributed to the ensemble's actual training splits;
+  this does not require every member's split to contain every state.
+- All four initial and promoted members completed real training, changed parameters,
+  and reloaded. The accepted generation ran 300/300/186/279 epochs. Representative
+  state-force finite differences had maximum error 5.846875e-7 eV/Å (limit 1e-3).
+- All 230 completed labeling evaluations converged; 224 frames came from actual
+  native-width-four solves, and six from partial width-two solves. Stored frames
+  totaled 218 (192 bootstrap + 26 sampled); 12 additional converged sampled labels
+  were left unstored at shutdown and do not count toward acceptance.
+- Runtime screening rejected 65 completed trajectories: 57 topology violations
+  and eight physical-force violations. Previously valid candidates remained eligible
+  under the cohort policy. Four sampler tasks failed when allocation `17379369`
+  reached its 30-minute limit; subsequent work recovered and all gates passed.
+- The coordinator reached acceptance November 5 at 18:19 Mountain, about 76.6 minutes
+  after the first submission, within the original four-hour queue-inclusive budget.
+  All owned jobs from the pilot and earlier launch attempts are verified terminated;
+  a November 6 live-queue check found no remaining qualification allocations.
+- After merging upstream documentation/test cleanup through `b995c15` as `fea5f5a`,
+  the available full suite passed: 491 passed, 42 skipped (optional packed engines
+  absent from the CPU test environment). Executable library ASTs matched the
+  qualified snapshot. Log: `upstream-development-20261106-pytest.log` in the evidence root.
+
+Increment 11A acceptance is complete. The launch/progress entries below are
+historical records. Production width 50, 50,000-to-5,000 preparation, potential
+accuracy, and long-time stability are not qualified by this bounded pilot.
 
 User-approved scope, November 5: place a fixed-keto AcAc stage before cpp.
 Shared runtime screens (`0844678`), the prepared RDKit/FPS replay builder and
@@ -2351,9 +2388,9 @@ The snapshot also includes the user's committed database-reader compatibility
 fix `1db12ef`; reused inference definitions and all other library scientific
 sources were verified unchanged. Job `17379315` is the retry's sampling/builder
 allocation. Consult `run-003/result.json` and `pilot/owned_jobs.json` for the
-active attempt; AcAc labeling/training/promotion acceptance remains pending.
+historical attempt; final acceptance is recorded above.
 
-Real acceptance remains pending: all three engines must execute valid widths
+Accepted gate, passed November 5: all three engines must execute valid widths
 one/four and isolate an invalid input; prepare 1,920 accepted keto geometries
 and 192 FPS seeds; use ordinary `alframework.__main__` with native-four CIS
 labeling and fresh four-GPU training. Require at least 128 converged stored
@@ -2378,11 +2415,35 @@ GALF/LCM, staged handoffs, single-member excited-state sampling, full-scale
 production qualification, and user-guide updates. Runtime force cutoffs do
 not filter stored QM labels in this stage.
 
-Follow-up when 11A passes: document the features held back from the user guide,
+User-owned documentation follow-up, now unblocked by the 11A pass: document the held-back features,
 and add `examples/keto_acac` as the worked excited-state example; see **User
 documentation pass (2026-11-06)**.
 
 ### Increment 11B — planned: cpp-ring ALF (E6), after 11A
+
+Next action approved November 6: brief A100 40 GB calibration before sizing the
+full CPP9 ALF loop. The fork production trial accepted 1,000/1,000 CPP9 labels
+(median full calculation 185.6 seconds; cold smoke 234.5 seconds), and completed
+four HIP-HOP145 members. Preserve it as read-only historical evidence.
+
+The external harness will evaluate the same smoke geometry twice through the
+production GPU4PySCF task, including S0–S3 energies/forces, optics and all three
+excited–excited NAC pairs, and verify an HDF5 round trip. It will also build
+1,000-row and explicitly repeated 50,000-row capacity fixtures from the converged
+historical labels. Measure the real 40,000/5,000/5,000 split and production
+training steps at batches 1/2/4/8/16/32/64, plus evaluation at 32, on one A100.
+Use two warm-up and five measured steps per case; report host RAM, GPU allocated/
+reserved/device peaks, OOM limits, and epoch-time projections. Repeated capacity
+rows are not new scientific labels and benchmark models are not promoted.
+The current trainer streams CPU-held minibatches to the GPU; dataset-size and
+batch-size effects must be reported separately.
+
+Use frozen QM/training environments, pinned source, explicit interpreters, public
+PyTorch kernels and GCC 11. Run sequential QM/training allocations under a new
+two-hour queue-inclusive deadline, with 30-minute QM and one-hour training caps
+and two minutes for owned-job cleanup. Calibration code/tests belong in
+`alf_validation`; generated data/logs remain outside Git. This calibration does
+not launch or complete E6. User guides remain user-owned and are not edited here.
 
 
 User decision, November 5: add the opt-in chemical topology checker across

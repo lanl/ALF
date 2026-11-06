@@ -194,7 +194,7 @@ def test_excited_state_admission_is_independent_of_width_and_completion_order(tm
 
 @pytest.mark.parametrize('failure', [None, 'builder', 'qm'])
 def test_actual_driver_finite_bootstrap_caps_partial_batch_and_reports_exhaustion(tmp_path, monkeypatch, failure):
-    requested, training = [], []
+    requested, training, sampled = [], [], []
 
     @python_app(executors=['finite_executor'])
     def builder(moleculeid=None, moleculeids=None):
@@ -220,12 +220,14 @@ def test_actual_driver_finite_bootstrap_caps_partial_batch_and_reports_exhaustio
 
     @python_app(executors=['finite_executor'])
     def sampler(molecule_object):
+        sampled.append(molecule_object.get_moleculeid())
         return molecule_object
 
     settings = dict(builder=builder, sampler=sampler, qm=label, ml=train, executors=('finite_executor',),
                     qm_config={'batching': {'mode': 'native', 'batch_size': 4, 'partial_policy': 'timeout',
                                             'max_wait_seconds': .001}},
-                    stop_when=lambda status: status['current_model_id'] >= 0,
+                    # Run until a list returned by the builder has also reached the sampler.
+                    stop_when=lambda status: status['current_model_id'] >= 0 and bool(sampled),
                     bootstrap_set=5, finite_bootstrap=True, maximum_builder_structures=4, parallel_samplers=8,
                     target_queued_QM=8, save_h5_threshold=7, gpus_per_node=0)
     if failure:

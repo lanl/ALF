@@ -302,13 +302,7 @@ def train_HIPNN_model(model_dir,
     #Import Torch and configure GPU. 
     #This must occur after the subprocess fork!!!
     import torch
-    if device_string.lower() == "from_multiprocessing":
-        process = multiprocessing.current_process()
-        os.environ["CUDA_VISIBLE_DEVICES"] = str((process._identity[-1]-1)%from_multiprocessing_nGPU)
-    else:
-        os.environ["CUDA_VISIBLE_DEVICES"] = device_string
-    
-    device_cuda = 'cuda:0'
+    device_cuda = _ensemble_member_device(device_string, from_multiprocessing_nGPU)
     torch.cuda.set_device(device_cuda)
     
     import hippynn
@@ -325,7 +319,7 @@ def train_HIPNN_model(model_dir,
     with hippynn.tools.active_directory(model_dir):
         with hippynn.tools.log_terminal("training_log.txt","wt"):
             
-            print("CUDA_VISIBLE_DEVICES: " + os.environ["CUDA_VISIBLE_DEVICES"])
+            print("Training device: {}; CUDA_VISIBLE_DEVICES: {}".format(device_cuda, os.environ.get("CUDA_VISIBLE_DEVICES")))
             
             species = inputs.SpeciesNode(db_name=species_key)
             positions = inputs.PositionsNode(db_name=coordinates_key)
@@ -739,6 +733,19 @@ def train_HIPNN_model(model_dir,
                 torch.save(unified,"lammps_model.pt")
                 
             
+def _ensemble_member_device(device_string, n_gpus):
+    """Return the Torch device for this training process.
+
+    ``'from_multiprocessing'`` picks a local device from the pool worker's number, leaving the
+    scheduler's visibility mask alone. Any other value is a mask for this process, as it always was.
+    """
+    if device_string.lower() == "from_multiprocessing":
+        member = multiprocessing.current_process()._identity[-1] - 1
+        return excited_training_device(device_string, member, n_gpus)
+    os.environ["CUDA_VISIBLE_DEVICES"] = device_string
+    return 'cuda:0'
+
+
 def train_HIPNN_model_wrapper(arg_dict):
     return(train_HIPNN_model(**arg_dict))
 

@@ -585,6 +585,30 @@ def test_evaluator_rejects_unsupported_structures(two_state_ensemble, corrupt, r
         _load_evaluator(two_state_ensemble).predict_states([atoms])
 
 
+def test_hippynn_ground_state_training_keeps_the_scheduler_mask(monkeypatch):
+    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(cuda=SimpleNamespace(device_count=lambda: 2)))
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "GPU-one,GPU-two")
+    monkeypatch.setattr(ml.multiprocessing, "current_process", lambda: SimpleNamespace(_identity=(1, 4)))
+    assert ml._ensemble_member_device("from_multiprocessing", 4) == "cuda:1"
+    assert os.environ["CUDA_VISIBLE_DEVICES"] == "GPU-one,GPU-two"
+
+
+def test_hippynn_ground_state_training_spreads_over_requested_gpus(monkeypatch):
+    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(cuda=SimpleNamespace(device_count=lambda: 8)))
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+    chosen = []
+    for worker in range(1, 5):
+        monkeypatch.setattr(ml.multiprocessing, "current_process", lambda: SimpleNamespace(_identity=(worker,)))
+        chosen.append(ml._ensemble_member_device("from_multiprocessing", 4))
+    assert chosen == ["cuda:0", "cuda:1", "cuda:2", "cuda:3"]
+
+
+def test_hippynn_explicit_training_device_still_sets_the_mask(monkeypatch):
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0,1")
+    assert ml._ensemble_member_device("3", None) == "cuda:0"
+    assert os.environ["CUDA_VISIBLE_DEVICES"] == "3"
+
+
 def test_training_gpu_choice_respects_visibility(monkeypatch):
     fake = SimpleNamespace(cuda=SimpleNamespace(device_count=lambda: 2))
     monkeypatch.setitem(sys.modules, "torch", fake)

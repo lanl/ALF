@@ -429,8 +429,10 @@ visibility variable, ``gpus_per_node`` limits how many devices are used. A worke
 with no rank uses the first device.
 
 NeuroChem inference supports CUDA only, and its ``model_details['gpu']`` value is a
-local device number passed to its constructor. Training pools and reactive samplers
-handle devices separately.
+local device number passed to its constructor. HIPPYNN training with
+``"device_string": "from_multiprocessing"`` puts each ensemble member on its own
+visible device, also without changing those variables. Reactive samplers handle
+devices separately.
 
 What The Sampler Returns
 ------------------------

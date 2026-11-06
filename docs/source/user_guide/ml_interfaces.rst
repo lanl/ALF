@@ -156,7 +156,9 @@ Important HIPPYNN configuration fields include:
        maximum epochs, and termination patience.
    * - ``device_string``
      - Device selection behavior. Examples use ``from_multiprocessing`` so
-       ensemble members can be distributed across visible GPUs.
+       ensemble members can be distributed across visible GPUs, within any mask the
+       scheduler set. Any other value overwrites ``CUDA_VISIBLE_DEVICES`` for that
+       training process.
    * - ``remove_high_energy_*``, ``remove_high_forces_*``
      - Optional filters for removing high-energy or high-force structures from
        the training set.

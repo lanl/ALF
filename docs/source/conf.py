@@ -22,7 +22,7 @@ copyright = '2023, ALF Team'
 author = 'ALF Team'
 
 # The full version, including alpha/beta/rc tags
-release = '0.0.0'
+release = '0.1.0'
 
 
 # -- General configuration ---------------------------------------------------
@@ -32,7 +32,7 @@ release = '0.0.0'
 # ones.
 extensions = ["sphinx.ext.autodoc", "sphinx_rtd_theme", "sphinx.ext.viewcode"]
 add_module_names = False
-autodoc_mock_imports = ["anitraintools", "parsl", "ase_interface", "tqdm"]
+autodoc_mock_imports = ["anitraintools", "parsl", "ase_interface", "tqdm", "rdkit"]
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']

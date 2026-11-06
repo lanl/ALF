@@ -627,10 +627,10 @@ def test_backend_runs_rks_tda_for_every_state(fake_gpu_stack):
     energies, forces, nacr, nac_pairs, versions = run_gpu4pyscf_states(
         _molecule().get_atoms(),
         options,
-        device_index=2,
+        device_index=0,
     )
 
-    assert calls["device"] == [2]
+    assert calls["device"] == [0]
     assert calls["threads"] == [3]
     assert calls["density_fit"] == {"auxbasis": "fake-jkfit"}
     assert calls["gradient_states"] == [1, 2]
@@ -1097,3 +1097,12 @@ def test_multi_gpu_backend_already_loaded_is_rejected(monkeypatch):
 def test_tight_tda_tolerance_keeps_small_corrections():
     config = validate_gpu4pyscf_config({"tda_conv_tol": 1e-8})
     assert config["tda_lindep"] < config["tda_conv_tol"] ** 2
+
+
+@pytest.mark.parametrize("device", [1, 2, 3])
+def test_nonzero_backend_device_fails_before_import(monkeypatch, device):
+    def forbidden(name):
+        pytest.fail("GPU backend must not import on a nonzero local device")
+    monkeypatch.setattr(gpu4pyscf_module.importlib, "import_module", forbidden)
+    with pytest.raises(GPU4PySCFDeviceError, match="local CUDA device 0"):
+        run_gpu4pyscf_states(_molecule().get_atoms(), {}, device_index=device)

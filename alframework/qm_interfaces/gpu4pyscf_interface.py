@@ -673,8 +673,10 @@ def _single_device_backend(pyscf):
     """Use upstream's PySCF configuration hook before GPU4PySCF imports.
 
     GPU4PySCF captures num_devices in many modules at first import. With one
-    device its kernels stay on the current CuPy device selected by ALF. Never
-    rewrite visibility masks or monkeypatch those imported module constants.
+    device upstream kernels index device-local buffers at zero and sometimes
+    explicitly enter Device(0). Each QM worker therefore needs one allocated
+    GPU exposed as local device zero by its executor. Never rewrite visibility
+    masks here or monkeypatch imported module constants.
     """
     import sys
     cached = sys.modules.get("gpu4pyscf.__config__")
@@ -710,6 +712,11 @@ def run_gpu4pyscf_states(
     unless ``compute_nacr``), the NACR pair index, and backend metadata.
     """
 
+    if int(device_index) != 0:
+        raise GPU4PySCFDeviceError(
+            "GPU4PySCF single-device kernels require local CUDA device 0. "
+            "Bind each QM worker to one allocated GPU before CUDA imports; "
+            "selecting a nonzero CuPy device does not isolate this backend.")
     try:
         pyscf = importlib.import_module("pyscf")
         gpu4pyscf, gpu_dft = _single_device_backend(pyscf)

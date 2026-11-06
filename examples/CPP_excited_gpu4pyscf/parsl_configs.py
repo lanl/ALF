@@ -7,7 +7,9 @@ Default limits are eight QM nodes, one training node and one sampling node.
 All start empty; ordinary Parsl scaling queues nodes when work is available
 and releases idle nodes. Override ALF_{QM,ML,SAMPLER}_MAX_BLOCKS for smaller runs.
 One training task launches four ensemble members on four local GPUs.
-No CUDA visibility mask is rewritten.
+QM workers are bound by Parsl to one allocated GPU UUID each, making its
+local CUDA index zero. The manager retains scheduler visibility; training
+and sampling retain their existing device assignment.
 """
 import os
 from pathlib import Path
@@ -51,7 +53,8 @@ def make_config():
             cpu_affinity='none', address=address_by_hostname(), provider=provider,
             heartbeat_period=10, heartbeat_threshold=180,
             interchange_launch_cmd=[python, '-m', 'parsl.executors.high_throughput.interchange'],
-            launch_cmd=shlex.quote(python)+' -m parsl.executors.high_throughput.process_worker_pool'+
+            launch_cmd=shlex.quote(python)+(' '+shlex.quote(str(run/'qm_worker_pool.py')) if role=='QM'
+                       else ' -m parsl.executors.high_throughput.process_worker_pool')+
                        DEFAULT_LAUNCH_CMD.removeprefix('process_worker_pool.py')))
     return Config(executors=executors, run_dir=str(run/'runinfo'), retries=0,
                   max_idletime=60, strategy_period=5)

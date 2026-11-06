@@ -931,6 +931,39 @@ def test_all_states_share_one_network():
     assert all(network in output.parents[0].parents for _, output in energy_outputs)
 
 
+@pytest.mark.parametrize('choice', [0, 1], ids=['hipnn64', 'hiphop64'])
+def test_smaller_excited_example_network_has_four_finite_energy_force_heads(choice, monkeypatch):
+    torch = pytest.importorskip('torch')
+    pytest.importorskip('hippynn')
+    from hippynn.graphs import GraphModule, inputs
+    import json
+    from pathlib import Path
+    config = json.loads((Path(__file__).resolve().parents[1]/'examples/AcAc_excited_pyseqm/hippynn_config.json').read_text())
+    params = dict(config['network_params'], n_features=64)
+    if choice == 0:
+        for key in ('l_max', 'n_max'):
+            params.pop(key)
+    species = inputs.SpeciesNode(db_name='species')
+    positions = inputs.PositionsNode(db_name='coordinates')
+    positions.requires_grad = True
+    import hippynn.custom_kernels as kernels
+    for name in ('envsum', 'sensesum', 'featsum', 'CUSTOM_KERNELS_ACTIVE'):
+        monkeypatch.setattr(kernels, name, getattr(kernels, name))
+    kernels.set_custom_kernels('pytorch')
+    network = ml._build_shared_network(species, positions, network_choice=choice, network_params=params)
+    properties = {**{f'sE{i}':[f'sE{i}', 'system', 1.] for i in range(4)},
+                  **{f'F{i}':[f'F{i}', 'atomic', 1.] for i in range(4)}}
+    table = ml.validate_excited_state_training_config(config, properties)
+    energies, forces, _, _ = ml.build_excited_state_training_graph(
+        network, positions, table, n_atoms=15, energy_weight=1., force_weight=1., l2_weight=config['l2_weight'])
+    graph = GraphModule([species, positions], [node for _,node in energies+forces])
+    from ase.io import read
+    atoms = read(Path(__file__).resolve().parents[1]/'examples/AcAc_excited_pyseqm/keto.xyz')
+    results = graph(torch.tensor(atoms.numbers[None]), torch.tensor(atoms.positions[None], dtype=torch.float32, requires_grad=True))
+    assert len(results) == 8 and all(torch.isfinite(value).all() for value in results)
+    assert all(value.shape == (1, 15, 3) for value in results[4:])
+
+
 def test_gap_target_is_derived_from_states():
     hippynn = pytest.importorskip("hippynn")
 

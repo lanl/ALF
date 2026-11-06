@@ -238,7 +238,227 @@ def test_external_geometry_rejects_empty_or_malformed_sources(tmp_path):
 # ---- Preparing molecular seeds with RDKit (an optional builder capability) ----
 
 ROOT = Path(__file__).resolve().parents[1]
-EXAMPLES = ROOT / "examples/keto_acac"
+EXAMPLES = ROOT / "examples/AcAc_excited_pyseqm"
+
+
+# ---- Portable excited-state examples and reusable CPPn preparation ----
+
+CPP_EXAMPLE = ROOT / 'examples/CPP_excited_gpu4pyscf'
+
+
+def load_example_prepare(folder):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('prepare_'+folder.name, folder/'prepare.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def synthetic_cpp(size):
+    """A regular para-linked macrocycle, independent of shipped CPP6/9 files."""
+    radius = (1.47+2*1.4*np.cos(np.pi/size))/(2*np.sin(np.pi/size))
+    positions, symbols = [], []
+    for index in range(size):
+        angle = 2*np.pi*index/size
+        radial = np.array([np.cos(angle), np.sin(angle), 0.])
+        tangent = np.array([-np.sin(angle), np.cos(angle), 0.])
+        for vertex in range(6):
+            theta = np.pi*vertex/3
+            unit = tangent*np.cos(theta)+np.array([0., 0., np.sin(theta)])
+            positions.append(radius*radial+1.4*unit)
+            symbols.append('C')
+            if vertex not in (0, 3):
+                positions.append(radius*radial+2.48*unit)
+                symbols.append('H')
+    return Atoms(symbols=symbols, positions=positions)
+
+
+@pytest.mark.parametrize('size', [5, 6, 8, 9, 12])
+def test_ring_sampler_infers_any_cpp_size(size):
+    from alframework.builders import ring_molecule as ring
+    atoms = synthetic_cpp(size)
+    config = {**ring.DEFAULT_SETTINGS, 'count': 8}
+    topology = ring.infer_topology(atoms, config['screening'])
+    assert topology['nring'] == size
+    first = ring.generate_samples(atoms, config, 8, 42)
+    second = ring.generate_samples(atoms, config, 8, 42)
+    np.testing.assert_array_equal(first['coordinates'], second['coordinates'])
+    np.testing.assert_array_equal(np.bincount(first['tier_index']), [4, 4])
+    assert first['coordinates'].shape == (8, size*10, 3)
+    for frame in first['coordinates']:
+        assert ring.screen_geometry(frame, topology, config['screening']) is None
+    rotated = ring.rotate_phenyls(atoms.positions, topology, np.linspace(-30, 30, size))
+    pairs = topology['bonds']
+    np.testing.assert_allclose(np.linalg.norm(rotated[pairs[:, 0]]-rotated[pairs[:, 1]], axis=1), topology['bond_lengths'], atol=1e-13)
+
+
+@pytest.mark.parametrize('size', [6, 9])
+def test_cpp_example_can_move_and_replay_without_labels(tmp_path, size):
+    from alframework.builders.ring_molecule import build_ring_molecules
+    module = load_example_prepare(CPP_EXAMPLE)
+    output = module.prepare(tmp_path/'original', ring_size=size, count=8, generate_seeds=True)
+    moved = tmp_path/'moved'
+    output.rename(moved)
+    config = json.loads((moved/'builder_config.json').read_text())
+    molecules = build_ring_molecules([f'mol-boot-{i:010d}' for i in range(8)], config, master_directory=moved)
+    assert [m.get_moleculeid() for m in molecules] == [f'mol-boot-{i:010d}' for i in range(8)]
+    for molecule in molecules:
+        assert molecule.get_results() == {}
+        assert not molecule.atoms.has('momenta')
+        np.testing.assert_array_equal(molecule.atoms.arrays['topology_atom_ids'], np.arange(size*10))
+        assert molecule.get_metadata()['ring_tier'] in (0, 1)
+    with pytest.raises(IndexError, match='exhausted'):
+        build_ring_molecules(['mol-boot-0000000008'], config, master_directory=moved)
+    (moved/'h5store').mkdir()
+    shutil.copyfile(moved/'seeds/seed.h5', moved/'h5store/data-0000.h5')
+    with h5py.File(moved/'h5store/data-0000.h5', 'a') as handle:
+        handle[f'cpp{size}']['sE0'] = np.ones(8)
+    runtime = build_ring_molecules(['runtime-123'], config, 'h5store/data-{:04d}.h5', 1, moved)
+    assert runtime[0].get_results() == {}
+    assert not runtime[0].get_metadata()['replay_external_bootstrap']
+    assert runtime[0].get_metadata()['geometry_source_id'].startswith(f'cpp{size}-seed-')
+    (moved/'seeds/reference.xyz').write_text('changed')
+    with pytest.raises(ValueError, match='changed'):
+        build_ring_molecules(['mol-boot-0000000000'], config, master_directory=moved)
+
+
+@pytest.mark.parametrize('model', ['hiphop145', 'hiphop64', 'hipnn64'])
+@pytest.mark.parametrize('folder', [EXAMPLES, CPP_EXAMPLE], ids=['acac', 'cpp'])
+def test_excited_example_preparation_only_and_model_profiles(tmp_path, model, folder):
+    module = load_example_prepare(folder)
+    output = module.prepare(tmp_path/'run', model=model)
+    assert not (output/'seeds').exists()
+    assert not (output/'status.json').exists()
+    ml = json.loads((output/'hippynn_config.json').read_text())
+    assert ml['n_models'] == 4
+    assert ml['network_params']['n_features'] == (145 if model=='hiphop145' else 64)
+    assert ml['network_choice'] == (0 if model=='hipnn64' else 1)
+    assert ('l_max' in ml['network_params']) == (model != 'hipnn64')
+    master = json.loads((output/'master_config.json').read_text())
+    assert master['master_directory'] == 'pwd' and master['finite_bootstrap']
+    for key in ('builder_config_path', 'sampler_config_path', 'QM_config_path', 'ML_config_path'):
+        assert (output/master[key]).is_file() and not Path(master[key]).is_absolute()
+    assert not json.loads((output/'preparation.json').read_text())['campaign_submitted']
+    with pytest.raises(FileExistsError):
+        module.prepare(output)
+
+
+def test_acac_seed_preparation_remains_portable(tmp_path):
+    pytest.importorskip('rdkit')
+    module = load_example_prepare(EXAMPLES)
+    output = module.prepare(tmp_path/'original', pool_size=24, seed_size=12, generate_seeds=True)
+    moved = tmp_path/'moved'
+    output.rename(moved)
+    config = json.loads((moved/'builder_config.json').read_text())
+    molecules = seed.build_rdkit_molecules(['mol-boot-0000000000'], config, master_directory=moved)
+    assert len(molecules) == 1 and molecules[0].get_results() == {}
+    assert json.loads((moved/'master_config.json').read_text())['bootstrap_set'] == 12
+    for path in moved.rglob('*.json'):
+        assert str(tmp_path) not in path.read_text()
+
+
+def test_custom_cpp_reference_and_offset_are_explicit(tmp_path):
+    module = load_example_prepare(CPP_EXAMPLE)
+    reference = tmp_path/'cpp8.xyz'
+    write(reference, synthetic_cpp(8))
+    with pytest.raises(ValueError, match='explicit energy offset'):
+        module.prepare(tmp_path/'bad', ring_size=8, reference=reference)
+    with pytest.raises(ValueError, match='disagrees'):
+        module.prepare(tmp_path/'bad', ring_size=9, reference=reference, energy_offset_ev=-123.)
+    output = module.prepare(tmp_path/'cpp8', ring_size=8, reference=reference, energy_offset_ev=-123., count=4, generate_seeds=True)
+    assert json.loads((output/'QM_config.json').read_text())['energy_offset_eV'] == -123.
+    assert json.loads((output/'hippynn_config.json').read_text())['n_atoms'] == 80
+
+
+def test_failed_ring_preparation_is_atomic(tmp_path, monkeypatch):
+    from alframework.builders import ring_molecule as ring
+    config = json.loads((CPP_EXAMPLE/'seed_cpp9.json').read_text())
+    monkeypatch.setattr(ring, 'screen_geometry', lambda *args: 'test_rejection')
+    with pytest.raises(ValueError, match='anchor fails screening'):
+        ring.prepare_ring_pool(config, tmp_path/'failed', config_directory=CPP_EXAMPLE)
+    assert not (tmp_path/'failed').exists()
+
+
+def test_ring_attempt_exhaustion_publishes_nothing(tmp_path, monkeypatch):
+    from alframework.builders import ring_molecule as ring
+    config = json.loads((CPP_EXAMPLE/'seed_cpp9.json').read_text())
+    config['count'] = 2
+    config['screening']['max_attempts_per_structure'] = 2
+    original_screen = ring.screen_geometry
+    def reject_distortion(positions, topology, settings):
+        if np.array_equal(positions, atoms.positions):
+            return original_screen(positions, topology, settings)
+        return 'deliberate_rejection'
+    from ase.io import read
+    atoms = read(CPP_EXAMPLE/'references/cpp9_s0.xyz')
+    monkeypatch.setattr(ring, 'screen_geometry', reject_distortion)
+    with pytest.raises(RuntimeError, match='Cannot fill.*deliberate_rejection'):
+        ring.prepare_ring_pool(config, tmp_path/'failed', config_directory=CPP_EXAMPLE)
+    assert not (tmp_path/'failed').exists()
+
+
+def test_ring_builder_submits_plural_and_scalar_tasks(tmp_path):
+    from alframework.builders.ring_molecule import ring_molecule_builder_task
+    from tests.helpers.driver import loaded_parsl
+    output = load_example_prepare(CPP_EXAMPLE).prepare(tmp_path/'run', ring_size=6, count=4, generate_seeds=True)
+    config = json.loads((output/'builder_config.json').read_text())
+    with loaded_parsl(tmp_path/'runinfo', 'alf_sampler_executor'):
+        batch = ring_molecule_builder_task(moleculeid='ignored', moleculeids=[f'mol-boot-{i:010d}' for i in range(4)],
+                                            builder_config=config, master_directory=str(output)).result()
+        single = ring_molecule_builder_task(moleculeid='mol-boot-0000000000', builder_config=config,
+                                             master_directory=str(output)).result()
+    assert len(batch) == 4
+    np.testing.assert_array_equal(single.atoms.positions, batch[0].atoms.positions)
+
+
+@pytest.mark.parametrize('folder', [EXAMPLES, CPP_EXAMPLE], ids=['acac', 'cpp'])
+def test_example_parsl_template_uses_site_settings_and_submits_nothing(tmp_path, monkeypatch, folder):
+    import importlib.util
+    from parsl.providers import SlurmProvider
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv('ALF_PARTITION', 'my_partition')
+    monkeypatch.setenv('ALF_QM_PYTHON', '/my qm/bin/python')
+    monkeypatch.setenv('ALF_QM_WORKER_INIT', 'export LD_LIBRARY_PATH=/my/cutensor/lib:$LD_LIBRARY_PATH')
+    monkeypatch.setenv('CUDA_VISIBLE_DEVICES', '2,3')
+    def forbidden(*args, **kwargs):
+        raise AssertionError('Template import must not submit')
+    monkeypatch.setattr(SlurmProvider, 'submit', forbidden)
+    spec = importlib.util.spec_from_file_location('portable_parsl', folder/'parsl_configs.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    for executor in module.config.executors:
+        assert executor.provider.init_blocks == 0
+        assert executor.provider.partition == 'my_partition'
+        assert executor.provider.worker_init.endswith('\n')
+        assert 'CUDA_VISIBLE_DEVICES' not in executor.provider.worker_init
+    qm = next(e for e in module.config.executors if e.label=='alf_QM_executor')
+    assert qm.interchange_launch_cmd[0] == '/my qm/bin/python'
+    assert 'LD_LIBRARY_PATH=/my/cutensor/lib' in qm.provider.worker_init
+    assert os.environ['CUDA_VISIBLE_DEVICES'] == '2,3'
+
+
+@pytest.mark.parametrize('size', [6, 9])
+def test_cpp_example_contracts_and_topology_preflight(tmp_path, monkeypatch, size):
+    from alframework.ml_interfaces.hippynn_interface import validate_excited_state_training_config
+    from alframework.qm_interfaces.gpu4pyscf_interface import validate_gpu4pyscf_config, validate_gpu4pyscf_properties
+    from alframework.tools.molecular_topology import load_reference_topology, validate_fixed_topology
+    from alframework.tools.tools import load_config_file
+    from alframework.builders.ring_molecule import build_ring_molecules
+    pytest.importorskip('rdkit')
+    output = load_example_prepare(CPP_EXAMPLE).prepare(tmp_path/'run', ring_size=size, count=4, generate_seeds=True)
+    monkeypatch.chdir(output)
+    master = load_config_file('master_config.json')
+    configs = {role:load_config_file(master[f'{role}_config_path'], master['master_directory']) for role in ('builder','sampler','QM','ML')}
+    assert len(validate_excited_state_training_config(configs['ML'], master['properties_list'])) == 4
+    qm = validate_gpu4pyscf_config(configs['QM'])
+    validate_gpu4pyscf_properties(master['properties_list'], nroots=qm['nroots'], compute_nacr=True)
+    reference = load_reference_topology(configs['sampler'], master_directory=master['master_directory'])
+    molecules = build_ring_molecules(['mol-boot-0000000000'], configs['builder'], master_directory=output)
+    assert validate_fixed_topology(molecules[0].atoms, reference).valid
+    metadata = json.loads((output/'references'/f'cpp{size}_s0.json').read_text())
+    assert qm['energy_offset_eV'] == metadata['ground_energy_hartree']*metadata['hartree_to_ev']
+    assert configs['ML']['batch_size'] == configs['ML']['eval_batch_size'] == configs['ML']['scheduler_options']['max_batch_size'] == 8
+    assert configs['ML']['fraction_train_eval'] == .1
 
 
 def example_config(name):

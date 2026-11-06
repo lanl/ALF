@@ -1,0 +1,61 @@
+{
+  "n_models": 4,
+  "coordinates_key": "coordinates",
+  "species_key": "species",
+  "cell_key": null,
+  "train_forces": true,
+  "export_force_gradients": true,
+  "network_choice": 1,
+  "n_atoms": 90,
+  "network_params": {
+    "possible_species": [
+      0,
+      1,
+      6
+    ],
+    "dist_hard_max": 11.833504244685173,
+    "dist_soft_max": 5.67638290906325,
+    "dist_soft_min": 0.7,
+    "l_max": 3,
+    "n_atom_layers": 3,
+    "n_features": 145,
+    "n_interaction_layers": 2,
+    "n_max": 4,
+    "n_sensitivities": 20
+  },
+  "energy_weight": 1.0,
+  "force_weight": 1.0,
+  "gap_targets": {
+    "enabled": false
+  },
+  "l2_weight": 6.97e-06,
+  "remove_high_energy_cut": null,
+  "remove_high_energy_std": null,
+  "remove_high_forces_cut": null,
+  "remove_high_forces_std": null,
+  "valid_size": 0.1,
+  "test_size": 0.1,
+  "optimizer": "AdamW",
+  "learning_rate": 0.000315,
+  "batch_size": 8,
+  "eval_batch_size": 8,
+  "max_epochs": 300,
+  "termination_patience": 50,
+  "plot_frequency": 100,
+  "scheduler_options": {
+    "max_batch_size": 8,
+    "patience": 16,
+    "factor": 0.2
+  },
+  "device_string": "from_multiprocessing",
+  "random_seed": 42,
+  "exports": {
+    "pdf": true,
+    "png": true,
+    "csv": false,
+    "output_subdir": "plots"
+  },
+  "hippynn_kernel": "pytorch",
+  "torch_threads": 1,
+  "fraction_train_eval": 0.1
+}

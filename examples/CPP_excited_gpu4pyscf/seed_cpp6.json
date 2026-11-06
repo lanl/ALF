@@ -1,0 +1,44 @@
+{
+  "reference_geometry": "references/cpp6_s0.xyz",
+  "count": 1000,
+  "seed": 42,
+  "shuffle_samples": true,
+  "tiers": [
+    {
+      "name": "narrow",
+      "fraction": 0.5,
+      "rotation_range_degrees": [
+        -15,
+        15
+      ],
+      "rattle_rms_range_angstrom": [
+        0,
+        0.015
+      ]
+    },
+    {
+      "name": "broad",
+      "fraction": 0.5,
+      "rotation_range_degrees": [
+        -30,
+        30
+      ],
+      "rattle_rms_range_angstrom": [
+        0,
+        0.03
+      ]
+    }
+  ],
+  "screening": {
+    "bond_min_scale": 0.9,
+    "bond_max_scale": 1.1,
+    "connectivity_scale": 1.2,
+    "duplicate_precision_angstrom": 1e-06,
+    "max_attempts_per_structure": 50,
+    "nonbonded_min_angstrom": {
+      "1-1": 1.2,
+      "1-6": 1.4,
+      "6-6": 1.8
+    }
+  }
+}

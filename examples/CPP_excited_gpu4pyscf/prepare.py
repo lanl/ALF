@@ -1,4 +1,4 @@
-"""Copy a fresh gas-phase CPP ALF example with a minimized S0 reference.
+"""Copy a fresh gas-phase or DCM CPP ALF example with a minimized S0 reference.
 
 python prepare.py --ring-size 6 --output-dir /scratch/cpp6 --generate-seeds
 For other CPP sizes provide --reference, --energy-offset-ev and --ring-size.
@@ -21,7 +21,9 @@ HERE = Path(__file__).resolve().parent
 
 
 def prepare(output_dir, *, ring_size=9, reference=None, energy_offset_ev=None,
-            count=1000, model='hiphop145', generate_seeds=False):
+            count=1000, model='hiphop145', generate_seeds=False, solvent='gas'):
+    if solvent not in {'gas','dcm'}:
+        raise ValueError('solvent must be gas or dcm')
     if isinstance(ring_size, bool) or not isinstance(ring_size, int) or ring_size < 3:
         raise ValueError('ring_size must be an integer >= 3')
     if isinstance(count, bool) or not isinstance(count, int) or count < 1:
@@ -63,6 +65,8 @@ def prepare(output_dir, *, ring_size=9, reference=None, energy_offset_ev=None,
                 shutil.copyfile(path, temporary/path.name)
         shutil.copytree(HERE/'references', temporary/'references')
         shutil.copyfile(reference, temporary/'reference.xyz')
+        if solvent == 'dcm':
+            shutil.copyfile(temporary/'QM_config_dcm.json', temporary/'QM_config.json')
         if hashlib.sha256((temporary/'reference.xyz').read_bytes()).hexdigest() != record['reference_sha256']:
             raise RuntimeError('Reference changed during preparation')
         def update(name, callback):
@@ -71,6 +75,11 @@ def prepare(output_dir, *, ring_size=9, reference=None, energy_offset_ev=None,
             callback(config)
             path.write_text(json.dumps(config, indent=2)+'\n')
         update('master_config.json', lambda c: c.update(bootstrap_set=count))
+        if solvent == 'dcm':
+            def vertical_schema(config):
+                for key in ('vertical_excitation_energies','vertical_transition_dipoles','vertical_oscillator_strengths'):
+                    config['properties_list'][key] = [key,'system',1.]
+            update('master_config.json', vertical_schema)
         update('QM_config.json', lambda c: c.update(energy_offset_eV=float(offset)))
         def model_settings(config):
             config['n_atoms'] = len(atoms)
@@ -94,7 +103,8 @@ def prepare(output_dir, *, ring_size=9, reference=None, energy_offset_ev=None,
             manifest_path.write_text(json.dumps(manifest, indent=2)+'\n')
         record.update(ring_size=ring_size, energy_offset_eV=float(offset), model=model,
                       seeds_prepared=generate_seeds, count=count, campaign_submitted=False,
-                      solvent='gas phase; implicit solvent requires a separately qualified adapter')
+                      solvent=solvent, reference_environment='gas' if 'theory' in record else 'caller supplied',
+                      response_convention='equilibrium energies/forces/NACs; separate vertical spectrum' if solvent=='dcm' else 'gas')
         (temporary/'preparation.json').write_text(json.dumps(record, indent=2)+'\n')
         temporary.rename(destination)
     except BaseException:
@@ -112,10 +122,11 @@ def main(argv=None):
     parser.add_argument('--count', type=int, default=1000)
     parser.add_argument('--model', choices=['hiphop145', 'hiphop64', 'hipnn64'], default='hiphop145')
     parser.add_argument('--generate-seeds', action='store_true')
+    parser.add_argument('--solvent', choices=['gas','dcm'], default='gas')
     args = parser.parse_args(argv)
     print(prepare(args.output_dir, ring_size=args.ring_size, reference=args.reference,
                   energy_offset_ev=args.energy_offset_ev, count=args.count,
-                  model=args.model, generate_seeds=args.generate_seeds))
+                  model=args.model, generate_seeds=args.generate_seeds, solvent=args.solvent))
     return 0
 
 

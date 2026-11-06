@@ -6,7 +6,7 @@ from ase import Atoms
 
 from alframework.samplers import batched_mlmd
 from alframework.samplers.batched_mlmd import sample_trajectories
-from alframework.tools.cohorts import CohortPool
+from alframework.tools.cohorts import FINISHED_HISTORY, CohortPool
 from alframework.tools.molecules_class import MoleculesObject
 from tests.helpers.fakes import spring_ensemble
 from tests.helpers.molecules import SPRING_WATER
@@ -246,6 +246,19 @@ def test_open_cohort_finishes_on_its_original_model():
     frames = pool.ready()
     assert [f.get_metadata()["cohort_model_id"] for f in frames] == [0]
     assert [c["cohort_id"] for c in pool.status()["open"]] == ["cohort-0001-000000"]
+
+
+def test_cohort_history_is_bounded_while_totals_stay_right():
+    pool = CohortPool({"cohort_size": 1, "k": 1})
+    cohorts = FINISHED_HISTORY + 5
+    for index in range(cohorts):
+        name = f"mol-{index}"
+        pool.admit(member(name), model_id=0)
+        pool.record(returned(name, "eligible", [candidate(name, 1, 1.0)]))
+        assert len(pool.ready()) == 1
+    assert len(pool.finished) == FINISHED_HISTORY
+    assert pool.status()["finished"] == cohorts
+    assert pool.status()["selected"] == cohorts
 
 
 def test_each_state_keeps_its_own_cohort_model():

@@ -19,7 +19,7 @@ There is no admission timeout and no partial-cohort selection. Cohorts are
 held in memory only; unfinished cohorts are lost if the coordinator restarts.
 """
 
-from collections import Counter
+from collections import Counter, deque
 
 from ase import Atoms
 
@@ -27,6 +27,8 @@ from alframework.samplers.acquisition import top_k
 from alframework.tools.molecules_class import MoleculesObject
 
 TERMINAL_OUTCOMES = ("eligible", "completed", "rejected", "failed")
+# Finished-cohort summaries hold every selected frame ID, so long runs keep only the latest.
+FINISHED_HISTORY = 100
 
 
 class _Cohort:
@@ -55,7 +57,9 @@ class CohortPool:
         self._open = {}
         self._next = {}
         self._membership = {}
-        self.finished = []
+        self.finished = deque(maxlen=FINISHED_HISTORY)
+        self._finished_total = 0
+        self._selected_total = 0
 
     def admit(self, molecule, model_id):
         """Assign ``molecule`` to a cohort; return the model generation it must use."""
@@ -123,6 +127,8 @@ class CohortPool:
                 "selected_state": cohort.selected_state,
                 "outcomes": dict(Counter(cohort.outcomes.values())), "candidates": len(cohort.candidates),
                 "selected": [candidate["frame_id"] for candidate in chosen]})
+            self._finished_total += 1
+            self._selected_total += len(chosen)
             for trajectory_id in cohort.members:
                 del self._membership[trajectory_id]
             del self._cohorts[cohort_id]
@@ -153,5 +159,4 @@ class CohortPool:
                          **({"selected_state": cohort.selected_state} if self.group_by_state else {}),
                          "candidates": len(cohort.candidates)} for cohort in self._cohorts.values()]
         return {"cohort_size": self.cohort_size, "k": self.k, "open": open_cohorts,
-                "finished": len(self.finished),
-                "selected": sum(len(summary["selected"]) for summary in self.finished)}
+                "finished": self._finished_total, "selected": self._selected_total}

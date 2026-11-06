@@ -1,3 +1,9 @@
+"""Batching helpers: grouping molecules into tasks, releasing partial batches after a timeout, and
+counting task widths.
+"""
+
+import json
+
 import numpy as np
 import pytest
 from ase import Atoms
@@ -6,6 +12,7 @@ from alframework.tools.batching import (
     BatchBuffer,
     TaskWidths,
     batching_settings,
+    bootstrap_molecule_ids,
     default_batch_key,
     flatten_molecule_output,
     poll_delay,
@@ -26,34 +33,49 @@ def ids(batches):
     return [[mol.get_moleculeid() for mol in batch] for batch in batches]
 
 
-def test_batching_is_not_selected_without_block():
+def test_batching_is_off_by_default():
     assert batching_settings({}) is None
     assert batching_settings(None) is None
     assert BatchBuffer.from_config({"md_settings": []}) is None
 
 
-def test_batching_settings_defaults_and_validation():
+def test_default_settings():
     assert batching_settings({"batching": {"batch_size": 4}}) == {
-        "batch_size": 4, "partial_policy": "timeout", "max_wait_seconds": 5.0}
-    for bad in ({}, {"batch_size": 0}, {"batch_size": 2.5}, {"batch_size": True},
-                {"batch_size": 2, "partial_policy": "eventually"},
-                {"batch_size": 2, "max_wait_seconds": -1},
-                {"batch_size": 2, "unknown": 1}):
-        with pytest.raises(ValueError):
-            batching_settings({"batching": bad})
+        "batch_size": 4,
+        "partial_policy": "timeout",
+        "max_wait_seconds": 5.0,
+    }
 
 
-def test_flatten_preserves_order_and_identity():
+@pytest.mark.parametrize(
+    "block, reason",
+    [
+        ({}, "batch_size is required"),
+        ({"batch_size": 0}, "positive integer"),
+        ({"batch_size": 2.5}, "positive integer"),
+        ({"batch_size": True}, "positive integer"),
+        ({"batch_size": 2, "partial_policy": "eventually"}, "partial_policy"),
+        ({"batch_size": 2, "max_wait_seconds": -1}, "max_wait_seconds"),
+        ({"batch_size": 2, "unknown": 1}, "Unknown"),
+    ],
+    ids=["no_size", "zero_size", "fractional_size", "boolean_size", "unknown_policy", "negative_wait", "unknown_key"],
+)
+def test_invalid_settings_are_rejected(block, reason):
+    with pytest.raises(ValueError, match=reason):
+        batching_settings({"batching": block})
+
+
+def test_flattening_keeps_order():
     a, b, c = molecule("a"), molecule("b"), molecule("c")
     flat = flatten_molecule_output([a, [b, (c,)], None, []])
     assert [m.get_moleculeid() for m in flat] == ["a", "b", "c"]
     assert flat[1] is b
     assert flatten_molecule_output(None) == []
-    with pytest.raises(TypeError):
+    with pytest.raises(TypeError, match="MoleculesObject"):
         flatten_molecule_output([a, "not a molecule"])
 
 
-def test_full_batches_release_immediately_and_mix_sizes_and_compositions():
+def test_full_batch_releases_immediately():
     buffer = BatchBuffer(3)
     buffer.extend([molecule("w0"), molecule("h0", "H2"), molecule("w1", "OH2OH2")], now=0.0)
     buffer.add(molecule("w2"), now=0.0)
@@ -61,14 +83,13 @@ def test_full_batches_release_immediately_and_mix_sizes_and_compositions():
     assert len(buffer) == 1
 
 
-def test_periodic_and_nonperiodic_inputs_are_not_grouped():
+def test_periodic_molecules_batch_separately():
     buffer = BatchBuffer(2)
-    buffer.extend([molecule("gas0"), molecule("pbc0", pbc=True),
-                   molecule("gas1"), molecule("pbc1", pbc=True)], now=0.0)
+    buffer.extend([molecule("gas0"), molecule("pbc0", pbc=True), molecule("gas1"), molecule("pbc1", pbc=True)], now=0.0)
     assert ids(buffer.pop_ready(now=0.0)) == [["gas0", "gas1"], ["pbc0", "pbc1"]]
 
 
-def test_partial_batch_times_out_without_new_input():
+def test_partial_batch_releases_after_timeout():
     buffer = BatchBuffer(4, max_wait_seconds=5.0)
     buffer.extend([molecule("a"), molecule("b")], now=100.0)
     assert buffer.pop_ready(now=104.9) == []
@@ -78,7 +99,7 @@ def test_partial_batch_times_out_without_new_input():
     assert buffer.seconds_until_ready() is None
 
 
-def test_full_only_policy_waits_until_flush():
+def test_full_only_policy_waits_for_flush():
     buffer = BatchBuffer(4, partial_policy="full_only")
     buffer.add(molecule("a"), now=0.0)
     assert buffer.pop_ready(now=1e9) == []
@@ -86,7 +107,7 @@ def test_full_only_policy_waits_until_flush():
     assert ids(buffer.pop_ready(flush=True)) == [["a"]]
 
 
-def test_remaining_members_keep_their_original_deadline():
+def test_leftover_molecules_keep_their_deadline():
     buffer = BatchBuffer(2, max_wait_seconds=5.0)
     buffer.add(molecule("a"), now=0.0)
     buffer.add(molecule("b"), now=1.0)
@@ -96,7 +117,7 @@ def test_remaining_members_keep_their_original_deadline():
     assert ids(buffer.pop_ready(now=9.0)) == [["c"]]
 
 
-def test_custom_key_function_extends_compatibility():
+def test_custom_key_can_split_batches():
     def key(mol):
         return default_batch_key(mol) + (mol.get_metadata().get("selected_state"),)
 
@@ -108,7 +129,7 @@ def test_custom_key_function_extends_compatibility():
     assert ids(buffer.pop_ready(now=0.0)) == [["a", "c"], ["b", "d"]]
 
 
-def test_batch_builder_ids_survive_regrouping():
+def test_molecule_ids_survive_regrouping():
     builder_outputs = [[molecule(f"mol-{task}-{i}") for i in range(5)] for task in range(2)]
     expected = [m.get_moleculeid() for out in builder_outputs for m in out]
     buffer = BatchBuffer(3)
@@ -120,7 +141,6 @@ def test_batch_builder_ids_survive_regrouping():
 
 
 def test_buffer_status_is_json_safe():
-    import json
     buffer = BatchBuffer(2)
     buffer.add(molecule("a", pbc=True), now=0.0)
     status = buffer.status(now=3.0)
@@ -128,7 +148,7 @@ def test_buffer_status_is_json_safe():
     assert status["waiting"] == 1 and status["buckets"][0]["oldest_age_seconds"] == 3.0
 
 
-def test_task_widths_count_actual_inputs_and_default_to_one():
+def test_task_width_counts_actual_molecules():
     widths = TaskWidths()
     full, partial, legacy = (FakeTask("running", running=True, done=False) for _ in range(3))
     widths.record(full, 8)
@@ -137,11 +157,11 @@ def test_task_widths_count_actual_inputs_and_default_to_one():
     widths.prune([partial])
     assert widths.total([partial]) == 3
     assert widths.width(full) == 1
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="nonnegative"):
         widths.record(full, -1)
 
 
-def test_poll_delay_honors_nearest_timeout():
+def test_driver_wakes_for_nearest_timeout():
     a, b = BatchBuffer(4, max_wait_seconds=5.0), BatchBuffer(4, max_wait_seconds=30.0)
     assert poll_delay(60, a, b, None) == 60
     a.add(molecule("x"), now=0.0)
@@ -150,8 +170,7 @@ def test_poll_delay_honors_nearest_timeout():
     assert poll_delay(1, a, now=0.0) == 1
 
 
-def test_finite_bootstrap_ids_never_wrap_and_preserve_ordinary_width():
-    from alframework.tools.batching import bootstrap_molecule_ids
-    assert bootstrap_molecule_ids(8,10,4,True)==['mol-boot-0000000008','mol-boot-0000000009']
-    assert bootstrap_molecule_ids(10,10,4,True)==[]
-    assert len(bootstrap_molecule_ids(8,10,4,False))==4
+def test_finite_bootstrap_ids_never_wrap():
+    assert bootstrap_molecule_ids(8, 10, 4, True) == ["mol-boot-0000000008", "mol-boot-0000000009"]
+    assert bootstrap_molecule_ids(10, 10, 4, True) == []
+    assert len(bootstrap_molecule_ids(8, 10, 4, False)) == 4

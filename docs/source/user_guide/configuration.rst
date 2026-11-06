@@ -6,7 +6,9 @@ resource file. The master configuration is the entry point: it names the task
 functions, points to the stage-specific config files, and defines the output
 paths ALF uses while the active-learning loop runs.
 
-Most examples use these files:
+The master configuration gives the name of each stage file, so you can name them as
+you like. The examples often use backend names, such as ``mlmd_config.json``,
+``hippynn_config.json``, and ``orca_config.json``. The roles are:
 
 .. list-table::
    :header-rows: 1
@@ -44,6 +46,13 @@ initialize Parsl tasks, queues, restart state, and output locations.
 In practice, this means most workflow changes can be made by editing config
 files rather than Python source code. Python changes are needed only when you
 add a new task implementation, parser, builder, sampler, or model backend.
+
+During the active-learning loop, ALF re-reads the master and stage configs on every
+iteration, so most edits apply to tasks submitted afterward without a restart. A
+config that fails to load is reported, and ALF keeps using the previous one. These
+are read once at startup, so changing them requires a restart: the Parsl
+configuration, the task import strings, and the sampler and QM ``batching``,
+``driver``, ``model_mode``, and ``acquisition.selection`` settings.
 
 Master Configuration
 --------------------
@@ -87,7 +96,20 @@ The master config controls the workflow wiring. Common fields include:
      - Number of GPUs ALF assumes each ML or sampler worker can see.
    * - ``target_queued_QM``, ``parallel_samplers``, ``minimum_QM``,
        ``save_h5_threshold``, ``bootstrap_set``
-     - Queue-depth and retraining controls for the active-learning loop.
+     - Queue-depth and retraining controls for the active-learning loop. These
+       count structures, including when tasks are batched. See :doc:`batching`.
+   * - ``maximum_builder_structures``
+     - Optional number of structures one builder task returns. The default is
+       ``1``. See :doc:`builders`.
+   * - ``maximum_completed_QM``
+     - Optional limit on structures held in the QM queue. ALF stops starting
+       builders at this limit until results are stored. By default, there is no
+       limit.
+   * - ``plotting_utility``, ``plot_dir``, ``update_plots_every``
+     - Optional progress plots. ``plotting_utility`` is an import string such as
+       ``alframework.tools.plotting.analysis_plot``, and ``plot_dir`` is where it
+       writes. ``update_plots_every`` is how many loop iterations separate plot
+       updates, with a default of ``1000``.
 
 Path Conventions
 ----------------
@@ -159,7 +181,9 @@ Builder config
 Sampler config
    Controls configuration-space exploration. MLMD examples define time step,
    maximum time, temperature and density schedules, uncertainty cutoffs,
-   metadata output, and the ASE model-loader function.
+   metadata output, and the ASE model-loader function. The multi-trajectory sampler
+   adds ``driver``, ``batching``, and ``acquisition`` blocks. See :doc:`samplers`,
+   :doc:`batching`, and :doc:`acquisition`.
 
 ML config
    Controls model training and model loading. HIPPYNN examples define ensemble
@@ -170,8 +194,9 @@ ML config
 QM config
    Controls electronic-structure labeling. QM config files usually define the
    executable or launch command, CPU count, method keywords, input blocks, and
-   engine-specific calculator options. See :doc:`qm_interfaces` for supported
-   QM interfaces.
+   engine-specific calculator options. An optional ``batching`` block labels several
+   structures in one task. See :doc:`qm_interfaces` for supported QM interfaces and
+   :doc:`batching` for batching.
 
 Parsl resource config
    Controls where tasks run. The master config selects ``parsl_configuration``
@@ -244,4 +269,4 @@ Related Examples
 Start with :doc:`../examples/simple_water` for a complete first workflow. Use
 :doc:`../examples/seeded_active_learning` when starting from existing
 structures or HDF5 data, and :doc:`../examples/fine_tuning` when starting from
-existing model weights.
+existing model weights. For several electronic states, see :doc:`excited_states`.

@@ -1,3 +1,5 @@
+"""Assertions shared by tests of calculators and QM task results."""
+
 from pathlib import Path
 
 import numpy as np

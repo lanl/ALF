@@ -240,45 +240,64 @@ def train_HIPNN_model(model_dir,
                       remove_high_forces_cut = None, 
                       remove_high_forces_std = None
                       ):
-    """
-    directory: directory where HIPPYNN model will reside
-    h5_directory: directory where h5 files will reside
-        energy: string, energy key inside inside h5 dataset. Must match db name in 'properties_list'.
-        force: string, force key insdie h5 dataset. Must match db name in 'properties_list'. Do not define to remove force training
-        coordinates': string, coordinates key inside h5 dataset. Must match db name in 'properties_list'.
-        species': string, species key inside h5 dataset. Must match db name in 'properties_list'.
-        electrostatics_flag: Boolean, Flag to check if the electrostatic will be trained with the energy and forces. 
-            If electrostatics_flag is True, at least one of `charges_key`, `dipole_key`, or `quadrupole_key` must be True. 
-        charges_key': string, per-atom charges key inside th h5 data. Must match db name in 'properties_list'. If None, partial charges are not trained to. 
-        diople_key': string, molecular dipole key inside th h5 data. Must match db name in 'properties_list'. If None, quadrupoles are not trained to. 
-        quadrupole_key': string, molecular-quadrupole key inside th h5 data. Must match db name in 'properties_list'. If None, quadrupoles are not trained to. 
-        cell': string, cell key inside h5 dataset. Must match db name in 'properties_list'. Do not define if data is not periodic.
-        hipnn_order': string 'scalar','vector','quadradic'
-        energy_mae_loss_weight': MAE per atom energy loss weight.
-        energy_rmse_loss_weight': RMSE per atomenergy loss weight.
-        total_energy_mae_loss_weight': MAE  total energy loss weight. Typicall only one of energy_mae_loss_weight and total_energy_mae_loss_eight are used (the other is set to 0).
-        total_energy_rmse_loss_weight': MAE  total energy loss weight. Typicall only one of energy_rmse_loss_weight and total_energy_rmse_loss_eight are used (the other is set to 0).
-        force_mae_loss_weight': MAE force loss weight
-        force_rmse_loss_weight': RMSE force loss weight
-        charge_mae_loss_weight': MAE charge loss weight. 
-        charge_rmse_loss_weight': RMSE charge loss weight. 
-        dipole_mae_loss_weight': MAE dipole loss weight. 
-        dipole_rmse_loss_weight': RMSE dipole loss weight. 
-        quadrupole_mae_loss_weight': MAE quadrupole loss weight. 
-        quadrupole_rmse_loss_weight': RMSE quadrupole loss weight. 
-        rbar_loss_weight': Weight of rbar in loss
-        l2_reg_loss_weight': Weight of l2_reg in loss. typically 1e-6
-        network_params': Dictonary that defines the model.  See examples for details
-        aca_params': Dictionary that defines parameters for charge training. 
-        pairwise_inference_parameters': Dictionary that defines any p
-        h5_directory': 
-        external_test_set': None or directory
-        plot_every': integer, every plot_every epochs, generate plots. 
-        build_lammps_pickle': boolean, whether or not to build a pickle file fo rthe network enabling loading into lammps MLIAP. Requires building of lammps python interface. 
-        remove_high_energy_cut: float, or None: If none, all data is kept. If float, data with energies per atom that many standard deviations or larger are removed. 
-        remove_high_energy_std: float, or None: If none, all data is kept. If float, data with energies per atom that many standard deviations or larger are removed. 
-        remove_high_forces_cut: float, or None: If none, all data is kept. If float, data with forces that many standard deviations or larger are removed. 
-        remove_high_forces_std: float, or None: If none, all data is kept. If float, data with forces that many standard deviations or larger are removed. 
+    """Train one HIPPYNN model on the HDF5 data in a directory.
+
+    Dataset keys must match the database names in ``properties_list``.
+
+    Args:
+        model_dir (str): Directory where the HIPPYNN model will reside.
+        h5_train_dir (str): Directory containing the HDF5 training data.
+        energy_key (str): Energy key inside the HDF5 dataset.
+        coordinates_key (str): Coordinates key inside the HDF5 dataset.
+        species_key (str): Species key inside the HDF5 dataset.
+        charges_key (str): Per-atom charges key. If None, partial charges are not trained to.
+        dipole_key (str): Molecular dipole key. If None, dipoles are not trained to.
+        quadrupole_key (str): Molecular quadrupole key. If None, quadrupoles are not trained to.
+        network_params (dict): Defines the model. See the examples for details.
+        aca_params (dict): Defines parameters for charge training.
+        electrostatics_flag (bool): Whether electrostatics are trained with the energy and forces.
+            If True, at least one of ``charges_key``, ``dipole_key``, or ``quadrupole_key`` must be set.
+        cell_key (str): Cell key inside the HDF5 dataset. Leave as None if the data is not periodic.
+        force_key (str): Force key inside the HDF5 dataset. Leave as None to remove force training.
+        hipnn_order (str): ``'scalar'``, ``'vector'``, or ``'quadradic'``.
+        first_is_interacting (bool): Passed to HIPPYNN's energy target node.
+        energy_mae_loss_weight (float): MAE per-atom energy loss weight.
+        energy_rmse_loss_weight (float): RMSE per-atom energy loss weight.
+        total_energy_mae_loss_weight (float): MAE total energy loss weight. Typically only one of
+            ``energy_mae_loss_weight`` and this weight is used, and the other is set to 0.
+        total_energy_rmse_loss_weight (float): RMSE total energy loss weight. Typically only one of
+            ``energy_rmse_loss_weight`` and this weight is used, and the other is set to 0.
+        force_mae_loss_weight (float): MAE force loss weight.
+        force_rmse_loss_weight (float): RMSE force loss weight.
+        charge_mae_loss_weight (float): MAE charge loss weight.
+        charge_rmse_loss_weight (float): RMSE charge loss weight.
+        dipole_mae_loss_weight (float): MAE dipole loss weight.
+        dipole_rmse_loss_weight (float): RMSE dipole loss weight.
+        quadrupole_mae_loss_weight (float): MAE quadrupole loss weight.
+        quadrupole_rmse_loss_weight (float): RMSE quadrupole loss weight.
+        electrostatics_weight (float): Not currently used.
+        rbar_loss_weight (float): Weight of rbar in the loss.
+        l2_reg_loss_weight (float): Weight of L2 regularization in the loss. Typically 1e-6.
+        pairwise_inference_parameters (dict): Not currently used.
+        valid_size (float): Fraction of the data reserved for validation.
+        test_size (float): Fraction of the data reserved for testing, when ``h5_test_dir`` is None.
+        plot_every (int): Generate plots every this many epochs.
+        h5_test_dir (str): Optional directory containing a separate test set.
+        learning_rate (float): Initial optimizer learning rate.
+        scheduler_options (dict): Learning-rate scheduler settings.
+        controller_options (dict): Training loop settings.
+        device_string (str): GPU to use, or ``'from_multiprocessing'`` to choose one from the worker process.
+        from_multiprocessing_nGPU (int): Number of GPUs to distribute over with ``'from_multiprocessing'``.
+        build_lammps_pickle (bool): Whether to build a pickle file for loading the network into LAMMPS
+            MLIAP. Requires the LAMMPS Python interface.
+        remove_high_energy_cut (float): Remove structures whose energy is farther than this from the mean.
+            If None, this step is skipped.
+        remove_high_energy_std (float): Remove structures whose energy is this many standard deviations
+            or more above the mean. If None, this step is skipped.
+        remove_high_forces_cut (float): Remove structures with a force farther than this from the mean.
+            If None, this step is skipped.
+        remove_high_forces_std (float): Remove structures with a force this many standard deviations or
+            more above the mean. If None, this step is skipped.
     """
     #Import Torch and configure GPU. 
     #This must occur after the subprocess fork!!!

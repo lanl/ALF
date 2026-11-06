@@ -22,7 +22,7 @@ copyright = '2023, ALF Team'
 author = 'ALF Team'
 
 # The full version, including alpha/beta/rc tags
-release = '0.0.0'
+release = '0.1.0'
 
 
 # -- General configuration ---------------------------------------------------
@@ -30,9 +30,23 @@ release = '0.0.0'
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
-extensions = ["sphinx.ext.autodoc", "sphinx_rtd_theme", "sphinx.ext.viewcode"]
+extensions = ["sphinx.ext.autodoc", "sphinx.ext.napoleon", "sphinx_rtd_theme", "sphinx.ext.viewcode"]
 add_module_names = False
-autodoc_mock_imports = ["anitraintools", "parsl", "ase_interface", "tqdm"]
+autodoc_mock_imports = ["anitraintools", "ase_interface", "tqdm", "rdkit"]
+
+# @python_app replaces each ALF task with a Parsl app object, which autodoc skips.
+# Keep the plain function during the docs build, so that tasks appear on API pages
+# with their real signatures and docstrings.
+import parsl
+
+
+def _keep_plain_function(function=None, **_):
+    return function if function is not None else lambda func: func
+
+
+# Without this, autodoc lists the shim on every page that imports it.
+_keep_plain_function.__module__ = "parsl"
+parsl.python_app = _keep_plain_function
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']

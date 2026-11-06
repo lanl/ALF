@@ -1,8 +1,14 @@
-"""ORCA, Q-Chem, and ASE-calculator labeling interfaces and task wrappers."""
+"""QM labeling interfaces: ORCA, Q-Chem, and ASE calculators.
+
+No QM programs run: these check input files, output parsing, and task wrappers against fixed
+outputs. Tests for further QM interfaces belong here.
+"""
+
 import numpy as np
 import pytest
 from ase import Atoms
 
+from alframework.qm_interfaces import ase_calculator_interface, orca5_interface, qchem_DFT_interface
 from alframework.qm_interfaces.orca5_interface import orcaGenerator
 from alframework.qm_interfaces.qchem_DFT_interface import qchemGenerator
 from alframework.tools.molecules_class import MoleculesObject
@@ -65,7 +71,7 @@ Total Something Energy: -2.4
     )
 
 
-def test_orca_input_writer_and_parser(tmp_path):
+def test_orca_writes_input_reads_output(tmp_path):
     atoms = Atoms("H2", positions=[[0.0, 0.0, 0.0], [0.0, 0.0, 0.74]])
     generator = orcaGenerator(
         scratch_path=str(tmp_path) + "/",
@@ -103,8 +109,9 @@ def test_orca_input_writer_and_parser(tmp_path):
         ({"energy": "hartree", "length": "bohr"}, 1.0, 1.0),
         ({"energy": "ev", "length": "angstrom"}, 27.2113834, 27.2113834 / 0.5291772083),
     ],
+    ids=["hartree_bohr", "ev_angstrom"],
 )
-def test_orca_parser_applies_unit_conversion(tmp_path, unit, energy_scale, force_scale):
+def test_orca_parser_converts_units(tmp_path, unit, energy_scale, force_scale):
     write_orca_outputs(tmp_path)
     generator = orcaGenerator(unit=unit)
 
@@ -114,14 +121,14 @@ def test_orca_parser_applies_unit_conversion(tmp_path, unit, energy_scale, force
     np.testing.assert_allclose(parsed["forces"], -np.array([[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]) * force_scale)
 
 
-def test_orca_check_normal_termination_rejects_incomplete_log(tmp_path):
+def test_incomplete_orca_log_counts_as_failed(tmp_path):
     log = tmp_path / "orca.log"
     log.write_text("SCF CONVERGED AFTER 6 CYCLES\n")
 
     assert not orcaGenerator().check_normal_termination(str(log))
 
 
-def test_qchem_input_writer(tmp_path):
+def test_qchem_input_file_is_correct(tmp_path):
     atoms = Atoms("OH2", positions=[[0.0, 0.0, 0.0], [0.0, 0.7, 0.7], [0.0, -0.7, 0.7]])
     generator = qchemGenerator(scratch_path=str(tmp_path), qcheminput="JOBTYPE FORCE", qchemblocks="$pcm\n$end")
     input_path = tmp_path / "qchem.in"
@@ -135,8 +142,7 @@ def test_qchem_input_writer(tmp_path):
     assert "$rem\nJOBTYPE FORCE\n$end" in text
 
 
-def test_ase_calculator_task_uses_mocked_calculator(tmp_path, monkeypatch, h2_atoms):
-    from alframework.qm_interfaces import ase_calculator_interface
+def test_ase_task_stores_calculator_results(tmp_path, monkeypatch, h2_atoms):
 
     monkeypatch.setattr(
         ase_calculator_interface,
@@ -144,7 +150,9 @@ def test_ase_calculator_task_uses_mocked_calculator(tmp_path, monkeypatch, h2_at
         lambda config, field: FakeASECalculator,
     )
 
-    task_func = getattr(ase_calculator_interface.ase_calculator_task, "func", ase_calculator_interface.ase_calculator_task)
+    task_func = getattr(
+        ase_calculator_interface.ase_calculator_task, "func", ase_calculator_interface.ase_calculator_task
+    )
     molecule = MoleculesObject(h2_atoms, "h2")
     result = task_func(
         molecule,
@@ -167,8 +175,7 @@ def test_ase_calculator_task_uses_mocked_calculator(tmp_path, monkeypatch, h2_at
     check_scratch_directory(tmp_path, "h2")
 
 
-def test_orca_double_task_averages_runs_and_checks_thresholds(tmp_path, monkeypatch, h2_atoms):
-    from alframework.qm_interfaces import orca5_interface
+def test_orca_double_run_averages_results(tmp_path, monkeypatch, h2_atoms):
 
     responses = iter(
         [
@@ -182,7 +189,9 @@ def test_orca_double_task_averages_runs_and_checks_thresholds(tmp_path, monkeypa
 
     monkeypatch.setattr(orca5_interface.orcaGenerator, "single_point", fake_single_point)
 
-    task_func = getattr(orca5_interface.orca_double_calculator_task, "func", orca5_interface.orca_double_calculator_task)
+    task_func = getattr(
+        orca5_interface.orca_double_calculator_task, "func", orca5_interface.orca_double_calculator_task
+    )
     result = task_func(
         MoleculesObject(h2_atoms, "h2"),
         {
@@ -204,8 +213,7 @@ def test_orca_double_task_averages_runs_and_checks_thresholds(tmp_path, monkeypa
     np.testing.assert_allclose(result.get_results()["forces"], np.ones((2, 3)) * 0.1)
 
 
-def test_qchem_task_uses_mocked_single_point(tmp_path, monkeypatch, water_atoms):
-    from alframework.qm_interfaces import qchem_DFT_interface
+def test_qchem_task_stores_results(tmp_path, monkeypatch, water_atoms):
 
     expected = {"energy": -10.0, "forces": np.zeros((3, 3)), "converged": True}
 
@@ -216,7 +224,9 @@ def test_qchem_task_uses_mocked_single_point(tmp_path, monkeypatch, water_atoms)
         return expected
 
     monkeypatch.setattr(qchem_DFT_interface.qchemGenerator, "single_point", fake_single_point)
-    task_func = getattr(qchem_DFT_interface.qchem_dft_calculator_task, "func", qchem_DFT_interface.qchem_dft_calculator_task)
+    task_func = getattr(
+        qchem_DFT_interface.qchem_dft_calculator_task, "func", qchem_DFT_interface.qchem_dft_calculator_task
+    )
 
     result = task_func(
         MoleculesObject(water_atoms, "water"),

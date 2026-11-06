@@ -1,30 +1,15 @@
-import importlib
-import sys
-import types
+"""ML model interfaces: training tasks and ensemble loading for HIPPYNN and NeuroChem.
+
+Trainers are faked, so these check how ALF calls them. Tests for further ML models belong here.
+"""
+
+from alframework.ml_interfaces import hippynn_interface
+from tests.helpers.fakes import fake_training_pool, import_neurochem_with_fake_backend
 
 
-def test_hippynn_train_ensemble_task_builds_model_configs(tmp_path, monkeypatch):
-    from alframework.ml_interfaces import hippynn_interface
+def test_hippynn_training_configures_each_member(tmp_path, monkeypatch):
 
-    captured = {}
-
-    class FakePool:
-        def __init__(self, processes):
-            captured["processes"] = processes
-            captured["closed"] = False
-
-        def map(self, func, params_list):
-            captured["func"] = func
-            captured["params_list"] = params_list
-            for params in params_list:
-                model_dir = tmp_path / params["model_dir"]
-                model_dir.mkdir(parents=True)
-                (model_dir / "training_log.txt").write_text("Training complete\n")
-            return [None for _ in params_list]
-
-        def close(self):
-            captured["closed"] = True
-
+    FakePool, pool = fake_training_pool()
     monkeypatch.setattr(hippynn_interface.multiprocessing, "Pool", FakePool)
 
     completed, training_id = hippynn_interface.train_HIPPYNN_ensemble_task.func(
@@ -37,10 +22,10 @@ def test_hippynn_train_ensemble_task_builds_model_configs(tmp_path, monkeypatch)
 
     assert completed == [True, True]
     assert training_id == 3
-    assert captured["processes"] == 2
-    assert captured["closed"]
-    assert captured["func"] is hippynn_interface.train_HIPNN_model_wrapper
-    assert captured["params_list"] == [
+    assert pool.processes == 2
+    assert "close" in pool.calls
+    assert pool.func is hippynn_interface.train_HIPNN_model_wrapper
+    assert pool.params_list == [
         {
             "energy_key": "energy",
             "species_key": "species",
@@ -58,24 +43,10 @@ def test_hippynn_train_ensemble_task_builds_model_configs(tmp_path, monkeypatch)
     ]
 
 
-def test_hippynn_train_ensemble_task_reports_partial_failure(tmp_path, monkeypatch):
-    from alframework.ml_interfaces import hippynn_interface
+def test_hippynn_training_reports_failed_members(tmp_path, monkeypatch):
 
-    class FakePool:
-        def __init__(self, processes):
-            pass
-
-        def map(self, func, params_list):
-            log_texts = ["Training complete\n", "Stopped before convergence\n"]
-            for params, log_text in zip(params_list, log_texts):
-                model_dir = tmp_path / params["model_dir"]
-                model_dir.mkdir(parents=True)
-                (model_dir / "training_log.txt").write_text(log_text)
-            return [None for _ in params_list]
-
-        def close(self):
-            pass
-
+    logs = ["Training complete\n", "Stopped before convergence\n"]
+    FakePool, _ = fake_training_pool(member_log=logs.__getitem__)
     monkeypatch.setattr(hippynn_interface.multiprocessing, "Pool", FakePool)
 
     completed, training_id = hippynn_interface.train_HIPPYNN_ensemble_task.func(
@@ -90,41 +61,27 @@ def test_hippynn_train_ensemble_task_reports_partial_failure(tmp_path, monkeypat
     assert training_id == 4
 
 
-def test_hippynn_ase_load_ensemble_returns_calculators_for_model_dirs(monkeypatch):
-    from alframework.ml_interfaces import hippynn_interface
+def test_hippynn_ensemble_members_load_in_name_order(monkeypatch):
 
-    model_dirs = ["models/model-0003/model-00/", "models/model-0003/model-01/"]
+    found_by_glob = ["models/model-0003/model-02/", "models/model-0003/model-00/", "models/model-0003/model-01/"]
+    in_member_order = sorted(found_by_glob)
     calls = []
 
     def fake_calculator(model_dir, device="cuda:0"):
         calls.append((model_dir, device))
         return f"calculator:{model_dir}"
 
-    monkeypatch.setattr(hippynn_interface.glob, "glob", lambda pattern: model_dirs)
+    monkeypatch.setattr(hippynn_interface.glob, "glob", lambda pattern: found_by_glob)
     monkeypatch.setattr(hippynn_interface, "HIPNN_ASE_calculator", fake_calculator)
 
     calculators = hippynn_interface.HIPNN_ASE_load_ensemble("models/model-0003", device="cpu")
 
-    assert calculators == [f"calculator:{model_dir}" for model_dir in model_dirs]
-    assert calls == [(model_dir, "cpu") for model_dir in model_dirs]
+    assert calculators == [f"calculator:{model_dir}" for model_dir in in_member_order]
+    assert calls == [(model_dir, "cpu") for model_dir in in_member_order]
 
 
-def import_neurochem_interface(monkeypatch):
-    fake_anitraintools = types.ModuleType("anitraintools")
-    fake_ase_interface = types.ModuleType("ase_interface")
-    fake_ase_interface.aniensloader = object()
-    fake_ase_interface.ANIENS = lambda model: ("ANIENS", model)
-    fake_ase_interface.batchedensemblemolecule = lambda *args: ("batchedensemblemolecule", args)
-
-    monkeypatch.setitem(sys.modules, "anitraintools", fake_anitraintools)
-    monkeypatch.setitem(sys.modules, "ase_interface", fake_ase_interface)
-    monkeypatch.delitem(sys.modules, "alframework.ml_interfaces.neurochem_interface", raising=False)
-
-    return importlib.import_module("alframework.ml_interfaces.neurochem_interface")
-
-
-def test_neurochem_train_task_wires_trainer_and_training_config(monkeypatch):
-    neurochem_interface = import_neurochem_interface(monkeypatch)
+def test_neurochem_training_passes_settings_to_trainer(monkeypatch):
+    neurochem_interface = import_neurochem_with_fake_backend(monkeypatch)
     captured = {}
 
     class FakeNeuroChemTrainer:
@@ -191,7 +148,7 @@ def test_neurochem_train_task_wires_trainer_and_training_config(monkeypatch):
 
 
 def test_neurochem_calculator_builds_ani_ensemble(monkeypatch):
-    neurochem_interface = import_neurochem_interface(monkeypatch)
+    neurochem_interface = import_neurochem_with_fake_backend(monkeypatch)
     captured = {}
 
     def fake_batchedensemblemolecule(*args):
@@ -207,9 +164,7 @@ def test_neurochem_calculator_builds_ani_ensemble(monkeypatch):
     monkeypatch.setattr(neurochem_interface, "ANIENS", fake_aniens)
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "3,5,7")
 
-    calculator = neurochem_interface.NeuroChemCalculator(
-        {"model_path": "/models/model-0006", "Nn": 8, "gpu": "2"}
-    )
+    calculator = neurochem_interface.NeuroChemCalculator({"model_path": "/models/model-0006", "Nn": 8, "gpu": "2"})
 
     assert calculator == "aniens-calculator"
     assert captured["aniens_model"] == "batched-model"
@@ -221,14 +176,3 @@ def test_neurochem_calculator_builds_ani_ensemble(monkeypatch):
         2,
     )
     assert neurochem_interface.os.environ["CUDA_VISIBLE_DEVICES"] == "3,5,7"
-
-
-def test_hippynn_ase_load_ensemble_orders_members_by_directory_name(monkeypatch, tmp_path):
-    hippynn_interface = importlib.import_module("alframework.ml_interfaces.hippynn_interface")
-    for name in ("model-02", "model-00", "model-01"):
-        (tmp_path / name).mkdir()
-    monkeypatch.setattr(hippynn_interface.glob, "glob",
-                        lambda pattern: [str(tmp_path / n) + "/" for n in ("model-02", "model-00", "model-01")])
-    monkeypatch.setattr(hippynn_interface, "HIPNN_ASE_calculator", lambda directory, device: directory)
-    loaded = hippynn_interface.HIPNN_ASE_load_ensemble(str(tmp_path), device="cpu")
-    assert [p.rstrip("/").rsplit("/", 1)[-1] for p in loaded] == ["model-00", "model-01", "model-02"]

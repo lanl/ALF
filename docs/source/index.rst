@@ -39,8 +39,11 @@ pieces to a concrete run.
    user_guide/units
    user_guide/builders
    user_guide/samplers
+   user_guide/acquisition
    user_guide/ml_interfaces
    user_guide/qm_interfaces
+   user_guide/excited_states
+   user_guide/batching
    user_guide/parsl
 
 .. toctree::

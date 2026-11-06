@@ -168,6 +168,65 @@ The smaller ensemble exposed a real ordering bug.
 | `alf_alchemi_02` | 357 | 22 |
 | Fresh torch-free install | 322 | 24 |
 
+### Test suite review and Actions coverage (2026-11-05)
+
+A coverage and readability review found 59 cases that no Actions job could run.
+A new `engines` job installs rdkit, TorchSim, ALCHEMI, and PySEQM `52850b4`, and
+fails if any of them is unusable, so that a broken install cannot pass by
+skipping. Actions now reports skip reasons.
+
+The review removed 17 cases that added no coverage, and moved shared driver setup
+and engine code into `tests/helpers/`. Unlike the earlier consolidation, it renamed
+tests, so older entries may cite earlier test names.
+
+**Naming tests.** State what should be true, one behavior per name, without `and`.
+Keep the name of the tool, method, or component under test, because a test name is
+the first thing seen when CI fails: `test_rdkit_seed_preparation_is_reproducible`,
+`test_langevin_holds_the_target_temperature`. Tests shared by both packed engines
+show the engine in their test ID, such as `[alchemi]`. Give parametrized cases
+readable `ids=`.
+
+**Test files.** File names stay generic, so one file can hold several tools:
+`test_qm_interfaces.py` can hold ORCA and more, and `test_ml_interfaces.py` can hold
+NeuroChem, HIPPYNN, and future models. Each test file starts with a docstring saying
+what it covers, what is real or faked, and what makes its tests skip. `test_gpu.py`
+became `test_gpu_selection.py`, because it needs no GPU.
+
+Results on Actions (fork run `42173316850`, Ubuntu, Python 3.12, CPU):
+
+| Job | Passed | Skipped | Job time |
+| --- | ---: | ---: | ---: |
+| `engines` | 533 | 0 | about 5 min |
+| `hippynn` | 468 | 65 | about 3 min |
+| `base` (torch-free) | 404 | 98 | about 1 min |
+
+`engines` passed 3 runs in a row. Its first attempt failed 59 cases because the PyPI
+`torchvision` pulled in by ALCHEMI doesn't work with CPU-only torch, so that job
+installs both from the PyTorch CPU index.
+
+### User documentation pass (2026-11-06)
+
+`README.md` and `docs/source` now cover merged capabilities through Increment 10,
+with new pages `user_guide/batching.rst`, `user_guide/acquisition.rst`, and
+`user_guide/excited_states.rst`. User docs describe behavior and settings for people
+running ALF, so they don't mention increments or campaigns.
+
+**Held back until Increment 11A passes real qualification (user decision):**
+`topology_check`, `max_force_cutoff`, `screen_audit_dir`, `friction_per_fs`,
+`finite_bootstrap`, `rdkit_molecule_builder_task`, `group_by_selected_state`, and
+`examples/keto_acac`. These still appear on the auto-generated API pages. The
+`excited_states.rst` page has no worked example until `keto_acac` can be documented.
+
+`sphinx-docs.yml` now also builds for `development`, while deployment stays limited
+to `main`. The public site therefore keeps describing `main` until `development`
+merges.
+
+The API pages were then repaired. `conf.py` enables `sphinx.ext.napoleon`, which
+renders the code's Google-style `Args:` sections, and uses real Parsl during the
+build with `python_app` replaced by a shim that keeps the plain function. Mocking
+`parsl` had made autodoc skip every `*_task` entry point. The build has no warnings,
+and the docs job now runs with `-W`, so a new warning fails it.
+
 ## Development and test environments
 
 Policy, decided 2026-11-03: test development work against fresh installs with
@@ -844,10 +903,10 @@ the acceptance decision above:
 4. Keep the deferred gates explicitly open: trained cell-input checkpoint,
    long-time potential stability, and MI350. They do not block the next increment.
 
-User-guide updates are deferred at the user's direction (2026-11-04), outside
-the current scope and Increment 7 acceptance. A later documentation change can
-describe `driver`, `batching`, `acquisition`, and labeling batch settings, with
-pointers to the tracked TorchSim/ALCHEMI water configs and campaign README.
+User-guide updates were deferred at the user's direction (2026-11-04), outside
+the scope of Increment 7 acceptance. They now describe `driver`, `batching`,
+`acquisition`, and labeling batch settings, with pointers to the tracked
+TorchSim/ALCHEMI water configs; see **User documentation pass (2026-11-06)**.
 Roadmap status and validation evidence records remain part of close-out.
 
 #### Focused prerequisites (2026-11-02)
@@ -2318,6 +2377,10 @@ Deferred: post-QM force/distance/topology filtering of converged labels,
 GALF/LCM, staged handoffs, single-member excited-state sampling, full-scale
 production qualification, and user-guide updates. Runtime force cutoffs do
 not filter stored QM labels in this stage.
+
+Follow-up when 11A passes: document the features held back from the user guide,
+and add `examples/keto_acac` as the worked excited-state example; see **User
+documentation pass (2026-11-06)**.
 
 ### Increment 11B — planned: cpp-ring ALF (E6), after 11A
 

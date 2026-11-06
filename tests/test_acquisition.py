@@ -1,8 +1,16 @@
+"""Acquisition: deciding which sampled frames are worth labeling.
+
+Covers ensemble uncertainty, the rules that make a frame eligible, ranking scores, top-k selection,
+and gap uncertainty. One test uses a trained HIPPYNN model and skips without HIPPYNN.
+"""
+
 import numpy as np
 import pytest
 from ase import Atoms
 
 from alframework.ml_interfaces.ensemble_inference import ASEEnsembleEvaluator, ensemble_statistics
+from alframework.ml_interfaces.hippynn_interface import HIPNN_ASE_load_ensemble
+from alframework.samplers import acquisition
 from alframework.samplers.acquisition import (
     acquisition_settings,
     assess_frame,
@@ -12,10 +20,11 @@ from alframework.samplers.acquisition import (
 )
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator
 from tests.helpers.fakes import FixedCalculator
+from tests.helpers.molecules import WATER
 
-WATER = Atoms("OH2", positions=[[0, 0, 0], [0.96, 0, 0], [-0.24, 0.93, 0]])
-METHANE = Atoms("CH4", positions=[[0, 0, 0], [0.63, 0.63, 0.63], [-0.63, -0.63, 0.63],
-                                  [-0.63, 0.63, -0.63], [0.63, -0.63, -0.63]])
+METHANE = Atoms(
+    "CH4", positions=[[0, 0, 0], [0.63, 0.63, 0.63], [-0.63, -0.63, 0.63], [-0.63, 0.63, -0.63], [0.63, -0.63, -0.63]]
+)
 CONFIG = {"Escut": 0.5, "Fscut": 0.2, "distcut": 0.7, "min_time": 0.01}
 
 
@@ -29,7 +38,7 @@ class PositionDependentCalculator(FixedCalculator):
     def calculate(self, atoms=None, properties=("energy",), system_changes=()):
         super(FixedCalculator, self).calculate(atoms, properties, system_changes)
         positions = atoms.get_positions()
-        self.results["energy"] = float(self.seed * np.sum(positions ** 2) - len(atoms))
+        self.results["energy"] = float(self.seed * np.sum(positions**2) - len(atoms))
         self.results["forces"] = -2 * self.seed * positions + 0.1 * self.seed
 
 
@@ -39,13 +48,14 @@ def fake_ensemble(n=4):
 
 def mlmd_reference(calculators, atoms, well_params=None):
     calculator = MLMD_calculator(list(calculators), well_params=well_params)
-    calculator.calculate(atoms, properties=["energy", "forces", "energy_stdev",
-                                            "forces_stdev_mean", "forces_stdev_max"])
+    calculator.calculate(
+        atoms, properties=["energy", "forces", "energy_stdev", "forces_stdev_mean", "forces_stdev_max"]
+    )
     return calculator.results
 
 
-@pytest.mark.parametrize("well_params", [None, {"r_start": 0.5, "force": 0.1}])
-def test_statistics_match_mlmd_calculator_and_exclude_well_potential(well_params):
+@pytest.mark.parametrize("well_params", [None, {"r_start": 0.5, "force": 0.1}], ids=["no_well", "with_well"])
+def test_uncertainty_matches_mlmd_calculator(well_params):
     calculators = fake_ensemble()
     rows = ensemble_statistics(ASEEnsembleEvaluator(calculators).predict([WATER, METHANE]))
     for atoms, row in zip((WATER, METHANE), rows):
@@ -59,45 +69,49 @@ def test_statistics_match_mlmd_calculator_and_exclude_well_potential(well_params
         assert row["Fsrms"] >= row["Fs"]
 
 
-def test_evaluator_shapes_support_mixed_sizes():
+def test_mixed_molecule_sizes_evaluate_together():
     prediction = ASEEnsembleEvaluator(fake_ensemble(3)).predict([WATER, METHANE])
     assert prediction["energies"].shape == (3, 2)
     assert [forces.shape for forces in prediction["forces"]] == [(3, 3, 3), (3, 5, 3)]
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="at least two"):
         ASEEnsembleEvaluator(fake_ensemble(1))
 
 
-def reference_mlmd_decision(signals, min_distance, time_ps, config):
-    """The stopping logic of mlmd_sampling, transcribed for comparison."""
-    Ecrit = signals["Es"] > config["Escut"]
-    Fcrit = signals["Fs"] > config["Fscut"]
-    Fmcrit = signals["Fsmax"] > 3 * config["Fscut"]
-    distcrit = min_distance < config.get("distcut", 1.2)
-    if time_ps >= config.get("min_time", 0) and (Ecrit or Fcrit or Fmcrit or distcrit):
-        return "rejected" if distcrit else "eligible"
-    return "continue"
-
-
-@pytest.mark.parametrize("Es,Fs,Fsmax,min_distance,time_ps", [
-    (0.1, 0.1, 0.1, 1.0, 0.02),   # below every cutoff
-    (0.6, 0.1, 0.1, 1.0, 0.02),   # energy
-    (0.1, 0.3, 0.1, 1.0, 0.02),   # mean force
-    (0.1, 0.1, 0.61, 1.0, 0.02),  # max force uses 3 * Fscut
-    (0.1, 0.1, 0.59, 1.0, 0.02),
-    (0.6, 0.3, 0.7, 1.0, 0.0),    # before min_time
-    (0.1, 0.1, 0.1, 0.5, 0.02),   # close contact only
-    (0.6, 0.1, 0.1, 0.5, 0.02),   # close contact wins over uncertainty
-    (0.1, 0.1, 0.1, 0.5, 0.0),    # close contact before min_time is not checked
-    (0.5, 0.2, 0.6, 1.0, 0.01),   # exactly at cutoffs and at min_time
-])
-def test_eligibility_matches_existing_mlmd_stopping(Es, Fs, Fsmax, min_distance, time_ps):
+@pytest.mark.parametrize(
+    "Es,Fs,Fsmax,min_distance,time_ps,expected",
+    [
+        (0.1, 0.1, 0.1, 1.0, 0.02, "continue"),
+        (0.6, 0.1, 0.1, 1.0, 0.02, "eligible"),
+        (0.1, 0.3, 0.1, 1.0, 0.02, "eligible"),
+        (0.1, 0.1, 0.61, 1.0, 0.02, "eligible"),  # The max force cutoff is 3 * Fscut = 0.6.
+        (0.1, 0.1, 0.59, 1.0, 0.02, "continue"),
+        (0.6, 0.3, 0.7, 1.0, 0.0, "continue"),
+        (0.1, 0.1, 0.1, 0.5, 0.02, "rejected"),
+        (0.6, 0.1, 0.1, 0.5, 0.02, "rejected"),
+        (0.1, 0.1, 0.1, 0.5, 0.0, "continue"),
+        (0.5, 0.2, 0.6, 1.0, 0.01, "continue"),
+    ],
+    ids=[
+        "below_every_cutoff",
+        "energy_too_uncertain",
+        "mean_force_too_uncertain",
+        "max_force_too_uncertain",
+        "max_force_just_under_cutoff",
+        "uncertain_before_min_time",
+        "close_contact",
+        "close_contact_beats_uncertainty",
+        "close_contact_before_min_time",
+        "exactly_at_every_cutoff",
+    ],
+)
+def test_frame_eligibility_follows_the_stopping_rules(Es, Fs, Fsmax, min_distance, time_ps, expected):
     signals = {"Es": Es, "Fs": Fs, "Fsmax": Fsmax, "Fsrms": Fs}
     decision = assess_frame(signals, min_distance, time_ps, CONFIG, acquisition_settings(CONFIG))
-    assert decision["outcome"] == reference_mlmd_decision(signals, min_distance, time_ps, CONFIG)
-    assert ("ranking_score" in decision) is (decision["outcome"] == "eligible")
+    assert decision["outcome"] == expected
+    assert ("ranking_score" in decision) is (expected == "eligible")
 
 
-def test_negative_cutoffs_trigger_every_checked_frame_as_before():
+def test_negative_cutoffs_trigger_every_frame():
     config = {"Escut": -1.0, "Fscut": -1.0}
     signals = {"Es": 0.0, "Fs": 0.0, "Fsmax": 0.0, "Fsrms": 0.0}
     decision = assess_frame(signals, 1.5, 0.0, config, acquisition_settings(config))
@@ -106,23 +120,26 @@ def test_negative_cutoffs_trigger_every_checked_frame_as_before():
         acquisition_settings({**config, "acquisition": {"strategy": "summed", "w_energy": 1, "w_force": 1}})
 
 
-def test_uncertainty_and_summed_scores():
+def test_ranking_score_formulas():
     signals = {"Es": 1.0, "Fs": 0.3, "Fsmax": 1.2, "Fsrms": 0.4}
     uncertainty = acquisition_settings(CONFIG)
     assert ranking_score(signals, uncertainty, CONFIG) == pytest.approx(2.0)
     summed = acquisition_settings({**CONFIG, "acquisition": {"strategy": "summed", "w_energy": 0.5, "w_force": 2.0}})
     assert ranking_score(signals, summed, CONFIG) == pytest.approx(0.5 * 2.0 + 2.0 * 2.0)
     # The same score through the explicit term table.
-    explicit = acquisition_settings({**CONFIG, "acquisition": {"strategy": "summed",
-                                                              "weights": {"energy": 0.5, "force_rms": 2.0}}})
+    explicit = acquisition_settings(
+        {**CONFIG, "acquisition": {"strategy": "summed", "weights": {"energy": 0.5, "force_rms": 2.0}}}
+    )
     assert ranking_score(signals, explicit, CONFIG) == ranking_score(signals, summed, CONFIG)
 
 
-def test_new_score_terms_extend_summed_ranking(monkeypatch):
-    from alframework.samplers import acquisition
+def test_new_score_terms_join_summed_ranking(monkeypatch):
     monkeypatch.setitem(acquisition.SCORE_TERMS, "custom_gap", ("gap_std", "gap_std_cut", 1.0))
-    config = {**CONFIG, "gap_std_cut": 0.1,
-              "acquisition": {"strategy": "summed", "weights": {"energy": 1.0, "custom_gap": 2.0}}}
+    config = {
+        **CONFIG,
+        "gap_std_cut": 0.1,
+        "acquisition": {"strategy": "summed", "weights": {"energy": 1.0, "custom_gap": 2.0}},
+    }
     settings = acquisition_settings(config)
     signals = {"Es": 1.0, "Fs": 0.3, "Fsmax": 1.2, "Fsrms": 0.4, "gap_std": 0.05}
     assert ranking_score(signals, settings, config) == pytest.approx(1.0 / 0.5 + 2.0 * 0.05 / 0.1)
@@ -130,37 +147,61 @@ def test_new_score_terms_extend_summed_ranking(monkeypatch):
         ranking_score({key: value for key, value in signals.items() if key != "gap_std"}, settings, config)
 
 
-def test_high_summed_score_alone_is_not_eligible():
+def test_high_score_alone_is_not_eligible():
     config = {**CONFIG, "acquisition": {"strategy": "summed", "w_energy": 100.0, "w_force": 100.0}}
     signals = {"Es": 0.4, "Fs": 0.1, "Fsmax": 0.1, "Fsrms": 0.19}
     decision = assess_frame(signals, 1.0, 1.0, config, acquisition_settings(config))
     assert decision["outcome"] == "continue"
 
 
-@pytest.mark.parametrize("block,error", [
-    ({"strategy": "ranked"}, "strategy"),
-    ({"strategy": "summed", "w_energy": 1.0}, "w_force"),
-    ({"strategy": "summed", "w_energy": -1, "w_force": 1}, "nonnegative"),
-    ({"strategy": "summed", "w_energy": 0, "w_force": 0}, "positive"),
-    ({"strategy": "summed", "weights": {"unknown": 1.0}}, "Unknown acquisition score terms"),
-    ({"strategy": "summed", "weights": {"energy": 1.0}, "w_energy": 1, "w_force": 1}, "not both"),
-    ({"strategy": "uncertainty", "w_energy": 1.0}, "only to strategy 'summed'"),
-    ({"trajectory_policy": "continue"}, "requires selection.mode 'cohort_top_k'"),
-    ({"selection": {"mode": "cohort_top_k", "k": 2}}, "selection.cohort_size"),
-    ({"selection": {"mode": "cohort_top_k", "cohort_size": 4}}, "selection.k"),
-    ({"selection": {"mode": "cohort_top_k", "cohort_size": 4, "k": 0}}, "positive integer"),
-    ({"selection": {"mode": "first_trigger", "k": 2}}, "require acquisition.selection.mode"),
-    ({"selection": {"mode": "cohort_top_k", "cohort_size": 4, "k": 2, "top_k": 1}}, "Unknown acquisition.selection"),
-    ({"return_top_k": 4}, "Unknown acquisition settings"),
-])
-def test_invalid_acquisition_settings(block, error):
+@pytest.mark.parametrize(
+    "block,error",
+    [
+        ({"strategy": "ranked"}, "strategy"),
+        ({"strategy": "summed", "w_energy": 1.0}, "w_force"),
+        ({"strategy": "summed", "w_energy": -1, "w_force": 1}, "nonnegative"),
+        ({"strategy": "summed", "w_energy": 0, "w_force": 0}, "positive"),
+        ({"strategy": "summed", "weights": {"unknown": 1.0}}, "Unknown acquisition score terms"),
+        ({"strategy": "summed", "weights": {"energy": 1.0}, "w_energy": 1, "w_force": 1}, "not both"),
+        ({"strategy": "uncertainty", "w_energy": 1.0}, "only to strategy 'summed'"),
+        ({"trajectory_policy": "continue"}, "requires selection.mode 'cohort_top_k'"),
+        ({"selection": {"mode": "cohort_top_k", "k": 2}}, "selection.cohort_size"),
+        ({"selection": {"mode": "cohort_top_k", "cohort_size": 4}}, "selection.k"),
+        ({"selection": {"mode": "cohort_top_k", "cohort_size": 4, "k": 0}}, "positive integer"),
+        ({"selection": {"mode": "first_trigger", "k": 2}}, "require acquisition.selection.mode"),
+        (
+            {"selection": {"mode": "cohort_top_k", "cohort_size": 4, "k": 2, "top_k": 1}},
+            "Unknown acquisition.selection",
+        ),
+        ({"return_top_k": 4}, "Unknown acquisition settings"),
+    ],
+    ids=[
+        "unknown_strategy",
+        "missing_force_weight",
+        "negative_weight",
+        "all_zero_weights",
+        "unknown_score_term",
+        "weights_plus_w_energy",
+        "weights_on_uncertainty_strategy",
+        "continue_without_cohorts",
+        "cohort_without_size",
+        "cohort_without_k",
+        "zero_k",
+        "k_without_cohort_mode",
+        "unknown_selection_key",
+        "unknown_setting",
+    ],
+)
+def test_invalid_settings_are_rejected(block, error):
     with pytest.raises(ValueError, match=error):
         acquisition_settings({**CONFIG, "acquisition": block})
 
 
-def test_top_k_is_deterministic_and_independent_of_input_order():
-    candidates = [{"trajectory_id": f"mol-{t}", "step": s, "ranking_score": score}
-                  for t, s, score in [(2, 10, 3.0), (1, 20, 3.0), (1, 10, 3.0), (3, 5, 9.0), (4, 1, 1.0)]]
+def test_top_k_ignores_input_order():
+    candidates = [
+        {"trajectory_id": f"mol-{t}", "step": s, "ranking_score": score}
+        for t, s, score in [(2, 10, 3.0), (1, 20, 3.0), (1, 10, 3.0), (3, 5, 9.0), (4, 1, 1.0)]
+    ]
     expected = [("mol-3", 5), ("mol-1", 10), ("mol-1", 20)]
     rng = np.random.default_rng(0)
     for _ in range(10):
@@ -170,8 +211,7 @@ def test_top_k_is_deterministic_and_independent_of_input_order():
     assert frame_id("mol-0000-0000000007", 40) == "mol-0000-0000000007:step-000000040"
 
 
-def test_trained_hippynn_ensemble_statistics_match_mlmd_calculator(trained_ensemble):
-    from alframework.ml_interfaces.hippynn_interface import HIPNN_ASE_load_ensemble
+def test_trained_hippynn_uncertainty_matches_mlmd_calculator(trained_ensemble):
 
     calculators = HIPNN_ASE_load_ensemble(str(trained_ensemble), device="cpu")
     rng = np.random.default_rng(1)
@@ -189,34 +229,71 @@ def test_trained_hippynn_ensemble_statistics_match_mlmd_calculator(trained_ensem
         assert row["Fsmax"] == pytest.approx(float(reference["forces_stdev_max"]), rel=1e-5, abs=1e-5)
 
 
-def test_gap_spread_uses_correlated_member_differences_and_triggers_independently():
-    from alframework.ml_interfaces.ensemble_inference import ensemble_statistics
-    energies = np.array([[[10.], [12.]], [[20.], [22.]]])
-    prediction = dict(energies=energies[:, 1], forces=[np.zeros((2, 2, 3))],
-                      state_energies=energies, state_forces=[np.zeros((2, 2, 2, 3))], gap_pair=[0, 1])
-    stats = ensemble_statistics(prediction)[0]
-    assert stats['Es'] == 5. and stats['gap_std'] == 0.
-    config = dict(Escut=100., Fscut=100., distcut=.7, gap_std_cut=.01, model_mode='excited_state',
-                  gap_uncertainty={'pair': [0, 1]},
-                  acquisition={'strategy':'summed','weights':{'energy':1., 'gap':1.},
-                               'eligibility':['gap']})
+def _gap_statistics():
+    """Two members whose energies disagree by 10 in both states, so their gaps agree exactly."""
+    energies = np.array([[[10.0], [12.0]], [[20.0], [22.0]]])
+    prediction = dict(
+        energies=energies[:, 1],
+        forces=[np.zeros((2, 2, 3))],
+        state_energies=energies,
+        state_forces=[np.zeros((2, 2, 2, 3))],
+        gap_pair=[0, 1],
+    )
+    return ensemble_statistics(prediction)[0]
+
+
+def _gap_config(eligibility):
+    return dict(
+        Escut=100.0,
+        Fscut=100.0,
+        distcut=0.7,
+        gap_std_cut=0.01,
+        model_mode="excited_state",
+        gap_uncertainty={"pair": [0, 1]},
+        acquisition={"strategy": "summed", "weights": {"energy": 1.0, "gap": 1.0}, "eligibility": eligibility},
+    )
+
+
+def test_gap_spread_ignores_shared_errors():
+    stats = _gap_statistics()
+    assert stats["Es"] == 5.0 and stats["gap_std"] == 0.0
+
+
+def test_gap_uncertainty_alone_can_trigger_labeling():
+    config = _gap_config(["gap"])
     settings = acquisition_settings(config)
-    assert assess_frame(stats, 1., 0., config, settings)['outcome'] == 'continue'
-    stats['gap_std'] = .02
-    decision = assess_frame(stats, 1., 0., config, settings)
-    assert decision['outcome'] == 'eligible' and not decision['Ecrit']
-    assert decision['acquisition_trigger_flags'] == {'gap': True}
-    assert decision['acquisition_score_terms']['gap'] == 2.
-    config['acquisition']['eligibility'] = ['energy']
-    assert assess_frame(stats, 1., 0., config, acquisition_settings(config))['outcome'] == 'continue'
-    del stats['gap_std']
-    with pytest.raises(ValueError, match='gap_std'):
-        ranking_score(stats, settings, config)
+    stats = _gap_statistics()
+    assert assess_frame(stats, 1.0, 0.0, config, settings)["outcome"] == "continue"
+    stats["gap_std"] = 0.02
+    decision = assess_frame(stats, 1.0, 0.0, config, settings)
+    assert decision["outcome"] == "eligible" and not decision["Ecrit"]
+    assert decision["acquisition_trigger_flags"] == {"gap": True}
+    assert decision["acquisition_score_terms"]["gap"] == 2.0
 
 
-@pytest.mark.parametrize('cutoff', [0., -1., float('nan'), float('inf')])
-def test_gap_cutoffs_are_positive_finite(cutoff):
-    config = dict(model_mode='excited_state', gap_uncertainty={'pair':[0, 1]}, gap_std_cut=cutoff,
-                  Escut=1., Fscut=1., acquisition={'eligibility':['gap']})
-    with pytest.raises(ValueError, match='positive finite'):
+def test_gap_uncertainty_must_be_enabled_to_trigger():
+    config = _gap_config(["energy"])
+    stats = {**_gap_statistics(), "gap_std": 0.02}
+    assert assess_frame(stats, 1.0, 0.0, config, acquisition_settings(config))["outcome"] == "continue"
+
+
+def test_gap_ranking_requires_the_gap_signal():
+    config = _gap_config(["gap"])
+    stats = _gap_statistics()
+    del stats["gap_std"]
+    with pytest.raises(ValueError, match="gap_std"):
+        ranking_score(stats, acquisition_settings(config), config)
+
+
+@pytest.mark.parametrize("cutoff", [0.0, -1.0, float("nan"), float("inf")])
+def test_invalid_gap_cutoffs_are_rejected(cutoff):
+    config = dict(
+        model_mode="excited_state",
+        gap_uncertainty={"pair": [0, 1]},
+        gap_std_cut=cutoff,
+        Escut=1.0,
+        Fscut=1.0,
+        acquisition={"eligibility": ["gap"]},
+    )
+    with pytest.raises(ValueError, match="positive finite"):
         acquisition_settings(config)

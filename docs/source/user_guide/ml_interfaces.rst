@@ -22,8 +22,17 @@ through its own training task and sampler loading path.
      - Associated training task
    * - HIPPYNN
      - ``alframework.ml_interfaces.hippynn_interface.train_HIPPYNN_ensemble_task``
+   * - HIPPYNN, several electronic states
+     - ``alframework.ml_interfaces.hippynn_interface.train_excited_state_HIPPYNN_ensemble_task``.
+       See :doc:`excited_states`.
    * - NeuroChem/ANI
      - ``alframework.ml_interfaces.neurochem_interface.train_ANI_model_task``
+
+.. note::
+
+   NeuroChem is a legacy path. ALF's automated tests run it against a stand-in for
+   its backend, and it wasn't part of the validation runs for batched sampling.
+   ``mlmd_trajectories_task`` doesn't support it.
 
 Training tasks run on ``alf_ML_executor``. The number of GPUs available to the
 task is passed from the master configuration through ``gpus_per_node``. The
@@ -156,6 +165,21 @@ Important HIPPYNN configuration fields include:
 ``model-*`` subdirectory under the current model directory and returns a list
 of ASE calculators. The generic MLMD sampler wraps that list with
 ``MLMD_calculator`` to compute mean predictions and ensemble uncertainties.
+
+For the ``torchsim`` and ``alchemi`` dynamics engines, set ``batched_calculator`` in
+the sampler config instead:
+
+.. code-block:: json
+
+   {
+     "batched_calculator": "alframework.ml_interfaces.hippynn_interface.load_hippynn_batched_ensemble"
+   }
+
+``load_hippynn_batched_ensemble(model_directory, device="cuda:0", energy_key="energy",
+force_key="forces")`` evaluates each ensemble member on a whole batch of structures
+at once. It needs at least two ``model-*`` members, and a checkpoint trained with a
+cell requires fully periodic systems. ``batched_calculator_options`` can set
+``energy_key`` and ``force_key``. See :ref:`samplers-multi-trajectory`.
 
 .. _ml-interface-new-architecture-template:
 

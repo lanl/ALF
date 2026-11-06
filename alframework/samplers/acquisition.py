@@ -11,12 +11,12 @@ Eligibility is ALF's existing uncertainty trigger, unchanged from
 Ranking orders eligible frames and never makes an ineligible frame eligible.
 Scores are built from normalized terms in :data:`SCORE_TERMS`:
 
-=============  ===================
-``energy``     ``Es / Escut``
-``force_mean`` ``Fs / Fscut``
-``force_max``  ``Fsmax / (3*Fscut)``
-``force_rms``  ``Fsrms / Fscut``
-=============  ===================
+==============  ====================
+``energy``      ``Es / Escut``
+``force_mean``  ``Fs / Fscut``
+``force_max``   ``Fsmax / (3*Fscut)``
+``force_rms``   ``Fsrms / Fscut``
+==============  ====================
 
 ``uncertainty`` (default) ranks by the largest of ``energy``, ``force_mean``,
 and ``force_max``: the worst violation of the three trigger thresholds.

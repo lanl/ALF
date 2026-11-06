@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - main
+      - development
   pull_request:
     branches:
       - main
+      - development
   workflow_dispatch:
 
 permissions:
@@ -19,10 +21,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
@@ -35,7 +37,7 @@ jobs:
         run: |
           rm -f docs/source/api_documentation/alframework*.rst
           sphinx-apidoc --separate --implicit-namespaces --module-first -d 5 -o docs/source/api_documentation alframework
-          sphinx-build -b html docs/source docs/_autobuild/html
+          sphinx-build -W --keep-going -b html docs/source docs/_autobuild/html
 
       - name: Deploy to GitHub Pages
         if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'

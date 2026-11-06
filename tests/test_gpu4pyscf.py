@@ -1,4 +1,11 @@
+"""GPU4PySCF excited-state labeling.
+
+GPU4PySCF, PySCF, and CuPy are replaced with fakes, so this needs no GPU. It checks ALF's settings,
+unit conversions, failure handling, and storage, not the quantum chemistry itself.
+"""
+
 import importlib
+import sys
 from types import SimpleNamespace
 
 import h5py
@@ -9,6 +16,7 @@ from ase import Atoms
 import alframework.qm_interfaces.gpu4pyscf_interface as gpu4pyscf_module
 from alframework.qm_interfaces.gpu4pyscf_interface import (
     DEFAULT_GPU4PYSCF_CONFIG,
+    NACR_PROPERTY_KEY,
     GPU4PySCFDependencyError,
     GPU4PySCFDeviceError,
     GPU4PySCFGradientError,
@@ -16,7 +24,6 @@ from alframework.qm_interfaces.gpu4pyscf_interface import (
     GPU4PySCFOutputError,
     GPU4PySCFSCFError,
     GPU4PySCFTDAError,
-    NACR_PROPERTY_KEY,
     _require_scf_convergence,
     _require_tda_convergence,
     _to_numpy,
@@ -80,9 +87,7 @@ def _device(index=1):
 def _predictions(nroots=1):
     states = nroots + 1
     energies = np.arange(states, dtype=np.float64) - 90.0
-    forces = np.arange(states * 3 * 3, dtype=np.float64).reshape(
-        states, 3, 3
-    )
+    forces = np.arange(states * 3 * 3, dtype=np.float64).reshape(states, 3, 3)
     return energies, forces
 
 
@@ -99,16 +104,39 @@ def _no_pairs():
 def _nac_predictions(nroots, atom_count=3):
     """Deterministic coupling vectors for every excited-excited pair."""
 
-    pairs = np.asarray(
-        excited_excited_nac_pairs(nroots), dtype=np.int64
-    ).reshape(-1, 2)
-    nacr = np.arange(
-        len(pairs) * atom_count * 3, dtype=np.float64
-    ).reshape(len(pairs), atom_count, 3)
+    pairs = np.asarray(excited_excited_nac_pairs(nroots), dtype=np.int64).reshape(-1, 2)
+    nacr = np.arange(len(pairs) * atom_count * 3, dtype=np.float64).reshape(len(pairs), atom_count, 3)
     return nacr, pairs
 
 
-def test_validated_defaults_are_five_root_cam_b3lyp():
+@pytest.fixture
+def fake_backend(monkeypatch):
+    """Skip GPU selection, and let a test choose what the quantum chemistry run does."""
+    monkeypatch.setattr(gpu4pyscf_module, "select_gpu4pyscf_device", lambda count: _device())
+
+    def install(run):
+        monkeypatch.setattr(gpu4pyscf_module, "run_gpu4pyscf_states", run)
+
+    return install
+
+
+def _returns(energies, forces, nacr=None, pairs=None, versions=None):
+    """A backend run that returns these outputs, with no couplings unless given."""
+    nacr = _no_nac() if nacr is None else nacr
+    pairs = _no_pairs() if pairs is None else pairs
+    return lambda *args, **kwargs: (energies, forces, nacr, pairs, versions or {})
+
+
+def _raises(error):
+    """A backend run that fails with this error."""
+
+    def run(*args, **kwargs):
+        raise error
+
+    return run
+
+
+def test_defaults_are_five_root_cam_b3lyp():
     options = validate_gpu4pyscf_config({})
 
     assert options == DEFAULT_GPU4PYSCF_CONFIG
@@ -142,13 +170,31 @@ def test_validated_defaults_are_five_root_cam_b3lyp():
         ({"verbosity": -1}, "verbosity"),
         ({"energy_offset_eV": np.inf}, "energy_offset_eV"),
     ],
+    ids=[
+        "empty_xc",
+        "empty_basis",
+        "fractional_charge",
+        "triplet",
+        "non_boolean_density_fit",
+        "auxbasis_without_density_fit",
+        "negative_grids_level",
+        "zero_roots",
+        "nan_scf_tolerance",
+        "zero_tda_tolerance",
+        "zero_scf_cycles",
+        "fractional_tda_cycles",
+        "boolean_threads",
+        "negative_memory",
+        "negative_verbosity",
+        "infinite_energy_offset",
+    ],
 )
-def test_config_validation_rejects_malformed_settings(updates, message):
+def test_malformed_settings_are_rejected(updates, message):
     with pytest.raises(ValueError, match=message):
         validate_gpu4pyscf_config(updates)
 
 
-def test_configurable_compatible_settings_are_preserved():
+def test_valid_settings_are_kept():
     options = validate_gpu4pyscf_config(
         {
             "xc": "pbe0",
@@ -169,7 +215,7 @@ def test_configurable_compatible_settings_are_preserved():
     assert options["max_memory_mb"] == pytest.approx(16000)
 
 
-def test_property_contract_requires_complete_states_for_root_count():
+def test_properties_must_cover_every_state():
     state_table, gap_table = validate_gpu4pyscf_properties(
         _properties(5, include_gap=True),
         nroots=5,
@@ -186,7 +232,7 @@ def test_property_contract_requires_complete_states_for_root_count():
         validate_gpu4pyscf_properties(missing_force, nroots=1)
 
 
-def test_property_contract_rejects_wrong_kinds_and_unsupported_keys():
+def test_wrong_or_unknown_properties_are_rejected():
     wrong_energy = _properties(1)
     wrong_energy["sE1"][1] = "atomic"
     with pytest.raises(ValueError, match="system property"):
@@ -203,7 +249,7 @@ def test_property_contract_rejects_wrong_kinds_and_unsupported_keys():
         validate_gpu4pyscf_properties(unsupported, nroots=1)
 
 
-def test_scf_and_tda_convergence_flags_are_strict():
+def test_scf_tda_convergence_flags_are_checked_strictly():
     _require_scf_convergence(SimpleNamespace(converged=np.bool_(True)))
     with pytest.raises(GPU4PySCFSCFError, match="one Boolean scalar"):
         _require_scf_convergence(SimpleNamespace(converged=1))
@@ -221,16 +267,12 @@ def test_scf_and_tda_convergence_flags_are_strict():
         )
     assert exc_info.value.failed_states == (2,)
     with pytest.raises(GPU4PySCFTDAError, match="shape"):
-        _require_tda_convergence(
-            SimpleNamespace(converged=np.asarray(True)), 2
-        )
+        _require_tda_convergence(SimpleNamespace(converged=np.asarray(True)), 2)
     with pytest.raises(GPU4PySCFTDAError, match="Boolean"):
-        _require_tda_convergence(
-            SimpleNamespace(converged=np.asarray([1, 1])), 2
-        )
+        _require_tda_convergence(SimpleNamespace(converged=np.asarray([1, 1])), 2)
 
 
-def test_atomic_unit_conversion_has_energy_scale_and_negative_gradient():
+def test_unit_conversion_turns_gradients_into_forces():
     energies, forces = convert_gpu4pyscf_atomic_units(
         np.asarray([1.0, 2.0]),
         np.asarray(
@@ -263,11 +305,10 @@ def test_atomic_unit_conversion_has_energy_scale_and_negative_gradient():
         (np.asarray([0.0, np.nan]), np.zeros((2, 1, 3)), "non-finite"),
         (np.zeros(2), np.full((2, 1, 3), np.inf), "non-finite"),
     ],
+    ids=["too_few_energies", "too_few_gradients", "nan_energy", "infinite_gradient"],
 )
-def test_atomic_unit_conversion_rejects_malformed_outputs(
-    energies, gradients, message
-):
-    with pytest.raises(Exception, match=message):
+def test_unit_conversion_rejects_malformed_outputs(energies, gradients, message):
+    with pytest.raises(GPU4PySCFOutputError, match=message):
         convert_gpu4pyscf_atomic_units(
             energies,
             gradients,
@@ -278,7 +319,7 @@ def test_atomic_unit_conversion_rejects_malformed_outputs(
         )
 
 
-def test_cupy_values_are_explicitly_transferred_to_numpy():
+def test_cupy_arrays_are_copied_to_numpy():
     calls = []
 
     class FakeGPUArray:
@@ -296,7 +337,7 @@ def test_cupy_values_are_explicitly_transferred_to_numpy():
     np.testing.assert_allclose(converted, [1.0, 2.0])
 
 
-def test_device_selection_uses_worker_rank_and_requires_cuda(
+def test_worker_rank_picks_the_gpu(
     monkeypatch,
 ):
     selected = []
@@ -332,12 +373,19 @@ def test_device_selection_uses_worker_rank_and_requires_cuda(
     assert pinned["cuda_visible_devices"] == "3"
     assert selected[-1] == 0
 
+    # A mask listing several GPUs: the rank picks among them, whatever gpus_per_node says.
+    fake_cupy.cuda.runtime.getDeviceCount = lambda: 4
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "3,4,6,7")
+    masked = select_gpu4pyscf_device(1)
+    assert masked["index"] == 3
+    assert masked["cuda_visible_devices"] == "3,4,6,7"
+
     fake_cupy.cuda.runtime.getDeviceCount = lambda: 0
     with pytest.raises(GPU4PySCFDeviceError, match="CPU fallback"):
         select_gpu4pyscf_device(4)
 
 
-def test_missing_cupy_dependency_has_actionable_error(monkeypatch):
+def test_missing_cupy_gives_a_clear_error(monkeypatch):
     real_import = importlib.import_module
 
     def block_cupy(name):
@@ -345,17 +393,15 @@ def test_missing_cupy_dependency_has_actionable_error(monkeypatch):
             raise ModuleNotFoundError("synthetic missing CuPy")
         return real_import(name)
 
-    monkeypatch.setattr(
-        gpu4pyscf_module.importlib, "import_module", block_cupy
-    )
+    monkeypatch.setattr(gpu4pyscf_module.importlib, "import_module", block_cupy)
 
     with pytest.raises(GPU4PySCFDependencyError, match="working CuPy"):
         gpu4pyscf_module._import_cupy()
 
 
-def test_backend_constructs_rks_tda_and_uses_one_based_gradients(
-    monkeypatch,
-):
+@pytest.fixture
+def fake_gpu_stack(monkeypatch):
+    """Stand-ins for CuPy, PySCF and GPU4PySCF that record what the backend asks of them."""
     calls = {
         "gradient_states": [],
         "threads": [],
@@ -421,18 +467,13 @@ def test_backend_constructs_rks_tda_and_uses_one_based_gradients(
     fake_mf = FakeMF()
     fake_pyscf = SimpleNamespace(
         __version__="2.test",
-        lib=SimpleNamespace(
-            num_threads=lambda count: calls["threads"].append(count)
-        ),
-        M=lambda **kwargs: calls.setdefault("molecule", kwargs)
-        or SimpleNamespace(),
+        lib=SimpleNamespace(num_threads=lambda count: calls["threads"].append(count)),
+        M=lambda **kwargs: calls.setdefault("molecule", kwargs) or SimpleNamespace(),
     )
     # setdefault returns the kwargs dictionary, which is sufficient as the
     # opaque molecule passed into FakeRKS.
     fake_gpu4pyscf = SimpleNamespace(__version__="1.test")
-    fake_dft = SimpleNamespace(
-        RKS=lambda mol, xc: calls.setdefault("rks", (mol, xc)) and fake_mf
-    )
+    fake_dft = SimpleNamespace(RKS=lambda mol, xc: calls.setdefault("rks", (mol, xc)) and fake_mf)
     fake_cupy = SimpleNamespace(
         __version__="13.test",
         ndarray=np.ndarray,
@@ -453,6 +494,11 @@ def test_backend_constructs_rks_tda_and_uses_one_based_gradients(
         "import_module",
         lambda name: modules[name] if name in modules else real_import(name),
     )
+    return calls
+
+
+def test_backend_runs_rks_tda_for_every_state(fake_gpu_stack):
+    calls = fake_gpu_stack
     options = validate_gpu4pyscf_config(
         {
             "nroots": 2,
@@ -478,8 +524,7 @@ def test_backend_constructs_rks_tda_and_uses_one_based_gradients(
     np.testing.assert_allclose(forces[0], -np.ones((3, 3)))
     np.testing.assert_allclose(forces[1], -np.full((3, 3), 4.0))
     np.testing.assert_allclose(forces[2], -np.full((3, 3), 8.0))
-    assert {k: versions[k] for k in ("pyscf_version", "gpu4pyscf_version",
-                                    "cupy_version", "s1_gradient_source")} == {
+    assert {k: versions[k] for k in ("pyscf_version", "gpu4pyscf_version", "cupy_version", "s1_gradient_source")} == {
         "pyscf_version": "2.test",
         "gpu4pyscf_version": "1.test",
         "cupy_version": "13.test",
@@ -490,14 +535,9 @@ def test_backend_constructs_rks_tda_and_uses_one_based_gradients(
     assert nac_pairs.shape == (0, 2)
 
 
-def test_labeling_maps_states_forces_gap_offset_and_metadata(monkeypatch):
+def test_labeling_stores_every_state(fake_backend):
     energies, forces = _predictions(2)
     seen_numbers = []
-    monkeypatch.setattr(
-        gpu4pyscf_module,
-        "select_gpu4pyscf_device",
-        lambda count: _device(),
-    )
 
     def fake_run(atoms, options, *, device_index):
         seen_numbers.append(atoms.get_atomic_numbers().tolist())
@@ -515,9 +555,7 @@ def test_labeling_maps_states_forces_gap_offset_and_metadata(monkeypatch):
             },
         )
 
-    monkeypatch.setattr(
-        gpu4pyscf_module, "run_gpu4pyscf_states", fake_run
-    )
+    fake_backend(fake_run)
     molecule = _molecule()
     properties = _properties(2, include_gap=True)
     labeled = label_gpu4pyscf_excited_state_molecule(
@@ -535,9 +573,7 @@ def test_labeling_maps_states_forces_gap_offset_and_metadata(monkeypatch):
     assert labeled.get_results()["sE2"] == pytest.approx(12.0)
     assert labeled.get_results()["dE01"] == pytest.approx(1.0)
     for state in range(3):
-        np.testing.assert_allclose(
-            labeled.get_results()[f"F{state}"], forces[state]
-        )
+        np.testing.assert_allclose(labeled.get_results()[f"F{state}"], forces[state])
     metadata = labeled.get_metadata()
     assert metadata["qm_backend"] == "gpu4pyscf"
     assert metadata["qm_device"] == "cuda:1"
@@ -549,18 +585,9 @@ def test_labeling_maps_states_forces_gap_offset_and_metadata(monkeypatch):
     assert metadata["gap_properties"] == ["dE01"]
 
 
-def test_sampler_energy_offset_is_compatibility_fallback(monkeypatch):
+def test_sampler_energy_offset_is_the_fallback(fake_backend):
     energies, forces = _predictions(1)
-    monkeypatch.setattr(
-        gpu4pyscf_module,
-        "select_gpu4pyscf_device",
-        lambda count: _device(),
-    )
-    monkeypatch.setattr(
-        gpu4pyscf_module,
-        "run_gpu4pyscf_states",
-        lambda *args, **kwargs: (energies, forces, _no_nac(), _no_pairs(), {}),
-    )
+    fake_backend(_returns(energies, forces))
 
     labeled = label_gpu4pyscf_excited_state_molecule(
         _molecule(),
@@ -573,26 +600,12 @@ def test_sampler_energy_offset_is_compatibility_fallback(monkeypatch):
     assert labeled.get_metadata()["energy_offset_source"] == "sampler_config"
 
 
-def test_failure_clears_partial_labels_and_records_stage(monkeypatch):
-    monkeypatch.setattr(
-        gpu4pyscf_module,
-        "select_gpu4pyscf_device",
-        lambda count: _device(),
-    )
+def test_failed_run_leaves_no_partial_labels(fake_backend):
 
-    def fail(*args, **kwargs):
-        raise GPU4PySCFTDAError(
-            "synthetic root failure", failed_states=(2,)
-        )
-
-    monkeypatch.setattr(
-        gpu4pyscf_module, "run_gpu4pyscf_states", fail
-    )
+    fake_backend(_raises(GPU4PySCFTDAError("synthetic root failure", failed_states=(2,))))
     molecule = _molecule("failed")
     properties = _properties(2, include_gap=True)
-    molecule.store_results(
-        {key: np.asarray([123.0]) for key in properties}
-    )
+    molecule.store_results({key: np.asarray([123.0]) for key in properties})
 
     failed = label_gpu4pyscf_excited_state_molecule(
         molecule,
@@ -626,34 +639,23 @@ def test_failure_clears_partial_labels_and_records_stage(monkeypatch):
             False,
         ),
         (
-            GPU4PySCFGradientError(
-                "failed gradient", failed_states=(1,)
-            ),
+            GPU4PySCFGradientError("failed gradient", failed_states=(1,)),
             "gradient",
             True,
             True,
         ),
     ],
+    ids=["dependency", "scf", "gradient"],
 )
-def test_stage_failures_return_consistent_convergence_metadata(
-    monkeypatch,
+def test_failed_stage_is_reported(
+    fake_backend,
     error,
     stage,
     scf_converged,
     tda_converged,
 ):
-    monkeypatch.setattr(
-        gpu4pyscf_module,
-        "select_gpu4pyscf_device",
-        lambda count: _device(),
-    )
 
-    def fail(*args, **kwargs):
-        raise error
-
-    monkeypatch.setattr(
-        gpu4pyscf_module, "run_gpu4pyscf_states", fail
-    )
+    fake_backend(_raises(error))
     failed = label_gpu4pyscf_excited_state_molecule(
         _molecule(f"{stage}-failure"),
         QM_config={"nroots": 1},
@@ -667,18 +669,9 @@ def test_stage_failures_return_consistent_convergence_metadata(
     assert metadata["qm_tda_converged"] is tda_converged
 
 
-def test_malformed_converted_output_is_rejected(monkeypatch):
+def test_malformed_output_marks_frame_failed(fake_backend):
     _, forces = _predictions(1)
-    monkeypatch.setattr(
-        gpu4pyscf_module,
-        "select_gpu4pyscf_device",
-        lambda count: _device(),
-    )
-    monkeypatch.setattr(
-        gpu4pyscf_module,
-        "run_gpu4pyscf_states",
-        lambda *args, **kwargs: (np.zeros(1), forces, _no_nac(), _no_pairs(), {}),
-    )
+    fake_backend(_returns(np.zeros(1), forces))
 
     failed = label_gpu4pyscf_excited_state_molecule(
         _molecule(),
@@ -692,7 +685,7 @@ def test_malformed_converted_output_is_rejected(monkeypatch):
     assert failed.get_metadata()["qm_tda_converged"] is True
 
 
-def test_invalid_molecules_fail_before_device_selection(monkeypatch):
+def test_invalid_molecules_never_reach_the_gpu(monkeypatch):
     selected = []
     monkeypatch.setattr(
         gpu4pyscf_module,
@@ -723,20 +716,9 @@ def test_invalid_molecules_fail_before_device_selection(monkeypatch):
     assert selected == []
 
 
-def test_labeling_results_follow_existing_hdf5_storage_path(
-    monkeypatch, tmp_path
-):
+def test_labels_can_be_saved_to_hdf5(fake_backend, tmp_path):
     energies, forces = _predictions(1)
-    monkeypatch.setattr(
-        gpu4pyscf_module,
-        "select_gpu4pyscf_device",
-        lambda count: _device(),
-    )
-    monkeypatch.setattr(
-        gpu4pyscf_module,
-        "run_gpu4pyscf_states",
-        lambda *args, **kwargs: (energies, forces, _no_nac(), _no_pairs(), {}),
-    )
+    fake_backend(_returns(energies, forces))
     properties = _properties(1, include_gap=True)
     labeled = label_gpu4pyscf_excited_state_molecule(
         _molecule("gpu4pyscf-water"),
@@ -756,18 +738,9 @@ def test_labeling_results_follow_existing_hdf5_storage_path(
         assert group["state_1_forces"].shape == (1, 3, 3)
 
 
-def test_public_task_uses_existing_driver_contract(monkeypatch):
+def test_task_accepts_the_coordinator_inputs(fake_backend):
     energies, forces = _predictions(1)
-    monkeypatch.setattr(
-        gpu4pyscf_module,
-        "select_gpu4pyscf_device",
-        lambda count: _device(),
-    )
-    monkeypatch.setattr(
-        gpu4pyscf_module,
-        "run_gpu4pyscf_states",
-        lambda *args, **kwargs: (energies, forces, _no_nac(), _no_pairs(), {}),
-    )
+    fake_backend(_returns(energies, forces))
     molecule = _molecule("task-contract")
     task_input = build_input_dict(
         gpu4pyscf_excited_state_task.func,
@@ -790,7 +763,7 @@ def test_public_task_uses_existing_driver_contract(monkeypatch):
     assert gpu4pyscf_excited_state_task.executors == ["alf_QM_executor"]
 
 
-def test_excited_excited_pairs_follow_ordered_combinations():
+def test_nac_pairs_are_ordered_combinations():
     assert excited_excited_nac_pairs(1) == ()
     assert excited_excited_nac_pairs(2) == ((1, 2),)
     assert excited_excited_nac_pairs(3) == ((1, 2), (1, 3), (2, 3))
@@ -799,14 +772,9 @@ def test_excited_excited_pairs_follow_ordered_combinations():
     assert len(excited_excited_nac_pairs(6)) == 15
 
 
-def test_compute_nacr_defaults_off_and_requires_two_roots():
+def test_nacr_is_off_by_default():
     assert validate_gpu4pyscf_config({})["compute_nacr"] is False
-    assert (
-        validate_gpu4pyscf_config({"compute_nacr": True, "nroots": 2})[
-            "compute_nacr"
-        ]
-        is True
-    )
+    assert validate_gpu4pyscf_config({"compute_nacr": True, "nroots": 2})["compute_nacr"] is True
 
     with pytest.raises(ValueError, match="compute_nacr requires nroots >= 2"):
         validate_gpu4pyscf_config({"compute_nacr": True, "nroots": 1})
@@ -814,7 +782,7 @@ def test_compute_nacr_defaults_off_and_requires_two_roots():
         validate_gpu4pyscf_config({"compute_nacr": "yes"})
 
 
-def test_nacr_property_and_flag_must_agree():
+def test_nacr_property_must_match_the_setting():
     with_nacr = _properties(2, include_nacr=True)
     without = _properties(2)
 
@@ -832,51 +800,28 @@ def test_nacr_property_and_flag_must_agree():
         validate_gpu4pyscf_properties(wrong_scope, nroots=2, compute_nacr=True)
 
 
-def test_nac_output_validation_rejects_bad_pairs_shape_and_values():
+def test_malformed_nacr_is_rejected():
     nacr, pairs = _nac_predictions(3)
-    validated_nacr, validated_pairs = gpu4pyscf_module._validated_nac_outputs(
-        nacr, pairs, nroots=3, atom_count=3
-    )
+    validated_nacr, validated_pairs = gpu4pyscf_module._validated_nac_outputs(nacr, pairs, nroots=3, atom_count=3)
     np.testing.assert_allclose(validated_nacr, nacr)
     np.testing.assert_array_equal(validated_pairs, pairs)
 
     with pytest.raises(GPU4PySCFOutputError, match="pair ordering"):
-        gpu4pyscf_module._validated_nac_outputs(
-            nacr, pairs[::-1], nroots=3, atom_count=3
-        )
+        gpu4pyscf_module._validated_nac_outputs(nacr, pairs[::-1], nroots=3, atom_count=3)
     with pytest.raises(GPU4PySCFOutputError, match="malformed coupling vectors"):
-        gpu4pyscf_module._validated_nac_outputs(
-            nacr[:, :2], pairs, nroots=3, atom_count=3
-        )
+        gpu4pyscf_module._validated_nac_outputs(nacr[:, :2], pairs, nroots=3, atom_count=3)
     with pytest.raises(GPU4PySCFOutputError, match="malformed NAC pair index"):
-        gpu4pyscf_module._validated_nac_outputs(
-            nacr, pairs[:1], nroots=3, atom_count=3
-        )
+        gpu4pyscf_module._validated_nac_outputs(nacr, pairs[:1], nroots=3, atom_count=3)
     nonfinite = nacr.copy()
     nonfinite[0, 0, 0] = np.nan
     with pytest.raises(GPU4PySCFOutputError, match="non-finite coupling"):
-        gpu4pyscf_module._validated_nac_outputs(
-            nonfinite, pairs, nroots=3, atom_count=3
-        )
+        gpu4pyscf_module._validated_nac_outputs(nonfinite, pairs, nroots=3, atom_count=3)
 
 
-def test_labeling_stores_nacr_and_pair_metadata(monkeypatch):
+def test_labeling_stores_nacr(fake_backend):
     energies, forces = _predictions(2)
     nacr, pairs = _nac_predictions(2)
-    monkeypatch.setattr(
-        gpu4pyscf_module, "select_gpu4pyscf_device", lambda count: _device()
-    )
-    monkeypatch.setattr(
-        gpu4pyscf_module,
-        "run_gpu4pyscf_states",
-        lambda *args, **kwargs: (
-            energies,
-            forces,
-            nacr,
-            pairs,
-            {"s1_gradient_source": "nac_solver"},
-        ),
-    )
+    fake_backend(_returns(energies, forces, nacr, pairs, {"s1_gradient_source": "nac_solver"}))
 
     labeled = label_gpu4pyscf_excited_state_molecule(
         _molecule(),
@@ -898,16 +843,9 @@ def test_labeling_stores_nacr_and_pair_metadata(monkeypatch):
     assert metadata["s1_gradient_source"] == "nac_solver"
 
 
-def test_labeling_without_nacr_stores_no_coupling(monkeypatch):
+def test_labeling_without_nacr_stores_none(fake_backend):
     energies, forces = _predictions(2)
-    monkeypatch.setattr(
-        gpu4pyscf_module, "select_gpu4pyscf_device", lambda count: _device()
-    )
-    monkeypatch.setattr(
-        gpu4pyscf_module,
-        "run_gpu4pyscf_states",
-        lambda *args, **kwargs: (energies, forces, _no_nac(), _no_pairs(), {}),
-    )
+    fake_backend(_returns(energies, forces))
 
     labeled = label_gpu4pyscf_excited_state_molecule(
         _molecule(),
@@ -922,15 +860,9 @@ def test_labeling_without_nacr_stores_no_coupling(monkeypatch):
     assert "nac_pairs" not in metadata
 
 
-def test_nac_failure_marks_molecule_unconverged(monkeypatch):
-    monkeypatch.setattr(
-        gpu4pyscf_module, "select_gpu4pyscf_device", lambda count: _device()
-    )
+def test_nac_failure_marks_frame_failed(fake_backend):
 
-    def fail(*args, **kwargs):
-        raise GPU4PySCFNACError("coupling solver exploded", failed_states=(1, 2))
-
-    monkeypatch.setattr(gpu4pyscf_module, "run_gpu4pyscf_states", fail)
+    fake_backend(_raises(GPU4PySCFNACError("coupling solver exploded", failed_states=(1, 2))))
 
     labeled = label_gpu4pyscf_excited_state_molecule(
         _molecule(),
@@ -949,17 +881,10 @@ def test_nac_failure_marks_molecule_unconverged(monkeypatch):
     assert NACR_PROPERTY_KEY not in labeled.get_results()
 
 
-def test_nacr_round_trips_through_hdf5_storage(monkeypatch, tmp_path):
+def test_nacr_survives_hdf5_storage(fake_backend, tmp_path):
     energies, forces = _predictions(2)
     nacr, pairs = _nac_predictions(2)
-    monkeypatch.setattr(
-        gpu4pyscf_module, "select_gpu4pyscf_device", lambda count: _device()
-    )
-    monkeypatch.setattr(
-        gpu4pyscf_module,
-        "run_gpu4pyscf_states",
-        lambda *args, **kwargs: (energies, forces, nacr, pairs, {}),
-    )
+    fake_backend(_returns(energies, forces, nacr, pairs))
     properties = _properties(2, include_nacr=True)
     labeled = label_gpu4pyscf_excited_state_molecule(
         _molecule(),
@@ -982,76 +907,76 @@ def test_nacr_round_trips_through_hdf5_storage(monkeypatch, tmp_path):
         assert group["state_0_forces"].shape == (1, 3, 3)
 
 
-def test_optional_optics_are_validated_offset_once_and_stored(monkeypatch, tmp_path):
-    monkeypatch.setattr(gpu4pyscf_module, 'select_gpu4pyscf_device', lambda n: _device())
+def test_optical_properties_are_stored(fake_backend, tmp_path):
     def runner(atoms, options, **kw):
-        assert options['_compute_optical']
-        return (np.array([-10., -9.]), np.zeros((2, len(atoms), 3)), None, None,
-                {'_transition_dipoles': np.ones((1, 3)), '_oscillator_strengths': np.array([.2])})
-    monkeypatch.setattr(gpu4pyscf_module, 'run_gpu4pyscf_states', runner)
+        assert options["_compute_optical"]
+        return (
+            np.array([-10.0, -9.0]),
+            np.zeros((2, len(atoms), 3)),
+            None,
+            None,
+            {"_transition_dipoles": np.ones((1, 3)), "_oscillator_strengths": np.array([0.2])},
+        )
+
+    fake_backend(runner)
     props = _properties(1, include_gap=True)
-    props.update({k: [k, 'system', 1.] for k in ('transition_dipoles', 'oscillator_strengths', 'absolute_state_energies')})
-    m = label_gpu4pyscf_excited_state_molecule(_molecule(),
-        QM_config={'nroots': 1, 'energy_offset_eV': -8.}, properties_list=props)
+    props.update(
+        {k: [k, "system", 1.0] for k in ("transition_dipoles", "oscillator_strengths", "absolute_state_energies")}
+    )
+    m = label_gpu4pyscf_excited_state_molecule(
+        _molecule(), QM_config={"nroots": 1, "energy_offset_eV": -8.0}, properties_list=props
+    )
     assert m.check_convergence()
-    assert m.get_results()['sE0'] == -2.
-    assert m.get_results()['dE01'] == 1.
-    np.testing.assert_array_equal(m.get_results()['absolute_state_energies'], [-10, -9])
-    store_current_data(str(tmp_path/'optics.h5'), [m], props)
-    with h5py.File(tmp_path/'optics.h5') as h5:
+    assert m.get_results()["sE0"] == -2.0
+    assert m.get_results()["dE01"] == 1.0
+    np.testing.assert_array_equal(m.get_results()["absolute_state_energies"], [-10, -9])
+    store_current_data(str(tmp_path / "optics.h5"), [m], props)
+    with h5py.File(tmp_path / "optics.h5") as h5:
         g = next(iter(h5.values()))
-        assert g['transition_dipoles'].shape == (1, 1, 3)
-        assert g['oscillator_strengths'][0, 0] == pytest.approx(.2)
+        assert g["transition_dipoles"].shape == (1, 1, 3)
+        assert g["oscillator_strengths"][0, 0] == pytest.approx(0.2)
 
 
-@pytest.mark.parametrize('strength', [-.1, np.nan])
-def test_invalid_optics_cannot_mark_frame_converged(monkeypatch, strength):
-    monkeypatch.setattr(gpu4pyscf_module, 'select_gpu4pyscf_device', lambda n: _device())
-    monkeypatch.setattr(gpu4pyscf_module, 'run_gpu4pyscf_states', lambda *a, **k:
-        (np.array([-10., -9.]), np.zeros((2, 3, 3)), None, None,
-         {'_transition_dipoles': np.ones((1, 3)), '_oscillator_strengths': np.array([strength])}))
+@pytest.mark.parametrize("strength", [-0.1, np.nan])
+def test_invalid_optics_mark_frame_failed(fake_backend, strength):
+    fake_backend(
+        lambda *a, **k: (
+            np.array([-10.0, -9.0]),
+            np.zeros((2, 3, 3)),
+            None,
+            None,
+            {"_transition_dipoles": np.ones((1, 3)), "_oscillator_strengths": np.array([strength])},
+        )
+    )
     props = _properties(1)
-    props['oscillator_strengths'] = ['oscillator_strengths', 'system', 1.]
-    m = label_gpu4pyscf_excited_state_molecule(_molecule(), QM_config={'nroots': 1}, properties_list=props)
+    props["oscillator_strengths"] = ["oscillator_strengths", "system", 1.0]
+    m = label_gpu4pyscf_excited_state_molecule(_molecule(), QM_config={"nroots": 1}, properties_list=props)
     assert not m.check_convergence()
     assert m.get_results() == {}
 
 
-def test_masked_gpu_selection_uses_shared_visibility_rules(monkeypatch):
-    class Device:
-        def __init__(self, index): self.index=index
-        def use(self): pass
-    fake = SimpleNamespace(cuda=SimpleNamespace(runtime=SimpleNamespace(getDeviceCount=lambda: 4), Device=Device))
-    monkeypatch.setattr(gpu4pyscf_module, '_import_cupy', lambda: fake)
-    monkeypatch.setenv('CUDA_VISIBLE_DEVICES', '3,4,6,7')
-    monkeypatch.setenv('PARSL_WORKER_RANK', '3')
-    selected = gpu4pyscf_module.select_gpu4pyscf_device(1)
-    assert selected['index'] == 3
-    assert selected['cuda_visible_devices'] == '3,4,6,7'
-
-
-def test_backend_sets_single_device_config_only_during_import(monkeypatch):
-    import sys
-    monkeypatch.delitem(sys.modules, 'gpu4pyscf.__config__', raising=False)
+def test_single_gpu_setting_applies_only_during_import(monkeypatch):
+    monkeypatch.delitem(sys.modules, "gpu4pyscf.__config__", raising=False)
     config = SimpleNamespace(num_devices=4)
     fake = SimpleNamespace(__config__=config)
-    seen=[]
+    seen = []
+
     def load(name):
         seen.append((name, config.num_devices))
         return name
-    monkeypatch.setattr(gpu4pyscf_module.importlib, 'import_module', load)
+
+    monkeypatch.setattr(gpu4pyscf_module.importlib, "import_module", load)
     gpu4pyscf_module._single_device_backend(fake)
-    assert seen == [('gpu4pyscf', 1), ('gpu4pyscf.dft', 1)]
+    assert seen == [("gpu4pyscf", 1), ("gpu4pyscf.dft", 1)]
     assert config.num_devices == 4
 
 
-def test_preimported_multigpu_backend_is_rejected(monkeypatch):
-    import sys
-    monkeypatch.setitem(sys.modules, 'gpu4pyscf.__config__', SimpleNamespace(num_devices=4))
-    with pytest.raises(GPU4PySCFDeviceError, match='multi-GPU'):
+def test_multi_gpu_backend_already_loaded_is_rejected(monkeypatch):
+    monkeypatch.setitem(sys.modules, "gpu4pyscf.__config__", SimpleNamespace(num_devices=4))
+    with pytest.raises(GPU4PySCFDeviceError, match="multi-GPU"):
         gpu4pyscf_module._single_device_backend(SimpleNamespace())
 
 
-def test_tight_tda_convergence_keeps_small_davidson_corrections():
-    config = validate_gpu4pyscf_config({'tda_conv_tol': 1e-8})
-    assert config['tda_lindep'] < config['tda_conv_tol']**2
+def test_tight_tda_tolerance_keeps_small_corrections():
+    config = validate_gpu4pyscf_config({"tda_conv_tol": 1e-8})
+    assert config["tda_lindep"] < config["tda_conv_tol"] ** 2

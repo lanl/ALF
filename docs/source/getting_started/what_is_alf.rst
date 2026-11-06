@@ -51,13 +51,14 @@ stages. The process is typically launched with:
    python -m alframework --master master_config.json
 
 The ``master_config.json`` file points to the other configuration files and task
-definitions needed for each stage. In practice, ALF uses five JSON files:
+definitions needed for each stage, so you can choose their names. In practice,
+ALF uses five JSON files. The examples name them like this:
 
 1. Master configuration --- ``master_config.json``
 2. Builder configuration --- ``builder_config.json``
 3. Sampler configuration --- ``mlmd_config.json``
-4. ML configuration --- ``ml_config.json``
-5. QM configuration --- ``qm_config.json``
+4. ML configuration --- ``hippynn_config.json``
+5. QM configuration --- ``orca_config.json``
 
 .. figure:: ../_static/alf_architecture.png
    :alt: Overview of ALF's code structure.
@@ -73,8 +74,14 @@ Execution model
 
 ALF is integrated with Parsl for task execution, so jobs can be launched on
 local resources or queued cluster resources depending on your Parsl config.
-Resource profiles are defined in ``alframework/parsl_resource_configs`` and
-can be customized for your system.
+The master configuration names the Parsl config to use. Each example includes a
+``parsl_configs.py`` template to edit for your system, and
+``alframework/parsl_resource_configs`` holds profiles for the Darwin and Chicoma
+clusters.
+
+By default each task handles one structure. When a dynamics engine or QM code
+can process many structures together, :doc:`../user_guide/batching` groups them
+into wider tasks.
 
 Testing individual stages
 -------------------------

@@ -1,3 +1,9 @@
+"""Fixed-topology screening: loading a reference molecule and rejecting frames whose bonds have
+changed.
+
+Tests that parse a reference file skip without RDKit.
+"""
+
 import builtins
 from pathlib import Path
 
@@ -29,7 +35,7 @@ def _chain_atoms(positions=None, symbols="CCC"):
     if positions is None:
         positions = [[0.0, 0.0, 0.0], [1.5, 0.0, 0.0], [3.0, 0.0, 0.0]]
     atoms = Atoms(symbols, positions=positions)
-    atoms.set_array('topology_atom_ids', np.arange(len(atoms)))
+    atoms.set_array("topology_atom_ids", np.arange(len(atoms)))
     return atoms
 
 
@@ -49,10 +55,7 @@ def _topology_config(path, reference_format="auto", **overrides):
 
 def _write_water_xyz(path: Path, first_bond=0.9572):
     path.write_text(
-        "3\nwater\n"
-        "O 0.0 0.0 0.0\n"
-        f"H {first_bond} 0.0 0.0\n"
-        "H -0.239 0.927 0.0\n",
+        f"3\nwater\nO 0.0 0.0 0.0\nH {first_bond} 0.0 0.0\nH -0.239 0.927 0.0\n",
         encoding="utf-8",
     )
 
@@ -68,9 +71,7 @@ def _write_rdkit_references(mol_path: Path, sdf_path: Path):
     molecule.AddBond(1, 2, Chem.BondType.SINGLE)
     molecule = molecule.GetMol()
     conformer = Chem.Conformer(3)
-    for index, point in enumerate(
-        ((0.0, 0.0, 0.0), (1.5, 0.0, 0.0), (3.0, 0.0, 0.0))
-    ):
+    for index, point in enumerate(((0.0, 0.0, 0.0), (1.5, 0.0, 0.0), (3.0, 0.0, 0.0))):
         conformer.SetAtomPosition(index, point)
     molecule.AddConformer(conformer)
     Chem.MolToMolFile(molecule, str(mol_path))
@@ -80,17 +81,19 @@ def _write_rdkit_references(mol_path: Path, sdf_path: Path):
 
 
 @pytest.mark.parametrize(
-    ("filename", "reference_format"),
+    ("filename", "reference_format", "atomic_numbers"),
     [
-        ("reference.xyz", "xyz"),
-        ("reference.mol", "mol"),
-        ("reference.sdf", "sdf"),
+        ("reference.xyz", "xyz", (8, 1, 1)),
+        ("reference.mol", "mol", (6, 6, 6)),
+        ("reference.sdf", "sdf", (6, 6, 6)),
     ],
+    ids=["xyz", "mol", "sdf"],
 )
-def test_rdkit_loads_supported_reference_formats(
+def test_rdkit_loads_topology_reference_from_each_format(
     tmp_path,
     filename,
     reference_format,
+    atomic_numbers,
 ):
     pytest.importorskip("rdkit")
     xyz_path = tmp_path / "reference.xyz"
@@ -99,17 +102,15 @@ def test_rdkit_loads_supported_reference_formats(
     _write_water_xyz(xyz_path)
     _write_rdkit_references(mol_path, sdf_path)
 
-    loaded = topology.load_reference_topology(
-        _topology_config(tmp_path / filename, reference_format)
-    )
+    loaded = topology.load_reference_topology(_topology_config(tmp_path / filename, reference_format))
 
     assert loaded.reference_format == reference_format
     assert loaded.reference_sha256
     assert loaded.bonds
-    assert loaded.atomic_numbers in {(8, 1, 1), (6, 6, 6)}
+    assert loaded.atomic_numbers == atomic_numbers
 
 
-def test_relative_reference_uses_master_directory_and_hash_refresh(tmp_path):
+def test_changed_topology_reference_is_noticed(tmp_path):
     pytest.importorskip("rdkit")
     reference = tmp_path / "reference.xyz"
     _write_water_xyz(reference, first_bond=0.9572)
@@ -141,18 +142,25 @@ def test_relative_reference_uses_master_directory_and_hash_refresh(tmp_path):
         ({"reference_charge": 0.5}, "integer"),
         ({"unexpected": 1}, "Unknown"),
     ],
+    ids=[
+        "zero_bond_min",
+        "bond_min_above_one",
+        "bond_max_below_one",
+        "zero_connectivity",
+        "infinite_connectivity",
+        "fractional_charge",
+        "unknown_key",
+    ],
 )
-def test_topology_configuration_validation(tmp_path, overrides, message):
+def test_invalid_topology_settings_are_rejected(tmp_path, overrides, message):
     reference = tmp_path / "reference.xyz"
     _write_water_xyz(reference)
 
     with pytest.raises((ValueError, TypeError), match=message):
-        topology.load_reference_topology(
-            _topology_config(reference, **overrides)
-        )
+        topology.load_reference_topology(_topology_config(reference, **overrides))
 
 
-def test_missing_rdkit_has_actionable_error(tmp_path, monkeypatch):
+def test_missing_rdkit_gives_a_clear_error(tmp_path, monkeypatch):
     reference = tmp_path / "reference.xyz"
     _write_water_xyz(reference)
     original_import = builtins.__import__
@@ -167,7 +175,7 @@ def test_missing_rdkit_has_actionable_error(tmp_path, monkeypatch):
         topology.load_reference_topology(_topology_config(reference))
 
 
-def test_reference_rejects_preexisting_nonreference_connection(tmp_path):
+def test_topology_reference_with_extra_bonds_is_rejected(tmp_path):
     pytest.importorskip("rdkit")
     from rdkit import Chem
 
@@ -178,9 +186,7 @@ def test_reference_rejects_preexisting_nonreference_connection(tmp_path):
     molecule.AddBond(1, 2, Chem.BondType.SINGLE)
     molecule = molecule.GetMol()
     conformer = Chem.Conformer(3)
-    for index, point in enumerate(
-        ((0.0, 0.0, 0.0), (0.7, 0.0, 0.0), (1.4, 0.0, 0.0))
-    ):
+    for index, point in enumerate(((0.0, 0.0, 0.0), (0.7, 0.0, 0.0), (1.4, 0.0, 0.0))):
         conformer.SetAtomPosition(index, point)
     molecule.AddConformer(conformer)
     path = tmp_path / "compressed.mol"
@@ -199,11 +205,9 @@ def test_malformed_reference_is_rejected(tmp_path):
         topology.load_reference_topology(_topology_config(path))
 
 
-def test_fixed_topology_accepts_inclusive_bond_boundaries():
+def test_topology_accepts_bonds_at_the_limits():
     result = topology.validate_fixed_topology(
-        _chain_atoms(
-            [[0.0, 0.0, 0.0], [1.05, 0.0, 0.0], [3.075, 0.0, 0.0]]
-        ),
+        _chain_atoms([[0.0, 0.0, 0.0], [1.05, 0.0, 0.0], [3.075, 0.0, 0.0]]),
         _reference_topology(),
     )
 
@@ -218,8 +222,9 @@ def test_fixed_topology_accepts_inclusive_bond_boundaries():
         [[0.0, 0.0, 0.0], [0.9, 0.0, 0.0], [2.4, 0.0, 0.0]],
         [[0.0, 0.0, 0.0], [1.5, 0.0, 0.0], [3.6, 0.0, 0.0]],
     ],
+    ids=["compressed", "stretched"],
 )
-def test_fixed_topology_rejects_compressed_and_stretched_bonds(positions):
+def test_topology_rejects_compressed_or_stretched_bonds(positions):
     result = topology.validate_fixed_topology(
         _chain_atoms(positions),
         _reference_topology(),
@@ -229,12 +234,10 @@ def test_fixed_topology_rejects_compressed_and_stretched_bonds(positions):
     assert result.reason == "topology_bond_window"
 
 
-def test_fixed_topology_rejects_new_nonreference_bond():
+def test_topology_rejects_a_new_bond():
     height = np.sqrt(1.5**2 - 0.75**2)
     result = topology.validate_fixed_topology(
-        _chain_atoms(
-            [[0.0, 0.0, 0.0], [0.75, height, 0.0], [1.5, 0.0, 0.0]]
-        ),
+        _chain_atoms([[0.0, 0.0, 0.0], [0.75, height, 0.0], [1.5, 0.0, 0.0]]),
         _reference_topology(),
     )
 
@@ -242,15 +245,13 @@ def test_fixed_topology_rejects_new_nonreference_bond():
     assert result.reason == "topology_extra_bond"
 
 
-def test_fixed_topology_rejects_atom_order_and_nonfinite_coordinates():
+def test_topology_rejects_wrong_element_or_nan_coordinates():
     identity = topology.validate_fixed_topology(
         _chain_atoms(symbols="COC"),
         _reference_topology(),
     )
     nonfinite = topology.validate_fixed_topology(
-        _chain_atoms(
-            [[0.0, 0.0, 0.0], [np.nan, 0.0, 0.0], [3.0, 0.0, 0.0]]
-        ),
+        _chain_atoms([[0.0, 0.0, 0.0], [np.nan, 0.0, 0.0], [3.0, 0.0, 0.0]]),
         _reference_topology(),
     )
 
@@ -258,25 +259,26 @@ def test_fixed_topology_rejects_atom_order_and_nonfinite_coordinates():
     assert nonfinite.reason == "topology_nonfinite"
 
 
-def test_explicit_identical_atom_permutations_and_missing_identity():
+def test_topology_needs_ids_for_reordered_atoms():
     reference = _reference_topology()
     atoms = _chain_atoms()
     permuted = atoms[[2, 0, 1]]
     before = permuted.positions.copy()
     assert topology.validate_fixed_topology(permuted, reference).valid
     np.testing.assert_array_equal(permuted.positions, before)
-    del permuted.arrays['topology_atom_ids']
-    assert topology.validate_fixed_topology(permuted, reference).reason == 'topology_identity'
+    del permuted.arrays["topology_atom_ids"]
+    assert topology.validate_fixed_topology(permuted, reference).reason == "topology_identity"
     atoms.pbc = True
     assert not topology.validate_fixed_topology(atoms, reference).valid
 
 
 def test_opened_ring_is_rejected():
-    reference = _reference_topology(atomic_numbers=(6,)*4,
-        bonds=((0,1),(0,3),(1,2),(2,3)),bond_lengths=(1.5,)*4)
-    atoms=Atoms('CCCC',positions=[[0,0,0],[1.5,0,0],[1.5,1.5,0],[0,1.5,0]])
-    atoms.set_array('topology_atom_ids',np.arange(4))
+    reference = _reference_topology(
+        atomic_numbers=(6,) * 4, bonds=((0, 1), (0, 3), (1, 2), (2, 3)), bond_lengths=(1.5,) * 4
+    )
+    atoms = Atoms("CCCC", positions=[[0, 0, 0], [1.5, 0, 0], [1.5, 1.5, 0], [0, 1.5, 0]])
+    atoms.set_array("topology_atom_ids", np.arange(4))
     assert topology.validate_fixed_topology(atoms, reference).valid
-    atoms.positions[3] = [-3,3,0]
-    result=topology.validate_fixed_topology(atoms, reference)
-    assert not result.valid and result.reason=='topology_bond_window'
+    atoms.positions[3] = [-3, 3, 0]
+    result = topology.validate_fixed_topology(atoms, reference)
+    assert not result.valid and result.reason == "topology_bond_window"

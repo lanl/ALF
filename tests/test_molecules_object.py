@@ -1,3 +1,5 @@
+"""MoleculesObject: the container holding one structure with its results and metadata."""
+
 import numpy as np
 import pytest
 from ase import Atoms
@@ -9,7 +11,7 @@ def water():
     return Atoms("OH2", positions=[[0.0, 0.0, 0.0], [0.0, 0.7, 0.7], [0.0, -0.7, 0.7]])
 
 
-def test_molecules_object_state():
+def test_new_molecule_starts_unlabeled():
     atoms = water()
     molecule = MoleculesObject(atoms, "water-0")
 
@@ -19,6 +21,10 @@ def test_molecules_object_state():
     assert molecule.get_atoms() is atoms
     assert not molecule.check_stored_results()
     assert molecule.check_convergence() is None
+
+
+def test_storing_without_replace_keeps_existing_values():
+    molecule = MoleculesObject(water(), "water-0")
 
     molecule.store_results({"energy": -76.0, "forces": np.ones((3, 3))})
     molecule.store_results({"energy": -75.5, "dipole": np.zeros(3)}, replace=False)
@@ -32,13 +38,17 @@ def test_molecules_object_state():
     assert molecule.check_stored_results()
     assert molecule.check_convergence() is True
 
+
+def test_indexing_a_molecule_is_deprecated():
+    molecule = MoleculesObject(water(), "water-0")
+
     with pytest.warns(DeprecationWarning):
         assert molecule[0] == "water-0"
     with pytest.raises(IndexError):
         molecule[3]
 
 
-def test_update_and_append_atoms():
+def test_atoms_can_be_appended_or_cleared():
     molecule = MoleculesObject(Atoms("H", positions=[[0.0, 0.0, 0.0]]), "h")
 
     molecule.append_atoms(Atoms("O", positions=[[0.0, 0.0, 1.0]]))
@@ -48,7 +58,7 @@ def test_update_and_append_atoms():
     assert molecule.get_atoms() is None
 
 
-def test_composition_and_signature():
+def test_same_composition_is_recognized():
     molecule_a = MoleculesObject(water(), "a")
     molecule_b = MoleculesObject(Atoms("H2O", positions=[[3, 0, 0], [4, 0, 0], [5, 0, 0]]), "b")
 

@@ -1,7 +1,11 @@
-"""Shared numerical conformance for optional TorchSim and ALCHEMI engines."""
+"""Packed dynamics engines: TorchSim and ALCHEMI.
+
+Each test runs once per engine, shown in its test ID, and skips engines that aren't installed.
+Physics is checked against ASE and MLMD_calculator. The whole file needs torch. Set
+ALF_TEST_ENGINE_DEVICE to run on a GPU.
+"""
+
 import copy
-from functools import partial
-import os
 
 import numpy as np
 import pytest
@@ -11,57 +15,43 @@ from ase.md.verlet import VelocityVerlet
 
 pytest.importorskip("torch")
 
+from ase.io import write
+
+from alframework.ml_interfaces.ensemble_inference import (
+    ASEEnsembleEvaluator,
+    SelectedStateEvaluator,
+    ensemble_statistics,
+)
+from alframework.ml_interfaces.hippynn_interface import HIPNN_ASE_load_ensemble, load_hippynn_batched_ensemble
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator  # noqa: E402
 from alframework.samplers.batched_mlmd import sample_trajectories  # noqa: E402
 from alframework.tools.molecules_class import MoleculesObject  # noqa: E402
-from tests.helpers.fakes import spring_ensemble  # noqa: E402
-
-DEVICE = os.environ.get("ALF_TEST_ENGINE_DEVICE", "cpu")
-
-
-def engine_class(name):
-    if name == 'torchsim':
-        from alframework.samplers.torchsim_engine import TorchSimEngine
-        return partial(TorchSimEngine, device=DEVICE)
-    from alframework.samplers.alchemi_engine import AlchemiEngine
-    return partial(AlchemiEngine, device=DEVICE)
-
-
-@pytest.fixture(params=['torchsim', 'alchemi'])
-def engine_name(request):
-    if request.param == 'torchsim':
-        pytest.importorskip('torch_sim')
-    else:
-        from importlib.metadata import PackageNotFoundError, version
-        try:
-            from alframework.samplers.alchemi_engine import SUPPORTED_VERSIONS
-            qualified = version('nvalchemi-toolkit') in SUPPORTED_VERSIONS
-        except PackageNotFoundError:
-            qualified = False
-        if not qualified:
-            pytest.skip('ALCHEMI 0.2 has its own worker environment.')
-    return request.param
-
+from tests.helpers.engines import DEVICE, Tether, engine_class  # noqa: E402
+from tests.helpers.fakes import (
+    QuadraticStateEnsemble,
+    spring_ensemble,  # noqa: E402
+)
 
 WATER = Atoms("OH2", positions=[[0, 0, 0], [1.25, 0, 0], [0.6, 1.0392, 0.05]])
-CONFIG = dict(dt=0.5, maxt=0.1, Ncheck=5, distcut=0.5, min_time=0.0, Escut=0.012, Fscut=100.0, random_seed=4,
-              srt_temp=[2500.0, 3500.0], end_temp=[2500.0, 3500.0], amp_temp=[0.0, 200.0], per_temp=[0.01, 0.05],
-              amp_dens=None, per_dens=None, end_dens=None,
-              driver={"strategy": "batched", "engine": "torchsim"}, batching={"batch_size": 8})
-
-
-class Tether(Calculator):
-    """Harmonic tether to the origin, for thermostat checks."""
-    implemented_properties = ["energy", "forces"]
-
-    def __init__(self, k):
-        super().__init__()
-        self.k = k
-
-    def calculate(self, atoms=None, properties=("energy",), system_changes=all_changes):
-        super().calculate(atoms, properties, system_changes)
-        x = atoms.get_positions()
-        self.results = {"energy": 0.5 * self.k * (x ** 2).sum(), "forces": -self.k * x}
+CONFIG = dict(
+    dt=0.5,
+    maxt=0.1,
+    Ncheck=5,
+    distcut=0.5,
+    min_time=0.0,
+    Escut=0.012,
+    Fscut=100.0,
+    random_seed=4,
+    srt_temp=[2500.0, 3500.0],
+    end_temp=[2500.0, 3500.0],
+    amp_temp=[0.0, 200.0],
+    per_temp=[0.01, 0.05],
+    amp_dens=None,
+    per_dens=None,
+    end_dens=None,
+    driver={"strategy": "batched", "engine": "torchsim"},
+    batching={"batch_size": 8},
+)
 
 
 def inputs():
@@ -69,26 +59,36 @@ def inputs():
     for index in range(7):
         atoms = WATER.copy() if index % 2 == 0 else Atoms("H2", positions=[[0, 0, 0], [1.2, 0, 0]])
         if index == 5:
-            atoms.positions[1] = [0.4, 0, 0]          # distcut rejection at the first check
+            atoms.positions[1] = [0.4, 0, 0]  # distcut rejection at the first check
         molecules.append(MoleculesObject(atoms, f"mol-0000-{index:010d}"))
     return molecules
 
 
-@pytest.mark.parametrize('overlap', [False, True])
-def test_periodic_and_overlap_screening(engine_name, overlap):
-    bad = Atoms('H2', positions=[[.1, 0, 0], [.1 if overlap else 9.9, 0, 0]],
-                cell=[10]*3, pbc=True)
-    good = Atoms('H2', positions=[[1, 0, 0], [2, 0, 0]], cell=[10]*3, pbc=True)
-    config = dict(CONFIG, dt=.5, maxt=.001, Ncheck=1, Escut=1., Fscut=1.,
-                  srt_temp=[0., 0.], end_temp=[0., 0.], amp_temp=[0., 0.], per_temp=[1., 1.],
-                  amp_dens=None, per_dens=None, end_dens=None,
-                  MLMD_calculator_options={'well_params': None})
-    molecules = [MoleculesObject(a, name) for a, name in [(bad, 'bad'), (good, 'good')]]
-    results = sample_trajectories(molecules, [Tether(0.), Tether(0.)], config,
-                                  engine_class=engine_class(engine_name))
-    assert [m.get_metadata()['trajectory_outcome'] for m in results] == ['rejected', 'completed']
-    assert results[0].get_metadata()['distmin'] == pytest.approx(0. if overlap else .2)
-    assert results[1].get_metadata()['distmin'] == pytest.approx(1.)
+@pytest.mark.parametrize("overlap", [False, True], ids=["across_periodic_boundary", "overlapping_atoms"])
+def test_close_contacts_are_rejected(engine_name, overlap):
+    bad = Atoms("H2", positions=[[0.1, 0, 0], [0.1 if overlap else 9.9, 0, 0]], cell=[10] * 3, pbc=True)
+    good = Atoms("H2", positions=[[1, 0, 0], [2, 0, 0]], cell=[10] * 3, pbc=True)
+    config = dict(
+        CONFIG,
+        dt=0.5,
+        maxt=0.001,
+        Ncheck=1,
+        Escut=1.0,
+        Fscut=1.0,
+        srt_temp=[0.0, 0.0],
+        end_temp=[0.0, 0.0],
+        amp_temp=[0.0, 0.0],
+        per_temp=[1.0, 1.0],
+        amp_dens=None,
+        per_dens=None,
+        end_dens=None,
+        MLMD_calculator_options={"well_params": None},
+    )
+    molecules = [MoleculesObject(a, name) for a, name in [(bad, "bad"), (good, "good")]]
+    results = sample_trajectories(molecules, [Tether(0.0), Tether(0.0)], config, engine_class=engine_class(engine_name))
+    assert [m.get_metadata()["trajectory_outcome"] for m in results] == ["rejected", "completed"]
+    assert results[0].get_metadata()["distmin"] == pytest.approx(0.0 if overlap else 0.2)
+    assert results[1].get_metadata()["distmin"] == pytest.approx(1.0)
 
 
 def run(groups, config=CONFIG, models=spring_ensemble, engine_name="torchsim"):
@@ -102,17 +102,19 @@ def run(groups, config=CONFIG, models=spring_ensemble, engine_name="torchsim"):
     return results
 
 
-def test_zero_friction_zero_temperature_is_velocity_verlet(engine_name):
+def test_zero_friction_langevin_matches_velocity_verlet(engine_name):
     reference = WATER.copy()
     reference.calc = MLMD_calculator(spring_ensemble())
     VelocityVerlet(reference, 0.5 * units.fs).run(40)
-    engine = engine_class(engine_name)([WATER.copy()], spring_ensemble(), 0.5, [0.0], [np.random.RandomState(0)], friction=0.0)
+    engine = engine_class(engine_name)(
+        [WATER.copy()], spring_ensemble(), 0.5, [0.0], [np.random.RandomState(0)], friction=0.0
+    )
     engine.step([0], 40)
     np.testing.assert_allclose(engine.atoms(0).get_positions(), reference.get_positions(), atol=1e-12)
     assert engine.steps == [40]
 
 
-def test_grouping_and_order_do_not_change_results(engine_name):
+def test_batching_does_not_change_results(engine_name):
     reference = run([[m] for m in inputs()], engine_name=engine_name)
     assert {"eligible", "rejected"} <= {r.get_metadata()["trajectory_outcome"] for r in reference.values()}
     assert len({r.get_metadata()["step"] for r in reference.values()}) >= 3
@@ -129,39 +131,57 @@ def test_grouping_and_order_do_not_change_results(engine_name):
                 if DEVICE == "cpu":
                     np.testing.assert_array_equal(got.get_atoms().get_positions(), expected.get_atoms().get_positions())
                 else:
-                    np.testing.assert_allclose(got.get_atoms().get_positions(), expected.get_atoms().get_positions(),
-                                               rtol=1e-12, atol=1e-12)
+                    np.testing.assert_allclose(
+                        got.get_atoms().get_positions(), expected.get_atoms().get_positions(), rtol=1e-12, atol=1e-12
+                    )
 
 
 @pytest.mark.parametrize("strategy", ["uncertainty", "summed"])
-def test_cohort_candidates_do_not_depend_on_grouping(engine_name, strategy):
-    config = dict(CONFIG, acquisition={"trajectory_policy": "continue", "strategy": strategy,
-                                       **({"weights": {"energy": 1., "force_rms": 1.}} if strategy == "summed" else {}),
-                                       "selection": {"mode": "cohort_top_k", "cohort_size": 7, "k": 3}})
-    single, batched = run([[m] for m in inputs()], config, engine_name=engine_name), run([inputs()], config, engine_name=engine_name)
+def test_batching_does_not_change_candidates(engine_name, strategy):
+    config = dict(
+        CONFIG,
+        acquisition={
+            "trajectory_policy": "continue",
+            "strategy": strategy,
+            **({"weights": {"energy": 1.0, "force_rms": 1.0}} if strategy == "summed" else {}),
+            "selection": {"mode": "cohort_top_k", "cohort_size": 7, "k": 3},
+        },
+    )
+    single, batched = (
+        run([[m] for m in inputs()], config, engine_name=engine_name),
+        run([inputs()], config, engine_name=engine_name),
+    )
     for name in single:
-        assert [c["frame_id"] for c in single[name].get_metadata()["acquisition_candidates"]] == \
-            [c["frame_id"] for c in batched[name].get_metadata()["acquisition_candidates"]]
+        assert [c["frame_id"] for c in single[name].get_metadata()["acquisition_candidates"]] == [
+            c["frame_id"] for c in batched[name].get_metadata()["acquisition_candidates"]
+        ]
     assert max(len(r.get_metadata()["acquisition_candidates"]) for r in single.values()) > 1
 
 
-def test_well_and_udd_forces_match_mlmd_calculator(engine_name):
+def test_well_udd_forces_match_mlmd_calculator(engine_name):
     options = {"well_params": {"r_start": 0.5, "force": 0.1}, "udd_bias_weight": 0.3}
     atoms = Atoms("OH2CH", positions=np.random.default_rng(0).normal(size=(5, 3)) * 1.6)
-    engine = engine_class(engine_name)([atoms.copy()], spring_ensemble(), 0.5, [0.0], [np.random.RandomState(0)],
-                            calculator_options=options)
+    engine = engine_class(engine_name)(
+        [atoms.copy()], spring_ensemble(), 0.5, [0.0], [np.random.RandomState(0)], calculator_options=options
+    )
     calculator = MLMD_calculator(spring_ensemble(), **copy.deepcopy(options))
     calculator.calculate(atoms, properties=["energy", "forces"])
     np.testing.assert_allclose(engine.state.forces.cpu().numpy(), calculator.results["forces"], atol=1e-12)
     assert float(engine.state.energy[0]) == pytest.approx(calculator.results["energy"])
 
 
-def test_langevin_temperature(engine_name):
+def test_langevin_holds_the_target_temperature(engine_name):
     rng = np.random.default_rng(0)
     systems = [Atoms("H" * 8, positions=rng.normal(size=(8, 3)) * 0.05) for _ in range(32)]
     # Strong friction (inverse ASE time) so the short run holds many independent samples.
-    engine = engine_class(engine_name)(systems, [Tether(4.0), Tether(5.0)], 1.0, [300.0] * 32,
-                            [np.random.RandomState(i) for i in range(32)], friction=0.5)
+    engine = engine_class(engine_name)(
+        systems,
+        [Tether(4.0), Tether(5.0)],
+        1.0,
+        [300.0] * 32,
+        [np.random.RandomState(i) for i in range(32)],
+        friction=0.5,
+    )
     temperatures = []
     for block in range(120):
         engine.step(list(range(32)), 10)
@@ -171,7 +191,7 @@ def test_langevin_temperature(engine_name):
     # so the kinetic temperature over all 3N degrees of freedom is the target.
     initial = float(np.mean(temperatures))
     assert initial == pytest.approx(300.0, rel=0.03)
-    targets = np.array([200., 400.] * 16)
+    targets = np.array([200.0, 400.0] * 16)
     for index, target in enumerate(targets):
         engine.set_temperature(index, target)
     changed = []
@@ -180,13 +200,12 @@ def test_langevin_temperature(engine_name):
         if block >= 20:
             changed.append([engine.atoms(i).get_temperature() for i in range(32)])
     changed = np.asarray(changed)
-    measured = {float(target): float(changed[:, targets == target].mean()) for target in (200., 400.)}
+    measured = {float(target): float(changed[:, targets == target].mean()) for target in (200.0, 400.0)}
     for target, mean in measured.items():
         assert mean == pytest.approx(target, rel=0.03)
-    print('THERMOSTAT', engine_name, DEVICE, {'initial_300_K': initial, 'updated': measured}, flush=True)
 
 
-def test_density_schedule_scales_cells(engine_name):
+def test_density_schedule_changes_the_cell(engine_name):
     box = WATER.copy()
     box.set_cell(np.eye(3) * 12.0)
     box.set_pbc(True)
@@ -202,8 +221,8 @@ def test_density_schedule_scales_cells(engine_name):
     np.testing.assert_array_equal(np.asarray(solo["cell"]), np.asarray(results["box-a"].get_metadata()["cell"]))
 
 
-@pytest.mark.parametrize("pooled", [False, True])
-def test_failed_member_does_not_affect_batch_mates(engine_name, pooled):
+@pytest.mark.parametrize("pooled", [False, True], ids=["stop_policy", "continue_policy"])
+def test_one_failed_trajectory_spares_the_others(engine_name, pooled):
     class Exploding(Calculator):
         implemented_properties = ["energy", "forces"]
 
@@ -215,7 +234,7 @@ def test_failed_member_does_not_affect_batch_mates(engine_name, pooled):
         def calculate(self, atoms=None, properties=("energy",), system_changes=all_changes):
             self.inner.calculate(atoms, properties, system_changes)
             self.results = dict(self.inner.results)
-            if len(atoms) == 2:              # only the H2 member, after a few steps
+            if len(atoms) == 2:  # only the H2 member, after a few steps
                 self.calls += 1
                 if self.calls > 3:
                     self.results["forces"] = self.results["forces"] * np.nan
@@ -223,30 +242,32 @@ def test_failed_member_does_not_affect_batch_mates(engine_name, pooled):
     config = copy.deepcopy(CONFIG)
     if pooled:
         # Establish an eligible frame before injecting a later failure.
-        config['Escut'] = 1e-12
-        config['acquisition'] = {'trajectory_policy': 'continue',
-                                 'selection': {'mode': 'cohort_top_k', 'cohort_size': 3, 'k': 3}}
+        config["Escut"] = 1e-12
+        config["acquisition"] = {
+            "trajectory_policy": "continue",
+            "selection": {"mode": "cohort_top_k", "cohort_size": 3, "k": 3},
+        }
     clean = run([inputs()[:3]], config=config, engine_name=engine_name)
-    failed = run([inputs()[:3]], config=config, models=lambda: [Exploding(c) for c in spring_ensemble()], engine_name=engine_name)
+    failed = run(
+        [inputs()[:3]], config=config, models=lambda: [Exploding(c) for c in spring_ensemble()], engine_name=engine_name
+    )
     assert failed["mol-0000-0000000001"].get_metadata()["trajectory_outcome"] == "failed"
     assert "non-finite" in failed["mol-0000-0000000001"].get_metadata()["sampling_error"]
     if pooled:
-        assert failed["mol-0000-0000000001"].get_metadata()['acquisition_candidates']
+        assert failed["mol-0000-0000000001"].get_metadata()["acquisition_candidates"]
     for name in ("mol-0000-0000000000", "mol-0000-0000000002"):
         assert failed[name].get_metadata()["step"] == clean[name].get_metadata()["step"]
-        if DEVICE == 'cpu':
+        if DEVICE == "cpu":
             assert failed[name].get_metadata()["Es"] == clean[name].get_metadata()["Es"]
         else:
-            assert failed[name].get_metadata()["Es"] == pytest.approx(clean[name].get_metadata()["Es"],
-                                                                     rel=1e-12, abs=1e-12)
+            assert failed[name].get_metadata()["Es"] == pytest.approx(
+                clean[name].get_metadata()["Es"], rel=1e-12, abs=1e-12
+            )
 
 
 @pytest.mark.parametrize("periodic", [False, True], ids=["molecular", "periodic"])
 def test_batched_hippynn_matches_ase_calculators(periodic, engine_name, trained_ensemble):
     import torch
-    from alframework.ml_interfaces.hippynn_interface import load_hippynn_batched_ensemble
-    from alframework.ml_interfaces.hippynn_interface import HIPNN_ASE_load_ensemble
-    from alframework.ml_interfaces.ensemble_inference import ASEEnsembleEvaluator
 
     rng = np.random.default_rng(1)
     systems = []
@@ -261,15 +282,15 @@ def test_batched_hippynn_matches_ase_calculators(periodic, engine_name, trained_
     energies, forces = batched.evaluate(
         torch.as_tensor(np.concatenate([a.numbers for a in systems])),
         torch.as_tensor(np.concatenate([a.positions for a in systems])),
-        torch.as_tensor(np.stack([a.cell.array for a in systems])), systems[0].pbc, [len(a) for a in systems])
+        torch.as_tensor(np.stack([a.cell.array for a in systems])),
+        systems[0].pbc,
+        [len(a) for a in systems],
+    )
     np.testing.assert_allclose(energies.cpu().numpy(), reference["energies"], rtol=1e-5, atol=1e-5)
     np.testing.assert_allclose(forces.cpu().numpy(), np.concatenate(reference["forces"], axis=1), rtol=1e-5, atol=1e-5)
 
 
-def test_trained_ensemble_sampling_with_batched_hippynn(engine_name, trained_ensemble):
-    from alframework.ml_interfaces.ensemble_inference import ASEEnsembleEvaluator, ensemble_statistics
-    from alframework.ml_interfaces.hippynn_interface import load_hippynn_batched_ensemble
-    from alframework.ml_interfaces.hippynn_interface import HIPNN_ASE_load_ensemble
+def test_batched_hippynn_sampling_uncertainty_matches_ase(engine_name, trained_ensemble):
 
     batched = load_hippynn_batched_ensemble(str(trained_ensemble), device=DEVICE)
     # Keep the actual physical member outputs at each observed geometry. Float32
@@ -289,20 +310,37 @@ def test_trained_ensemble_sampling_with_batched_hippynn(engine_name, trained_ens
                 section = slice(offset, offset + count)
                 key = (numbers[section].tobytes(), positions[section].tobytes())
                 recorded[key] = {
-                    "energies": energies[:, system:system + 1].detach().cpu().numpy().copy(),
+                    "energies": energies[:, system : system + 1].detach().cpu().numpy().copy(),
                     "forces": [forces[:, section].detach().cpu().numpy().copy()],
                 }
                 offset += count
             return energies, forces
 
-    config = dict(CONFIG, Escut=0.5, Fscut=1.0, maxt=0.02, distcut=0.7, srt_temp=[250.0, 350.0],
-                  end_temp=[250.0, 350.0], amp_temp=[0.0, 20.0], per_temp=[5.0, 10.0],
-                  MLMD_calculator_options={"well_params": {"r_start": 3.0, "force": 0.1}},
-                  acquisition={"trajectory_policy": "continue",
-                               "selection": {"mode": "cohort_top_k", "cohort_size": 3, "k": 50}})
-    molecules = [MoleculesObject(Atoms("OH2" * n, positions=np.concatenate(
-        [[[3.0 * i, 0, 0], [3.0 * i + 0.96, 0, 0], [3.0 * i - 0.24, 0.93, 0]] for i in range(n)])), f"w-{n}")
-        for n in (1, 2, 3)]
+    config = dict(
+        CONFIG,
+        Escut=0.5,
+        Fscut=1.0,
+        maxt=0.02,
+        distcut=0.7,
+        srt_temp=[250.0, 350.0],
+        end_temp=[250.0, 350.0],
+        amp_temp=[0.0, 20.0],
+        per_temp=[5.0, 10.0],
+        MLMD_calculator_options={"well_params": {"r_start": 3.0, "force": 0.1}},
+        acquisition={"trajectory_policy": "continue", "selection": {"mode": "cohort_top_k", "cohort_size": 3, "k": 50}},
+    )
+    molecules = [
+        MoleculesObject(
+            Atoms(
+                "OH2" * n,
+                positions=np.concatenate(
+                    [[[3.0 * i, 0, 0], [3.0 * i + 0.96, 0, 0], [3.0 * i - 0.24, 0.93, 0]] for i in range(n)]
+                ),
+            ),
+            f"w-{n}",
+        )
+        for n in (1, 2, 3)
+    ]
     config["driver"] = dict(CONFIG["driver"], engine=engine_name)
     results = sample_trajectories(molecules, RecordingEvaluator(), config, device=DEVICE)
     reference = ASEEnsembleEvaluator(HIPNN_ASE_load_ensemble(str(trained_ensemble), device=DEVICE))
@@ -322,60 +360,81 @@ def test_trained_ensemble_sampling_with_batched_hippynn(engine_name, trained_ens
         component_bound = np.std(delta_f, axis=0)
         # std is the norm of centered members / sqrt(n). The reverse triangle
         # inequality bounds its change by std(delta); mean/max/RMS inherit it.
-        bounds = {"Es": float(np.std(delta_e)), "Fs": float(component_bound.mean()),
-                  "Fsmax": float(component_bound.max()),
-                  "Fsrms": float(np.sqrt(np.mean(component_bound ** 2)))}
+        bounds = {
+            "Es": float(np.std(delta_e)),
+            "Fs": float(component_bound.mean()),
+            "Fsmax": float(component_bound.max()),
+            "Fsrms": float(np.sqrt(np.mean(component_bound**2))),
+        }
         for key, bound in bounds.items():
             assert candidate["signals"][key] == pytest.approx(actual[key], rel=1e-12, abs=1e-12), key
             assert abs(actual[key] - expected[key]) <= bound + 1e-12, (key, bound)
 
 
-def test_excited_packed_observations_and_compaction_keep_state_atom_axes(engine_name):
-    from tests.helpers.fakes import QuadraticStateEnsemble
-    from alframework.ml_interfaces.ensemble_inference import SelectedStateEvaluator, ensemble_statistics
-    model = SelectedStateEvaluator(QuadraticStateEnsemble(), 1, [1,2])
+def test_excited_states_stay_correct_after_a_trajectory_finishes(engine_name):
+    model = SelectedStateEvaluator(QuadraticStateEnsemble(), 1, [1, 2])
     atoms = [WATER.copy() for _ in range(3)]
-    for index,a in enumerate(atoms):
-        a.positions *= 1 + .1*index
-    engine = engine_class(engine_name)(atoms, model, .1, [0.]*3,
-                                      [np.random.RandomState(i) for i in range(3)], friction=0.)
+    for index, a in enumerate(atoms):
+        a.positions *= 1 + 0.1 * index
+    engine = engine_class(engine_name)(
+        atoms, model, 0.1, [0.0] * 3, [np.random.RandomState(i) for i in range(3)], friction=0.0
+    )
     for index in range(3):
         reference = ensemble_statistics(model.predict([atoms[index]]))[0]
-        assert ensemble_statistics(engine.observe(index)['prediction'])[0] == pytest.approx(reference)
+        assert ensemble_statistics(engine.observe(index)["prediction"])[0] == pytest.approx(reference)
     # Remove an interior system, then actually step and evaluate the surviving layout.
     engine.finish(1)
-    assert engine.step([0,2], 1) == {}
-    assert engine._rows == [0,2]
-    for index in (0,2):
-        observed = ensemble_statistics(engine.observe(index)['prediction'])[0]
+    assert engine.step([0, 2], 1) == {}
+    assert engine._rows == [0, 2]
+    for index in (0, 2):
+        observed = ensemble_statistics(engine.observe(index)["prediction"])[0]
         reference = ensemble_statistics(model.predict([engine.atoms(index)]))[0]
         assert observed == pytest.approx(reference)
-    assert engine.steps == [1,0,1]
+    assert engine.steps == [1, 0, 1]
 
 
-def test_topology_initial_rejection_and_physical_force_stop_before_integration(engine_name,tmp_path):
-    from tests.helpers.fakes import QuadraticStateEnsemble
-    reference=Atoms('OHH',positions=[[0,0,0],[.9572,0,0],[-.239,.927,0]])
-    from ase.io import write
-    path=tmp_path/'water.xyz';write(path,reference)
-    reference.set_array('topology_atom_ids',np.arange(3))
-    config=dict(CONFIG,driver=dict(engine=engine_name,strategy='single'),model_mode='excited_state',
-       state_selection=dict(mode='fixed',state=1),min_time=0.,maxt=.001,Ncheck=1,
-       max_force_cutoff=16.,srt_temp=[0.,0.],end_temp=[0.,0.],amp_temp=[0.,0.],per_temp=[1.,1.],
-       friction_per_fs=.1,topology_check=dict(enabled=True,reference_conformer_path=str(path),
-       reference_charge=0,bond_min_scale=.85,bond_max_scale=1.5,connectivity_scale=1.25))
-    config.pop('batching')
+def test_topology_or_force_rejection_stops_before_first_step(engine_name, tmp_path):
+    reference = Atoms("OHH", positions=[[0, 0, 0], [0.9572, 0, 0], [-0.239, 0.927, 0]])
+    path = tmp_path / "water.xyz"
+    write(path, reference)
+    reference.set_array("topology_atom_ids", np.arange(3))
+    config = dict(
+        CONFIG,
+        driver=dict(engine=engine_name, strategy="single"),
+        model_mode="excited_state",
+        state_selection=dict(mode="fixed", state=1),
+        min_time=0.0,
+        maxt=0.001,
+        Ncheck=1,
+        max_force_cutoff=16.0,
+        srt_temp=[0.0, 0.0],
+        end_temp=[0.0, 0.0],
+        amp_temp=[0.0, 0.0],
+        per_temp=[1.0, 1.0],
+        friction_per_fs=0.1,
+        topology_check=dict(
+            enabled=True,
+            reference_conformer_path=str(path),
+            reference_charge=0,
+            bond_min_scale=0.85,
+            bond_max_scale=1.5,
+            connectivity_scale=1.25,
+        ),
+    )
+    config.pop("batching")
+
     def molecules():
-        items=[MoleculesObject(reference.copy(),str(i)) for i in range(4)]
-        items[1].atoms.positions[1]*=2.
+        items = [MoleculesObject(reference.copy(), str(i)) for i in range(4)]
+        items[1].atoms.positions[1] *= 2.0
         return items
-    out=sample_trajectories(molecules(),QuadraticStateEnsemble(),config,engine_class=engine_class(engine_name))
-    assert [m.get_moleculeid() for m in out]==['0','1','2','3']
-    assert out[1].get_metadata()['trajectory_outcome']=='rejected' and out[1].get_metadata()['step']==0
-    assert out[1].get_metadata()['screen_reject_reason']=='topology_bond_window'
-    assert all(out[i].get_metadata()['step']>0 for i in (0,2,3))
-    assert all(m.get_metadata()['sampling_initial_active_width']==3 for m in out)
-    config['max_force_cutoff']=1.
-    out=sample_trajectories(molecules(),QuadraticStateEnsemble(),config,engine_class=engine_class(engine_name))
-    assert all(m.atoms is None and m.get_metadata()['step']==0 for m in out)
-    assert out[0].get_metadata()['screen_reject_reason']=='physical_force'
+
+    out = sample_trajectories(molecules(), QuadraticStateEnsemble(), config, engine_class=engine_class(engine_name))
+    assert [m.get_moleculeid() for m in out] == ["0", "1", "2", "3"]
+    assert out[1].get_metadata()["trajectory_outcome"] == "rejected" and out[1].get_metadata()["step"] == 0
+    assert out[1].get_metadata()["screen_reject_reason"] == "topology_bond_window"
+    assert all(out[i].get_metadata()["step"] > 0 for i in (0, 2, 3))
+    assert all(m.get_metadata()["sampling_initial_active_width"] == 3 for m in out)
+    config["max_force_cutoff"] = 1.0
+    out = sample_trajectories(molecules(), QuadraticStateEnsemble(), config, engine_class=engine_class(engine_name))
+    assert all(m.atoms is None and m.get_metadata()["step"] == 0 for m in out)
+    assert out[0].get_metadata()["screen_reject_reason"] == "physical_force"

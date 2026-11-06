@@ -15,11 +15,19 @@ Supported QM Packages
    * - Package
      - Associated interface
    * - `ORCA <https://www.faccts.de/orca/>`__
-     - ``alframework.qm_interfaces.orca5_interface.orca_calculator_task``
+     - ``alframework.qm_interfaces.orca5_interface.orca_calculator_task``, or
+       ``alframework.qm_interfaces.orca5_interface.orca_double_calculator_task``
+       to run each calculation twice and accept it only if the results agree.
    * - `VASP <https://vasp.at/>`__
      - ``alframework.qm_interfaces.ase_calculator_interface.VASP_ase_calculator_task``
    * - `Q-Chem <https://www.q-chem.com/>`__
      - ``alframework.qm_interfaces.qchem_DFT_interface.qchem_dft_calculator_task``
+   * - `PySEQM <https://github.com/lanl/PYSEQM>`__
+     - ``alframework.qm_interfaces.pyseqm_interface.pyseqm_task`` for ground states.
+       For excited states, see :doc:`excited_states`.
+   * - `GPU4PySCF <https://pyscf.org/user/gpu.html>`__
+     - ``alframework.qm_interfaces.gpu4pyscf_interface.gpu4pyscf_excited_state_task``
+       for excited states. See :doc:`excited_states`.
    * - `ASE-supported calculators <https://docs.ase-lib.org/ase/calculators/calculators.html#supported-calculators>`__
      - ``alframework.qm_interfaces.ase_calculator_interface.ase_calculator_task``
 
@@ -64,6 +72,10 @@ Properties
    those properties are written to HDF5. It also records whether each property
    is system-level or atom-level and includes the unit conversion used when
    storing data. See :doc:`units` for how these multipliers are applied.
+
+Batched labeling
+   A ``batching`` block in the QM config labels several structures in one task,
+   either natively or by job packing. See :doc:`batching`.
 
 Common Configuration Fields
 ---------------------------
@@ -127,6 +139,46 @@ example, an MPI VASP command such as ``srun -n 128 vasp_std`` should be paired
 with an ``alf_QM_executor`` configuration that requests the matching nodes,
 tasks, walltime, modules, and launcher behavior. See :doc:`parsl` for
 practical resource examples.
+
+ORCA double calculations
+   ``orca_double_calculator_task`` runs the same ORCA calculation twice and stores
+   the mean. A structure counts as converged only if both runs converge and agree
+   within the ``Ediff`` and ``Fdiff`` values in the QM config.
+
+PySEQM ground states
+   ``pyseqm_task`` evaluates a batch of molecules in one call, and handles atom
+   sorting and padding internally. It has no single-structure form, so the QM config
+   must select ``"mode": "native"``:
+
+   .. code-block:: json
+
+      {
+        "method": "AM1",
+        "scf_eps": 1e-8,
+        "device": "cuda",
+        "batching": {"mode": "native", "batch_size": 64}
+      }
+
+   .. list-table::
+      :header-rows: 1
+      :widths: 30 70
+
+      * - Field
+        - Meaning
+      * - ``method``
+        - Semiempirical method. The default is ``AM1``.
+      * - ``scf_eps``, ``scf_converger``
+        - SCF settings. The defaults are ``1e-8`` and ``[2]``.
+      * - ``pyseqm_parameters``
+        - Optional extra PySEQM parameters, applied on top of these fields.
+      * - ``device``
+        - Torch device. The default is ``cpu``. For GPU labeling, place
+          ``alf_QM_executor`` on GPU nodes.
+
+   PySEQM reports energies in eV and forces in eV/Angstrom. It doesn't support
+   periodic systems, and a molecule's ``charge`` and ``mult`` come from its metadata.
+   A molecule whose SCF doesn't converge is marked unconverged, and the rest of the
+   batch is kept.
 
 Legacy VASP helper
    ``alframework.qm_interfaces.vaspase_interface.VASPGenerator`` is deprecated
@@ -255,6 +307,8 @@ You can link from this guide directly to API pages:
 * :doc:`ASE calculator interface module <../api_documentation/alframework.qm_interfaces.ase_calculator_interface>`
 * :doc:`ORCA interface module <../api_documentation/alframework.qm_interfaces.orca5_interface>`
 * :doc:`QChem interface module <../api_documentation/alframework.qm_interfaces.qchem_DFT_interface>`
+* :doc:`PySEQM interface module <../api_documentation/alframework.qm_interfaces.pyseqm_interface>`
+* :doc:`GPU4PySCF interface module <../api_documentation/alframework.qm_interfaces.gpu4pyscf_interface>`
 * :doc:`Legacy VASP interface module <../api_documentation/alframework.qm_interfaces.vaspase_interface>`
 * :doc:`Parsl execution guide <parsl>`
 

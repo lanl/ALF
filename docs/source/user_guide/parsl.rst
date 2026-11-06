@@ -489,6 +489,24 @@ nodes. For unmasked sampler workers, ``gpus_per_node`` specifies the number of
 GPUs to distribute over, not the worker count. More workers than visible GPUs
 share devices by rank; scheduler/Parsl visibility takes precedence.
 
+Sizing Executors For Batching
+-----------------------------
+
+A Parsl worker runs one ALF task, whatever its width. With batching, one task can
+hold many structures, so size executors by tasks rather than structures:
+
+* **Sampler:** with the ``torchsim`` or ``alchemi`` engines, one worker per GPU is
+  a natural starting point, since each task packs its trajectories onto one device.
+* **QM, native batches:** a PySEQM batch runs as one task, so on GPU nodes it also
+  usually needs one worker per GPU.
+* **QM, sequential batches:** members run one after another on one worker, so
+  walltime must cover ``batch_size`` calculations.
+
+Each worker imports its task's backend, so ``worker_init`` must set up an environment
+that has it, such as TorchSim for sampler workers. Different executors can use
+different environments. See :doc:`batching` for how ALF's queue limits relate to
+batch sizes.
+
 Configuration Knobs
 -------------------
 
@@ -530,7 +548,9 @@ resources.
        to the submit process.
 
 
-The existing files in ``alframework/parsl_resource_configs`` and
+The master configuration selects a Parsl configuration by import string, usually
+``parsl_configs.config_1node`` from the ``parsl_configs.py`` file in the run
+directory. The existing files in ``alframework/parsl_resource_configs`` and
 ``examples/*/parsl_configs.py`` show the expected structure, but cluster
 partition names, accounts, modules, walltimes, and launcher choices must be
 adapted for the resources you plan to use.

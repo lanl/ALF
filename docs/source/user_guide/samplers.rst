@@ -18,22 +18,6 @@ In a master configuration, the selected sampler is specified with the
    }
 
 Sampler tasks usually run on the ``alf_sampler_executor`` Parsl executor.
-Legacy MLMD, UDD, and the multi-trajectory sampler select GPUs automatically
-within the worker's scheduler/Parsl allocation. Existing CUDA, HIP, and ROCr
-visibility variables are preserved. Workers distribute over runtime-visible
-local devices by ``PARSL_WORKER_RANK``; a worker already restricted to one GPU
-uses local device zero. Without a visibility mask, ``gpus_per_node`` caps this
-distribution, bounded by runtime availability. An absent rank selects zero.
-
-The optional sampler ``device`` setting accepts ``cpu``, ``cuda`` for automatic
-GPU assignment, or ``cuda:N`` to pin a visible local ordinal. For example, when
-``CUDA_VISIBLE_DEVICES=2,5``, local ``cuda:1`` refers to the second exposed GPU,
-not physical GPU 1. Explicit unavailable GPU requests fail without changing
-visibility. The legacy task retains its GPU default; the multi-trajectory task
-automatically falls back to CPU when no GPU is available. Explicit CPU use
-does not require GPU discovery. NeuroChem inference supports CUDA only; its
-``model_details['gpu']`` value is now a local ordinal passed to its constructor.
-Training pools and reactive samplers retain their separate device behavior.
 
 Supported Sampler Tasks
 -----------------------
@@ -55,6 +39,12 @@ Supported Sampler Tasks
        trajectories toward high ensemble energy uncertainty while retaining the
        usual QM-selection threshold checks.
      - Exploration runs where biasing MD toward model disagreement is desired.
+   * - ``alframework.samplers.batched_mlmd.mlmd_trajectories_task``
+     - Runs one or more MLMD trajectories in one task, with a choice of dynamics
+       engine and of how frames are selected for QM. See
+       `Multi-Trajectory Sampling`_.
+     - Running many trajectories on one GPU, ranking frames before labeling, or
+       excited-state sampling.
    * - ``alframework.samplers.reactive_sampler.reactive_sampling``
      - Uses NEB and/or dimer-style searches from reaction metadata, monitors
        ensemble uncertainty along reaction pathways, and returns uncertain
@@ -230,6 +220,139 @@ Reactive sampler fields
         - Multiplier applied to ``Fscut`` for maximum force uncertainty. The
           default is ``3.0``.
 
+.. _samplers-multi-trajectory:
+
+Multi-Trajectory Sampling
+-------------------------
+
+``mlmd_trajectories_task`` uses the same MLMD settings as
+``simple_mlmd_sampling_task``, listed above, and takes several trajectories in one
+task. Each trajectory stops on its own, and the task returns one result per input
+once its last trajectory finishes.
+
+Select it in ``master_config.json``, then add its settings to the sampler config:
+
+.. code-block:: json
+
+   {
+     "sampler_task": "alframework.samplers.batched_mlmd.mlmd_trajectories_task"
+   }
+
+.. code-block:: json
+
+   {
+     "driver": {"strategy": "batched", "engine": "torchsim"},
+     "batching": {"batch_size": 32, "partial_policy": "timeout", "max_wait_seconds": 5.0},
+     "batched_calculator": "alframework.ml_interfaces.hippynn_interface.load_hippynn_batched_ensemble",
+     "random_seed": 1234,
+     "device": "cuda"
+   }
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Field
+     - Meaning
+   * - ``driver.strategy``
+     - ``"single"`` (default) runs one trajectory per task. ``"batched"`` groups
+       trajectories using the required ``batching`` block; see :doc:`batching`.
+   * - ``driver.engine``
+     - ``"ase"`` (default), ``"torchsim"``, or ``"alchemi"``. See below.
+   * - ``batched_calculator``
+     - Import string for a loader that evaluates many structures at once, used by
+       the ``torchsim`` and ``alchemi`` engines in place of ``ase_calculator``. For
+       HIPPYNN, use
+       ``alframework.ml_interfaces.hippynn_interface.load_hippynn_batched_ensemble``.
+       Without it, these engines evaluate the ``ase_calculator`` ensemble one
+       structure at a time.
+   * - ``batched_calculator_options``
+     - Optional keyword arguments for that loader.
+   * - ``random_seed``
+     - Optional. Derives each trajectory's random numbers from this seed and its
+       molecule ID, so results don't depend on how trajectories are grouped.
+   * - ``acquisition``
+     - Optional. How frames are chosen for QM; see :doc:`acquisition`.
+   * - ``MLMD_calculator_options``
+     - As above. Set ``udd_bias_weight`` here for uncertainty-driven dynamics.
+
+Dynamics engines
+   All three engines use the same checks, schedules, stopping rules, and
+   acquisition. They differ in how trajectories are advanced:
+
+   .. list-table::
+      :header-rows: 1
+      :widths: 16 34 24 26
+
+      * - Engine
+        - How it runs
+        - Hardware
+        - Install
+      * - ``ase``
+        - One ASE Langevin integrator per trajectory.
+        - Whatever the calculator supports.
+        - Included.
+      * - ``torchsim``
+        - All trajectories in one packed TorchSim state.
+        - CPU, NVIDIA, and AMD.
+        - ``torchsim`` extra, Python 3.12+.
+      * - ``alchemi``
+        - All trajectories in one packed state, using ALCHEMI kernels.
+        - CPU and NVIDIA. For ROCm, use TorchSim.
+        - ``alchemi`` extra, Python 3.11+. Versions 0.2.0 and 0.3.0 are supported.
+
+   The ``torchsim`` and ``alchemi`` engines must be installed in the sampler worker
+   environment; see :doc:`../getting_started/installation`. They don't support ASE
+   constraints, and their ``MLMD_calculator_options`` are limited to
+   ``well_params``, ``udd_bias_weight``, ``udd_bias_eps``, and ``debug_print``.
+
+   ``examples/simple_water`` includes ``mlmd_config_torchsim.json`` and
+   ``mlmd_config_alchemi.json``; see :doc:`../examples/simple_water`.
+
+Other differences from ``simple_mlmd_sampling_task``:
+
+* ``use_potential_specific_code`` isn't supported, so NeuroChem workflows need
+  ``simple_mlmd_sampling_task``.
+* ALF stops at startup if a single-structure sampler task is given ``driver``,
+  ``batching``, or ``acquisition.selection``.
+* For excited-state sampling, see :doc:`excited_states`.
+
+GPU Selection
+-------------
+
+Legacy MLMD, UDD, and the multi-trajectory sampler select GPUs automatically
+within the worker's scheduler/Parsl allocation. ALF doesn't change the CUDA, HIP,
+or ROCr visibility variables it finds.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - ``device``
+     - Behavior
+   * - not set
+     - ``simple_mlmd_sampling_task`` and ``simple_udd_sampling_task`` use a GPU
+       automatically and fail if none is available.
+       ``mlmd_trajectories_task`` uses a GPU automatically and falls back to CPU if
+       none is available.
+   * - ``"cuda"``
+     - Assign a GPU automatically. Fails if none is available.
+   * - ``"cuda:N"``
+     - Use visible device ``N``. Fails if it isn't available. With
+       ``CUDA_VISIBLE_DEVICES=2,5``, ``cuda:1`` is the second exposed GPU, not
+       physical GPU 1.
+   * - ``"cpu"``
+     - Use the CPU, without looking for a GPU.
+
+Automatic assignment spreads workers over the visible devices by
+``PARSL_WORKER_RANK``, so a worker restricted to one GPU uses that GPU. Without a
+visibility variable, ``gpus_per_node`` limits how many devices are used. A worker
+with no rank uses the first device.
+
+NeuroChem inference supports CUDA only, and its ``model_details['gpu']`` value is a
+local device number passed to its constructor. Training pools and reactive samplers
+handle devices separately.
+
 What The Sampler Returns
 ------------------------
 
@@ -240,6 +363,9 @@ task queue for labeling.
 If sampling completes without selecting a configuration, the sampler sets the
 atoms to ``None`` on the returned ``MoleculesObject``. ALF treats this as a
 successful sampling attempt that does not need QM labeling.
+
+With ``cohort_top_k`` selection, a trajectory's frames wait in a pool, and ALF sends
+only the selected frames to QM once the cohort finishes; see :doc:`acquisition`.
 
 Sampler metadata records the relevant diagnostics, including uncertainty
 values, temperature and density schedule history, distance checks, selection
@@ -278,6 +404,10 @@ Related Examples
    * - UDD workflows
      - ``alframework.samplers.udd_sampling.simple_udd_sampling_task``
      - Biased MLMD sampling toward high ensemble energy uncertainty.
+   * - ``examples/simple_water``, TorchSim and ALCHEMI configs
+     - ``alframework.samplers.batched_mlmd.mlmd_trajectories_task``
+     - Batched sampling with ``mlmd_config_torchsim.json`` or
+       ``mlmd_config_alchemi.json``.
 
 Sampler API Links
 -----------------
@@ -286,5 +416,8 @@ You can link from this guide directly to API pages:
 
 * :doc:`Samplers package API <../api_documentation/alframework.samplers>`
 * :doc:`MLMD sampling module <../api_documentation/alframework.samplers.mlmd_sampling>`
+* :doc:`Multi-trajectory MLMD module <../api_documentation/alframework.samplers.batched_mlmd>`
+* :doc:`TorchSim engine module <../api_documentation/alframework.samplers.torchsim_engine>`
+* :doc:`ALCHEMI engine module <../api_documentation/alframework.samplers.alchemi_engine>`
 * :doc:`Reactive sampler module <../api_documentation/alframework.samplers.reactive_sampler>`
 * :doc:`ASE ensemble calculator module <../api_documentation/alframework.samplers.ASE_ensemble_constructor>`

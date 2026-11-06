@@ -57,6 +57,15 @@ Supported Builder Tasks
      - Builds molecular fragments from SMILES with RDKit, then uses
        condensed-phase placement logic.
      - Optional SMILES-based condensed-phase workflows when RDKit is installed.
+   * - ``alframework.builders.external_geometry.external_geometry_builder_task``
+     - Imports geometries from XYZ, extended XYZ, or HDF5 files, without any labels
+       stored with them.
+     - Starting from structures you already have, including frames from an existing
+       dataset that need relabeling.
+   * - ``alframework.builders.defect_crystal_builder.defect_cell_builder_task``
+     - Loads a random ``.cfg`` crystal structure, then applies random vacancies,
+       interstitials, replacements, atom displacements, and cell scaling.
+     - Crystals with point defects.
 
 Choosing A Builder
 ------------------
@@ -87,6 +96,10 @@ reactive sampler.
 Use ``rdkit_condensed_phase_builder_task`` only when RDKit is installed and
 SMILES strings are the desired source of molecular fragments. It is optional
 because RDKit is not part of the lightest ALF setup.
+
+Use ``external_geometry_builder_task`` when you already have the starting
+structures and want each one labeled again from scratch. It copies only the
+geometry, so it never inherits results or calculator settings from the source file.
 
 Common Configuration Fields
 ---------------------------
@@ -166,11 +179,71 @@ Reactive builders
       * - ``N_reactions``
         - Number of reaction entries available in the files.
 
+External geometry builder
+   These fields are used by ``external_geometry_builder_task``.
+
+   .. code-block:: json
+
+      {
+        "sources": ["geometries/start.xyz", "geometries/more.h5"],
+        "selection_mode": "deterministic_hash",
+        "selection_seed": 7
+      }
+
+   .. list-table::
+      :header-rows: 1
+      :widths: 30 70
+
+      * - Field
+        - Meaning
+      * - ``sources``
+        - Required list of ``.xyz``, ``.extxyz``, ``.h5``, or ``.hdf5`` files.
+          Relative paths start from ``master_directory``. HDF5 groups need
+          ``coordinates`` shaped ``[frames, atoms, 3]`` and ``species``, and can also
+          provide ``cell`` and ``pbc``.
+      * - ``selection_mode``
+        - ``"deterministic_hash"`` (default) picks a frame from the molecule ID and
+          seed, and can pick the same frame more than once. ``"sequential"`` uses the
+          trailing number in the molecule ID as the frame number, and fails once the
+          sources run out of frames.
+      * - ``selection_seed``
+        - Seed for ``"deterministic_hash"``. The default is ``0``.
+
+   Molecule metadata records where each frame came from. To return several
+   structures from one task, set ``maximum_builder_structures``.
+
+Defect crystal builder
+   ``defect_cell_builder_task`` reads these fields:
+
+   .. list-table::
+      :header-rows: 1
+      :widths: 30 70
+
+      * - Field
+        - Meaning
+      * - ``cfg_dir``
+        - Directory containing ``.cfg`` structure files. Include the trailing ``/``.
+      * - ``maxVac``, ``maxInt``, ``maxRep``
+        - Most vacancies, interstitials, and replacements to apply. Each task picks a
+          random count up to this value. The defaults are ``0``.
+      * - ``typInt``, ``typRep``
+        - Lists of element types for interstitials and replacements.
+      * - ``rattle``, ``cRattle``
+        - Standard deviations of random atom displacements and random changes to the
+          cell lengths, in Angstroms. The defaults are ``0.0``.
+      * - ``cScaleRange``
+        - Range from which a cell scaling factor is drawn.
+      * - ``maxAt``
+        - The structure is repeated into a supercell with fewer than this many atoms.
+          The default is ``100``.
+
 Batched builders
    ``maximum_builder_structures`` belongs in the master configuration, not the
    builder configuration. It tells ALF how many candidate structures one builder
    task may return. Use it with
-   ``simple_multi_condensed_phase_builder_task``.
+   ``simple_multi_condensed_phase_builder_task`` or
+   ``external_geometry_builder_task``. See :doc:`batching` for how builder width
+   relates to sampler and QM batches.
 
 Related Examples
 ----------------
@@ -210,3 +283,5 @@ You can link from this guide directly to API pages:
 * :doc:`Core builders module <../api_documentation/alframework.builders.builders>`
 * :doc:`Molten-salt builder module <../api_documentation/alframework.builders.moltensalt_builder>`
 * :doc:`Reactive builder module <../api_documentation/alframework.builders.reactive_builder>`
+* :doc:`External geometry module <../api_documentation/alframework.builders.external_geometry>`
+* :doc:`Defect crystal module <../api_documentation/alframework.builders.defect_crystal_builder>`

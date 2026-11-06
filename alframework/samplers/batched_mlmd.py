@@ -279,6 +279,8 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
                 if cohort and decision['outcome'] == 'eligible':
                     entry['candidates'].append(_candidate(molecule_objects[index], engine, index, signals,
                                                           decision, time_ps))
+                    # A frame outside this trajectory's best can never be selected, so don't hold its geometry.
+                    entry['candidates'] = _prune(entry['candidates'], settings['selection'])
                     if keep_running:
                         # Keep sampling; the cohort selects among this trajectory's frames later.
                         decision = dict(decision, outcome='continue')

@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 from ase import Atoms
 
+from alframework.samplers import batched_mlmd
 from alframework.samplers.batched_mlmd import sample_trajectories
 from alframework.tools.cohorts import CohortPool
 from alframework.tools.molecules_class import MoleculesObject
@@ -125,6 +126,33 @@ def test_worker_pruning_keeps_the_selection():
     full, _ = replay(unpruned, 14, 50, 14, "forward")
     small, _ = replay(pruned, 14, 3, 14, "forward")
     assert selected_ids(small) == selected_ids(full)[:3]
+
+
+def test_candidate_pruning_as_frames_arrive_matches_pruning_at_the_end():
+    # Repeated scores exercise the tie-break on trajectory and step.
+    scores = np.random.default_rng(0).integers(0, 6, size=200)
+    candidates = [candidate("mol", step, float(score)) for step, score in enumerate(scores)]
+    selection = {"k": 5, "max_candidates_per_trajectory": None}
+    held = []
+    for frame in candidates:
+        held = batched_mlmd._prune(held + [frame], selection)
+    assert held == batched_mlmd._prune(candidates, selection)
+
+
+@pytest.mark.parametrize(
+    "k,cap,limit", [(2, None, 2), (5, 2, 2)], ids=["limited_by_k", "limited_by_cap"]
+)
+def test_trajectory_holds_only_the_candidates_it_can_return(monkeypatch, k, cap, limit):
+    prune = batched_mlmd._prune
+    held = []
+
+    def spy(candidates, selection):
+        held.append(len(candidates))
+        return prune(candidates, selection)
+
+    monkeypatch.setattr(batched_mlmd, "_prune", spy)
+    sampled(7, cohort_config(7, k, "continue", cap))
+    assert max(held) == limit + 1
 
 
 def candidate(trajectory_id, step, score):

@@ -14,7 +14,10 @@ passed, with 192 stored bootstrap frames and 26 new sampled labels in a
 promoted four-member ensemble. Increment 11B is next. Its preliminary A100
 40 GB CPP9 QM/50,000-row training-memory calibration is complete: native
 cuTENSOR restored full labeling; batch/scheduler/evaluation size eight is the
-measured recommendation for the qualified public PyTorch training path. Single-member excited-state
+measured recommendation for the qualified public PyTorch training path. DCM
+C-PCM labeling/storage qualification and portable AcAc/CPP example cleanup
+also passed on November 6; the ordinary CPP active-learning campaign remains
+the next E6 gate. Single-member excited-state
 sampling is a separate future capability, added by user decision November 5.
 Legacy NeuroChem is excluded from current acceptance by user decision. MI350 is deferred outside
 current acceptance. Post-release order decided: excited-state ALF, then
@@ -2418,10 +2421,10 @@ production qualification, and user-guide updates. Runtime force cutoffs do
 not filter stored QM labels in this stage.
 
 User-owned documentation follow-up, now unblocked by the 11A pass: document the held-back features,
-and add `examples/keto_acac` as the worked excited-state example; see **User
+and add `examples/AcAc_excited_pyseqm` as the worked excited-state example; see **User
 documentation pass (2026-11-06)**.
 
-### Increment 11B — calibration complete; cpp-ring ALF (E6) planned
+### Increment 11B — calibration and DCM labeling qualified; cpp-ring ALF (E6) planned
 
 Calibration scope approved November 6: brief A100 40 GB measurements before sizing the
 full CPP9 ALF loop. The fork production trial accepted 1,000/1,000 CPP9 labels
@@ -2558,10 +2561,122 @@ Slurm accounting and verified cleanup; the persistent session exited. Failed
 QM attempts and passed capacity measurements were retained under fingerprints.
 Other users' or unrelated jobs were not cancelled.
 
-Next: size and plan the bounded ordinary CPP9 ALF loop using these dependency
-and batch settings. Choose sampling states, acquisition/gap settings, bootstrap
-and new-label targets before E6 execution. No full CPP9 ALF campaign has been
-launched by this calibration.
+#### Portable examples and DCM C-PCM qualification (2026-11-06)
+
+**Passed labeling/storage prerequisite; E6 active learning remains planned.**
+The final evidence is
+`validation/dcm_pcm_20261106/run-002/result.json`,
+`qualification-summary.json`, and `qualification-report.md`. The qualified
+library is `f90de02`; the corrected external harness is `bf1af78`. Frozen
+source/input fingerprints, retained ring evidence, and package versions were
+verified after completion. The final library suite passed **507 tests, with
+42 optional-engine skips**; focused GPU4PySCF checks passed 68 tests and the
+external example/qualification checks passed 33 tests.
+
+**Example and test placement.** The transferable example directories are
+`examples/AcAc_excited_pyseqm` (renamed from `keto_acac`) and
+`examples/CPP_excited_gpu4pyscf`. The CPP example includes minimized gas-phase
+S0 references for CPP6/CPP9, their provenance and energy offsets, and CPU
+preparation for other para-linked CPP sizes when a minimized reference and
+explicit offset are supplied. Ring-specific preparation and bootstrap/runtime
+replay policy live in that example. Its thin builder delegates geometry
+reading, label stripping and atom-identity preservation to the existing
+`external_geometry.py`; the recently introduced library ring builder was
+removed. Sequential finite bootstrap and deterministic replay from closed
+labeled shards are preserved. Newly added example/profile/portability tests
+now live in `alf_validation`; the HIPPYNN four-state test uses a small
+independent fixture. Earlier RDKit coverage is unchanged. HIP-HOP145,
+HIP-HOP64 and HIP-NN64 are configuration choices; smaller-model GPU capacity
+and predictive accuracy have not been qualified.
+
+**Scientific interface.** The existing production GPU4PySCF task now supports
+opt-in DCM C-PCM with static/optical dielectrics 9.02/2.03, Lebedev order 29,
+radius scale 1.2, SWIG surface and PCM tolerance 1e-7. Qualification retained
+neutral-singlet CAM-B3LYP/6-31G, density fitting, DFT grid level 3, SCF 1e-10,
+TDA 1e-6 with at most 300 cycles, CPHF 1e-8 and eight CPU threads.
+Equilibrium LR-C-PCM supplies S0–S3 energies/analytic forces, gaps and the
+native solvent-aware pairwise NACs (1,2)/(1,3)/(2,3). These are LR-PCM labels,
+not state-specific PCM energies. Existing dipole/oscillator-strength fields
+remain equilibrium outputs. Separate optional `vertical_excitation_energies`,
+`vertical_transition_dipoles` and `vertical_oscillator_strengths` come from a
+nonequilibrium TDA solve with explicit optical dielectric and independent
+vertical root ordering. The offset is applied once to state energies, never
+to gaps or vertical excitation energies. Gas defaults and task signatures
+are preserved. CPP preparation selects `--solvent gas|dcm` into fresh isolated
+run directories; the included topology references remain gas-phase minima.
+NACs and optical arrays remain storage properties rather than training heads.
+
+**Real GPU evidence.** All six final fixture/environment cases converged
+through production `LabelingCoordinator` calls and passed HDF5 round trips:
+
+| Fixture | Medium | Calculation time (s) | Sampled GPU peak (GiB) |
+| --- | --- | ---: | ---: |
+| Perturbed formaldehyde | gas | 7.89 | 0.70 |
+| Perturbed formaldehyde | DCM | 13.60 | 0.72 |
+| CPP6 minimized S0 reference | gas | 146.33 | 29.91 |
+| CPP6 minimized S0 reference | DCM | 261.81 | 14.84 |
+| CPP9 minimized S0 reference | gas | 404.60 | 39.02 |
+| CPP9 minimized S0 reference | DCM | 698.40 | 33.27 |
+
+These are per-fixture measurements, not a universal labeling rate. The earlier
+185.03-second CPP9 calibration used a perturbed smoke geometry on `cn0`;
+this minimized-reference check ran on `cn1`. The extra gas vertical-spectrum
+handling took only 0.02 seconds. Geometry/node and cache differences prevent
+direct attribution of the slowdown without a matched profiling comparison.
+The approximately 39 GiB gas peak remains close to card capacity; this does
+not establish that every future sampled geometry will fit.
+
+Maximum small-molecule CPU/GPU differences were **7.1e-7 eV** for equilibrium
+and vertical energies (limit 1e-5), **2.09e-6 eV/Å** for forces (limit 1e-4),
+and **2.10e-12 Å⁻¹** for phase-aligned pairwise NACs (comparison limit 1e-5).
+Representative moving-grid GPU force finite differences differed by
+**7.32e-4 eV/Å** (limit 1e-3). The gas/DCM energy change was 0.18277 eV.
+Requested optical arrays were finite, oscillator strengths nonnegative, and
+storage checks verified atom identities, offsets, scales, NAC pair order and
+pair/atom axes. Each store retains its frozen solvent/response manifest.
+
+The first small-molecule attempt failed reference comparisons, not labeling
+or GPU memory allocation. The CPU force reference initially moved the DFT
+quadrature, whereas upstream analytic gradients omit quadrature-grid response.
+The corrected CPU derivative fixes DFT quadrature while rebuilding the PCM
+cavity; the independent moving-grid finite-difference gate is retained.
+The independent NAC reference also needed ALF's Davidson `lindep=1e-20`
+instead of the upstream default. Matching it removed the discrepancy.
+Scientific inputs and acceptance limits were unchanged. Both passed ring
+stages were retained under verified fingerprints; only the affected small
+stage was retried. Initial evidence remains under `run-001/`.
+
+**Runtime dependency and CI boundary.** Real checks reused frozen GPU4PySCF
+1.9.1/PySCF 2.15.0/CuPy 14.2.0 with `cutensor-cu13==2.8.1` and the wheel's
+`cutensor/lib` directory on worker `LD_LIBRARY_PATH`. Preflight verified native
+cuTENSOR before calculation and would reject fallback; no CuPy contraction fallback,
+density-fitting offload, visibility-mask change or OOM failure occurred in
+this qualification. cuTENSOR is required for this qualified A100 CPP/PCM
+profile, not for all ALF installations or GitHub CPU unit-test jobs.
+`tests/test_gpu4pyscf.py` fakes GPU4PySCF/PySCF/CuPy; its CPU results establish
+interface behavior, not real GPU numerics or memory capacity. Any future GPU
+CI job must install a CUDA-compatible cuTENSOR wheel, expose its libraries,
+and run the external native-backend preflight. Do not add CUDA/cuTENSOR to
+the current CPU CI matrix solely for these mocked tests.
+
+**Execution and cleanup.** Sequential one-worker allocations used
+`shared-redstone` A100-SXM4-40GB nodes, explicit interpreters and GCC 11,
+30-minute allocation caps, and the original November 6
+11:07:42–13:07:42 Mountain queue-inclusive deadline. Qualification and cleanup
+completed in **36.32 minutes**, reserving two minutes for cleanup. All four
+owned jobs (`17381269`, `17381278`, `17381297`, `17381353`) have terminal
+accounting and verified termination; both persistent Darwin supervisors
+exited. The first job's failure records the corrected reference mismatch;
+the ring jobs and retry completed successfully. No environment/upstream
+installation was changed, and no training, dynamics or full ALF campaign was
+launched. Generated artifacts remain outside Git.
+
+Next: size and plan the bounded ordinary CPP9 ALF loop using the qualified
+gas/DCM labeler and measured training batch settings. CPP6 is an additional
+transferable example, not another required campaign gate. Choose the solvent,
+sampling states, acquisition/gap settings, bootstrap/new-label targets and
+resource budget before E6 execution. Preserve the deferred
+production-scale qualification, post-QM filtering and user-owned guide work.
 
 
 

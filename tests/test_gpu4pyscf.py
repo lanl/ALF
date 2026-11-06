@@ -2,6 +2,13 @@
 
 GPU4PySCF, PySCF, and CuPy are replaced with fakes, so this needs no GPU. It checks ALF's settings,
 unit conversions, failure handling, and storage, not the quantum chemistry itself.
+
+This module runs in GitHub's CPU unit-test matrix without GPU4PySCF, CuPy,
+CUDA, or cuTENSOR. Passing these tests does not establish real GPU numerical
+agreement or memory capacity. The external alf_validation CPP/PCM qualification
+requires native cuTENSOR: its frozen CUDA 13 stack uses cutensor-cu13==2.8.1,
+exposes the wheel's cutensor/lib directory through worker LD_LIBRARY_PATH,
+and rejects a CuPy contraction fallback before calculation.
 """
 
 import importlib

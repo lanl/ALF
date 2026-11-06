@@ -17,7 +17,11 @@ jobs:
       fail-fast: false
       matrix:
         # base: no torch or HIPPYNN. hippynn: the common ML stack.
-        # engines: every optional package, so that no test is left skipping.
+        # engines: optional sampler dependencies, including their CPU import checks.
+        # GPU4PySCF tests use fakes in every CPU job; no additional CUDA,
+        # GPU4PySCF, CuPy or cuTENSOR install is needed for those tests.
+        # Real CPP/PCM GPU qualification and its native-cuTENSOR guard live
+        # in external alf_validation.
         dependencies: [base, hippynn, engines]
 
     steps:

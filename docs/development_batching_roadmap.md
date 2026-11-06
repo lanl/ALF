@@ -2709,6 +2709,17 @@ queue target is 64. Idle nodes are released by Parsl; no campaign controller
 or ten-node reservation is required on the destination cluster. Native
 cuTENSOR preflight follows worker device selection without changing masks.
 
+Launch evidence: ALF `30ba5ea`, external harness `ac4c0cb`; generated run
+`validation/cpp9_e6_20261106/run-001/`. The focused external suite passed
+**51 tests**; the full library suite passed **507 tests, 42 skipped**. The
+persistent `alf-cpp9-e6` tmux supervisor and ordinary coordinator are running
+on `darwin-fe2`; sampling allocation `17381481` and QM allocation `17381482`
+started on `cn4072` and `cn0`. Training is queued by Parsl when bootstrap
+labeling/storage finishes. The original queue-inclusive window is November 6,
+12:33–16:33 Mountain, with sampling/QM acceptance still pending. The user
+chose to disconnect after launch rather than wait for four bootstrap successes;
+the four-GPU overlap requirement remains an automatic acceptance gate.
+
 **E6 remains incomplete until the pilot passes and owned-job termination is
 verified.** Ten-node scaling, predictive accuracy, long-time stability,
 production-scale qualification and post-QM filtering remain unclaimed.

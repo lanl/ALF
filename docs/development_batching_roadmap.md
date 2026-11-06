@@ -204,6 +204,31 @@ Results on Actions (fork run `42173316850`, Ubuntu, Python 3.12, CPU):
 `torchvision` pulled in by ALCHEMI doesn't work with CPU-only torch, so that job
 installs both from the PyTorch CPU index.
 
+### User documentation pass (2026-11-06)
+
+`README.md` and `docs/source` now cover merged capabilities through Increment 10,
+with new pages `user_guide/batching.rst`, `user_guide/acquisition.rst`, and
+`user_guide/excited_states.rst`. User docs describe behavior and settings for people
+running ALF, so they don't mention increments or campaigns.
+
+**Held back until Increment 11A passes real qualification (user decision):**
+`topology_check`, `max_force_cutoff`, `screen_audit_dir`, `friction_per_fs`,
+`finite_bootstrap`, `rdkit_molecule_builder_task`, `group_by_selected_state`, and
+`examples/keto_acac`. These still appear on the auto-generated API pages. The
+`excited_states.rst` page has no worked example until `keto_acac` can be documented.
+
+`sphinx-docs.yml` now also builds for `development`, while deployment stays limited
+to `main`. The public site therefore keeps describing `main` until `development`
+merges.
+
+Known gaps left open:
+
+- Code docstrings produce 27 RST warnings during the build, so the docs job doesn't
+  use `-W`. The user guide itself builds without warnings.
+- `parsl` is in `autodoc_mock_imports`, so functions decorated with `@python_app`,
+  including most `*_task` entry points, don't appear on API pages. The user guide
+  names them, but their API pages don't document them.
+
 ## Development and test environments
 
 Policy, decided 2026-11-03: test development work against fresh installs with
@@ -880,10 +905,10 @@ the acceptance decision above:
 4. Keep the deferred gates explicitly open: trained cell-input checkpoint,
    long-time potential stability, and MI350. They do not block the next increment.
 
-User-guide updates are deferred at the user's direction (2026-11-04), outside
-the current scope and Increment 7 acceptance. A later documentation change can
-describe `driver`, `batching`, `acquisition`, and labeling batch settings, with
-pointers to the tracked TorchSim/ALCHEMI water configs and campaign README.
+User-guide updates were deferred at the user's direction (2026-11-04), outside
+the scope of Increment 7 acceptance. They now describe `driver`, `batching`,
+`acquisition`, and labeling batch settings, with pointers to the tracked
+TorchSim/ALCHEMI water configs; see **User documentation pass (2026-11-06)**.
 Roadmap status and validation evidence records remain part of close-out.
 
 #### Focused prerequisites (2026-11-02)
@@ -2337,6 +2362,10 @@ Deferred: post-QM force/distance/topology filtering of converged labels,
 GALF/LCM, staged handoffs, single-member excited-state sampling, full-scale
 production qualification, and user-guide updates. Runtime force cutoffs do
 not filter stored QM labels in this stage.
+
+Follow-up when 11A passes: document the features held back from the user guide,
+and add `examples/keto_acac` as the worked excited-state example; see **User
+documentation pass (2026-11-06)**.
 
 ### Increment 11B — planned: cpp-ring ALF (E6), after 11A
 

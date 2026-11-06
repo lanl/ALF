@@ -40,9 +40,9 @@ from alframework.tools.molecules_class import MoleculesObject
 from alframework.tools.tools import build_input_dict, store_current_data
 
 
-@pytest.mark.parametrize('solvent', [{'method': 'C-PCM', 'static_dielectric': 9.02}, {}, 'dichloromethane'])
-def test_unsupported_solvent_cannot_silently_label_in_vacuum(solvent):
-    with pytest.raises(ValueError, match='implicit solvent is not implemented'):
+@pytest.mark.parametrize('solvent', [{}, 'dichloromethane', {'method':'IEF-PCM'}, {'optical_dielectric':0.}, {'optical_dielectric':10.}, {'lebedev_order':30}, {'unknown':1}])
+def test_invalid_solvent_cannot_silently_label_in_vacuum(solvent):
+    with pytest.raises(ValueError):
         validate_gpu4pyscf_config({'solvent': solvent})
     assert validate_gpu4pyscf_config({'solvent': {'enabled': False}})['xc'] == DEFAULT_GPU4PYSCF_CONFIG['xc']
 
@@ -434,12 +434,21 @@ def fake_gpu_stack(monkeypatch):
             return np.full((3, 3), float(state))
 
     class FakeTD:
-        def __init__(self):
+        def __init__(self, equilibrium=True):
             self.nstates = None
             self.conv_tol = None
             self.max_cycle = None
             self.converged = np.asarray([True, True])
             self.e = np.asarray([0.1, 0.2])
+            self.equilibrium = equilibrium
+            if not equilibrium:
+                self.e += .05
+
+        def nac_method(self):
+            def kernel(states):
+                calls.setdefault('nac_pairs', []).append(states)
+                return [np.zeros((3,3))]*3+[np.full((3,3), .125)]
+            return SimpleNamespace(kernel=kernel)
 
         def kernel(self):
             calls["tda_kernel"] = True
@@ -452,6 +461,11 @@ def fake_gpu_stack(monkeypatch):
             self.grids = SimpleNamespace(level=None)
             self.converged = np.bool_(True)
             self.e_tot = np.asarray(-2.0)
+            self.with_solvent = SimpleNamespace()
+
+        def PCM(self):
+            calls['pcm'] = self.with_solvent
+            return self
 
         def density_fit(self, **kwargs):
             calls["density_fit"] = kwargs
@@ -464,8 +478,9 @@ def fake_gpu_stack(monkeypatch):
         def kernel(self):
             calls["scf_kernel"] = True
 
-        def TDA(self):
-            calls["tda"] = FakeTD()
+        def TDA(self, equilibrium_solvation=True):
+            calls.setdefault('response_modes', []).append(equilibrium_solvation)
+            calls["tda"] = FakeTD(equilibrium_solvation)
             return calls["tda"]
 
         def nuc_grad_method(self):
@@ -501,7 +516,95 @@ def fake_gpu_stack(monkeypatch):
         "import_module",
         lambda name: modules[name] if name in modules else real_import(name),
     )
+    calls['mf'] = fake_mf
     return calls
+
+
+def test_failed_vertical_tda_is_not_accepted_as_a_complete_label(fake_gpu_stack, monkeypatch):
+    original = fake_gpu_stack['mf'].TDA
+    def tda(equilibrium_solvation=True):
+        value = original(equilibrium_solvation)
+        if not equilibrium_solvation:
+            value.converged = np.array([False,True])
+        return value
+    monkeypatch.setattr(fake_gpu_stack['mf'], 'TDA', tda)
+    options = validate_gpu4pyscf_config(dict(nroots=2, solvent={'enabled':True}))
+    options['_compute_vertical'] = True
+    with pytest.raises(GPU4PySCFTDAError) as error:
+        run_gpu4pyscf_states(_molecule().atoms, options, device_index=0)
+    assert error.value.stage == 'vertical_tda'
+
+
+def test_pcm_sequential_batch_retains_successful_members(fake_backend, tmp_path):
+    from tests.helpers.driver import loaded_parsl
+    from alframework.tools.labeling import LabelingCoordinator
+    def run(atoms, options, **kwargs):
+        if atoms.positions[0,0] < 0:
+            raise GPU4PySCFTDAError('synthetic vertical failure', stage='vertical_tda')
+        return (*_predictions(2), _no_nac(), _no_pairs(), {})
+    fake_backend(run)
+    config=dict(nroots=2, solvent={'enabled':True}, batching=dict(mode='sequential',batch_size=4))
+    props=_properties(2)
+    with loaded_parsl(tmp_path/'runinfo', 'alf_QM_executor'):
+        coordinator=LabelingCoordinator(gpu4pyscf_excited_state_task,
+            'alframework.qm_interfaces.gpu4pyscf_interface.gpu4pyscf_excited_state_task',config)
+        kwargs=[dict(QM_config=config,properties_list=props,gpus_per_node=1)]
+        for index in range(4):
+            molecule=_molecule(str(index))
+            if index==1:molecule.atoms.positions[0,0]=-1.
+            coordinator.submit(molecule,kwargs)
+        coordinator.submit_ready(kwargs)
+        result=coordinator.queue.task_list[-1].result(timeout=30)
+    assert [m.get_moleculeid() for m in result]==['0','1','2','3']
+    assert [m.check_convergence() for m in result]==[True,False,True,True]
+
+
+def test_pcm_routes_equilibrium_forces_nacs_and_separate_vertical_spectrum(fake_gpu_stack, monkeypatch):
+    calls = fake_gpu_stack
+    monkeypatch.setattr(gpu4pyscf_module, 'transition_dipoles_staged', lambda td, cupy: np.full((2,3), 1. if td.equilibrium else 2.))
+    options = validate_gpu4pyscf_config(dict(nroots=2, compute_nacr=True, solvent={'enabled':True}))
+    options.update(_compute_optical=True, _compute_vertical=True, _compute_vertical_optical=True)
+    energy, forces, nac, pairs, metadata = run_gpu4pyscf_states(_molecule().atoms, options, device_index=0)
+    assert calls['pcm'].eps == 9.02 and calls['pcm'].eps_optical == 2.03
+    assert calls['response_modes'] == [True, False]
+    assert calls['nac_pairs'] == [(1,2)] and calls['gradient_states'] == [1,2]
+    np.testing.assert_allclose(energy, [-4.,-3.8,-3.6])
+    np.testing.assert_allclose(metadata['_vertical_excitation_energies'], [.3,.5])
+    np.testing.assert_allclose(metadata['_transition_dipoles'], 1.)
+    np.testing.assert_allclose(metadata['_vertical_transition_dipoles'], 2.)
+    np.testing.assert_allclose(nac, .25)
+    assert metadata['qm_nac_solver']=='solvent_pairwise' and metadata['s1_gradient_source']=='tda_gradient'
+
+
+def test_vertical_units_offset_and_hdf5_roundtrip(fake_backend, tmp_path):
+    props = _properties(2, include_gap=True)
+    for key in gpu4pyscf_module.VERTICAL_PROPERTIES:
+        props[key] = [key, 'system', 2.]
+    # All energies share the same stored scale; offsets never touch excitations.
+    for key in ('sE0','sE1','sE2','dE01'):
+        props[key][2] = 2.
+    values = dict(_vertical_excitation_energies=np.array([.3,.5]),
+        _vertical_transition_dipoles=np.ones((2,3)), _vertical_oscillator_strengths=np.array([.1,.2]))
+    fake_backend(_returns(*_predictions(2), versions=values))
+    molecule = label_gpu4pyscf_excited_state_molecule(_molecule(), QM_config=dict(nroots=2, solvent={'enabled':True}, energy_offset_eV=-100.), properties_list=props)
+    assert molecule.check_convergence()
+    assert molecule.get_results()['sE0']==10.
+    np.testing.assert_allclose(molecule.get_results()['vertical_excitation_energies'], [.3,.5])
+    path = tmp_path/'labels.h5'
+    store_current_data(str(path), [molecule], props)
+    with h5py.File(path) as handle:
+        group = next(iter(handle.values()))
+        np.testing.assert_allclose(group['vertical_excitation_energies'][0], [.6,1.])
+
+
+@pytest.mark.parametrize('property_name,value', [('vertical_excitation_energies',[float('nan'),1.]), ('vertical_transition_dipoles',[[1,2,3]]), ('vertical_oscillator_strengths',[-1.,0.])])
+def test_invalid_vertical_output_is_unconverged(fake_backend, property_name, value):
+    props = _properties(2)
+    props[property_name] = [property_name,'system',1.]
+    fake_backend(_returns(*_predictions(2), versions={'_'+property_name:value}))
+    molecule = label_gpu4pyscf_excited_state_molecule(_molecule(), QM_config={'nroots':2}, properties_list=props)
+    assert not molecule.check_convergence()
+    assert property_name not in molecule.get_results()
 
 
 def test_backend_runs_rks_tda_for_every_state(fake_gpu_stack):

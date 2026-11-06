@@ -53,6 +53,7 @@ DEFAULT_GPU4PYSCF_CONFIG = {
     "verbosity": 0,
     "energy_offset_eV": 0.0,
     "compute_nacr": False,
+    "solvent": None,
 }
 
 # ALF stores nonadiabatic coupling vectors under one flattened pair_atomic
@@ -61,6 +62,44 @@ DEFAULT_GPU4PYSCF_CONFIG = {
 NACR_PROPERTY_KEY = "nacr"
 NAC_SCOPE = "excited_excited"
 NACR_UNITS = "angstrom^-1"
+
+DCM_PCM_CONFIG = {
+    "enabled": True, "name": "dichloromethane", "method": "C-PCM",
+    "static_dielectric": 9.02, "optical_dielectric": 2.03,
+    "lebedev_order": 29, "vdw_scale": 1.2,
+    "surface_discretization_method": "SWIG", "pcm_conv_tol": 1e-7,
+}
+VERTICAL_PROPERTIES = {
+    "vertical_excitation_energies", "vertical_transition_dipoles", "vertical_oscillator_strengths",
+}
+
+
+def _validate_solvent(config):
+    if config is None:
+        return None
+    if not isinstance(config, dict) or not config:
+        raise ValueError('solvent must be a nonempty PCM configuration dictionary')
+    if not isinstance(config.get('enabled', True), bool):
+        raise ValueError('solvent.enabled must be Boolean')
+    unknown = set(config) - set(DCM_PCM_CONFIG)
+    if unknown:
+        raise ValueError(f'Unknown PCM solvent settings: {sorted(unknown)}')
+    if not config.get('enabled', True):
+        return None
+    options = {**DCM_PCM_CONFIG, **config}
+    if options['method'] != 'C-PCM' or options['surface_discretization_method'] != 'SWIG':
+        raise ValueError('This interface supports C-PCM with a SWIG surface')
+    if not isinstance(options['name'], str) or not options['name'].strip():
+        raise ValueError('solvent.name must be a nonempty descriptive string')
+    for key in ('static_dielectric', 'optical_dielectric', 'vdw_scale', 'pcm_conv_tol'):
+        options[key] = _positive_float(options[key], name='solvent.'+key)
+    if not options['static_dielectric'] >= options['optical_dielectric'] >= 1.:
+        raise ValueError('Require static_dielectric >= optical_dielectric >= 1')
+    options['lebedev_order'] = _integer(options['lebedev_order'], name='solvent.lebedev_order', minimum=1)
+    # PySCF's supported Lebedev orders, not arbitrary sphere point counts.
+    if options['lebedev_order'] not in {3,5,7,9,11,13,15,17,19,21,23,25,27,29,31,35,41,47,53,59,65,71,77,83,89,95,101,107,113,119,125,131}:
+        raise ValueError('Unsupported solvent.lebedev_order')
+    return options
 
 
 def excited_excited_nac_pairs(nroots: int) -> tuple[tuple[int, int], ...]:
@@ -171,14 +210,9 @@ def validate_gpu4pyscf_config(QM_config: dict[str, Any] | None) -> dict[str, Any
 
     if QM_config is not None and not isinstance(QM_config, dict):
         raise TypeError("QM_config must be a dictionary.")
-    solvent = (QM_config or {}).get('solvent')
-    if solvent is not None and not (isinstance(solvent, dict) and solvent.get('enabled') is False):
-        raise ValueError(
-            'GPU4PySCF excited-state implicit solvent is not implemented in ALF. '
-            'A solvent configuration must not silently produce gas-phase labels.'
-        )
     options = dict(DEFAULT_GPU4PYSCF_CONFIG)
     options.update(dict(QM_config or {}))
+    options['solvent'] = _validate_solvent(options.get('solvent'))
 
     for key in ("xc", "basis"):
         value = options.get(key)
@@ -323,11 +357,14 @@ def validate_gpu4pyscf_properties(
             )
         supported_keys.add(NACR_PROPERTY_KEY)
 
-    optical_keys = {"transition_dipoles", "oscillator_strengths", "absolute_state_energies"}
+    optical_keys = {"transition_dipoles", "oscillator_strengths", "absolute_state_energies"} | VERTICAL_PROPERTIES
     for key in optical_keys.intersection(properties_list):
         schema = properties_list[key]
         if len(schema) != 3 or str(schema[1]).lower() != "system" or not str(schema[0]):
             raise ValueError(f"Optical property {key!r} must declare a system dataset and scale.")
+        _positive_float(schema[2], name=key+'.scale')
+        if key == 'vertical_excitation_energies' and float(schema[2]) != float(properties_list[state_table[0]['energy_key']][2]):
+            raise ValueError('Vertical excitation energies and state energies must use consistent scales')
     supported_keys.update(optical_keys)
     unsupported = sorted(set(properties_list) - supported_keys)
     if unsupported:
@@ -720,6 +757,17 @@ def run_gpu4pyscf_states(
         mf.grids.level = int(options["grids_level"])
         mf.conv_tol = float(options["scf_conv_tol"])
         mf.max_cycle = int(options["scf_max_cycle"])
+        if options.get('solvent'):
+            mf = mf.PCM()
+            solvent = options['solvent']
+            pcm = mf.with_solvent
+            pcm.method = solvent['method']
+            pcm.eps = solvent['static_dielectric']
+            pcm.eps_optical = solvent['optical_dielectric']
+            pcm.lebedev_order = solvent['lebedev_order']
+            pcm.vdw_scale = solvent['vdw_scale']
+            pcm.surface_discretization_method = solvent['surface_discretization_method']
+            pcm.conv_tol = solvent['pcm_conv_tol']
         mf.kernel()
     except GPU4PySCFError:
         raise
@@ -735,7 +783,7 @@ def run_gpu4pyscf_states(
     nroots = int(options["nroots"])
     root_states = tuple(range(1, nroots + 1))
     try:
-        td = mf.TDA()
+        td = mf.TDA(equilibrium_solvation=True) if options.get("solvent") else mf.TDA()
         td.nstates = nroots
         td.conv_tol = float(options["tda_conv_tol"])
         td.max_cycle = int(options["tda_max_cycle"])
@@ -832,7 +880,7 @@ def run_gpu4pyscf_states(
     # The NAC solver returns the S1 gradient as a byproduct of grad_state=1, so
     # the direct TDA gradient loop starts at S2 when coupling is requested.
     first_direct_state = 1
-    if compute_nacr:
+    if compute_nacr and not options.get("solvent"):
         nac_start = time.time()
         try:
             nac_solver = td.nac_gradient_method()
@@ -884,6 +932,22 @@ def run_gpu4pyscf_states(
             ) from exc
         first_direct_state = 2
 
+    if compute_nacr and options.get('solvent'):
+        nac_start = time.time()
+        vectors = []
+        try:
+            for pair in expected_pairs:
+                solver = td.nac_method()
+                solver.cphf_conv_tol = float(options['cphf_conv_tol'])
+                result = solver.kernel(states=pair)
+                if len(result) != 4:
+                    raise ValueError(f'Expected four NAC arrays for {pair}')
+                vectors.append(np.asarray(_to_numpy(result[3], cupy), dtype=np.float64))
+            nacr_bohr_inverse = np.stack(vectors)
+        except Exception as exc:
+            raise GPU4PySCFNACError(f'Solvent-aware NAC failed: {type(exc).__name__}: {exc}', failed_states=root_states) from exc
+        nac_elapsed = time.time() - nac_start
+
     try:
         excited_gradient = td.nuc_grad_method()
         excited_gradient.cphf_conv_tol = float(options["cphf_conv_tol"])
@@ -905,6 +969,35 @@ def run_gpu4pyscf_states(
                 failed_states=(state,),
             ) from exc
 
+    vertical_start = time.time()
+    vertical_results = {}
+    if options.get('_compute_vertical', False):
+        try:
+            vertical = mf.TDA(equilibrium_solvation=False) if options.get('solvent') else td
+            if vertical is not td:
+                vertical.nstates = nroots
+                vertical.conv_tol = float(options['tda_conv_tol'])
+                vertical.max_cycle = int(options['tda_max_cycle'])
+                vertical.lindep = float(options['tda_lindep'])
+                vertical.kernel()
+            _require_tda_convergence(vertical, nroots, cupy)
+            excitation = np.asarray(_to_numpy(vertical.e, cupy), dtype=np.float64)
+            if excitation.shape != (nroots,) or not np.isfinite(excitation).all():
+                raise ValueError('Invalid vertical excitation energies')
+            vertical_results['_vertical_excitation_energies'] = excitation * float(nist.HARTREE2EV)
+        except Exception as exc:
+            error = GPU4PySCFTDAError(f'Vertical TDA failed: {type(exc).__name__}: {exc}', failed_states=root_states, stage='vertical_tda')
+            raise error from exc
+        if options.get('_compute_vertical_optical', False):
+            try:
+                moments = transition_dipoles_staged(vertical, cupy)
+                strengths = (2./3.)*excitation*np.einsum('si,si->s', moments, moments)
+                moments, strengths = _validated_optical_outputs(moments, strengths, nroots=nroots)
+                vertical_results.update(_vertical_transition_dipoles=moments, _vertical_oscillator_strengths=strengths)
+            except Exception as exc:
+                raise GPU4PySCFOutputError(f'Vertical optics failed: {type(exc).__name__}: {exc}', stage='vertical_optical') from exc
+    vertical_seconds = time.time() - vertical_start
+
     # de_etf_scaled is bohr^-1; ALF stores angstrom^-1 alongside its
     # angstrom-based coordinates and eV/angstrom forces.
     nacr_angstrom_inverse = nacr_bohr_inverse / float(nist.BOHR)
@@ -918,12 +1011,20 @@ def run_gpu4pyscf_states(
         bohr_to_angstrom=float(nist.BOHR),
     )
     versions = {
+        **vertical_results,
+        "qm_solvent": options.get('solvent'),
+        "qm_state_response": 'equilibrium_lr_pcm' if options.get('solvent') else 'gas',
+        "qm_optical_response": 'equilibrium_lr_pcm' if options.get('solvent') else 'gas',
+        "qm_vertical_response": 'nonequilibrium_lr_pcm' if options.get('solvent') else 'gas',
+        "qm_vertical_root_order": 'independent ascending vertical TDA roots',
+        "qm_vertical_seconds": vertical_seconds,
+        "qm_nac_solver": ('solvent_pairwise' if options.get('solvent') else 'gas_multistate') if compute_nacr else 'none',
         "_transition_dipoles": transition_dipoles,
         "_oscillator_strengths": oscillator_strengths,
         "qm_scf_seconds": scf_seconds,
         "qm_tda_seconds": tda_seconds,
         "qm_optical_seconds": optical_seconds,
-        "qm_gradient_seconds": time.time() - gradient_start - (nac_elapsed or 0.0),
+        "qm_gradient_seconds": time.time() - gradient_start - (nac_elapsed or 0.0) - vertical_seconds,
         "gpu4pyscf_num_devices": int(getattr(getattr(gpu4pyscf, "__config__", None), "num_devices", 1)),
         "pyscf_version": str(getattr(pyscf, "__version__", "unknown")),
         "gpu4pyscf_version": str(
@@ -931,7 +1032,7 @@ def run_gpu4pyscf_states(
         ),
         "cupy_version": str(getattr(cupy, "__version__", "unknown")),
         "s1_gradient_source": (
-            "nac_solver" if compute_nacr else "tda_gradient"
+            "nac_solver" if compute_nacr and not options.get("solvent") else "tda_gradient"
         ),
     }
     if nac_elapsed is not None:
@@ -947,9 +1048,9 @@ def run_gpu4pyscf_states(
 
 def _convergence_metadata_for_failure(stage: str) -> dict[str, bool]:
     return {
-        "qm_scf_converged": stage in {"tda", "nac", "gradient", "output"},
-        "qm_tda_converged": stage in {"nac", "gradient", "output"},
-        "qm_nac_converged": stage in {"gradient", "output"},
+        "qm_scf_converged": stage in {"tda", "optical", "nac", "gradient", "output", "vertical_tda", "vertical_optical"},
+        "qm_tda_converged": stage in {"optical", "nac", "gradient", "output", "vertical_tda", "vertical_optical"},
+        "qm_nac_converged": stage in {"gradient", "output", "vertical_tda", "vertical_optical"},
     }
 
 
@@ -980,6 +1081,8 @@ def label_gpu4pyscf_excited_state_molecule(
         )
         options["_compute_optical"] = bool(
             {"transition_dipoles", "oscillator_strengths"}.intersection(properties_list))
+        options['_compute_vertical'] = bool(VERTICAL_PROPERTIES.intersection(properties_list))
+        options['_compute_vertical_optical'] = bool({'vertical_transition_dipoles', 'vertical_oscillator_strengths'}.intersection(properties_list))
         atoms = molecule_object.get_atoms()
         if atoms is None or len(atoms) < 1:
             raise ValueError(
@@ -1049,6 +1152,16 @@ def label_gpu4pyscf_excited_state_molecule(
                 optical_results["oscillator_strengths"] = strengths
         if "absolute_state_energies" in properties_list:
             optical_results["absolute_state_energies"] = energies.copy()
+        for key in VERTICAL_PROPERTIES:
+            value = backend_metadata.pop('_'+key, None)
+            if key in properties_list:
+                expected = (int(options['nroots']), 3) if key=='vertical_transition_dipoles' else (int(options['nroots']),)
+                array = np.asarray(value, dtype=np.float64)
+                if array.shape != expected or not np.isfinite(array).all():
+                    raise GPU4PySCFOutputError('Missing or invalid '+key)
+                if key=='vertical_oscillator_strengths' and np.any(array < 0):
+                    raise GPU4PySCFOutputError('Negative vertical oscillator strength')
+                optical_results[key] = array
         backend_metadata.pop("_transition_dipoles", None)
         backend_metadata.pop("_oscillator_strengths", None)
     except Exception as exc:
@@ -1059,6 +1172,7 @@ def label_gpu4pyscf_excited_state_molecule(
         ]
         error_metadata: dict[str, Any] = {
             "qm_backend": "gpu4pyscf",
+            "qm_solvent": options.get("solvent"),
             "qm_error": str(exc),
             "qm_error_type": type(exc).__name__,
             "qm_failed_stage": stage,

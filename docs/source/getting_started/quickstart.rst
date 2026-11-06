@@ -153,6 +153,10 @@ What To Read Next
 * :doc:`../examples/simple_water` for the full simple-water walkthrough.
 * :doc:`../user_guide/configuration` for the overall configuration model.
 * :doc:`../user_guide/parsl` for adapting executors and cluster resources.
-* :doc:`../user_guide/qm_interfaces` for ORCA, VASP, Q-Chem, and ASE-backed QM
-  interfaces.
+* :doc:`../user_guide/qm_interfaces` for ORCA, VASP, Q-Chem, PySEQM, GPU4PySCF, and
+  ASE-backed QM interfaces.
 * :doc:`../user_guide/ml_interfaces` for HIPPYNN and new ML backend setup.
+* :doc:`../user_guide/batching` for running several structures per task, and
+  :ref:`samplers-multi-trajectory` for the TorchSim and ALCHEMI dynamics engines.
+* :doc:`../user_guide/acquisition` for choosing which sampled frames get labeled.
+* :doc:`../user_guide/excited_states` for several electronic states.

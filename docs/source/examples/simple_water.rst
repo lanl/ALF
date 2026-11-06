@@ -134,6 +134,38 @@ single builder submission to feed multiple sampler tasks. It does not change the
 chemical system being built or the ORCA scratch directory; it only changes the
 builder task throughput.
 
+Batched Sampling Variant
+------------------------
+
+``examples/simple_water`` also includes two sampler configs that advance many water
+trajectories together on one device: ``mlmd_config_torchsim.json`` for TorchSim and
+``mlmd_config_alchemi.json`` for ALCHEMI. They hold the same MD settings and differ
+only in their engine:
+
+.. code-block:: json
+
+   {
+     "batched_calculator": "alframework.ml_interfaces.hippynn_interface.load_hippynn_batched_ensemble",
+     "driver": {"strategy": "batched", "engine": "torchsim"},
+     "batching": {"batch_size": 32, "partial_policy": "timeout", "max_wait_seconds": 5.0}
+   }
+
+To use one, install its engine in the sampler worker environment (see
+:doc:`../getting_started/installation`) and change two fields in
+``master_config.json``:
+
+.. code-block:: json
+
+   {
+     "sampler_task": "alframework.samplers.batched_mlmd.mlmd_trajectories_task",
+     "sampler_config_path": "mlmd_config_torchsim.json"
+   }
+
+Each sampler task now holds up to 32 trajectories, so the sampler executor needs
+fewer workers for the same ``parallel_samplers``. See
+:ref:`samplers-multi-trajectory` for the engines and :doc:`../user_guide/batching`
+for sizing.
+
 Expected Outputs
 ----------------
 
@@ -173,8 +205,8 @@ loop.
    * - Field
      - Meaning
    * - ``master_directory``
-     - Base directory for relative paths. ``"pwd"`` means the directory
-       containing the master config.
+     - Base directory for relative paths. ``"pwd"`` means the directory where
+       ALF is launched.
    * - ``*_config_path``
      - Paths to the builder, sampler, QM, and ML JSON files.
    * - ``builder_task``, ``sampler_task``, ``QM_task``, ``ML_task``

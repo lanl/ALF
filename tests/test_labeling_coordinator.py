@@ -1,38 +1,21 @@
 """Batched labeling through the real ALF coordinator with local mock tasks."""
-import json
-import runpy
-import sys
-import time
-from pathlib import Path
-
 import h5py
 import numpy as np
-import parsl
 import pytest
 from ase import Atoms
 from parsl import python_app
-from parsl.config import Config
-from parsl.executors import ThreadPoolExecutor
 
 from alframework.tools import labeling as labeling_module
 from alframework.tools import tools as tool_module
 from alframework.tools.batching import BatchBuffer, BatchedTaskQueue
 from alframework.tools.labeling import LabelingCoordinator, labeling_batch_settings
 from alframework.tools.molecules_class import MoleculesObject
+from tests.helpers.driver import MODEL_PATTERN, loaded_parsl, run_alf_driver, stored_ids
 from tests.helpers.fakes import FakeTask
+from tests.helpers.molecules import WATER
 
-WATER = Atoms("OH2", positions=[[0, 0, 0], [0.96, 0, 0], [-0.24, 0.93, 0]])
 FAILING_ID = "mol-boot-0000000001"
 NATIVE_CALLS = []
-
-
-def stored_ids(h5_dir):
-    ids = []
-    for path in sorted(Path(h5_dir).glob("data-*.h5")):
-        with h5py.File(path) as handle:
-            for group in handle.values():
-                ids.extend(value.decode() for value in group["_id"][()])
-    return ids
 
 
 def label(molecule_object):
@@ -64,9 +47,6 @@ def native_qm(molecule_objects, QM_config):
 def test_coordinator_labels_bootstraps_stores_and_retrains(tmp_path, monkeypatch, mode, batch_size):
     # Waiting structures count as queued QM, so with target_queued_QM=2 a batch of 5
     # cannot fill during bootstrap; bootstrap can only finish through timed-out partial batches.
-    monkeypatch.chdir(tmp_path)
-    model_pattern = str(tmp_path / "models/model-{:04d}")
-    h5_pattern = str(tmp_path / "h5/data-{:04d}.h5")
     training_calls, sampler_calls, packed_calls = [], [], []
     native_calls = NATIVE_CALLS
     native_calls.clear()
@@ -84,7 +64,7 @@ def test_coordinator_labels_bootstraps_stores_and_retrains(tmp_path, monkeypatch
     @python_app(executors=["alf_ML_executor"])
     def ml(current_training_id):
         training_calls.append((current_training_id, stored_ids(tmp_path / "h5")))
-        Path(model_pattern.format(current_training_id)).mkdir(parents=True)
+        (tmp_path / MODEL_PATTERN.format(current_training_id)).mkdir(parents=True)
         return [True] * 4, current_training_id
 
     original_pack = labeling_module.label_sequentially
@@ -95,56 +75,14 @@ def test_coordinator_labels_bootstraps_stores_and_retrains(tmp_path, monkeypatch
 
     monkeypatch.setattr(labeling_module, "label_sequentially", recording_pack)
 
-    qm = native_qm if mode == "native" else single_qm
-    config = Config(executors=[ThreadPoolExecutor(label=f"alf_{name}_executor", max_threads=2)
-                               for name in ("builder", "sampler", "QM", "ML")],
-                    strategy="none", run_dir=str(tmp_path / "runinfo"))
-    modules = {"mock.config": config, "mock.builder": builder, "mock.sampler": sampler,
-               "mock.qm": qm, "mock.ml": ml}
-    monkeypatch.setattr(tool_module, "load_module_from_string", modules.__getitem__)
-
-    QM_config = {}
+    qm_config = {}
     if mode is not None:
-        QM_config["batching"] = {"mode": mode, "batch_size": batch_size, "max_wait_seconds": 0.05}
-    master = dict(master_directory="pwd", builder_task="mock.builder", sampler_task="mock.sampler",
-                  QM_task="mock.qm", ML_task="mock.ml", parsl_configuration="mock.config",
-                  builder_config_path="builder.json", sampler_config_path="sampler.json",
-                  QM_config_path="qm.json", ML_config_path="ml.json", status_path="status.json",
-                  model_path=model_pattern, h5_path=h5_pattern, bootstrap_set=4,
-                  properties_list={"energy": ["energy", "system", 1.0], "forces": ["forces", "atomic", 1.0]},
-                  parallel_samplers=2, target_queued_QM=2, minimum_QM=0, save_h5_threshold=3,
-                  maximum_completed_QM=8)
-    for name, values in [("master", master), ("builder", {}), ("sampler", {}), ("qm", QM_config), ("ml", {})]:
-        (tmp_path / f"{name}.json").write_text(json.dumps(values))
-    monkeypatch.setattr(sys, "argv", ["alframework", "--master", str(tmp_path / "master.json")])
+        qm_config["batching"] = {"mode": mode, "batch_size": batch_size, "max_wait_seconds": 0.05}
 
-    original_sleep = time.sleep
-    driver_sleeps = []
+    run = run_alf_driver(tmp_path, monkeypatch, builder=builder, sampler=sampler, ml=ml,
+                         qm=native_qm if mode == "native" else single_qm, qm_config=qm_config, bootstrap_set=4,
+                         parallel_samplers=2, target_queued_QM=2, save_h5_threshold=3, maximum_completed_QM=8)
 
-    class Finished(Exception):
-        pass
-
-    def driver_sleep(seconds):
-        if sys._getframe(1).f_globals.get("__name__") != "__main__":
-            return original_sleep(seconds)
-        driver_sleeps.append(seconds)
-        status = json.loads((tmp_path / "status.json").read_text())
-        if status["current_model_id"] >= 1:
-            raise Finished
-        assert len(driver_sleeps) < 2000, "coordinator did not bootstrap and retrain"
-        original_sleep(min(seconds, 0.01))
-
-    monkeypatch.setattr(time, "sleep", driver_sleep)
-    try:
-        with pytest.raises(Finished):
-            runpy.run_module("alframework", run_name="__main__")
-    finally:
-        try:
-            parsl.dfk().cleanup()
-        finally:
-            parsl.clear()
-
-    status = json.loads((tmp_path / "status.json").read_text())
     bootstrap_ids = training_calls[0][1]
     assert training_calls[0][0] == 0 and len(bootstrap_ids) >= 3
     assert all(value.startswith("mol-boot-") for value in bootstrap_ids)
@@ -157,19 +95,19 @@ def test_coordinator_labels_bootstraps_stores_and_retrains(tmp_path, monkeypatch
     stored = stored_ids(tmp_path / "h5")
     if mode is None:
         # The single-structure labeler fails one whole task, as before.
-        assert status["lifetime_failed_QM_tasks"] >= 1
+        assert run.status["lifetime_failed_QM_tasks"] >= 1
         assert not packed_calls and not native_calls
-        assert any(seconds == 60 for seconds in driver_sleeps)
+        assert any(seconds == 60 for seconds in run.sleeps)
     else:
         # The failed member is recorded but does not discard its batch-mates' labels.
-        assert status["lifetime_failed_QM_tasks"] == 0
+        assert run.status["lifetime_failed_QM_tasks"] == 0
         batches = packed_calls if mode == "sequential" else native_calls
         assert not (packed_calls and native_calls)
         assert batches and all(1 <= len(batch) <= batch_size for batch in batches)
         if batch_size == 5:
             assert all(len(batch) < 5 for batch in batches if batch[0].startswith("mol-boot-"))
             # The waiting partial batch shortens the coordinator's sleep.
-            assert any(seconds < 60 for seconds in driver_sleeps)
+            assert any(seconds < 60 for seconds in run.sleeps)
         labeled = [value for batch in batches for value in batch]
         assert len(labeled) == len(set(labeled))
         failed_batch = next(batch for batch in batches if FAILING_ID in batch)
@@ -243,18 +181,11 @@ def test_batched_queue_counts_structures_and_flattens_results():
 
 @pytest.mark.parametrize('width', [1, 2])
 def test_real_label_coordinator_submits_timeout_tails_without_flush(tmp_path, width):
-    import parsl
-    from parsl import python_app
-    from parsl.config import Config
-    from parsl.executors import ThreadPoolExecutor
-    from ase import Atoms
-    from alframework.tools.labeling import LabelingCoordinator
-    from alframework.tools.molecules_class import MoleculesObject
     @python_app(executors=['tail'])
     def label(molecule_object):
         return molecule_object
-    dfk = parsl.load(Config(executors=[ThreadPoolExecutor(label='tail', max_threads=1)], run_dir=str(tmp_path / 'parsl')))
-    try:
+
+    with loaded_parsl(tmp_path / 'parsl', 'tail') as dfk:
         coordinator = LabelingCoordinator(label, 'test.label', dict(batching=dict(
             mode='sequential', batch_size=4, partial_policy='timeout', max_wait_seconds=0)))
         for i in range(width):
@@ -264,6 +195,3 @@ def test_real_label_coordinator_submits_timeout_tails_without_flush(tmp_path, wi
             task['app_fu'].result()
         results, failures = coordinator.queue.get_task_results()
         assert failures == 0 and len(results) == width
-    finally:
-        dfk.cleanup()
-        parsl.clear()

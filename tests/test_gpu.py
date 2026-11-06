@@ -9,6 +9,7 @@ from ase import Atoms
 
 from alframework.tools.gpu import VISIBILITY_VARIABLES, neurochem_device, sampling_device
 from alframework.tools.molecules_class import MoleculesObject
+from alframework.samplers import batched_mlmd
 
 
 @pytest.fixture(autouse=True)
@@ -162,7 +163,6 @@ def test_legacy_task_forwards_selected_local_device(monkeypatch, neurochem):
 
 
 def test_batched_task_forwards_selected_device(monkeypatch):
-    from alframework.samplers import batched_mlmd
     runtime(monkeypatch, 2)
     monkeypatch.setenv('PARSL_WORKER_RANK', '5')
     monkeypatch.setenv('CUDA_VISIBLE_DEVICES', '2,5')

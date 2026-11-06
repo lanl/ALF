@@ -1,9 +1,20 @@
+import hashlib
 import itertools
+import json
+import os
+from pathlib import Path
 import random
+import shutil
+import subprocess
+import sys
+from types import SimpleNamespace
 
+import h5py
 import numpy as np
 import pytest
+from ase.data import atomic_numbers
 
+from alframework.builders import rdkit_molecule as seed
 from alframework.builders.builders import (
     atomic_system_builder,
     construct_simulation_box,
@@ -13,6 +24,12 @@ from alframework.builders.builders import (
     to_mic,
 )
 from alframework.tools.molecules_class import MoleculesObject
+from ase import Atoms
+from ase.io import write
+from ase.calculators.singlepoint import SinglePointCalculator
+from alframework.builders.external_geometry import external_geometry_builder_task
+from alframework.builders.external_geometry import build_external_geometries
+from alframework.builders.external_geometry import geometry_manifest
 
 
 @pytest.mark.parametrize(
@@ -95,7 +112,6 @@ def test_atomic_system_builder_returns_molecule_ready_atoms():
 
 
 def test_condensed_phase_builders_return_periodic_systems_with_requested_ids():
-    from pathlib import Path
 
     library = str(Path(__file__).resolve().parents[1] / "examples" / "simple_water_multi_builder" / "fragment_library") + "/"
     settings = {
@@ -119,10 +135,6 @@ def test_condensed_phase_builders_return_periodic_systems_with_requested_ids():
 
 @pytest.fixture
 def geometry_sources(tmp_path):
-    import h5py
-    from ase import Atoms
-    from ase.io import write
-    from ase.calculators.singlepoint import SinglePointCalculator
     atoms = Atoms('OHH', positions=[[0, 0, 0], [.95, 0, 0], [0, .95, 0]],
                   cell=np.eye(3) * 8, pbc=[True, False, True])
     atoms.set_array('topology_atom_ids', np.arange(3))
@@ -141,7 +153,6 @@ def geometry_sources(tmp_path):
 
 
 def test_external_geometry_import_strips_labels_preserves_identity(geometry_sources):
-    from alframework.builders.external_geometry import external_geometry_builder_task
     config = dict(sources=['source.xyz', 'source.h5'], selection_mode='sequential')
     items = external_geometry_builder_task.func(moleculeid='ignored', moleculeids=['new-0', 'new-1'],
                                                builder_config=config, master_directory=str(geometry_sources))
@@ -160,7 +171,6 @@ def test_external_geometry_import_strips_labels_preserves_identity(geometry_sour
 
 
 def test_external_geometry_hash_selection_is_stateless(geometry_sources):
-    from alframework.builders.external_geometry import build_external_geometries
     config = dict(sources=['source.xyz', 'source.h5'], selection_seed=19)
     a = build_external_geometries(['a', 'b', 'c'], config, str(geometry_sources))
     b = build_external_geometries(['c', 'a'], config, str(geometry_sources))
@@ -176,7 +186,6 @@ def test_external_geometry_hash_selection_is_stateless(geometry_sources):
     (['a'], 'bad', ValueError, 'selection_mode'),
 ], ids=['past_the_end', 'id_without_number', 'duplicate_ids', 'unknown_mode'])
 def test_external_geometry_rejects_invalid_selection(geometry_sources, ids, mode, error, reason):
-    from alframework.builders.external_geometry import build_external_geometries
     with pytest.raises(error, match=reason):
         build_external_geometries(ids, dict(sources=['source.xyz', 'source.h5'], selection_mode=mode),
                                   str(geometry_sources))
@@ -184,8 +193,6 @@ def test_external_geometry_rejects_invalid_selection(geometry_sources, ids, mode
 
 @pytest.mark.parametrize('bad_ids', [[0, 0, 2], [0., 1., 2.]])
 def test_external_geometry_rejects_invalid_topology(geometry_sources, bad_ids):
-    import h5py
-    from alframework.builders.external_geometry import build_external_geometries
     with h5py.File(geometry_sources / 'source.h5', 'a') as h:
         del h['water/topology_atom_ids']
         h['water/topology_atom_ids'] = [bad_ids]
@@ -194,7 +201,6 @@ def test_external_geometry_rejects_invalid_topology(geometry_sources, bad_ids):
 
 
 def test_external_geometry_plain_xyz_does_not_invent_topology(tmp_path):
-    from alframework.builders.external_geometry import build_external_geometries
     (tmp_path / 'plain.xyz').write_text('2\nplain molecule\nH 0 0 0\nH 0 0 .74\n')
     m = build_external_geometries(['a'], dict(sources=['plain.xyz']), str(tmp_path))[0]
     assert 'topology_atom_ids' not in m.atoms.arrays
@@ -202,8 +208,6 @@ def test_external_geometry_plain_xyz_does_not_invent_topology(tmp_path):
 
 
 def test_external_geometry_rejects_empty_and_malformed_h5(tmp_path):
-    import h5py
-    from alframework.builders.external_geometry import geometry_manifest
     with pytest.raises(ValueError, match='nonempty'):
         geometry_manifest({})
     with h5py.File(tmp_path / 'bad.h5', 'w') as h:
@@ -213,21 +217,15 @@ def test_external_geometry_rejects_empty_and_malformed_h5(tmp_path):
         geometry_manifest(dict(sources=['bad.h5']), str(tmp_path))
 
 
-# Molecular RDKit/FPS preparation is an optional builder capability.
-import hashlib
-import json
-import os
-from pathlib import Path
-import subprocess
-import sys
-import h5py
-from ase.data import atomic_numbers
-from alframework.builders import rdkit_molecule as seed
+# ---- Preparing molecular seeds with RDKit (an optional builder capability) ----
+
 ROOT = Path(__file__).resolve().parents[1]
-EXAMPLES = ROOT/'examples/keto_acac'
+EXAMPLES = ROOT / 'examples/keto_acac'
+
 
 def example_config(name):
-    return json.loads((EXAMPLES/f'seed_{name}.json').read_text())
+    return json.loads((EXAMPLES / f'seed_{name}.json').read_text())
+
 
 def test_rdkit_quotas_descriptor_and_fps_are_deterministic():
     assert seed.ladder_quotas(50000, 6) == [8334, 8334, 8333, 8333, 8333, 8333]
@@ -299,55 +297,75 @@ def test_rdkit_matching_species_are_not_a_topology_mapping():
         seed._reference_context(seed.resolve_config(config, base_directory=EXAMPLES))
 
 
-@pytest.mark.parametrize('name', ['enol', 'keto'])
-def test_rdkit_preparation_is_reproducible_and_replays_tagged_geometry_only(tmp_path, name):
+@pytest.fixture(scope='module', params=['enol', 'keto'])
+def prepared_seed(request, tmp_path_factory):
+    """A small prepared seed, generated twice as two separate runs would."""
     pytest.importorskip('rdkit')
-    config = {**example_config(name), 'pool_size': 24, 'seed_size': 12}
-    output = tmp_path / name
+    config = {**example_config(request.param), 'pool_size': 24, 'seed_size': 12}
+    directory = tmp_path_factory.mktemp(request.param)
+    output, repeated = directory / 'first', directory / 'second'
     report = seed.prepare_rdkit_seed(config, output, config_directory=EXAMPLES)
-    repeated = tmp_path / (name + '-repeat')
     seed.prepare_rdkit_seed(config, repeated, config_directory=EXAMPLES)
+    return SimpleNamespace(report=report, output=output, repeated=repeated)
+
+
+def test_rdkit_preparation_reports_settings_and_checksums(prepared_seed):
+    report = prepared_seed.report
     assert report['pool_count'] == 24 and report['selected_count'] == 12
     assert report['embedding_settings']['useBasicKnowledge'] is True
     assert report['embedding_settings']['useExpTorsionAnglePrefs'] is False
     assert report['embedding_settings']['force_field_optimization'] is False
     for file, digest in report['artifacts_sha256'].items():
-        assert hashlib.sha256((output / file).read_bytes()).hexdigest() == digest
-    with h5py.File(output / 'pool.h5') as pool, h5py.File(output / 'seed.h5') as selected, h5py.File(repeated / 'seed.h5') as again:
-        p, s, r = pool['molecule'], selected['molecule'], again['molecule']
-        indices = s['pool_index'][()]
+        assert hashlib.sha256((prepared_seed.output / file).read_bytes()).hexdigest() == digest
+
+
+def test_rdkit_preparation_is_reproducible(prepared_seed):
+    with h5py.File(prepared_seed.output / 'seed.h5') as first, h5py.File(prepared_seed.repeated / 'seed.h5') as second:
+        for key in first['molecule']:
+            np.testing.assert_array_equal(first['molecule'][key][()], second['molecule'][key][()])
+
+
+def test_rdkit_seed_is_an_unlabeled_stratified_sample_of_the_pool(prepared_seed):
+    with h5py.File(prepared_seed.output / 'pool.h5') as pool_file, h5py.File(prepared_seed.output / 'seed.h5') as seed_file:
+        pool, selected = pool_file['molecule'], seed_file['molecule']
+        indices = selected['pool_index'][()]
         assert len(np.unique(indices)) == 12
-        species = s['species'][()].astype('U2')
+        species = selected['species'][()].astype('U2')
         assert species.ndim == 1
         assert np.all(np.diff([atomic_numbers[value] for value in species]) >= 0)
-        np.testing.assert_array_equal(np.bincount(s['strata'][()][:, 0]), [2] * 6)
-        np.testing.assert_array_equal(s['fps_rank'][()], [0, 1] * 6)
-        np.testing.assert_array_equal(s['coordinates'][()], p['coordinates'][()][indices])
-        np.testing.assert_array_equal(s['strata'][()], p['strata'][()][indices])
-        np.testing.assert_array_equal(s['fps_rank'][()], p['fps_rank'][()][indices])
-        for key in s:
-            np.testing.assert_array_equal(s[key][()], r[key][()])
-        assert not any(key.startswith(('sE', 'F', 'dE')) for key in s)
-        reorder = np.argsort(s['topology_atom_ids'][()])
-        canonical = s['coordinates'][()][:, reorder]
-    builder=json.loads((output/'builder_config.json').read_text())
-    molecules = seed.build_rdkit_molecules([f'mol-boot-{i:010d}' for i in range(12)],builder)
-    assert len(molecules)==12
-    for index,molecule in enumerate(molecules):
-        assert molecule.get_results()=={}
-        order=np.argsort(molecule.atoms.arrays['topology_atom_ids'])
-        np.testing.assert_array_equal(molecule.atoms.positions[order],canonical[index])
-        assert molecule.get_metadata()['rdkit_fps_rank']==index%2
-    with pytest.raises(IndexError,match='exhausted'):
-        seed.build_rdkit_molecules(['mol-boot-0000000012'],builder)
-    # Runtime closed label replay strips deliberately injected source labels.
-    labels=tmp_path/'labels';labels.mkdir()
-    import shutil
-    shutil.copyfile(output/'seed.h5',labels/'data-0000.h5')
-    with h5py.File(labels/'data-0000.h5','a') as handle:
-        handle['molecule']['energy']=np.ones(12)
-    replay=seed.build_rdkit_molecules(['runtime-1'],builder,str(labels/'data-{:04d}.h5'),1)
-    assert replay[0].get_results()=={} and not replay[0].get_metadata()['replay_external_bootstrap']
+        np.testing.assert_array_equal(np.bincount(selected['strata'][()][:, 0]), [2] * 6)
+        np.testing.assert_array_equal(selected['fps_rank'][()], [0, 1] * 6)
+        np.testing.assert_array_equal(selected['coordinates'][()], pool['coordinates'][()][indices])
+        np.testing.assert_array_equal(selected['strata'][()], pool['strata'][()][indices])
+        np.testing.assert_array_equal(selected['fps_rank'][()], pool['fps_rank'][()][indices])
+        assert not any(key.startswith(('sE', 'F', 'dE')) for key in selected)
+
+
+def test_rdkit_builder_replays_the_prepared_geometries(prepared_seed):
+    with h5py.File(prepared_seed.output / 'seed.h5') as handle:
+        selected = handle['molecule']
+        canonical = selected['coordinates'][()][:, np.argsort(selected['topology_atom_ids'][()])]
+    builder = json.loads((prepared_seed.output / 'builder_config.json').read_text())
+    molecules = seed.build_rdkit_molecules([f'mol-boot-{i:010d}' for i in range(12)], builder)
+    assert len(molecules) == 12
+    for index, molecule in enumerate(molecules):
+        assert molecule.get_results() == {}
+        order = np.argsort(molecule.atoms.arrays['topology_atom_ids'])
+        np.testing.assert_array_equal(molecule.atoms.positions[order], canonical[index])
+        assert molecule.get_metadata()['rdkit_fps_rank'] == index % 2
+    with pytest.raises(IndexError, match='exhausted'):
+        seed.build_rdkit_molecules(['mol-boot-0000000012'], builder)
+
+
+def test_rdkit_builder_strips_labels_during_runtime_replay(prepared_seed, tmp_path):
+    builder = json.loads((prepared_seed.output / 'builder_config.json').read_text())
+    labels = tmp_path / 'labels'
+    labels.mkdir()
+    shutil.copyfile(prepared_seed.output / 'seed.h5', labels / 'data-0000.h5')
+    with h5py.File(labels / 'data-0000.h5', 'a') as handle:
+        handle['molecule']['energy'] = np.ones(12)
+    replay = seed.build_rdkit_molecules(['runtime-1'], builder, str(labels / 'data-{:04d}.h5'), 1)
+    assert replay[0].get_results() == {} and not replay[0].get_metadata()['replay_external_bootstrap']
 
 
 def test_rdkit_exhausted_embedding_and_existing_outputs_fail_without_overwrite(tmp_path, monkeypatch):

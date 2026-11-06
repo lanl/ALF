@@ -12,6 +12,8 @@ from alframework.tools.batching import (
 )
 from alframework.tools.molecules_class import MoleculesObject
 from tests.helpers.fakes import FakeTask
+import json
+from alframework.tools.batching import bootstrap_molecule_ids
 
 
 def molecule(name, symbols="OH2", pbc=False):
@@ -128,7 +130,6 @@ def test_batch_builder_ids_survive_regrouping():
 
 
 def test_buffer_status_is_json_safe():
-    import json
     buffer = BatchBuffer(2)
     buffer.add(molecule("a", pbc=True), now=0.0)
     status = buffer.status(now=3.0)
@@ -159,7 +160,6 @@ def test_poll_delay_honors_nearest_timeout():
 
 
 def test_finite_bootstrap_ids_never_wrap_and_preserve_ordinary_width():
-    from alframework.tools.batching import bootstrap_molecule_ids
     assert bootstrap_molecule_ids(8,10,4,True)==['mol-boot-0000000008','mol-boot-0000000009']
     assert bootstrap_molecule_ids(10,10,4,True)==[]
     assert len(bootstrap_molecule_ids(8,10,4,False))==4

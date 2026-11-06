@@ -6,8 +6,8 @@ from alframework.samplers.batched_mlmd import sample_trajectories
 from alframework.tools.cohorts import CohortPool
 from alframework.tools.molecules_class import MoleculesObject
 from tests.helpers.fakes import spring_ensemble
+from tests.helpers.molecules import SPRING_WATER
 
-WATER = Atoms("OH2", positions=[[0, 0, 0], [1.2, 0, 0], [0.6, 1.0392, 0]])
 SAMPLER = dict(dt=0.5, maxt=0.05, Ncheck=5, distcut=0.5, min_time=0.0, Escut=0.012, Fscut=100.0, random_seed=9,
                srt_temp=[2500.0, 3500.0], end_temp=[2500.0, 3500.0], amp_temp=[0.0, 200.0],
                per_temp=[0.01, 0.05], amp_dens=None, per_dens=None, end_dens=None)
@@ -27,7 +27,7 @@ def cohort_config(cohort_size, k, policy="stop", cap=None):
 def inputs(count):
     molecules = []
     for index in range(count):
-        atoms = WATER.copy()
+        atoms = SPRING_WATER.copy()
         if index % 7 == 3:
             atoms.positions[2] = atoms.positions[1] + [0.0, 0.3, 0.0]   # distcut rejection
         if index % 7 == 5:

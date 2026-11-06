@@ -1,19 +1,89 @@
-"""HIPPYNN interface: deferred imports, checkpoint loading, and the small-molecule database adapter."""
+"""HIPPYNN interface: deferred imports, checkpoint loading, the database adapter, and multi-state training."""
 from concurrent.futures import ThreadPoolExecutor
+import hashlib
+import json
 import os
 from pathlib import Path
-import sys
+import pickle
 import subprocess
+import sys
 import threading
 from types import ModuleType, SimpleNamespace
+
+from ase import Atoms
+import h5py
 import numpy as np
 import pytest
-import pickle
-import h5py
-import json
 
+from alframework.ml_interfaces import hippynn_interface as ml
 from alframework.ml_interfaces.hippynn_interface import HIPNN_ASE_calculator
 from tests.helpers.fakes import fake_training_pool
+from tests.helpers.molecules import WATER
+from alframework.ml_interfaces.hippynn_interface import HIPNN_ASE_load_ensemble
+from ase import units
+from alframework.tools.excited_state_tools import derive_gap_property_table
+
+
+def _properties(with_gap=False):
+    properties = {
+        "sE0": ["sE0", "system", 1.0],
+        "F0": ["F0", "atomic", 1.0],
+        "sE1": ["sE1", "system", 1.0],
+        "F1": ["F1", "atomic", 1.0],
+    }
+    if with_gap:
+        properties["dE01"] = ["dE01", "system", 1.0]
+    return properties
+
+
+def _config(**overrides):
+    config = {
+        "n_models": 2,
+        "cell_key": None,
+        "train_forces": True,
+        "network_choice": 0,
+        "valid_size": 0.2,
+        "test_size": 0.2,
+        "device_string": "cpu",
+        "exports": {"pdf": False, "png": False, "csv": False},
+    }
+    config.update(overrides)
+    return config
+
+
+def _write_group(
+    path: Path,
+    name: str,
+    *,
+    species=("H", "O"),
+    count=3,
+    missing=None,
+    nonfinite=None,
+):
+    mode = "a" if path.exists() else "w"
+    with h5py.File(path, mode) as store:
+        group = store.create_group(name)
+        values = {
+            "species": np.asarray(species, dtype="S2"),
+            "coordinates": np.arange(
+                count * len(species) * 3,
+                dtype=float,
+            ).reshape(count, len(species), 3),
+            "sE0": np.linspace(-2.0, -1.0, count),
+            "F0": np.zeros((count, len(species), 3)),
+            "sE1": np.linspace(-1.5, -0.5, count),
+            "F1": np.ones((count, len(species), 3)),
+            "dE01": np.full(count, 0.5),
+        }
+        if nonfinite is not None:
+            values[nonfinite] = np.asarray(values[nonfinite]).copy()
+            values[nonfinite].reshape(-1)[0] = np.nan
+        for key, value in values.items():
+            if key != missing:
+                group.create_dataset(key, data=value)
+
+
+# ---- Deferred imports and checkpoint loading ----
 
 
 def test_interface_import_defers_hippynn_and_torch():
@@ -31,9 +101,7 @@ import alframework.ml_interfaces.hippynn_interface
 def test_cpu_training_checkpoints_reload_through_alf(tmp_path):
     pytest.importorskip('hippynn')
     from tests.helpers.hippynn import train_cpu_ensemble
-    from alframework.ml_interfaces.hippynn_interface import HIPNN_ASE_load_ensemble
     from hippynn.experiment.serialization import load_checkpoint
-    from tests.test_acquisition import WATER
     reports = train_cpu_ensemble(tmp_path/'ensemble')
     assert len(reports) == 2 and all(r['epochs'] >= 2 for r in reports)
     for directory in sorted((tmp_path/'ensemble').glob('model-*')):
@@ -110,11 +178,9 @@ def test_absolute_checkpoint_paths_allow_concurrent_loading(tmp_path, monkeypatc
 
 def test_concurrent_trained_members_match_legacy_predictions(monkeypatch, trained_ensemble):
     import torch
-    from ase import units
     from hippynn.experiment import serialization
     from hippynn.interfaces.ase_interface import HippynnCalculator
     from hippynn.tools import active_directory
-    from tests.test_acquisition import WATER
 
     members = [trained_ensemble / f'model-{i:02d}' for i in range(2)]
 
@@ -157,7 +223,10 @@ def test_concurrent_trained_members_match_legacy_predictions(monkeypatch, traine
     assert Path.cwd() == before
 
 
-# The database adapter tests need HIPPYNN itself; the loading tests above do not.
+# ---- Small-molecule database adapter ----
+# These need HIPPYNN itself; the loading tests above do not.
+
+
 @pytest.fixture
 def readers():
     pytest.importorskip('hippynn')
@@ -250,117 +319,196 @@ def test_unknown_varying_property_is_rejected_instead_of_guessing_axis(tmp_path,
                             quiet=True, seed=1)
 
 
-# Multi-state training contracts and graphs.
-from alframework.ml_interfaces import hippynn_interface as ml
+# ---- Multi-state training ----
 
 
-@pytest.mark.parametrize('network_choice', [0, 1])
-def test_multistate_cpu_training_reload_and_force_gradients(tmp_path, network_choice):
-    torch = pytest.importorskip('torch')
-    pytest.importorskip('hippynn')
-    from hippynn.experiment.serialization import load_checkpoint
-    from hippynn.graphs import GraphModule
-    data = tmp_path / 'data'
+@pytest.fixture(scope="module", params=[0, 1], ids=["HipNN", "HipHopNN"])
+def two_state_ensemble(request, tmp_path_factory):
+    """A real two-member ensemble of two-state models, trained on CPU for 2 epochs."""
+    pytest.importorskip("torch")
+    pytest.importorskip("hippynn")
+    directory = tmp_path_factory.mktemp("two_state")
+    data = directory / "data"
     data.mkdir()
     coordinates = np.array([[[0., 0., 0.], [1., 0., 0.], [0., 1., 0.]]])
     coordinates = np.repeat(coordinates, 12, axis=0)
     coordinates[:, 1, 0] += np.linspace(0., .1, 12)
-    coordinates[-1, 1] = [.1, 0., 0.]  # Explicitly filtered frame.
+    coordinates[-1, 1] = [.1, 0., 0.]  # Too close together, so training must filter out this frame.
     energies = .01 * (coordinates**2).sum(axis=(1, 2))
-    with h5py.File(data / 'data.h5', 'w') as h:
-        g = h.create_group('water')
-        g['species'] = np.array(['O', 'H', 'H'], dtype='S')
-        g['coordinates'] = coordinates
-        g['_id'] = np.array([f'frame-{i}' for i in range(12)], dtype='S')
-        g['topology_atom_ids'] = np.tile(np.arange(3), (12, 1))
+    with h5py.File(data / "data.h5", "w") as h:
+        g = h.create_group("water")
+        g["species"] = np.array(["O", "H", "H"], dtype="S")
+        g["coordinates"] = coordinates
+        g["_id"] = np.array([f"frame-{i}" for i in range(12)], dtype="S")
+        g["topology_atom_ids"] = np.tile(np.arange(3), (12, 1))
         for state in range(2):
-            g[f'sE{state}'] = energies + .1 * state
-            g[f'F{state}'] = -.02 * coordinates
-        g['dE01'] = np.full(12, .1)
-        g['nacr'] = np.zeros((12, 1, 3, 3))
-        g['nac_pairs'] = [[0, 1]]
-    config = _config(network_choice=network_choice, n_models=1, max_epochs=2,
+            g[f"sE{state}"] = energies + .1 * state
+            g[f"F{state}"] = -.02 * coordinates
+        g["dE01"] = np.full(12, .1)
+        g["nacr"] = np.zeros((12, 1, 3, 3))
+        g["nac_pairs"] = [[0, 1]]
+    config = _config(network_choice=request.param, n_models=1, max_epochs=2,
                      batch_size=4, eval_batch_size=4, termination_patience=10,
-                     gap_targets={'enabled': True}, torch_threads=1, fraction_train_eval=1.,
+                     gap_targets={"enabled": True}, torch_threads=1, fraction_train_eval=1.,
                      network_params=dict(possible_species=[0, 1, 8], n_features=4,
                                          n_sensitivities=4, n_interaction_layers=1, n_atom_layers=1,
                                          dist_soft_min=.4, dist_soft_max=2., dist_hard_max=3.,
-                                         **({'l_max': 1, 'n_max': 2} if network_choice else {})))
-    member = tmp_path / 'model-00'
-    ml.train_single_excited_state_model(model_id=0, model_dir=str(member), h5_train_dir=str(data),
-                                        properties_list=_properties(with_gap=True), ML_config=config)
-    summary = json.loads((member / 'training_summary.json').read_text())
-    manifest = json.loads((member / 'training_input_manifest.json').read_text())
-    assert summary['epochs'] == 2 and summary['parameters_changed']
-    assert summary['hippynn_kernel'] == 'pytorch'
-    assert manifest['filtered_indices'] == [11]
-    assert sorted(i for split in manifest['splits'].values() for i in split) == list(range(11))
-    bundle = load_checkpoint(str(member / 'experiment_structure.pt'),
-                             str(member / 'best_checkpoint.pt'), map_location='cpu', restart_db=True)
-    database = bundle['database']
-    assert database.excited_state_properties == _properties(with_gap=True)
-    assert {key: values['indices'].tolist() for key, values in database.splits.items()} == manifest['splits']
-    model = bundle['training_modules'].model.to(torch.float64)
-    e0, e1, f0, gap = [ml._target(model, k) for k in ('sE0', 'sE1', 'F0', 'dE01')]
-    graph = GraphModule(model.input_nodes, [e0, e1, f0, gap])
+                                         **({"l_max": 1, "n_max": 2} if request.param else {})))
+    for index in range(2):
+        ml.train_single_excited_state_model(model_id=index, model_dir=str(directory / f"model-{index:02d}"),
+                                            h5_train_dir=str(data), properties_list=_properties(with_gap=True),
+                                            ML_config=config)
+    return SimpleNamespace(directory=directory, data=data, member=directory / "model-00",
+                           coordinates=coordinates, config=config)
+
+
+def _reload_checkpoint(ensemble):
+    from hippynn.experiment.serialization import load_checkpoint
+    return load_checkpoint(str(ensemble.member / "experiment_structure.pt"),
+                           str(ensemble.member / "best_checkpoint.pt"), map_location="cpu", restart_db=True)
+
+
+def _reloaded_predictor(ensemble):
+    """Reload one member, returning its sE0, sE1, F0 and dE01 outputs as a function of coordinates."""
+    import torch
+    from hippynn.graphs import GraphModule
+    model = _reload_checkpoint(ensemble)["training_modules"].model.to(torch.float64)
+    graph = GraphModule(model.input_nodes, [ml._target(model, key) for key in ("sE0", "sE1", "F0", "dE01")])
     species = torch.tensor([[8, 1, 1]])
-    xyz = torch.tensor(coordinates[:1], dtype=torch.float64, requires_grad=True)
-    args = [species if node.db_name == 'species' else xyz for node in model.input_nodes]
-    predictions = graph(*args)
-    assert all(torch.isfinite(value).all() for value in predictions)
-    torch.testing.assert_close(predictions[3], predictions[1] - predictions[0])
+    return lambda xyz: graph(*[species if node.db_name == "species" else xyz for node in model.input_nodes])
+
+
+def _molecule_from(ensemble):
+    atoms = Atoms("OHH", positions=ensemble.coordinates[0])
+    atoms.set_array("topology_atom_ids", np.arange(3))
+    return atoms
+
+
+def _load_evaluator(ensemble, properties=None):
+    return ml.load_hippynn_excited_state_ensemble(ensemble.directory, "cpu", properties or _properties(with_gap=True))
+
+
+def test_training_records_what_it_did(two_state_ensemble):
+    member = two_state_ensemble.member
+    summary = json.loads((member / "training_summary.json").read_text())
+    manifest = json.loads((member / "training_input_manifest.json").read_text())
+    assert summary["epochs"] == 2 and summary["parameters_changed"]
+    assert summary["hippynn_kernel"] == "pytorch"
+    assert manifest["filtered_indices"] == [11]
+    assert sorted(i for split in manifest["splits"].values() for i in split) == list(range(11))
+
+
+def test_checkpoint_restores_the_training_database(two_state_ensemble):
+    manifest = json.loads((two_state_ensemble.member / "training_input_manifest.json").read_text())
+    database = _reload_checkpoint(two_state_ensemble)["database"]
+    assert database.excited_state_properties == _properties(with_gap=True)
+    assert {key: values["indices"].tolist() for key, values in database.splits.items()} == manifest["splits"]
+
+
+def test_reloaded_model_predicts_gap_as_state_difference(two_state_ensemble):
+    import torch
+    predict = _reloaded_predictor(two_state_ensemble)
+    e0, e1, f0, gap = predict(torch.tensor(two_state_ensemble.coordinates[:1], dtype=torch.float64, requires_grad=True))
+    assert all(torch.isfinite(value).all() for value in (e0, e1, f0, gap))
+    torch.testing.assert_close(gap, e1 - e0)
+
+
+def test_reloaded_model_forces_match_numerical_derivative(two_state_ensemble):
+    import torch
+    predict = _reloaded_predictor(two_state_ensemble)
+    xyz = torch.tensor(two_state_ensemble.coordinates[:1], dtype=torch.float64, requires_grad=True)
+    force = predict(xyz)[2][0, 1, 0].item()
     step = 1e-4
     shifted = []
     for sign in (1, -1):
         x = xyz.detach().clone().requires_grad_(True)
         with torch.no_grad():
             x[0, 1, 0] += sign * step
-        shifted.append(graph(*[species if node.db_name == 'species' else x for node in model.input_nodes])[0])
-    numerical = -(shifted[0] - shifted[1]).item() / (2 * step)
-    assert abs(numerical - predictions[2][0, 1, 0].item()) < 1e-3
+        shifted.append(predict(x)[0])
+    assert abs(-(shifted[0] - shifted[1]).item() / (2 * step) - force) < 1e-3
+
+
+def test_training_refuses_to_overwrite_a_member(two_state_ensemble):
     with pytest.raises(FileExistsError):
-        ml.train_single_excited_state_model(model_id=0, model_dir=str(member), h5_train_dir=str(data),
-                                            properties_list=_properties(with_gap=True), ML_config=config)
-    ml.train_single_excited_state_model(model_id=1, model_dir=str(tmp_path/'model-01'),
-                                        h5_train_dir=str(data), properties_list=_properties(with_gap=True),
-                                        ML_config=config)
-    from ase import Atoms
-    evaluator = ml.load_hippynn_excited_state_ensemble(tmp_path, 'cpu', _properties(with_gap=True))
-    atoms = Atoms('OHH', positions=coordinates[0])
-    atoms.set_array('topology_atom_ids', np.arange(3))
-    other = atoms.copy(); other.positions[1, 0] += .02
+        ml.train_single_excited_state_model(model_id=0, model_dir=str(two_state_ensemble.member),
+                                            h5_train_dir=str(two_state_ensemble.data),
+                                            properties_list=_properties(with_gap=True),
+                                            ML_config=two_state_ensemble.config)
+
+
+def test_evaluator_gives_the_same_answer_batched_or_alone(two_state_ensemble):
+    evaluator = _load_evaluator(two_state_ensemble)
+    atoms = _molecule_from(two_state_ensemble)
+    other = atoms.copy()
+    other.positions[1, 0] += .02
     packed = evaluator.predict_states([atoms, other])
-    assert packed['state_energies'].shape == (2, 2, 2)
-    assert packed['state_forces'][0].shape == (2, 2, 3, 3)
+    assert packed["state_energies"].shape == (2, 2, 2)
+    assert packed["state_forces"][0].shape == (2, 2, 3, 3)
     for index, a in enumerate([atoms, other]):
         single = evaluator.predict_states([a])
-        np.testing.assert_allclose(single['state_energies'][:, :, 0],
-                                   packed['state_energies'][:, :, index], rtol=1e-5, atol=1e-5)
-        np.testing.assert_allclose(single['state_forces'][0], packed['state_forces'][index], rtol=1e-5, atol=1e-5)
+        np.testing.assert_allclose(single["state_energies"][:, :, 0],
+                                   packed["state_energies"][:, :, index], rtol=1e-5, atol=1e-5)
+        np.testing.assert_allclose(single["state_forces"][0], packed["state_forces"][index], rtol=1e-5, atol=1e-5)
+
+
+def test_evaluator_undoes_atom_reordering(two_state_ensemble):
+    evaluator = _load_evaluator(two_state_ensemble)
+    atoms = _molecule_from(two_state_ensemble)
+    reference = evaluator.predict_states([atoms])
     order = [2, 0, 1]
     permuted = evaluator.predict_states([atoms[order]])
-    np.testing.assert_allclose(permuted['state_energies'], packed['state_energies'][:, :, :1], rtol=1e-5, atol=1e-5)
-    np.testing.assert_allclose(permuted['state_forces'][0], packed['state_forces'][0][:, :, order], rtol=1e-5, atol=1e-5)
-    scaled_schema = {k: [v[0], v[1], 2.] for k, v in _properties(with_gap=True).items()}
-    scaled = ml.load_hippynn_excited_state_ensemble(tmp_path, 'cpu', scaled_schema).predict_states([atoms])
-    np.testing.assert_allclose(scaled['state_energies']*2, packed['state_energies'][:, :, :1], rtol=1e-5, atol=1e-5)
-    np.testing.assert_allclose(scaled['state_forces'][0]*2, packed['state_forces'][0], rtol=1e-5, atol=1e-5)
+    np.testing.assert_allclose(permuted["state_energies"], reference["state_energies"], rtol=1e-5, atol=1e-5)
+    np.testing.assert_allclose(permuted["state_forces"][0], reference["state_forces"][0][:, :, order],
+                               rtol=1e-5, atol=1e-5)
+
+
+def test_evaluator_applies_property_scales(two_state_ensemble):
+    atoms = _molecule_from(two_state_ensemble)
+    reference = _load_evaluator(two_state_ensemble).predict_states([atoms])
+    doubled = {key: [value[0], value[1], 2.] for key, value in _properties(with_gap=True).items()}
+    scaled = _load_evaluator(two_state_ensemble, doubled).predict_states([atoms])
+    np.testing.assert_allclose(scaled["state_energies"] * 2, reference["state_energies"], rtol=1e-5, atol=1e-5)
+    np.testing.assert_allclose(scaled["state_forces"][0] * 2, reference["state_forces"][0], rtol=1e-5, atol=1e-5)
+
+
+def test_evaluator_forces_match_numerical_derivative(two_state_ensemble):
+    import torch
+    evaluator = _load_evaluator(two_state_ensemble)
     for graph, _ in evaluator._graphs:
         graph.to(torch.float64)
+    atoms = _molecule_from(two_state_ensemble)
+    step = 1e-4
     plus, minus = atoms.copy(), atoms.copy()
-    plus.positions[1, 0] += step; minus.positions[1, 0] -= step
-    fd = -(evaluator.predict_states([plus])['state_energies'] -
-           evaluator.predict_states([minus])['state_energies']) / (2*step)
-    np.testing.assert_allclose(fd[:, :, 0], evaluator.predict_states([atoms])['state_forces'][0][:, :, 1, 0], atol=1e-3)
-    periodic = atoms.copy(); periodic.pbc = True
-    with pytest.raises(ValueError, match='nonperiodic'):
-        evaluator.predict_states([periodic])
-    bad = atoms.copy(); bad.numbers[0] = 6
-    with pytest.raises(ValueError, match='composition'):
-        evaluator.predict_states([bad])
-    bad = atoms.copy(); bad.arrays['topology_atom_ids'][:] = 0
-    with pytest.raises(ValueError, match='permutation'):
-        evaluator.predict_states([bad])
+    plus.positions[1, 0] += step
+    minus.positions[1, 0] -= step
+    numerical = -(evaluator.predict_states([plus])["state_energies"] -
+                  evaluator.predict_states([minus])["state_energies"]) / (2 * step)
+    forces = evaluator.predict_states([atoms])["state_forces"][0]
+    np.testing.assert_allclose(numerical[:, :, 0], forces[:, :, 1, 0], atol=1e-3)
+
+
+def _make_periodic(atoms):
+    atoms.pbc = True
+
+
+def _change_element(atoms):
+    atoms.numbers[0] = 6
+
+
+def _duplicate_atom_ids(atoms):
+    atoms.arrays["topology_atom_ids"][:] = 0
+
+
+@pytest.mark.parametrize("corrupt, reason", [
+    (_make_periodic, "nonperiodic"),
+    (_change_element, "composition"),
+    (_duplicate_atom_ids, "permutation"),
+], ids=["periodic", "wrong_element", "duplicate_atom_ids"])
+def test_evaluator_rejects_structures_it_cannot_represent(two_state_ensemble, corrupt, reason):
+    atoms = _molecule_from(two_state_ensemble)
+    corrupt(atoms)
+    with pytest.raises(ValueError, match=reason):
+        _load_evaluator(two_state_ensemble).predict_states([atoms])
 
 
 def test_multistate_devices_preserve_visibility(monkeypatch):
@@ -407,63 +555,7 @@ def test_multistate_reader_restores_identical_element_identity(tmp_path):
     np.testing.assert_array_equal(arrays['coordinates'][1], positions[1, ::-1])
     np.testing.assert_array_equal(arrays['F1'][1], forces[1, ::-1])
 
-def _properties(with_gap=False):
-    properties = {
-        "sE0": ["sE0", "system", 1.0],
-        "F0": ["F0", "atomic", 1.0],
-        "sE1": ["sE1", "system", 1.0],
-        "F1": ["F1", "atomic", 1.0],
-    }
-    if with_gap:
-        properties["dE01"] = ["dE01", "system", 1.0]
-    return properties
-
-
-def _config(**overrides):
-    config = {
-        "n_models": 2,
-        "cell_key": None,
-        "train_forces": True,
-        "network_choice": 0,
-        "valid_size": 0.2,
-        "test_size": 0.2,
-        "device_string": "cpu",
-        "exports": {"pdf": False, "png": False, "csv": False},
-    }
-    config.update(overrides)
-    return config
-
-
-def _write_group(
-    path: Path,
-    name: str,
-    *,
-    species=("H", "O"),
-    count=3,
-    missing=None,
-    nonfinite=None,
-):
-    mode = "a" if path.exists() else "w"
-    with h5py.File(path, mode) as store:
-        group = store.create_group(name)
-        values = {
-            "species": np.asarray(species, dtype="S2"),
-            "coordinates": np.arange(
-                count * len(species) * 3,
-                dtype=float,
-            ).reshape(count, len(species), 3),
-            "sE0": np.linspace(-2.0, -1.0, count),
-            "F0": np.zeros((count, len(species), 3)),
-            "sE1": np.linspace(-1.5, -0.5, count),
-            "F1": np.ones((count, len(species), 3)),
-            "dE01": np.full(count, 0.5),
-        }
-        if nonfinite is not None:
-            values[nonfinite] = np.asarray(values[nonfinite]).copy()
-            values[nonfinite].reshape(-1)[0] = np.nan
-        for key, value in values.items():
-            if key != missing:
-                group.create_dataset(key, data=value)
+# ---- Reading multi-state training data ----
 
 
 def test_explicit_h5_loader_reads_two_states_and_small_molecules(tmp_path):
@@ -604,6 +696,9 @@ def test_explicit_h5_loader_validates_configured_shape_and_species(tmp_path):
         )
 
 
+# ---- Validating training settings ----
+
+
 @pytest.mark.parametrize("count", [0, 2, 4])
 def test_filtered_split_capacity_rejects_insufficient_survivors(count):
     with pytest.raises(ValueError, match="too few structures"):
@@ -646,6 +741,9 @@ def test_training_properties_require_energy_force_kinds_and_unique_names():
     duplicate_name["F0"] = ["sE0", "atomic", 1.0]
     with pytest.raises(ValueError, match="unique HDF5"):
         ml.validate_excited_state_training_properties(duplicate_name)
+
+
+# ---- Training loss and graph ----
 
 
 def test_loss_matches_fork_formula_exactly():
@@ -748,7 +846,6 @@ def test_graph_uses_one_shared_trunk_and_all_state_database_names():
 
 def test_graph_exposes_derived_gap_target_without_independent_head():
     hippynn = pytest.importorskip("hippynn")
-    from alframework.tools.excited_state_tools import derive_gap_property_table
 
     network, positions = _small_shared_network()
     properties = _properties(with_gap=True)
@@ -874,15 +971,7 @@ def test_nacr_datasets_in_a_shard_are_never_loaded_for_training(tmp_path, monkey
     assert nacr_summary["state_table"] == plain_summary["state_table"]
 
 
-
-"""Compare training selection to the upstream HIPPYNN implementation."""
-import hashlib
-
-import h5py
-import numpy as np
-import pytest
-
-from alframework.ml_interfaces import hippynn_interface as ml
+# ---- Filtering training data, compared with upstream HIPPYNN ----
 
 
 PROPERTIES = {'sE0': ['sE0', 'system', 1.], 'F0': ['F0', 'atomic', 1.]}

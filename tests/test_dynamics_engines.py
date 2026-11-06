@@ -14,6 +14,13 @@ from alframework.samplers.batched_mlmd import sample_trajectories  # noqa: E402
 from alframework.tools.molecules_class import MoleculesObject  # noqa: E402
 from tests.helpers.engines import DEVICE, Tether, engine_class  # noqa: E402
 from tests.helpers.fakes import spring_ensemble  # noqa: E402
+from alframework.ml_interfaces.hippynn_interface import load_hippynn_batched_ensemble
+from alframework.ml_interfaces.hippynn_interface import HIPNN_ASE_load_ensemble
+from alframework.ml_interfaces.ensemble_inference import ASEEnsembleEvaluator
+from alframework.ml_interfaces.ensemble_inference import ASEEnsembleEvaluator, ensemble_statistics
+from tests.helpers.fakes import QuadraticStateEnsemble
+from alframework.ml_interfaces.ensemble_inference import SelectedStateEvaluator, ensemble_statistics
+from ase.io import write
 
 WATER = Atoms("OH2", positions=[[0, 0, 0], [1.25, 0, 0], [0.6, 1.0392, 0.05]])
 CONFIG = dict(dt=0.5, maxt=0.1, Ncheck=5, distcut=0.5, min_time=0.0, Escut=0.012, Fscut=100.0, random_seed=4,
@@ -201,9 +208,6 @@ def test_failed_member_does_not_affect_batch_mates(engine_name, pooled):
 @pytest.mark.parametrize("periodic", [False, True], ids=["molecular", "periodic"])
 def test_batched_hippynn_matches_ase_calculators(periodic, engine_name, trained_ensemble):
     import torch
-    from alframework.ml_interfaces.hippynn_interface import load_hippynn_batched_ensemble
-    from alframework.ml_interfaces.hippynn_interface import HIPNN_ASE_load_ensemble
-    from alframework.ml_interfaces.ensemble_inference import ASEEnsembleEvaluator
 
     rng = np.random.default_rng(1)
     systems = []
@@ -224,9 +228,6 @@ def test_batched_hippynn_matches_ase_calculators(periodic, engine_name, trained_
 
 
 def test_trained_ensemble_sampling_with_batched_hippynn(engine_name, trained_ensemble):
-    from alframework.ml_interfaces.ensemble_inference import ASEEnsembleEvaluator, ensemble_statistics
-    from alframework.ml_interfaces.hippynn_interface import load_hippynn_batched_ensemble
-    from alframework.ml_interfaces.hippynn_interface import HIPNN_ASE_load_ensemble
 
     batched = load_hippynn_batched_ensemble(str(trained_ensemble), device=DEVICE)
     # Keep the actual physical member outputs at each observed geometry. Float32
@@ -288,8 +289,6 @@ def test_trained_ensemble_sampling_with_batched_hippynn(engine_name, trained_ens
 
 
 def test_excited_packed_observations_and_compaction_keep_state_atom_axes(engine_name):
-    from tests.helpers.fakes import QuadraticStateEnsemble
-    from alframework.ml_interfaces.ensemble_inference import SelectedStateEvaluator, ensemble_statistics
     model = SelectedStateEvaluator(QuadraticStateEnsemble(), 1, [1,2])
     atoms = [WATER.copy() for _ in range(3)]
     for index,a in enumerate(atoms):
@@ -311,9 +310,7 @@ def test_excited_packed_observations_and_compaction_keep_state_atom_axes(engine_
 
 
 def test_topology_initial_rejection_and_physical_force_stop_before_integration(engine_name,tmp_path):
-    from tests.helpers.fakes import QuadraticStateEnsemble
     reference=Atoms('OHH',positions=[[0,0,0],[.9572,0,0],[-.239,.927,0]])
-    from ase.io import write
     path=tmp_path/'water.xyz';write(path,reference)
     reference.set_array('topology_atom_ids',np.arange(3))
     config=dict(CONFIG,driver=dict(engine=engine_name,strategy='single'),model_mode='excited_state',

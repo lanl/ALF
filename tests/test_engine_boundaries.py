@@ -9,6 +9,8 @@ import pytest
 from ase import Atoms
 
 from tests.helpers.engines import Tether, engine_class
+from ase.constraints import FixAtoms
+from alframework.samplers import alchemi_engine
 
 
 def test_initial_velocities_cells_and_kinetic_energy_round_trip(engine_name):
@@ -32,7 +34,6 @@ def test_initial_velocities_cells_and_kinetic_energy_round_trip(engine_name):
 
 
 def test_unsupported_constraints_fail_explicitly(engine_name):
-    from ase.constraints import FixAtoms
     atoms = Atoms('H2', positions=[[0., 0., 0.], [1., 0., 0.]])
     atoms.set_constraint(FixAtoms(indices=[0]))
     with pytest.raises(NotImplementedError, match='constraints'):
@@ -41,7 +42,6 @@ def test_unsupported_constraints_fail_explicitly(engine_name):
 
 @pytest.mark.parametrize('unsupported', ['0.1.0', '0.4.0'])
 def test_alchemi_dependency_version_error_is_explicit(monkeypatch, unsupported):
-    from alframework.samplers import alchemi_engine
     monkeypatch.setattr(alchemi_engine, 'version', lambda name: unsupported)
     with pytest.raises(ImportError, match='0.2.0'):
         alchemi_engine.require_alchemi()

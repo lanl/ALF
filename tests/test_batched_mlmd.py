@@ -14,10 +14,16 @@ from alframework.samplers.mlmd_sampling import mlmd_sampling
 from alframework.tools.molecules_class import MoleculesObject
 from alframework.tools.tools import annealing_schedule
 from tests.helpers.fakes import spring_ensemble as fake_ensemble
+from tests.helpers.molecules import SPRING_WATER
+from alframework.ml_interfaces.ensemble_inference import ensemble_statistics
+from alframework.ml_interfaces.hippynn_interface import HIPNN_ASE_load_ensemble
+from tests.helpers.fakes import QuadraticStateEnsemble
+from alframework.ml_interfaces.ensemble_inference import SelectedStateEvaluator, ensemble_statistics
+from alframework.tools.cohorts import CohortPool
+from tests.helpers.fakes import PairSpringCalculator
+from ase.io import write
 
-# Equilateral water at the springs' rest length: zero uncertainty that grows as it heats.
-WATER = Atoms("OH2", positions=[[0, 0, 0], [1.2, 0, 0], [0.6, 1.0392, 0]])
-BOX = WATER.copy()
+BOX = SPRING_WATER.copy()
 BOX.set_cell(np.eye(3) * 12.0)
 BOX.set_pbc(True)
 SCHEDULE = dict(Tamp=200.0, Tper=0.02, Tsrt=3000.0, Tend=2500.0, Ramp=None, Rper=None, Rend=None)
@@ -49,7 +55,7 @@ def run_new(atoms_list, config, schedules, rngs, models=None):
 @pytest.mark.parametrize("case", sorted(CASES))
 def test_single_trajectory_reproduces_legacy_mlmd_sampling(case):
     config, schedule = CASES[case]
-    atoms = BOX if case == "density" else WATER
+    atoms = BOX if case == "density" else SPRING_WATER
     legacy = run_legacy(atoms, config, schedule, seed=11)
     # mlmd_sampling uses the global numpy stream, which RandomState(11) reproduces.
     (new,), _ = run_new([atoms], config, [schedule], [np.random.RandomState(11)])
@@ -77,7 +83,7 @@ def mixed_inputs():
     """Eight trajectories that stop at different points (or never)."""
     molecules = []
     for index in range(8):
-        atoms = WATER.copy()
+        atoms = SPRING_WATER.copy()
         if index == 6:
             atoms.positions[2] = atoms.positions[1] + [0.0, 0.3, 0.0]   # H-H close contact
         if index == 7:
@@ -120,7 +126,7 @@ def test_grouping_and_order_do_not_change_results():
 
 def test_stopped_trajectories_are_not_stepped_while_batch_mates_continue():
     config = dict(BASE, Escut=0.012)
-    atoms_list = [WATER.copy() for _ in range(3)]
+    atoms_list = [SPRING_WATER.copy() for _ in range(3)]
     atoms_list[0].positions *= 1.1       # starts strained: triggers at the first check
     rngs = [np.random.RandomState(seed) for seed in (1, 2, 3)]
     results, engine = run_new(atoms_list, config, [SCHEDULE] * 3, rngs)
@@ -155,10 +161,9 @@ def test_failed_trajectory_does_not_affect_batch_mates():
 
 
 def test_udd_bias_moves_atoms_but_screening_uses_unbiased_predictions():
-    from alframework.ml_interfaces.ensemble_inference import ensemble_statistics
 
     def run(options):
-        molecule = MoleculesObject(WATER.copy(), "mol-0000-0000000000")
+        molecule = MoleculesObject(SPRING_WATER.copy(), "mol-0000-0000000000")
         return sample_trajectories([molecule], fake_ensemble(), dict(GROUP_CONFIG, MLMD_calculator_options=options))[0]
 
     plain, udd = run({}), run({"udd_bias_weight": 0.05})
@@ -186,7 +191,6 @@ def test_metadata_files_are_written_per_trajectory(tmp_path):
 
 
 def test_trained_ensemble_single_and_batched_agree(trained_ensemble):
-    from alframework.ml_interfaces.hippynn_interface import HIPNN_ASE_load_ensemble
 
     models = HIPNN_ASE_load_ensemble(str(trained_ensemble), device="cpu")
     config = dict(GROUP_CONFIG, Escut=0.5, Fscut=1.0, maxt=0.01, distcut=0.7, srt_temp=[250.0, 350.0],
@@ -211,10 +215,7 @@ def test_trained_ensemble_single_and_batched_agree(trained_ensemble):
 
 def test_excited_ase_propagates_selected_force_and_preserves_cohort_identity():
     pytest.importorskip('torch')
-    from tests.helpers.fakes import QuadraticStateEnsemble
-    from alframework.ml_interfaces.ensemble_inference import SelectedStateEvaluator, ensemble_statistics
-    from alframework.tools.cohorts import CohortPool
-    a = WATER.copy(); a.set_array('topology_atom_ids', np.array([0, 2, 1]))
+    a = SPRING_WATER.copy(); a.set_array('topology_atom_ids', np.array([0, 2, 1]))
     models = SelectedStateEvaluator(QuadraticStateEnsemble(), 1, [1, 2])
     engine = ASEEngine([a], models, .25, [0.], [np.random.RandomState(1)])
     expected = models.predict([a])
@@ -237,15 +238,14 @@ def test_excited_ase_propagates_selected_force_and_preserves_cohort_identity():
                         ({'mode':'fixed','state':9}, 'absent')):
         config['state_selection'] = bad
         with pytest.raises(ValueError, match=reason):
-            sample_trajectories([MoleculesObject(WATER.copy(), 'bad')], QuadraticStateEnsemble(), config)
+            sample_trajectories([MoleculesObject(SPRING_WATER.copy(), 'bad')], QuadraticStateEnsemble(), config)
     config['state_selection'] = {'mode':'fixed','state':1}
     config['MLMD_calculator_options'] = {'udd_bias_weight': .1}
     with pytest.raises(ValueError, match='deferred'):
-        sample_trajectories([MoleculesObject(WATER.copy(), 'bad')], QuadraticStateEnsemble(), config)
+        sample_trajectories([MoleculesObject(SPRING_WATER.copy(), 'bad')], QuadraticStateEnsemble(), config)
 
 
 def test_force_screen_is_unbiased_and_precedes_first_step():
-    from tests.helpers.fakes import PairSpringCalculator
     a=Atoms('H2',positions=[[0,0,0],[1.2,0,0]])
     config=dict(dt=.1,maxt=.001,Ncheck=1,Escut=100.,Fscut=100.,min_time=0.,distcut=.1,
         srt_temp=[0.,0.],end_temp=[0.,0.],amp_temp=[0.,0.],per_temp=[1.,1.],
@@ -258,9 +258,6 @@ def test_force_screen_is_unbiased_and_precedes_first_step():
 
 def test_valid_candidate_survives_later_topology_rejection(tmp_path):
     pytest.importorskip('rdkit')
-    from ase.io import write
-    from tests.helpers.fakes import QuadraticStateEnsemble
-    from alframework.tools.cohorts import CohortPool
     atoms=Atoms('OHH',positions=[[0,0,0],[.9572,0,0],[-.239,.927,0]])
     reference=tmp_path/'water.xyz';write(reference,atoms)
     atoms.set_array('topology_atom_ids',np.arange(3))

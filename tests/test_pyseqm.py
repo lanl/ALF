@@ -8,6 +8,7 @@ import time
 from alframework.qm_interfaces import pyseqm_interface as pyseqm
 from alframework.tools.labeling import LabelingCoordinator
 from alframework.tools.molecules_class import MoleculesObject
+import os
 
 
 # Deliberately not heaviest-first, so the adapter must sort and restore atom order.
@@ -129,7 +130,6 @@ def sleep_child(*args):
 
 
 def crash_child(*args):
-    import os
     os._exit(3)
 
 

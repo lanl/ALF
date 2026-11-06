@@ -13,6 +13,9 @@ from tests.helpers.interface_checks import (
     check_scratch_directory,
     check_task_convergence,
 )
+from alframework.qm_interfaces import ase_calculator_interface
+from alframework.qm_interfaces import orca5_interface
+from alframework.qm_interfaces import qchem_DFT_interface
 
 
 def write_orca_outputs(path):
@@ -136,7 +139,6 @@ def test_qchem_input_writer(tmp_path):
 
 
 def test_ase_calculator_task_uses_mocked_calculator(tmp_path, monkeypatch, h2_atoms):
-    from alframework.qm_interfaces import ase_calculator_interface
 
     monkeypatch.setattr(
         ase_calculator_interface,
@@ -168,7 +170,6 @@ def test_ase_calculator_task_uses_mocked_calculator(tmp_path, monkeypatch, h2_at
 
 
 def test_orca_double_task_averages_runs_and_checks_thresholds(tmp_path, monkeypatch, h2_atoms):
-    from alframework.qm_interfaces import orca5_interface
 
     responses = iter(
         [
@@ -205,7 +206,6 @@ def test_orca_double_task_averages_runs_and_checks_thresholds(tmp_path, monkeypa
 
 
 def test_qchem_task_uses_mocked_single_point(tmp_path, monkeypatch, water_atoms):
-    from alframework.qm_interfaces import qchem_DFT_interface
 
     expected = {"energy": -10.0, "forces": np.zeros((3, 3)), "converged": True}
 

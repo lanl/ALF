@@ -9,7 +9,7 @@ def water():
     return Atoms("OH2", positions=[[0.0, 0.0, 0.0], [0.0, 0.7, 0.7], [0.0, -0.7, 0.7]])
 
 
-def test_molecules_object_state():
+def test_new_molecule_starts_unlabeled():
     atoms = water()
     molecule = MoleculesObject(atoms, "water-0")
 
@@ -19,6 +19,10 @@ def test_molecules_object_state():
     assert molecule.get_atoms() is atoms
     assert not molecule.check_stored_results()
     assert molecule.check_convergence() is None
+
+
+def test_storing_without_replace_keeps_existing_values():
+    molecule = MoleculesObject(water(), "water-0")
 
     molecule.store_results({"energy": -76.0, "forces": np.ones((3, 3))})
     molecule.store_results({"energy": -75.5, "dipole": np.zeros(3)}, replace=False)
@@ -31,6 +35,10 @@ def test_molecules_object_state():
     assert molecule.get_metadata() == {"source": "unit-test", "sample": 1}
     assert molecule.check_stored_results()
     assert molecule.check_convergence() is True
+
+
+def test_indexing_a_molecule_is_deprecated():
+    molecule = MoleculesObject(water(), "water-0")
 
     with pytest.warns(DeprecationWarning):
         assert molecule[0] == "water-0"

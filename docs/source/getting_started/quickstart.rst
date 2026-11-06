@@ -58,6 +58,11 @@ Which Example Should I Use?
        product structures.
    * - :doc:`../examples/uo2`
      - You want a NeuroChem/ANI-style workflow.
+   * - :doc:`../examples/acac_excited_pyseqm`
+     - You want active learning over excited states, starting with a small molecule.
+   * - :doc:`../examples/cpp_excited_gpu4pyscf`
+     - You want excited-state active learning with TDDFT labels, in the gas phase or
+       implicit solvent.
 
 Seeded active learning and fine-tuning solve different setup problems. Seeded
 active learning starts from structures or labeled HDF5 data and trains with

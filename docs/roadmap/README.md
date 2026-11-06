@@ -256,7 +256,9 @@ A review of the tests added since `b995c15` found them passing but with gaps:
 - Eight tests were renamed to the naming rule above. `alf_validation` selectors that name
   the old tests need updating.
 
-Local result: 569 passed, 2 skipped (`seqm` not installed).
+Local result, with the library fixes below: 580 passed, 2 skipped (`seqm` not installed).
+Actions results at `5449542`: `engines` 582 passed; `hippynn` 517 passed, 65 skipped;
+`base` 451 passed, 100 skipped.
 
 The review also led to two GPU4PySCF library fixes; see
 [Increment 11B](excited_states.md#increment-11b--calibration-and-dcm-labeling-qualified-cpp-ring-alf-e6-planned).

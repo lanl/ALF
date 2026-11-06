@@ -5,7 +5,7 @@ Capabilities not yet started, their decided order, and the checks they will need
 ## Subsequent capability increments
 
 These intended development capabilities remain on the roadmap. Row numbers
-are stable identifiers; the working order is set in **Decided priority order**
+are stable identifiers; the working order is set in [Decided priority order](#decided-priority-order-2026-11-03)
 below. Independent initialization/replay contributions may proceed
 once their helper and identity requirements are available. These are future
 capabilities, not features already supplied by Increment 6 or promises that every
@@ -13,16 +13,16 @@ existing sampler can already run through the new engines.
 
 | Increment | Capabilities to integrate | Important boundary |
 | --- | --- | --- |
-| 1. Composable sampling | Separate propagation from UDD, confinement, and other bias/force controls; support callable extensions and grouped non-MD evaluations. | Preserve physical predictions, formulas, switching order, and replica-local state. Folded into the batched UDD/gap ALF step (see **Decided priority order**). |
-| 2. Additional acquisition strategies | Custom import-string strategies and geometry-based demonstrations, followed by production distance-based acquisition and diversity-aware batch selection within cohorts (and later against the existing training set). | Eligibility, ranking, trajectory policy, and selection remain separate; future selectors declare their retention needs. The selector/retention interface follows E5 (see **Decided priority order**). |
-| 3. Model/training handoffs and distillation | Opaque model-artifact references, model-independent inference adapters, and foundation-MLIP reference labeling. | Record teacher identity, version, units, and label provenance separately from the student sampling model. Teacher labeling (3a) is a parallel track after Increment 7 (see **Decided priority order**); handoffs and distillation (3b) remain later. Fine-tuning tiers F1–F3 are planned in **Later steps**. |
+| 1. Composable sampling | Separate propagation from UDD, confinement, and other bias/force controls; support callable extensions and grouped non-MD evaluations. | Preserve physical predictions, formulas, switching order, and replica-local state. Folded into the batched UDD/gap ALF step (see [Decided priority order](#decided-priority-order-2026-11-03)). |
+| 2. Additional acquisition strategies | Custom import-string strategies and geometry-based demonstrations, followed by production distance-based acquisition and diversity-aware batch selection within cohorts (and later against the existing training set). | Eligibility, ranking, trajectory policy, and selection remain separate; future selectors declare their retention needs. The selector/retention interface follows E5 (see [Decided priority order](#decided-priority-order-2026-11-03)). |
+| 3. Model/training handoffs and distillation | Opaque model-artifact references, model-independent inference adapters, and foundation-MLIP reference labeling. | Record teacher identity, version, units, and label provenance separately from the student sampling model. Teacher labeling (3a) is a parallel track after Increment 7 (see [Decided priority order](#decided-priority-order-2026-11-03)); handoffs and distillation (3b) remain later. Fine-tuning tiers F1–F3 are planned in [Later steps](#later-steps-outline-detail-after-e5). |
 | 4. Molecular excited states | PySEQM/GPU4PySCF labeling, multi-state HIPPYNN training, derived gap targets, state selection, gap diagnostics, and LCM. | Preserve per-state convergence, state/atom mappings, physical screening, and the distinction between predictions and propagation controls. |
 | 5. RDKit initialization | Reference-centered KDG geometry generation, seed-specific screening, and FPS selection, with reproducible settings/provenance. | Optional preprocessing/builders; unlabeled seed geometries are not labeled training rows. |
 | 6. Geometry-only HDF5 replay | Reuse stored geometries for sampling or relabeling, with original identities and source provenance. | Do not accidentally carry old labels into a newly requested labeling operation. |
 | 7. Optional additional labels | Preserve optional nonadiabatic-coupling labeling and storage, including state-pair and atom-axis mappings. | Computing/storing NACs does not automatically make them energy/force training targets. |
 | 8. Durable recovery and staged workflows | Persist batching/cohort handoffs; add retained-label budgets, ALF-to-GALF/configuration stages, exact dataset checkpoints, and endpoint training. | Preserve ordinary runs as the default; budgets count retained labeled frames, not candidates or submitted jobs. |
 | 9. Further model and sampling extensions | Additional production model families, reactive batching, and separately planned methods. | Follow the same minimal-core-change and existing-workflow compatibility gates. |
-| 10. Multi-node ML training | Train ensemble members across nodes, then optionally data-parallel training of one member across GPUs/nodes. | Keep the `ML_task` entrypoint, `(completed, training_id)` return, member directory layout, and model-promotion semantics; single-node training remains the default. Parallel track, independent of the excited-state sequence (see **Decided priority order**). |
+| 10. Multi-node ML training | Train ensemble members across nodes, then optionally data-parallel training of one member across GPUs/nodes. | Keep the `ML_task` entrypoint, `(completed, training_id)` return, member directory layout, and model-promotion semantics; single-node training remains the default. Parallel track, independent of the excited-state sequence (see [Decided priority order](#decided-priority-order-2026-11-03)). |
 | 11. Non-ensemble uncertainty | Pluggable uncertainty estimators, including single-network methods, alongside the existing ensemble disagreement. | New signals carry their own names, units, and cutoffs; `Es`/`Fs`/`Fsmax` and `Escut`/`Fscut` keep their ensemble-std meaning. First planned use: foundation-model fine-tuning (F3). |
 
 Items 10 and 11 and the diversity part of item 2 were added at the user's
@@ -32,7 +32,7 @@ decided. Readiness notes from a review of development at `24028da`:
 - **Multi-node training (10).** `train_HIPPYNN_ensemble_task` is one Parsl
   app on `alf_ML_executor` that runs `multiprocessing.Pool(gpus_per_node)` on
   one node, one member per GPU. Each member sets `CUDA_VISIBLE_DEVICES` itself,
-  which is the "training pools" GPU-visibility follow-up above. The tracked
+  which is the "training pools" GPU-visibility follow-up in [`batching.md`](batching.md#known-implementation-follow-ups). The tracked
   Darwin/Chicoma configs give the ML executor one node per block. `__main__.py`
   waits for a single ML task (`ML_task_queue.get_number() < 1`) and promotes the
   model after it returns.
@@ -104,7 +104,7 @@ small, separately reviewable changes over time.
    it needs). The target is the excited-state work on the fork's
    `production_excited_states`. The headline example is the
    cycloparaphenylene ring (cpp) run as a full ALF active-learning example.
-   Steps are E1–E6 below.
+   Steps are in [the E1–E6 plan](excited_states.md#excited-state-alf-plan-e1e6).
 2. **Composable sampling with batched UDD and gap ALF** (row 1 and the
    sampling half of row 4). The bias/control interface comes first. UDD,
    wells, LCM gap seeking, and the deferred physical-force screen are built on
@@ -137,7 +137,7 @@ Two further items sit outside that sequence:
   - **F3, foundation-model fine-tuning under active learning.** It follows E5,
     teacher labeling (3a), and multi-node training.
 
-  See **Later steps**.
+  See [Later steps](#later-steps-outline-detail-after-e5).
 
 Rationale (2026-11-03): the user set composable sampling and multi-node
 training as the priorities after excited states, to make other uncertainty and

@@ -1,39 +1,39 @@
-# Living roadmap for integration into ALF development
+# ALF development roadmap
 
-Last updated: November 6, 2026 (Increments 0–6 and the Increment 7 prerequisites merged at `24028da`;
-core water, cohort/summed, MI250, and PySEQM matrices passed; all three controlled-failure
-cases passed. Increment 7 is closed by user acceptance on November 5; fresh-dependency
-matrices passed and remaining original-example gaps are accepted without further reruns.
-Increment 8 (E1–E2 contracts/storage and excited-state labeling) is complete;
-Increment 9 (E3–E4 multi-state training and external geometries) is complete;
-Increment 10 (E5 selected-state sampling and gap acquisition) is complete:
-all six real ASE/TorchSim CUDA/ALCHEMI width-one/four cases passed; twelve
-new sampled labels entered a promoted four-member ensemble. Increment 11A is
-complete: all three engine screens and the ordinary fixed-keto AcAc ALF loop
-passed, with 192 stored bootstrap frames and 26 new sampled labels in a
-promoted four-member ensemble. Increment 11B is next. Its preliminary A100
-40 GB CPP9 QM/50,000-row training-memory calibration is complete: native
-cuTENSOR restored full labeling; batch/scheduler/evaluation size eight is the
-measured recommendation for the qualified public PyTorch training path. DCM
-C-PCM labeling/storage qualification and portable AcAc/CPP example cleanup
-also passed on November 6; the ordinary CPP active-learning campaign remains
-the next E6 gate. Single-member excited-state
-sampling is a separate future capability, added by user decision November 5.
-Legacy NeuroChem is excluded from current acceptance by user decision. MI350 is deferred outside
-current acceptance. Post-release order decided: excited-state ALF, then
-composable sampling with batched UDD/gap ALF, then staged campaigns, with
-multi-node training and teacher labeling as parallel tracks; see **Decided
-priority order**. Fresh-install environment policy added; see **Development
-and test environments**).
+Last updated: November 6, 2026.
+
+This folder is the shared plan for bringing the fork's intended capabilities into
+`lanl/ALF:development`.
+
+| File | Covers | Record here |
+| --- | --- | --- |
+| This file | Status, standing rules, environments, acceptance rules | Status changes, test and docs records, environment policy |
+| [`batching.md`](batching.md) | Increments 0-7 and their known follow-ups | Batching and ground-state results and follow-ups |
+| [`excited_states.md`](excited_states.md) | The E1-E6 plan and Increments 8-11B | Excited-state results, including the E6 pilot |
+| [`future.md`](future.md) | Later capabilities and their decided order | New plans and priority decisions |
+
+## Current status
+
+- **Increments 0-10 and 11A are complete and merged.** Increment 7 was closed by user
+  acceptance on November 5. The fixed-keto AcAc ALF loop passed Increment 11A.
+- **Increment 11B is in progress.** CPP9 calibration and DCM C-PCM labeling are
+  qualified. The CPP9 E6 pilot's ordinary active-learning loop hasn't passed yet; see
+  [Increment 11B](excited_states.md#increment-11b--calibration-and-dcm-labeling-qualified-cpp-ring-alf-e6-planned).
+- **Next after E6:** composable sampling with batched UDD and gap ALF, then staged
+  campaigns. Multi-node training and teacher labeling are parallel tracks; see
+  [Decided priority order](future.md#decided-priority-order-2026-11-03). Single-member
+  excited-state sampling is a separate future capability.
+- **Outside current acceptance:** legacy NeuroChem and MI350.
 
 ## Quick start for contributors and agents
 
 Read these sections before starting work:
-1. **Guiding constraints**
-2. **Branch and maintenance workflow**
-3. **Development and test environments**
-4. **Increment 7 close-out** for accepted evidence and exclusions, then
-   **Increment 8** and **Decided priority order** with its E1–E6 table.
+1. [Guiding constraints](#guiding-constraints)
+2. [Branch and maintenance workflow](#branch-and-maintenance-workflow)
+3. [Development and test environments](#development-and-test-environments)
+4. [Increment 7 close-out](batching.md#increment-7-close-out) for accepted evidence and
+   exclusions, then [the E1–E6 plan](excited_states.md#excited-state-alf-plan-e1e6), [Increment 8](excited_states.md#increment-8--completed-excited-state-contracts-and-labeling-2026-11-05), and
+   [Decided priority order](future.md#decided-priority-order-2026-11-03).
 
 Standing rules:
 - Commit locally on `development`. Never push; the user pushes.
@@ -47,9 +47,10 @@ Standing rules:
   Keep generated data outside Git, under `/vast/home/pjlohr/ALF_LANL/validation/`.
   Never infer a gate from a startup check.
 - Record each result with its source revision, environment, and evidence path,
-  and update this roadmap's status table and the relevant section.
+  and update the status table in this file and the relevant section. The table at the
+  top of this file says which file each record belongs in.
 - The fork is source material, not an integration target. Its own roadmap copy
-  is stale; this document is authoritative.
+  is stale; this folder is authoritative.
 
 This is the shared plan for gradually bringing the fork's intended capabilities
 into `lanl/ALF:development`. It is separate from ongoing implementation on
@@ -420,11 +421,12 @@ it does not inherit acceptance from `alf_env_gpu4pyscf18`. New model/backend
 dependencies receive this check when introduced. Later increments refresh
 their affected stacks without upgrading an environment used by an active run.
 
-## First-release increments
+## Increment status
 
 Status values: **planned**, **in progress**, **done locally** (committed on
 local `development`, not yet pushed), and **merged** (in official
-`lanl/ALF:development`).
+`lanl/ALF:development`). Rows 0-7 are detailed in [`batching.md`](batching.md) and
+rows 8-11B in [`excited_states.md`](excited_states.md).
 
 On 2026-11-02 the user pushed local `development` directly to official
 `development` (tip `d5a0395`), rather than through separate fork PRs.
@@ -450,10 +452,11 @@ pushes.
 | 5. TorchSim dynamics | merged (`86f62ca`) | Supported NVIDIA/AMD ground-state batched MLMD. | CPU, NVIDIA, and Darwin MI250 mechanics and integration acceptance pass. |
 | 6. ALCHEMI dynamics | merged (`be7fb64`) | ALCHEMI 0.2.0 NVIDIA batched MLMD through the same contracts, in its separate environment. | Shared conformance tests and NVIDIA acceptance pass; TorchSim CUDA/ROCm regressions pass. |
 | 7. Combined release validation | merged (`401fc89`); closed by user acceptance 2026-11-05 | Opt-in examples and integration/performance results. | All single/batched dynamics x single/batched labeling combinations complete representative ALF workflows. |
-| 8. Excited-state contracts and labeling (E1–E2) | merged (`401fc89`) | State/gap contracts, topology-aware NAC storage, GPU4PySCF TDA labels, and native PySEQM CIS batching. | Backend qualification gates passed; see **Increment 8**. |
+| 8. Excited-state contracts and labeling (E1–E2) | merged (`401fc89`) | State/gap contracts, topology-aware NAC storage, GPU4PySCF TDA labels, and native PySEQM CIS batching. | Backend qualification gates passed; see [Increment 8](excited_states.md#increment-8--completed-excited-state-contracts-and-labeling-2026-11-05). |
 | 9. Multi-state training and external geometries (E3–E4) | merged (`7c24cb2`, live remote verified 2026-11-05) | Shared-trunk state heads and force gradients in the existing HIPPYNN interface; unlabeled XYZ/HDF5 geometry builder. | 402 library tests pass; real 32-frame import/label/store/four-member GPU training and reload passed. |
-| 10. Selected-state sampling and acquisition (E5) | complete locally (`a5090e0`, `6c2751d`, `1c367ba`); not pushed | Multi-state inference, state selection and grouping, and named gap uncertainty across ASE, TorchSim CUDA, and ALCHEMI. | Focused compatibility/parity tests; real widths one/four on each engine; one shared small acquisition/label/store/retraining qualification. |
-| 11. Chemical topology screening, then cpp-ring active learning (E6) | planned; follows Increment 10 | First qualify opt-in reference-based chemical topology screening across ASE, TorchSim, and ALCHEMI; then run the ordinary ring ALF loop. | Chemical topology gate passes before campaign submission; newly sampled ring IDs enter a promoted, loadable four-member ensemble. |
+| 10. Selected-state sampling and acquisition (E5) | merged (`a5090e0`, `6c2751d`, `1c367ba`) | Multi-state inference, state selection and grouping, and named gap uncertainty across ASE, TorchSim CUDA, and ALCHEMI. | Focused compatibility/parity tests; real widths one/four on each engine; one shared small acquisition/label/store/retraining qualification. |
+| 11A. Chemical topology screening and fixed-keto AcAc ALF | merged (`4a1caba`) | Opt-in reference-based chemical topology screening across ASE, TorchSim, and ALCHEMI; an ordinary AcAc ALF loop. | Screens passed on all three engines; newly sampled labels entered a promoted four-member ensemble. |
+| 11B. cpp-ring active learning (E6) | in progress; calibration and DCM labeling qualified, E6 pilot pending | Run the ordinary ring ALF loop. | Newly sampled ring IDs enter a promoted, loadable four-member ensemble. |
 
 ## Compatibility and acceptance
 
@@ -506,4 +509,4 @@ documents on the experimental branch include:
 
 These references describe experimental-branch capabilities; some will not yet
 exist on an early development integration branch. Keep branch/source identity
-with validation records and update this document as capabilities land.
+with validation records and update this roadmap as capabilities land.

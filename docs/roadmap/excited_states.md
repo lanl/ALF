@@ -6,8 +6,8 @@ The E1-E6 plan and Increments 8-11B: excited-state contracts, labeling, training
 
 Each step is a separate local change with its own CPU tests. Existing
 configurations, task signatures, and ground-state results stay unchanged.
-E1–E5 are complete; Increment 11A qualifies topology/RDKit and keto AcAc ALF,
-then Increment 11B proceeds to E6.
+E1–E5 are complete, and Increment 11A qualified topology/RDKit and keto AcAc ALF.
+Increment 11B is working on E6.
 
 | Step | Deliverable | Acceptance gate |
 | --- | --- | --- |
@@ -29,7 +29,7 @@ sampling (E5) rather than preceding it. Open decisions:
 
 This records the source audit before Increments 8 and 9. The dev gaps listed
 here are historical; current completion and remaining work are recorded in
-the increment sections and E1–E6 table below.
+the increment sections and the E1–E6 table above.
 
 - **The cpp9 example (`examples/cpp9_gpu4pyscf`) is a standalone trial, not
   an active-learning loop.**
@@ -168,7 +168,7 @@ finished within 27 minutes of first preparation, inside the original two-hour
 queue-inclusive deadline. Each allocation retained its 30-minute limit.
 
 Increment 9 completed E3 multi-state training and E4 external initial geometries;
-the E1–E6 sequence below remains the feature roadmap. No increment 8 training,
+the E1–E6 sequence above remains the feature roadmap. No increment 8 training,
 dynamics, cpp9 campaign, NeuroChem testing, or user-guide update is required.
 
 ## Increment 9 — completed: multi-state training and external geometries (2026-11-05)
@@ -949,7 +949,7 @@ Prerequisite implementation and gate (already passed in Increment 11A):
   required for this prerequisite. Fix the exact screen configuration and
   rejection/candidate semantics in the implementation plan before coding.
 
-After this prerequisite passes, use the existing E6 gate below: externally generated ring
+After this prerequisite passes, use the existing E6 gate in the plan above: externally generated ring
 geometries, GPU4PySCF labels including stored NACs/optical properties as
 requested, four-member multi-state training, selected-state sampling, and at
 least one acquisition/label/store/retraining promotion through ordinary

@@ -16,7 +16,7 @@ additional Increment 7 campaigns or harness repairs are required to move on.
 The engine work is merged, and the twelve-case Darwin water campaign now
 validates first-trigger active learning across all three engines. Cohort/summed
 acquisition and the other backend gates below remain open. Keep this increment focused on existing workflows and the
-concrete correctness gaps listed under **Known implementation follow-ups**.
+concrete correctness gaps listed under [Known implementation follow-ups](#known-implementation-follow-ups).
 Longer-term plugin interfaces and durable recovery remain later increments.
 
 1. Address relevant focused fixes before relying on the affected workflow:
@@ -452,14 +452,14 @@ the acceptance decision above:
    gate. Existing `atomistic` and other qualified environments remain useful
    comparisons but are not the compatibility target.
    Include the example config-load test and the first existing-example
-   compatibility smoke matrix (see **Existing-example compatibility**).
+   compatibility smoke matrix (see [Existing-example compatibility](future.md#existing-example-compatibility-planned-2026-11-03)).
 4. Keep the deferred gates explicitly open: trained cell-input checkpoint,
    long-time potential stability, and MI350. They do not block the next increment.
 
 User-guide updates were deferred at the user's direction (2026-11-04), outside
 the scope of Increment 7 acceptance. They now describe `driver`, `batching`,
 `acquisition`, and labeling batch settings, with pointers to the tracked
-TorchSim/ALCHEMI water configs; see **User documentation pass (2026-11-06)**.
+TorchSim/ALCHEMI water configs; see [User documentation pass](README.md#user-documentation-pass-2026-11-06).
 Roadmap status and validation evidence records remain part of close-out.
 
 ### Focused prerequisites (2026-11-02)
@@ -1281,7 +1281,7 @@ or adapters wherever possible.
 | Packed inference memory | HIPPYNN pads to the largest system in a task. Capacity is specified in systems, without an atom/pair-memory budget or automatic OOM splitting. A failed batched evaluator call can fail the whole active group. | Profile heterogeneous sizes before increasing widths. Consider adapter-declared memory limits and explicit retry/splitting later, preserving atom order, model pinning, identities, and per-trajectory random streams. This is not a requirement to add every OOM recovery path now. |
 | Capacity and result latency | Finished members leave GPU packed state, but their queue width is released only when the whole task completes and is harvested. Earlier first-trigger frames wait for slower batch-mates. There is no inflight replacement or result streaming. | Measure this delay in Increment 7 and keep physical capacity, candidate storage, and pending QM work distinct. Streaming or replacement would need an explicit task/result protocol change; fixed task membership remains current behavior. |
 | Restart and failed work | Buffers, cohorts, model admission sequence, and handoffs are in memory. No new retry journal or exactly-once QM handoff exists. Candidates survive a later isolated failure only if the task returns them; crashed-worker-only frames are lost. | Keep this limitation visible for ordinary screen/tmux runs as well as staged workflows. Add durable snapshots, logical IDs, replay, and handoff recovery in the later recovery increment, without requiring new pause controls now. |
-| Status and CI | Task-failure counters and failed-structure counts are different; `failed_structures` is not yet part of persisted status. CI workflows target `main`, not `development`. | Improve count/latency reporting without changing existing budget units. Consider enabling development CI separately; current acceptance relies on explicitly recorded local/backend checks and optional-dependency skips. |
+| Status and CI | Task-failure counters and failed-structure counts are different; `failed_structures` is not yet part of persisted status. | Improve count/latency reporting without changing existing budget units. Unit tests and the docs build run on `development`; real backend acceptance still relies on explicitly recorded runs outside CI. |
 
 Current strategy separation is deliberately incomplete. The multi-trajectory
 task supports Langevin MLMD and existing UDD/well options; it is not yet a

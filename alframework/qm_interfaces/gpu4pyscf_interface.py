@@ -406,7 +406,13 @@ def _import_cupy():
 def select_gpu4pyscf_device(
     gpus_per_node: int | None = None,
 ) -> dict[str, Any]:
-    """Select one real CUDA device using ALF's Parsl worker-rank convention."""
+    """Confirm that this QM worker sees exactly one CUDA device, and activate it.
+
+    GPU4PySCF's single-device kernels only work on local device 0, so rank-based
+    selection among several visible GPUs can't work. A worker that sees several is
+    rejected whatever its rank, so a misconfigured node fails the same way on every
+    worker. ``gpus_per_node`` is unused; it remains so that existing calls still work.
+    """
 
     cupy = _import_cupy()
     try:
@@ -421,14 +427,20 @@ def select_gpu4pyscf_device(
             "device; CPU fallback is intentionally disabled."
         )
 
-    from alframework.tools.gpu import _cuda_device, VISIBILITY_VARIABLES
     try:
-        label = _cuda_device(None, visible_count, gpus_per_node,
-                             any(key in os.environ for key in VISIBILITY_VARIABLES))
-        device_index = int(label.split(":")[1])
         worker_rank = int(os.environ.get("PARSL_WORKER_RANK", "0"))
-    except (TypeError, ValueError, RuntimeError) as exc:
+    except ValueError as exc:
         raise GPU4PySCFDeviceError(str(exc)) from exc
+    visible_mask = os.environ.get("CUDA_VISIBLE_DEVICES")
+    if visible_count > 1:
+        raise GPU4PySCFDeviceError(
+            f"GPU4PySCF requires each QM worker to see exactly one CUDA device, but "
+            f"worker rank {worker_rank} sees {visible_count} "
+            f"(CUDA_VISIBLE_DEVICES={visible_mask}). Bind each QM worker to one "
+            "allocated GPU before CUDA imports, for example with Parsl's "
+            "available_accelerators."
+        )
+    device_index = 0
     try:
         cupy.cuda.Device(device_index).use()
     except Exception as exc:
@@ -440,7 +452,7 @@ def select_gpu4pyscf_device(
         "label": f"cuda:{device_index}",
         "visible_count": visible_count,
         "worker_rank": worker_rank,
-        "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
+        "cuda_visible_devices": visible_mask,
     }
 
 
@@ -1017,13 +1029,17 @@ def run_gpu4pyscf_states(
         hartree_to_ev=float(nist.HARTREE2EV),
         bohr_to_angstrom=float(nist.BOHR),
     )
+    solvent = options.get('solvent')
+    computed_optical = options.get('_compute_optical', False)
+    computed_vertical = options.get('_compute_vertical', False)
     versions = {
         **vertical_results,
-        "qm_solvent": options.get('solvent'),
-        "qm_state_response": 'equilibrium_lr_pcm' if options.get('solvent') else 'gas',
-        "qm_optical_response": 'equilibrium_lr_pcm' if options.get('solvent') else 'gas',
-        "qm_vertical_response": 'nonequilibrium_lr_pcm' if options.get('solvent') else 'gas',
-        "qm_vertical_root_order": 'independent ascending vertical TDA roots',
+        "qm_solvent": solvent,
+        "qm_state_response": 'equilibrium_lr_pcm' if solvent else 'gas',
+        "qm_optical_response": ('equilibrium_lr_pcm' if solvent else 'gas') if computed_optical else 'none',
+        "qm_vertical_response": ('nonequilibrium_lr_pcm' if solvent else 'gas') if computed_vertical else 'none',
+        "qm_vertical_root_order": ('independent ascending vertical TDA roots' if solvent
+                                   else 'same as state TDA roots') if computed_vertical else 'none',
         "qm_vertical_seconds": vertical_seconds,
         "qm_nac_solver": ('solvent_pairwise' if options.get('solvent') else 'gas_multistate') if compute_nacr else 'none',
         "_transition_dipoles": transition_dipoles,

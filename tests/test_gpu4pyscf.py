@@ -374,9 +374,8 @@ def test_cupy_arrays_are_copied_to_numpy():
     np.testing.assert_allclose(converted, [1.0, 2.0])
 
 
-def test_worker_rank_picks_the_gpu(
-    monkeypatch,
-):
+def _fake_cupy_with_devices(monkeypatch, count):
+    """A fake CuPy that reports `count` devices. Returns the list of devices it activated."""
     selected = []
 
     class FakeDevice:
@@ -388,38 +387,50 @@ def test_worker_rank_picks_the_gpu(
 
     fake_cupy = SimpleNamespace(
         cuda=SimpleNamespace(
-            runtime=SimpleNamespace(getDeviceCount=lambda: 4),
+            runtime=SimpleNamespace(getDeviceCount=lambda: count),
             Device=FakeDevice,
         )
     )
     monkeypatch.setattr(gpu4pyscf_module, "_import_cupy", lambda: fake_cupy)
-    monkeypatch.setenv("PARSL_WORKER_RANK", "6")
+    return selected
 
-    # Selection alone follows the rank. The backend then accepts only device 0; see
-    # test_gpu4pyscf_worker_on_nonzero_device_returns_failed_label.
+
+@pytest.mark.parametrize("rank", [0, 3], ids=["rank_0", "rank_3"])
+def test_gpu4pyscf_uses_device_0_when_one_gpu_is_visible(monkeypatch, rank):
+    selected = _fake_cupy_with_devices(monkeypatch, 1)
+    monkeypatch.setenv("PARSL_WORKER_RANK", str(rank))
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "3")
+
     device = select_gpu4pyscf_device(4)
 
-    assert device["index"] == 2
-    assert device["worker_rank"] == 6
-    assert selected == [2]
+    assert device["index"] == 0
+    assert device["label"] == "cuda:0"
+    assert device["worker_rank"] == rank
+    assert device["visible_count"] == 1
+    assert device["cuda_visible_devices"] == "3"
+    assert selected == [0]
 
-    fake_cupy.cuda.runtime.getDeviceCount = lambda: 1
-    monkeypatch.setenv("PARSL_WORKER_RANK", "3")
-    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "3")
-    pinned = select_gpu4pyscf_device(4)
-    assert pinned["index"] == 0
-    assert pinned["visible_count"] == 1
-    assert pinned["cuda_visible_devices"] == "3"
-    assert selected[-1] == 0
 
-    # A mask listing several GPUs: the rank picks among them, whatever gpus_per_node says.
-    fake_cupy.cuda.runtime.getDeviceCount = lambda: 4
+@pytest.mark.parametrize(
+    "rank,gpus_per_node",
+    [(0, None), (0, 1), (2, 4)],
+    ids=["rank_0", "rank_0_one_gpu_per_node", "rank_2"],
+)
+def test_gpu4pyscf_rejects_a_worker_seeing_several_gpus(monkeypatch, rank, gpus_per_node):
+    selected = _fake_cupy_with_devices(monkeypatch, 4)
+    monkeypatch.setenv("PARSL_WORKER_RANK", str(rank))
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "3,4,6,7")
-    masked = select_gpu4pyscf_device(1)
-    assert masked["index"] == 3
-    assert masked["cuda_visible_devices"] == "3,4,6,7"
 
-    fake_cupy.cuda.runtime.getDeviceCount = lambda: 0
+    with pytest.raises(GPU4PySCFDeviceError) as error:
+        select_gpu4pyscf_device(gpus_per_node)
+
+    assert f"worker rank {rank} sees 4" in str(error.value)
+    assert "CUDA_VISIBLE_DEVICES=3,4,6,7" in str(error.value)
+    assert selected == []
+
+
+def test_gpu4pyscf_rejects_a_worker_seeing_no_gpu(monkeypatch):
+    _fake_cupy_with_devices(monkeypatch, 0)
     with pytest.raises(GPU4PySCFDeviceError, match="CPU fallback"):
         select_gpu4pyscf_device(4)
 
@@ -799,16 +810,10 @@ def test_gpu4pyscf_late_failure_keeps_earlier_stages_converged(fake_backend, sta
     assert metadata["qm_nac_converged"] is nac_converged
 
 
-def test_gpu4pyscf_worker_on_nonzero_device_returns_failed_label(monkeypatch):
-    """Real device selection and the real backend, on a worker seeing all four GPUs."""
-    fake_cupy = SimpleNamespace(
-        cuda=SimpleNamespace(
-            runtime=SimpleNamespace(getDeviceCount=lambda: 4),
-            Device=lambda index: SimpleNamespace(use=lambda: None),
-        )
-    )
-    monkeypatch.setattr(gpu4pyscf_module, "_import_cupy", lambda: fake_cupy)
-    monkeypatch.setenv("PARSL_WORKER_RANK", "2")
+def test_gpu4pyscf_worker_seeing_several_gpus_returns_failed_label(monkeypatch):
+    """Real device selection, on a rank-0 worker that would otherwise appear to work."""
+    _fake_cupy_with_devices(monkeypatch, 4)
+    monkeypatch.setenv("PARSL_WORKER_RANK", "0")
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0,1,2,3")
     failed = label_gpu4pyscf_excited_state_molecule(
         _molecule(),
@@ -819,8 +824,40 @@ def test_gpu4pyscf_worker_on_nonzero_device_returns_failed_label(monkeypatch):
     metadata = failed.get_metadata()
     assert failed.check_convergence() is False
     assert metadata["qm_failed_stage"] == "device"
-    assert "local CUDA device 0" in metadata["qm_error"]
-    assert metadata["qm_device"] == "cuda:2"
+    assert "worker rank 0 sees 4" in metadata["qm_error"]
+    assert "qm_device" not in metadata
+
+
+@pytest.mark.parametrize(
+    "solvent,optical,vertical,expected",
+    [
+        (None, False, False, ("none", "none", "none")),
+        (None, True, False, ("gas", "none", "none")),
+        (None, False, True, ("none", "gas", "same as state TDA roots")),
+        ({"enabled": True}, False, False, ("none", "none", "none")),
+        ({"enabled": True}, True, False, ("equilibrium_lr_pcm", "none", "none")),
+        (
+            {"enabled": True},
+            False,
+            True,
+            ("none", "nonequilibrium_lr_pcm", "independent ascending vertical TDA roots"),
+        ),
+    ],
+    ids=["gas_nothing", "gas_optical", "gas_vertical", "pcm_nothing", "pcm_optical", "pcm_vertical"],
+)
+def test_gpu4pyscf_response_metadata_records_only_what_ran(
+    fake_gpu_stack, monkeypatch, solvent, optical, vertical, expected
+):
+    monkeypatch.setattr(gpu4pyscf_module, "transition_dipoles_staged", lambda td, cupy: np.ones((2, 3)))
+    options = validate_gpu4pyscf_config({"nroots": 2, "solvent": solvent})
+    options.update(_compute_optical=optical, _compute_vertical=vertical)
+    *_, metadata = run_gpu4pyscf_states(_molecule().atoms, options, device_index=0)
+    assert metadata["qm_state_response"] == ("equilibrium_lr_pcm" if solvent else "gas")
+    assert (
+        metadata["qm_optical_response"],
+        metadata["qm_vertical_response"],
+        metadata["qm_vertical_root_order"],
+    ) == expected
 
 
 def test_backend_runs_rks_tda_for_every_state(fake_gpu_stack):

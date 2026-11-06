@@ -44,7 +44,7 @@ def worker_arguments(arguments, accelerators):
 
 def main():
     sys.argv = ['process_worker_pool.py', *worker_arguments(sys.argv[1:], visible_accelerators())]
-    runpy.run_module('parsl.executors.high_throughput.process_worker_pool', run_name='__main__')
+    runpy.run_module('parsl.executors.high_throughput.process_worker_pool', run_name='__main__', alter_sys=True)
 
 
 if __name__ == '__main__':

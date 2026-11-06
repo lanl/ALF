@@ -1269,19 +1269,13 @@ future edits, not a requirement to handle every edge case before continuing. Fix
 explicitly, preserve the ordinary examples, and keep implementation in helpers
 or adapters wherever possible.
 
+The rows below are fixed. Open rows moved to [`future.md`](future.md) on November 6, 2026.
+
 | Area | Current behavior or gap | Follow-up and boundary |
 | --- | --- | --- |
 | Periodic geometry screening | Fixed in the Increment 7 prerequisites: a shared minimum-image screen excludes diagonal self-pairs and retains physical overlaps. CPU, A100, and MI250 regressions pass. | This screen compares distinct atoms, not an atom's own periodic images. Cutoffs and screening timing are unchanged. |
 | Scheduler GPU visibility | Fixed for legacy/batched MLMD, UDD, and NeuroChem inference: inherited masks remain unchanged and automatic assignment uses local ordinals. Simulated allocation checks and real A100/MI250 reused-worker runs pass. | Training pools and reactive samplers are separate follow-ups; external Parsl/site configuration must provide valid worker visibility. NeuroChem has adapter/unit coverage, not hardware qualification in this stage. |
 | Legacy ASE checkpoint loading | Fixed: `HIPNN_ASE_calculator()` loads explicit absolute checkpoint paths without `chdir`. Concurrent member loading, prediction parity, and the twelve-case water active-learning matrix pass. | Checkpoint format and restoration are unchanged; the batched loader keeps its separate weights format. Cohort and other backend acceptance remain open. |
-| Configuration reload and pinning | The main loop reloads task configurations, but driver/buffer settings and cohort selection are constructed at startup. Cohorts pin a model generation, not an immutable sampling/acquisition configuration. | Add explicit reload safeguards or configuration snapshots at admission/submission. Changing engine, size/K, thresholds, weights, or stopping policy mid-cohort must not mix meanings between startup coordination and later task configs. Until then, keep these settings fixed for a run. |
-| Cohort admission | A cohort requires full membership and all terminal reports, with no admission timeout or partial selection. A permanently undersupplied builder leaves it unfinished. | Document and observe admitted/finished counts during Increment 7. Keep incremental admission for cohorts larger than worker capacity; do not introduce an automatic partial-cohort policy without a separate decision. |
-| Queue thresholds and strict batches | `full_only` can leave a PBC/model group waiting indefinitely when it cannot fill within available capacity. The inherited `minimum_QM` harvest gate can also hold a small number of finished sampler results. | Exercise small capacities and fragmented groups with the existing timeout policy. Check that configured completion thresholds are reachable. Add focused diagnostics/validation or drain behavior only as a separate compatibility change. The labeler already checks `target_queued_QM >= batch_size` for strict batches. |
-| Candidate memory and caps | `continue` appends candidate geometries throughout the trajectory; `_prune()` runs only at the end. `max_candidates_per_trajectory` bounds the returned payload, not peak worker memory. A cap below K can change the unrestricted global top-K. | Add online scalar top-K retention with a proof/test that selection is unchanged when no smaller explicit cap is requested. Future diversity/distance selectors must declare different retention needs. Bound completed-cohort summary history for long runs separately. |
-| Packed inference memory | HIPPYNN pads to the largest system in a task. Capacity is specified in systems, without an atom/pair-memory budget or automatic OOM splitting. A failed batched evaluator call can fail the whole active group. | Profile heterogeneous sizes before increasing widths. Consider adapter-declared memory limits and explicit retry/splitting later, preserving atom order, model pinning, identities, and per-trajectory random streams. This is not a requirement to add every OOM recovery path now. |
-| Capacity and result latency | Finished members leave GPU packed state, but their queue width is released only when the whole task completes and is harvested. Earlier first-trigger frames wait for slower batch-mates. There is no inflight replacement or result streaming. | Measure this delay in Increment 7 and keep physical capacity, candidate storage, and pending QM work distinct. Streaming or replacement would need an explicit task/result protocol change; fixed task membership remains current behavior. |
-| Restart and failed work | Buffers, cohorts, model admission sequence, and handoffs are in memory. No new retry journal or exactly-once QM handoff exists. Candidates survive a later isolated failure only if the task returns them; crashed-worker-only frames are lost. | Keep this limitation visible for ordinary screen/tmux runs as well as staged workflows. Add durable snapshots, logical IDs, replay, and handoff recovery in the later recovery increment, without requiring new pause controls now. |
-| Status and CI | Task-failure counters and failed-structure counts are different; `failed_structures` is not yet part of persisted status. | Improve count/latency reporting without changing existing budget units. Unit tests and the docs build run on `development`; real backend acceptance still relies on explicitly recorded runs outside CI. |
 
 Current strategy separation is deliberately incomplete. The multi-trajectory
 task supports Langevin MLMD and existing UDD/well options; it is not yet a
@@ -1307,17 +1301,3 @@ devices. Preserve that distinction when changing screening or ranking. The
 water smoke model also produces sensitivity-range warnings and short distances
 in the brief benchmark: engine correctness is not potential stability or
 accuracy validation.
-
-The model/training-boundary increment must also address two porting requirements
-recorded during the recent experimental-fork review. They are not claims that
-the corresponding new handoff/final-training machinery already exists here:
-
-- The training handoff must tolerate valid trainer callables whose signature
-  omits `ML_config`.
-- Move model-family artifact validation behind adapters; common final-training
-  validation must not assume HIPPYNN-style `model-NN` member directories.
-
-Deferred documentation housekeeping: the fork's copy of this roadmap still
-has the October 31 status. Synchronize it in a separate documentation change;
-this development copy is authoritative for merged integration status. Keep
-experimental-fork capabilities distinct from those available in development.

@@ -22,8 +22,9 @@ E6 is the first point where dev can do the cpp ring work, so it follows
 sampling (E5) rather than preceding it. Open decisions:
 - resolved in Increment 8: PySEQM CIS uses native composition-grouped solves,
   each isolated in a managed child process;
-- which state(s) the ring campaign propagates;
-- whether its first campaign enables gap-uncertainty ranking.
+- answered by the E6 pilot configuration: the ring campaign cycles through S0–S3;
+- answered by the E6 pilot configuration: its first campaign leaves gap-uncertainty
+  ranking and gap loss off.
 
 ## Fork source audit (2026-11-03)
 

@@ -10,7 +10,7 @@ This folder is the shared plan for bringing the fork's intended capabilities int
 | This file | Status, standing rules, environments, acceptance rules | Status changes, test and docs records, environment policy |
 | [`batching.md`](batching.md) | Increments 0-7 and their known follow-ups | Batching and ground-state results and follow-ups |
 | [`excited_states.md`](excited_states.md) | The E1-E6 plan and Increments 8-11B | Excited-state results, including the E6 pilot |
-| [`future.md`](future.md) | Later capabilities and their decided order | New plans and priority decisions |
+| [`future.md`](future.md) | What's left: order of work, quick wins, and grouped plans | New plans and priority decisions |
 
 ## Current status
 
@@ -19,10 +19,10 @@ This folder is the shared plan for bringing the fork's intended capabilities int
 - **Increment 11B is in progress.** CPP9 calibration and DCM C-PCM labeling are
   qualified. The CPP9 E6 pilot's ordinary active-learning loop hasn't passed yet; see
   [Increment 11B](excited_states.md#increment-11b--calibration-and-dcm-labeling-qualified-cpp-ring-alf-e6-planned).
-- **Next after E6:** composable sampling with batched UDD and gap ALF, then staged
-  campaigns. Multi-node training and teacher labeling are parallel tracks; see
-  [Decided priority order](future.md#decided-priority-order-2026-11-03). Single-member
-  excited-state sampling is a separate future capability.
+- **Next after E6:** selected-state UDD and wells, then LCM gap seeking, then staged
+  campaigns. Selectors, multi-node training, and teacher labeling are independent
+  tracks; see [Order of work](future.md#order-of-work).
+- **No merge to `main` is planned** (user decision, November 6).
 - **Outside current acceptance:** legacy NeuroChem and MI350.
 
 ## Quick start for contributors and agents
@@ -33,7 +33,7 @@ Read these sections before starting work:
 3. [Development and test environments](#development-and-test-environments)
 4. [Increment 7 close-out](batching.md#increment-7-close-out) for accepted evidence and
    exclusions, then [the E1–E6 plan](excited_states.md#excited-state-alf-plan-e1e6), [Increment 8](excited_states.md#increment-8--completed-excited-state-contracts-and-labeling-2026-11-05), and
-   [Decided priority order](future.md#decided-priority-order-2026-11-03).
+   [Order of work](future.md#order-of-work).
 
 Standing rules:
 - Commit locally on `development`. Never push; the user pushes.
@@ -232,8 +232,8 @@ example and says nothing about E6, whose status stays in
 [`excited_states.md`](excited_states.md).
 
 `sphinx-docs.yml` now also builds for `development`, while deployment stays limited
-to `main`. The public site therefore keeps describing `main` until `development`
-merges.
+to `main`. The public site therefore keeps describing `main`. No merge to `main` is
+planned; see [Order of work](future.md#order-of-work).
 
 The API pages were then repaired. `conf.py` enables `sphinx.ext.napoleon`, which
 renders the code's Google-style `Args:` sections, and uses real Parsl during the

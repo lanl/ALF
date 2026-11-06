@@ -186,16 +186,23 @@ the first thing seen when CI fails: `test_rdkit_seed_preparation_is_reproducible
 show the engine in their test ID, such as `[alchemi]`. Give parametrized cases
 readable `ids=`.
 
-Local results, with the Actions job environments simulated by hiding packages:
+**Test files.** File names stay generic, so one file can hold several tools:
+`test_qm_interfaces.py` can hold ORCA and more, and `test_ml_interfaces.py` can hold
+NeuroChem, HIPPYNN, and future models. Each test file starts with a docstring saying
+what it covers, what is real or faked, and what makes its tests skip. `test_gpu.py`
+became `test_gpu_selection.py`, because it needs no GPU.
 
-| Environment | Passed | Skipped |
-| --- | ---: | ---: |
-| All engines | 533 | 0 |
-| `hippynn` job | 468 | 65 |
-| `base` job (torch-free) | 404 | 98 |
+Results on Actions (fork run `42173316850`, Ubuntu, Python 3.12, CPU):
 
-These simulations matched real Actions counts exactly before this work. The
-`engines` job itself has not yet been confirmed on Actions.
+| Job | Passed | Skipped | Job time |
+| --- | ---: | ---: | ---: |
+| `engines` | 533 | 0 | about 5 min |
+| `hippynn` | 468 | 65 | about 3 min |
+| `base` (torch-free) | 404 | 98 | about 1 min |
+
+`engines` passed 3 runs in a row. Its first attempt failed 59 cases because the PyPI
+`torchvision` pulled in by ALCHEMI doesn't work with CPU-only torch, so that job
+installs both from the PyTorch CPU index.
 
 ## Development and test environments
 

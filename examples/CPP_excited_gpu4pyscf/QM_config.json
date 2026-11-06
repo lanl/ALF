@@ -16,11 +16,5 @@
   "max_memory_mb": null,
   "verbosity": 0,
   "compute_nacr": true,
-  "energy_offset_eV": -56537.15659244438,
-  "batching": {
-    "mode": "sequential",
-    "batch_size": 4,
-    "partial_policy": "timeout",
-    "max_wait_seconds": 60
-  }
+  "energy_offset_eV": -56537.15659244438
 }

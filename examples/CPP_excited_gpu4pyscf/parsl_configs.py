@@ -3,6 +3,10 @@
 ALF_{ML,SAMPLER,QM}_PYTHON select interpreters. ALF_{ML,SAMPLER,QM}_WORKER_INIT
 can load CUDA/compiler modules and library paths. ALF_SOURCE optionally pins
 an ALF checkout; otherwise use the installed package. Import submits no jobs.
+Default limits are eight QM nodes, one training node and one sampling node.
+All start empty; ordinary Parsl scaling queues nodes when work is available
+and releases idle nodes. Override ALF_{QM,ML,SAMPLER}_MAX_BLOCKS for smaller runs.
+One training task launches four ensemble members on four local GPUs.
 No CUDA visibility mask is rewritten.
 """
 import os
@@ -25,7 +29,7 @@ def make_config():
         raise ValueError('ALF_SOURCE must identify the pinned ALF source checkout')
     run = Path(os.environ.get('ALF_RUN_ROOT', os.getcwd())).resolve()
     executors = []
-    for role, workers, cores in [('ML', 1, 4), ('sampler', 4, 1), ('QM', 1, 8)]:
+    for role, workers, cores in [('ML', 1, 4), ('sampler', 4, 1), ('QM', 4, 8)]:
         prefix = 'ALF_'+role.upper()
         python = os.environ.get(prefix+'_PYTHON', sys.executable)
         init = [os.environ.get(prefix+'_WORKER_INIT', ''),
@@ -35,7 +39,8 @@ def make_config():
         provider = SlurmProvider(
             partition=os.environ.get(prefix+'_PARTITION', os.environ.get('ALF_PARTITION', 'your_gpu_partition')),
             account=os.environ.get('ALF_ACCOUNT') or None,
-            nodes_per_block=1, init_blocks=0, min_blocks=0, max_blocks=1,
+            nodes_per_block=1, init_blocks=0, min_blocks=0,
+            max_blocks=int(os.environ.get(prefix+'_MAX_BLOCKS', '8' if role=='QM' else '1')),
             cores_per_node=max(4, workers*cores),
             scheduler_options=os.environ.get(prefix+'_RESOURCE_OPTIONS', '#SBATCH --gres=gpu:4'),
             launcher=SingleNodeLauncher(),

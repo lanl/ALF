@@ -60,3 +60,23 @@ def ring_molecule_builder_task(moleculeid=None, moleculeids=None, builder_config
                                     h5_path, current_h5_id, master_directory)
     return molecules if plural else molecules[0]
 
+
+
+@python_app(executors=['alf_QM_executor'])
+def gpu4pyscf_label_task(molecule_object, QM_config, properties_list,
+                       sampler_config=None, gpus_per_node=None):
+    """Require native cuTENSOR after selecting this worker's inherited device."""
+    from alframework.qm_interfaces.gpu4pyscf_interface import (
+        select_gpu4pyscf_device, _single_device_backend, gpu4pyscf_excited_state_task)
+    select_gpu4pyscf_device(gpus_per_node)
+    import pyscf
+    _single_device_backend(pyscf)
+    from gpu4pyscf.lib import cutensor
+    if cutensor.cutensor is None or cutensor.contract_engine is not None:
+        raise RuntimeError('CPP labeling requires native cuTENSOR; check its library path')
+    from parsl.app.errors import RemoteExceptionWrapper
+    result = gpu4pyscf_excited_state_task.func(
+        molecule_object, QM_config, properties_list, sampler_config, gpus_per_node)
+    if isinstance(result, RemoteExceptionWrapper):
+        result.reraise()
+    return result

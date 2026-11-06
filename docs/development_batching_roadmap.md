@@ -2671,12 +2671,48 @@ the ring jobs and retry completed successfully. No environment/upstream
 installation was changed, and no training, dynamics or full ALF campaign was
 launched. Generated artifacts remain outside Git.
 
-Next: size and plan the bounded ordinary CPP9 ALF loop using the qualified
-gas/DCM labeler and measured training batch settings. CPP6 is an additional
-transferable example, not another required campaign gate. Choose the solvent,
-sampling states, acquisition/gap settings, bootstrap/new-label targets and
-resource budget before E6 execution. Preserve the deferred
-production-scale qualification, post-QM filtering and user-owned guide work.
+#### CPP9 E6 pilot — implementation and launch preparation (2026-11-06)
+
+The approved bounded ordinary ALF pilot uses 32 fresh seed-42 CPP9
+rotation/rattle geometries, DCM C-PCM with the complete qualified output
+schema, and four HIP-HOP100 members. Training is limited to 50 epochs,
+patience 50, and training/evaluation/scheduler batch eight. ALCHEMI runs
+state-specific width-four groups cycling S0–S3, with four-member cohorts,
+top-two selection and continue policy. Dynamics use 300 K, 0.1 fs steps,
+ten-step observations, friction 0.1 fs⁻¹, a 5 fs acquisition minimum and
+25 fs maximum. Topology and the existing uncertainty, distance and 16 eV/Å
+physical-force cutoffs remain enabled; gap loss/acquisition remain disabled.
+The storage trigger is seven, and acceptance requires all 32 fresh bootstrap
+labels plus at least eight propagated, converged/stored new IDs covering all
+states, retained by every promoted member and represented across actual
+training splits. Real training, reload, finite predictions/gaps and model-force
+finite differences within 1e-3 eV/Å are required.
+
+Darwin uses three independent single-node allocations: four A100 40 GB QM
+workers on shared-redstone, four local A6000 GPUs for ensemble training, and
+four A6000 sampling workers on ml4chem. The queue-inclusive budget is four
+hours, reserving five minutes for cleanup; allocation caps are 3.5 hours for
+QM and one hour for training/sampling. The external `alf_validation`
+CPP9 E6 supervisor instruments production tasks and ordinary
+`alframework.__main__`, journals owned jobs, freezes inputs/source/environments,
+and requires four overlapping successful bootstrap calculations on distinct
+physical GPUs before reporting that disconnection is safe. New sampling
+admissions stop after sufficient stored state coverage; overshoot is reported.
+
+The transferable CPP example adds opt-in HIP-HOP100 without changing model
+defaults or the production 300-epoch preset. Its ordinary coordinator runs in
+`tmux` with `python -m alframework --master master_config.json`.
+`parsl_configs.py` controls demand-driven node allocation: QM max_blocks=8,
+training=1, sampling=1, one node per block, init_blocks=min_blocks=0, four QM
+and sampling workers per node, and one local four-GPU training task. The QM
+queue target is 64. Idle nodes are released by Parsl; no campaign controller
+or ten-node reservation is required on the destination cluster. Native
+cuTENSOR preflight follows worker device selection without changing masks.
+
+**E6 remains incomplete until the pilot passes and owned-job termination is
+verified.** Ten-node scaling, predictive accuracy, long-time stability,
+production-scale qualification and post-QM filtering remain unclaimed.
+CPP6 remains an additional transferable example. User guides remain untouched.
 
 
 

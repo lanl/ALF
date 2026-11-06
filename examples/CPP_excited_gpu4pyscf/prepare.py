@@ -2,7 +2,7 @@
 
 python prepare.py --ring-size 6 --output-dir /scratch/cpp6 --generate-seeds
 For other CPP sizes provide --reference, --energy-offset-ev and --ring-size.
-Model choices: hiphop145 (default), hiphop64, hipnn64; all use four members.
+Model choices: hiphop145 (default), hiphop100, hiphop64, hipnn64; all use four members.
 Configure parsl_configs.py for your site, then run in the prepared directory:
 python -m alframework --master master_config.json
 GPU4PySCF workers require a compatible cuTENSOR installation/library path.
@@ -28,7 +28,7 @@ def prepare(output_dir, *, ring_size=9, reference=None, energy_offset_ev=None,
         raise ValueError('ring_size must be an integer >= 3')
     if isinstance(count, bool) or not isinstance(count, int) or count < 1:
         raise ValueError('count must be a positive integer')
-    if model not in {'hiphop145', 'hiphop64', 'hipnn64'}:
+    if model not in {'hiphop145', 'hiphop100', 'hiphop64', 'hipnn64'}:
         raise ValueError('Unknown model profile')
     if reference is None:
         reference = HERE/f'references/cpp{ring_size}_s0.xyz'
@@ -83,8 +83,8 @@ def prepare(output_dir, *, ring_size=9, reference=None, energy_offset_ev=None,
         update('QM_config.json', lambda c: c.update(energy_offset_eV=float(offset)))
         def model_settings(config):
             config['n_atoms'] = len(atoms)
-            if model != 'hiphop145':
-                config['network_params']['n_features'] = 64
+            config['network_params']['n_features'] = {
+                'hiphop145':145, 'hiphop100':100, 'hiphop64':64, 'hipnn64':64}[model]
             if model == 'hipnn64':
                 config['network_choice'] = 0
                 for key in ('l_max', 'n_max'):
@@ -120,7 +120,7 @@ def main(argv=None):
     parser.add_argument('--reference', type=Path)
     parser.add_argument('--energy-offset-ev', type=float)
     parser.add_argument('--count', type=int, default=1000)
-    parser.add_argument('--model', choices=['hiphop145', 'hiphop64', 'hipnn64'], default='hiphop145')
+    parser.add_argument('--model', choices=['hiphop145', 'hiphop100', 'hiphop64', 'hipnn64'], default='hiphop145')
     parser.add_argument('--generate-seeds', action='store_true')
     parser.add_argument('--solvent', choices=['gas','dcm'], default='gas')
     args = parser.parse_args(argv)

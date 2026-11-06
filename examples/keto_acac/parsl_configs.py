@@ -33,7 +33,7 @@ def make_config():
             nodes_per_block=1,init_blocks=0,min_blocks=0,max_blocks=1,cores_per_node=4,
             scheduler_options='#SBATCH --exclusive\n#SBATCH --mem=0\n#SBATCH --constraint=gpu_vendor:nvidia&gpu_count:4',
             launcher=SingleNodeLauncher(),walltime='01:00:00' if role=='ML' else '00:30:00',
-            worker_init='\n'.join(init),cmd_timeout=60)
+            worker_init='\n'.join(init)+'\n',cmd_timeout=60)
         executors.append(HighThroughputExecutor(label=f'alf_{role}_executor',max_workers_per_node=workers,
             cores_per_worker=cores,cpu_affinity='none',address=address_by_hostname(),provider=provider,
             heartbeat_period=10,heartbeat_threshold=180,

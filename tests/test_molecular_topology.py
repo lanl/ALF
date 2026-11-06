@@ -86,8 +86,8 @@ def _write_rdkit_references(mol_path: Path, sdf_path: Path):
         ("reference.mol", "mol", (6, 6, 6)),
         ("reference.sdf", "sdf", (6, 6, 6)),
     ],
-)
-def test_rdkit_loads_supported_reference_formats(
+ids=['xyz', 'mol', 'sdf'])
+def test_rdkit_loads_topology_reference_from_each_format(
     tmp_path,
     filename,
     reference_format,
@@ -110,7 +110,7 @@ def test_rdkit_loads_supported_reference_formats(
     assert loaded.atomic_numbers == atomic_numbers
 
 
-def test_relative_reference_uses_master_directory_and_hash_refresh(tmp_path):
+def test_changed_topology_reference_is_noticed(tmp_path):
     pytest.importorskip("rdkit")
     reference = tmp_path / "reference.xyz"
     _write_water_xyz(reference, first_bond=0.9572)
@@ -142,8 +142,8 @@ def test_relative_reference_uses_master_directory_and_hash_refresh(tmp_path):
         ({"reference_charge": 0.5}, "integer"),
         ({"unexpected": 1}, "Unknown"),
     ],
-)
-def test_topology_configuration_validation(tmp_path, overrides, message):
+ids=['zero_bond_min', 'bond_min_above_one', 'bond_max_below_one', 'zero_connectivity', 'infinite_connectivity', 'fractional_charge', 'unknown_key'])
+def test_invalid_topology_settings_are_rejected(tmp_path, overrides, message):
     reference = tmp_path / "reference.xyz"
     _write_water_xyz(reference)
 
@@ -153,7 +153,7 @@ def test_topology_configuration_validation(tmp_path, overrides, message):
         )
 
 
-def test_missing_rdkit_has_actionable_error(tmp_path, monkeypatch):
+def test_missing_rdkit_gives_a_clear_error(tmp_path, monkeypatch):
     reference = tmp_path / "reference.xyz"
     _write_water_xyz(reference)
     original_import = builtins.__import__
@@ -168,7 +168,7 @@ def test_missing_rdkit_has_actionable_error(tmp_path, monkeypatch):
         topology.load_reference_topology(_topology_config(reference))
 
 
-def test_reference_rejects_preexisting_nonreference_connection(tmp_path):
+def test_topology_reference_with_extra_bonds_is_rejected(tmp_path):
     pytest.importorskip("rdkit")
     from rdkit import Chem
 
@@ -200,7 +200,7 @@ def test_malformed_reference_is_rejected(tmp_path):
         topology.load_reference_topology(_topology_config(path))
 
 
-def test_fixed_topology_accepts_inclusive_bond_boundaries():
+def test_topology_accepts_bonds_at_the_limits():
     result = topology.validate_fixed_topology(
         _chain_atoms(
             [[0.0, 0.0, 0.0], [1.05, 0.0, 0.0], [3.075, 0.0, 0.0]]
@@ -219,8 +219,8 @@ def test_fixed_topology_accepts_inclusive_bond_boundaries():
         [[0.0, 0.0, 0.0], [0.9, 0.0, 0.0], [2.4, 0.0, 0.0]],
         [[0.0, 0.0, 0.0], [1.5, 0.0, 0.0], [3.6, 0.0, 0.0]],
     ],
-)
-def test_fixed_topology_rejects_compressed_and_stretched_bonds(positions):
+ids=['compressed', 'stretched'])
+def test_topology_rejects_compressed_or_stretched_bonds(positions):
     result = topology.validate_fixed_topology(
         _chain_atoms(positions),
         _reference_topology(),
@@ -230,7 +230,7 @@ def test_fixed_topology_rejects_compressed_and_stretched_bonds(positions):
     assert result.reason == "topology_bond_window"
 
 
-def test_fixed_topology_rejects_new_nonreference_bond():
+def test_topology_rejects_a_new_bond():
     height = np.sqrt(1.5**2 - 0.75**2)
     result = topology.validate_fixed_topology(
         _chain_atoms(
@@ -243,7 +243,7 @@ def test_fixed_topology_rejects_new_nonreference_bond():
     assert result.reason == "topology_extra_bond"
 
 
-def test_fixed_topology_rejects_atom_order_and_nonfinite_coordinates():
+def test_topology_rejects_wrong_element_or_nan_coordinates():
     identity = topology.validate_fixed_topology(
         _chain_atoms(symbols="COC"),
         _reference_topology(),
@@ -259,7 +259,7 @@ def test_fixed_topology_rejects_atom_order_and_nonfinite_coordinates():
     assert nonfinite.reason == "topology_nonfinite"
 
 
-def test_explicit_identical_atom_permutations_and_missing_identity():
+def test_topology_needs_ids_for_reordered_atoms():
     reference = _reference_topology()
     atoms = _chain_atoms()
     permuted = atoms[[2, 0, 1]]

@@ -39,8 +39,8 @@ def runtime(monkeypatch, count, hip=None):
     ({'ROCR_VISIBLE_DEVICES': '2,5', 'HIP_VISIBLE_DEVICES': '1'}, 1, '5', 4, 'cuda:0'),
     ({'ROCR_VISIBLE_DEVICES': 'GPU-one,GPU-two', 'CUDA_VISIBLE_DEVICES': '1'},
      1, '5', 4, 'cuda:0'),
-])
-def test_automatic_assignment_preserves_visibility(monkeypatch, masks, count, rank, cap, expected):
+], ids=['no_mask', 'cap_below_visible', 'cap_above_visible', 'no_rank', 'no_cap', 'cuda_mask', 'cuda_mask_unsorted', 'cuda_uuid_mask', 'cuda_mig_mask', 'rocr_mask', 'hip_mask', 'rocr_plus_hip', 'rocr_uuid_plus_cuda'])
+def test_worker_rank_picks_a_visible_gpu(monkeypatch, masks, count, rank, cap, expected):
     runtime(monkeypatch, count)
     for key, value in masks.items():
         monkeypatch.setenv(key, value)
@@ -53,7 +53,7 @@ def test_automatic_assignment_preserves_visibility(monkeypatch, masks, count, ra
     assert dict(os.environ) == before
 
 
-def test_amd_runtime_follows_the_same_assignment_rules(monkeypatch):
+def test_amd_runtime_picks_the_same_gpu(monkeypatch):
     runtime(monkeypatch, 2, hip='6.4')
     monkeypatch.setenv('ROCR_VISIBLE_DEVICES', '2,5')
     monkeypatch.setenv('PARSL_WORKER_RANK', '5')
@@ -62,7 +62,7 @@ def test_amd_runtime_follows_the_same_assignment_rules(monkeypatch):
 
 
 @pytest.mark.parametrize('mask', ['', '-1', 'NoDevFiles'])
-def test_no_visible_gpu_does_not_expand_allocation(monkeypatch, mask):
+def test_hidden_gpus_stay_hidden(monkeypatch, mask):
     runtime(monkeypatch, 0)
     monkeypatch.setenv('CUDA_VISIBLE_DEVICES', mask)
     monkeypatch.setenv('PARSL_WORKER_RANK', '5')
@@ -72,7 +72,7 @@ def test_no_visible_gpu_does_not_expand_allocation(monkeypatch, mask):
     assert os.environ['CUDA_VISIBLE_DEVICES'] == mask
 
 
-def test_cpu_and_missing_optional_torch(monkeypatch):
+def test_cpu_works_without_torch(monkeypatch):
     monkeypatch.setitem(sys.modules, 'torch', None)
     monkeypatch.setenv('PARSL_WORKER_RANK', 'not-an-integer')
     before = dict(os.environ)
@@ -83,7 +83,7 @@ def test_cpu_and_missing_optional_torch(monkeypatch):
     assert dict(os.environ) == before
 
 
-def test_explicit_local_device_overrides_rank_and_cap(monkeypatch):
+def test_requested_device_overrides_worker_rank(monkeypatch):
     runtime(monkeypatch, 2)
     monkeypatch.setenv('CUDA_VISIBLE_DEVICES', '5,2')
     monkeypatch.setenv('PARSL_WORKER_RANK', '0')
@@ -93,8 +93,8 @@ def test_explicit_local_device_overrides_rank_and_cap(monkeypatch):
             sampling_device({'device': value}, 4)
 
 
-@pytest.mark.parametrize('rank,cap', [('bad', 4), ('-1', 4), ('0', -1), ('0', 1.5)])
-def test_invalid_unmasked_assignment(monkeypatch, rank, cap):
+@pytest.mark.parametrize('rank,cap', [('bad', 4), ('-1', 4), ('0', -1), ('0', 1.5)], ids=['bad_rank', 'negative_rank', 'negative_cap', 'fractional_cap'])
+def test_invalid_rank_or_cap_is_rejected(monkeypatch, rank, cap):
     runtime(monkeypatch, 2)
     monkeypatch.setenv('PARSL_WORKER_RANK', rank)
     with pytest.raises(ValueError):
@@ -102,8 +102,8 @@ def test_invalid_unmasked_assignment(monkeypatch, rank, cap):
 
 
 @pytest.mark.parametrize('mask,expected', [(None, 'cuda:1'), ('2,5', 'cuda:1'),
-    ('GPU-a,GPU-b', 'cuda:1'), ('MIG-a', 'cuda:0'), ('2,-1,5', 'cuda:0')])
-def test_neurochem_does_not_require_torch(monkeypatch, mask, expected):
+    ('GPU-a,GPU-b', 'cuda:1'), ('MIG-a', 'cuda:0'), ('2,-1,5', 'cuda:0')], ids=['no_mask', 'numeric_mask', 'uuid_mask', 'mig_mask', 'mask_with_hidden_device'])
+def test_neurochem_selects_gpu_without_torch(monkeypatch, mask, expected):
     monkeypatch.setitem(sys.modules, 'torch', None)
     monkeypatch.setenv('PARSL_WORKER_RANK', '5')
     if mask is not None:
@@ -114,13 +114,13 @@ def test_neurochem_does_not_require_torch(monkeypatch, mask, expected):
 
 
 @pytest.mark.parametrize('mask', ['', '-1', 'NoDevFiles'])
-def test_neurochem_disabled_gpu(monkeypatch, mask):
+def test_neurochem_fails_when_gpus_are_hidden(monkeypatch, mask):
     monkeypatch.setenv('CUDA_VISIBLE_DEVICES', mask)
     with pytest.raises(RuntimeError, match='No GPU'):
         neurochem_device({}, 4)
 
 
-def test_neurochem_explicit_device_and_invalid_settings(monkeypatch):
+def test_neurochem_honors_requested_device(monkeypatch):
     monkeypatch.setenv('CUDA_VISIBLE_DEVICES', '5,2')
     assert neurochem_device({'device': 'cuda:1'}, 1) == 'cuda:1'
     with pytest.raises(ValueError, match='requires a CUDA'):
@@ -130,8 +130,8 @@ def test_neurochem_explicit_device_and_invalid_settings(monkeypatch):
         neurochem_device({}, 0)
 
 
-@pytest.mark.parametrize('neurochem', [False, True])
-def test_legacy_task_forwards_selected_local_device(monkeypatch, neurochem):
+@pytest.mark.parametrize('neurochem', [False, True], ids=['ase', 'neurochem'])
+def test_legacy_sampler_uses_the_selected_gpu(monkeypatch, neurochem):
     module = importlib.import_module('alframework.samplers.mlmd_sampling')
     runtime(monkeypatch, 2)
     monkeypatch.setenv('PARSL_WORKER_RANK', '5')
@@ -162,7 +162,7 @@ def test_legacy_task_forwards_selected_local_device(monkeypatch, neurochem):
     assert {key: os.environ.get(key) for key in VISIBILITY_VARIABLES} == before
 
 
-def test_batched_task_forwards_selected_device(monkeypatch):
+def test_batched_sampler_uses_the_selected_gpu(monkeypatch):
     runtime(monkeypatch, 2)
     monkeypatch.setenv('PARSL_WORKER_RANK', '5')
     monkeypatch.setenv('CUDA_VISIBLE_DEVICES', '2,5')

@@ -23,22 +23,22 @@ from tests.helpers.fakes import FakeTask
     [(0.0, 0.0, 100.0), (5.0, 0.0, 200.0), (10.0, 0.0, 300.0), (1.0, 50.0, 170.0)],
     ids=["start", "midpoint", "end", "with_oscillation"],
 )
-def test_annealing_schedule(t, amp, expected):
+def test_annealing_ramps_with_optional_oscillation(t, amp, expected):
     assert annealing_schedule(t=t, tmax=10.0, amp=amp, per=2.0, srt=100.0, end=300.0) == pytest.approx(expected)
 
 
-def test_compute_empirical_formula():
+def test_empirical_formula_is_sorted_with_counts():
     assert compute_empirical_formula(["H", "O", "H", "C"]) == "C01_H02_O01"
 
 
-def test_random_rotation_matrix():
+def test_random_rotation_is_orthogonal():
     rotation = random_rotation_matrix(randnums=np.array([0.25, 0.5, 0.75]))
 
     np.testing.assert_allclose(rotation.T @ rotation, np.eye(3), atol=1e-12)
     assert np.isclose(abs(np.linalg.det(rotation)), 1.0)
 
 
-def test_system_checker_accepts_valid_system_and_rejects_bad_data():
+def test_system_checker_spots_bad_data():
     atoms = Atoms("H2", positions=[[0.0, 0.0, 0.0], [0.0, 0.0, 0.7]])
     results = {"energy": np.array([-1.0])}
     for identifier in ({"moleculeid": "h2"}, "h2"):
@@ -62,7 +62,7 @@ def test_system_checker_accepts_valid_system_and_rejects_bad_data():
             system_checker(system, print_error=False)
 
 
-def test_load_config_file_paths(tmp_path):
+def test_config_paths_become_absolute(tmp_path):
     config_path = tmp_path / "master.json"
     config_path.write_text(
         json.dumps(
@@ -84,7 +84,7 @@ def test_load_config_file_paths(tmp_path):
     assert config["absolute_dir"] == "/already/absolute"
 
 
-def test_store_current_data_writes_converged_sorted_h5(tmp_path):
+def test_only_converged_frames_are_saved(tmp_path):
     atoms = Atoms(
         "OH2",
         positions=[[0.0, 0.0, 0.0], [0.0, 0.7, 0.7], [0.0, -0.7, 0.7]],
@@ -116,7 +116,7 @@ def test_store_current_data_writes_converged_sorted_h5(tmp_path):
         assert group["cell"].shape == (1, 3, 3)
 
 
-def test_store_current_data_omits_cell_for_nonperiodic_structures(tmp_path):
+def test_nonperiodic_frames_are_saved_without_a_cell(tmp_path):
     atoms = Atoms("OH2", positions=[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], cell=[20.0] * 3)
     molecule = MoleculesObject(atoms, "sample")
     molecule.store_results({"energy": -1.0, "forces": np.arange(9.0).reshape(3, 3)})
@@ -132,7 +132,7 @@ def test_store_current_data_omits_cell_for_nonperiodic_structures(tmp_path):
         assert group["coordinates"].shape == (1, 3, 3)
 
 
-def test_parsl_task_queue_counts_statuses():
+def test_parsl_queue_counts_each_status():
     queue = parsl_task_queue()
     queue.add_task(FakeTask("exec_done", done=True))
     queue.add_task(FakeTask("exec_done", done=False))
@@ -153,7 +153,7 @@ def test_parsl_task_queue_counts_statuses():
         assert not is_final_task(FakeTask(status, done=False))
 
 
-def test_parsl_task_queue_collects_results_and_removes_finished_tasks():
+def test_parsl_queue_collects_finished_results():
     queue = parsl_task_queue()
     queue.add_task(FakeTask("running", result="keep", done=False, running=True))
     queue.add_task(FakeTask("exec_done", result="done", done=True))

@@ -53,7 +53,7 @@ def run_new(atoms_list, config, schedules, rngs, models=None):
 
 
 @pytest.mark.parametrize("case", sorted(CASES))
-def test_single_trajectory_reproduces_legacy_mlmd_sampling(case):
+def test_single_trajectory_matches_legacy_mlmd_sampling(case):
     config, schedule = CASES[case]
     atoms = BOX if case == "density" else SPRING_WATER
     legacy = run_legacy(atoms, config, schedule, seed=11)
@@ -106,7 +106,7 @@ def sample_in_groups(groups):
     return results
 
 
-def test_grouping_and_order_do_not_change_results():
+def test_batching_does_not_change_results():
     inputs = mixed_inputs()
     reference = sample_in_groups([[m] for m in inputs])
     outcomes = sorted({r.get_metadata()["trajectory_outcome"] for r in reference.values()})
@@ -124,7 +124,7 @@ def test_grouping_and_order_do_not_change_results():
                 assert got.get_metadata()[key] == expected.get_metadata()[key], (name, key)
 
 
-def test_stopped_trajectories_are_not_stepped_while_batch_mates_continue():
+def test_stopped_trajectory_stays_frozen():
     config = dict(BASE, Escut=0.012)
     atoms_list = [SPRING_WATER.copy() for _ in range(3)]
     atoms_list[0].positions *= 1.1       # starts strained: triggers at the first check
@@ -146,7 +146,7 @@ class FailingEngine(ASEEngine):
         return super().observe(index)
 
 
-def test_failed_trajectory_does_not_affect_batch_mates():
+def test_one_failed_trajectory_spares_the_others():
     inputs = mixed_inputs()[:3]
     clean = sample_in_groups([inputs])
     molecules = [MoleculesObject(m.get_atoms().copy(), m.get_moleculeid()) for m in inputs]
@@ -160,7 +160,7 @@ def test_failed_trajectory_does_not_affect_batch_mates():
         assert failed[index].get_metadata()["Es"] == clean[name].get_metadata()["Es"]
 
 
-def test_udd_bias_moves_atoms_but_screening_uses_unbiased_predictions():
+def test_udd_bias_does_not_affect_screening():
 
     def run(options):
         molecule = MoleculesObject(SPRING_WATER.copy(), "mol-0000-0000000000")
@@ -175,7 +175,7 @@ def test_udd_bias_moves_atoms_but_screening_uses_unbiased_predictions():
     assert udd.get_metadata()["Es"] == pytest.approx(ensemble_statistics(engine.observe(0)["prediction"])[0]["Es"])
 
 
-def test_seeds_are_reproducible_and_id_specific():
+def test_each_trajectory_gets_its_own_reproducible_seed():
     assert trajectory_seed("a", 1) == trajectory_seed("a", 1) != trajectory_seed("b", 1)
     assert trajectory_seed("a", None) != trajectory_seed("a", None)
     assert trajectory_rng(trajectory_seed("a", 1)).rand() == trajectory_rng(trajectory_seed("a", 1)).rand()
@@ -190,7 +190,7 @@ def test_metadata_files_are_written_per_trajectory(tmp_path):
         assert (tmp_path / f"metadata-{molecule.get_moleculeid()}.traj").stat().st_size > 0
 
 
-def test_trained_ensemble_single_and_batched_agree(trained_ensemble):
+def test_trained_hippynn_gives_same_results_batched(trained_ensemble):
 
     models = HIPNN_ASE_load_ensemble(str(trained_ensemble), device="cpu")
     config = dict(GROUP_CONFIG, Escut=0.5, Fscut=1.0, maxt=0.01, distcut=0.7, srt_temp=[250.0, 350.0],
@@ -213,7 +213,7 @@ def test_trained_ensemble_single_and_batched_agree(trained_ensemble):
         np.testing.assert_array_equal(single[name]["positions"], batched[name]["positions"])
 
 
-def test_excited_ase_propagates_selected_force_and_preserves_cohort_identity():
+def test_excited_ase_sampling_follows_the_selected_state():
     pytest.importorskip('torch')
     a = SPRING_WATER.copy(); a.set_array('topology_atom_ids', np.array([0, 2, 1]))
     models = SelectedStateEvaluator(QuadraticStateEnsemble(), 1, [1, 2])
@@ -245,7 +245,7 @@ def test_excited_ase_propagates_selected_force_and_preserves_cohort_identity():
         sample_trajectories([MoleculesObject(SPRING_WATER.copy(), 'bad')], QuadraticStateEnsemble(), config)
 
 
-def test_force_screen_is_unbiased_and_precedes_first_step():
+def test_force_screen_ignores_well_forces():
     a=Atoms('H2',positions=[[0,0,0],[1.2,0,0]])
     config=dict(dt=.1,maxt=.001,Ncheck=1,Escut=100.,Fscut=100.,min_time=0.,distcut=.1,
         srt_temp=[0.,0.],end_temp=[0.,0.],amp_temp=[0.,0.],per_temp=[1.,1.],
@@ -256,7 +256,7 @@ def test_force_screen_is_unbiased_and_precedes_first_step():
     assert out.get_metadata()['step']>0  # Large well forces alone did not reject at step zero.
 
 
-def test_valid_candidate_survives_later_topology_rejection(tmp_path):
+def test_earlier_candidate_survives_later_topology_rejection(tmp_path):
     pytest.importorskip('rdkit')
     atoms=Atoms('OHH',positions=[[0,0,0],[.9572,0,0],[-.239,.927,0]])
     reference=tmp_path/'water.xyz';write(reference,atoms)

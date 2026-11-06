@@ -86,7 +86,7 @@ def _write_group(
 # ---- Deferred imports and checkpoint loading ----
 
 
-def test_interface_import_defers_hippynn_and_torch():
+def test_importing_the_interface_defers_hippynn():
     subprocess.run([sys.executable, '-c', """
 import builtins
 original_import = builtins.__import__
@@ -98,7 +98,7 @@ import alframework.ml_interfaces.hippynn_interface
 """], capture_output=True, check=True)
 
 
-def test_cpu_training_checkpoints_reload_through_alf(tmp_path):
+def test_trained_hippynn_checkpoints_reload_through_alf(tmp_path):
     pytest.importorskip('hippynn')
     from tests.helpers.hippynn import train_cpu_ensemble
     from hippynn.experiment.serialization import load_checkpoint
@@ -115,7 +115,7 @@ def test_cpu_training_checkpoints_reload_through_alf(tmp_path):
         assert np.isfinite(atoms.get_forces()).all()
 
 
-def test_absolute_checkpoint_paths_allow_concurrent_loading(tmp_path, monkeypatch):
+def test_members_load_concurrently_without_changing_directory(tmp_path, monkeypatch):
     barrier = threading.Barrier(2)
     directory = Path.cwd()
     calls = []
@@ -176,7 +176,7 @@ def test_absolute_checkpoint_paths_allow_concurrent_loading(tmp_path, monkeypatc
     assert Path.cwd() == directory
 
 
-def test_concurrent_trained_members_match_legacy_predictions(monkeypatch, trained_ensemble):
+def test_concurrent_loading_matches_legacy_predictions(monkeypatch, trained_ensemble):
     import torch
     from hippynn.experiment import serialization
     from hippynn.interfaces.ase_interface import HippynnCalculator
@@ -250,8 +250,8 @@ def write_dataset(path, sizes=(3, 6), custom=False):
     return dict(coordinates_key=coordinates, atom_keys=(coordinates, forces), species_key=species)
 
 
-@pytest.mark.parametrize('sizes', [(3,), (6,), (3, 6), (6, 3), (3, 9)])
-def test_small_groups_pad_only_atom_axis_and_preserve_components(tmp_path, sizes, readers):
+@pytest.mark.parametrize('sizes', [(3,), (6,), (3, 6), (6, 3), (3, 9)], ids=['small_only', 'large_only', 'small_then_large', 'large_then_small', 'small_then_larger'])
+def test_small_molecules_are_padded_correctly(tmp_path, sizes, readers):
     ALFPyAniDirectoryDB, PyAniDirectoryDB = readers
     schema = write_dataset(tmp_path/'data.h5', sizes)
     db = ALFPyAniDirectoryDB(str(tmp_path), inputs=None, targets=None, allow_unfound=True,
@@ -273,7 +273,7 @@ def test_small_groups_pad_only_atom_axis_and_preserve_components(tmp_path, sizes
     np.testing.assert_array_equal(arrays['quadrupole'], 9.)
 
 
-def test_custom_schema_survives_checkpoint_restarter(tmp_path, readers):
+def test_custom_dataset_names_survive_restart(tmp_path, readers):
     ALFPyAniDirectoryDB, PyAniDirectoryDB = readers
     schema = write_dataset(tmp_path/'data.h5', custom=True)
     db = ALFPyAniDirectoryDB(str(tmp_path), inputs=None, targets=None, allow_unfound=True,
@@ -297,7 +297,7 @@ assert database.arr_dict['xyz'].shape == (4, 6, 3)
 """], input=pickle.dumps(db.restarter), capture_output=True, check=True)
 
 
-def test_existing_larger_groups_match_upstream_arrays(tmp_path, readers):
+def test_larger_molecules_match_upstream_hippynn_reader(tmp_path, readers):
     ALFPyAniDirectoryDB, PyAniDirectoryDB = readers
     write_dataset(tmp_path/'data.h5', sizes=(8, 10))
     kwargs = dict(directory=str(tmp_path), inputs=None, targets=None, allow_unfound=True,
@@ -308,7 +308,7 @@ def test_existing_larger_groups_match_upstream_arrays(tmp_path, readers):
         np.testing.assert_array_equal(actual.arr_dict[key].numpy(), value.numpy())
 
 
-def test_unknown_varying_property_is_rejected_instead_of_guessing_axis(tmp_path, readers):
+def test_unknown_property_is_rejected_not_guessed(tmp_path, readers):
     ALFPyAniDirectoryDB, PyAniDirectoryDB = readers
     write_dataset(tmp_path/'data.h5')
     with h5py.File(tmp_path/'data.h5', 'a') as handle:
@@ -405,7 +405,7 @@ def test_checkpoint_restores_the_training_database(two_state_ensemble):
     assert {key: values["indices"].tolist() for key, values in database.splits.items()} == manifest["splits"]
 
 
-def test_reloaded_model_predicts_gap_as_state_difference(two_state_ensemble):
+def test_predicted_gap_is_the_state_difference(two_state_ensemble):
     import torch
     predict = _reloaded_predictor(two_state_ensemble)
     e0, e1, f0, gap = predict(torch.tensor(two_state_ensemble.coordinates[:1], dtype=torch.float64, requires_grad=True))
@@ -413,7 +413,7 @@ def test_reloaded_model_predicts_gap_as_state_difference(two_state_ensemble):
     torch.testing.assert_close(gap, e1 - e0)
 
 
-def test_reloaded_model_forces_match_numerical_derivative(two_state_ensemble):
+def test_model_forces_match_numerical_derivative(two_state_ensemble):
     import torch
     predict = _reloaded_predictor(two_state_ensemble)
     xyz = torch.tensor(two_state_ensemble.coordinates[:1], dtype=torch.float64, requires_grad=True)
@@ -436,7 +436,7 @@ def test_training_refuses_to_overwrite_a_member(two_state_ensemble):
                                             ML_config=two_state_ensemble.config)
 
 
-def test_evaluator_gives_the_same_answer_batched_or_alone(two_state_ensemble):
+def test_evaluator_gives_same_answer_batched(two_state_ensemble):
     evaluator = _load_evaluator(two_state_ensemble)
     atoms = _molecule_from(two_state_ensemble)
     other = atoms.copy()
@@ -504,14 +504,14 @@ def _duplicate_atom_ids(atoms):
     (_change_element, "composition"),
     (_duplicate_atom_ids, "permutation"),
 ], ids=["periodic", "wrong_element", "duplicate_atom_ids"])
-def test_evaluator_rejects_structures_it_cannot_represent(two_state_ensemble, corrupt, reason):
+def test_evaluator_rejects_unsupported_structures(two_state_ensemble, corrupt, reason):
     atoms = _molecule_from(two_state_ensemble)
     corrupt(atoms)
     with pytest.raises(ValueError, match=reason):
         _load_evaluator(two_state_ensemble).predict_states([atoms])
 
 
-def test_multistate_devices_preserve_visibility(monkeypatch):
+def test_training_gpu_choice_respects_visibility(monkeypatch):
     fake = SimpleNamespace(cuda=SimpleNamespace(device_count=lambda: 2))
     monkeypatch.setitem(sys.modules, 'torch', fake)
     monkeypatch.setenv('CUDA_VISIBLE_DEVICES', 'GPU-one,GPU-two')
@@ -526,7 +526,7 @@ def test_multistate_devices_preserve_visibility(monkeypatch):
     assert ml.excited_training_device('cpu', 0, 0) == 'cpu'
 
 
-def test_multistate_partial_failure_and_pool_cleanup(tmp_path, monkeypatch):
+def test_one_failed_member_is_recorded(tmp_path, monkeypatch):
     def worker_result(params):
         return dict(ok=params['model_id'] == 0, payload=dict(model_dir=params['model_dir'],
                                                              model_id=params['model_id'], error='bad member'))
@@ -542,7 +542,7 @@ def test_multistate_partial_failure_and_pool_cleanup(tmp_path, monkeypatch):
     assert json.loads((tmp_path / 'ensemble-3/model-01/training_error.json').read_text())['error'] == 'bad member'
 
 
-def test_multistate_reader_restores_identical_element_identity(tmp_path):
+def test_h5_loader_restores_atom_order(tmp_path):
     pytest.importorskip('hippynn')
     _write_group(tmp_path / 'data.h5', 'HH', species=('H', 'H'), count=3)
     with h5py.File(tmp_path / 'data.h5', 'a') as h:
@@ -558,7 +558,7 @@ def test_multistate_reader_restores_identical_element_identity(tmp_path):
 # ---- Reading multi-state training data ----
 
 
-def test_explicit_h5_loader_reads_two_states_and_small_molecules(tmp_path):
+def test_h5_loader_reads_two_states(tmp_path):
     pytest.importorskip('hippynn')
     shard = tmp_path / "data-0000.h5"
     _write_group(shard, "HO", count=4)
@@ -585,7 +585,7 @@ def test_explicit_h5_loader_reads_two_states_and_small_molecules(tmp_path):
     ]
 
 
-def test_explicit_h5_loader_uses_configured_database_names(tmp_path):
+def test_h5_loader_uses_configured_names(tmp_path):
     pytest.importorskip('hippynn')
     properties = {
         "sE0": ["state_zero_energy", "system", 1.0],
@@ -614,7 +614,7 @@ def test_explicit_h5_loader_uses_configured_database_names(tmp_path):
     assert summary["state_table"][0]["energy_db_name"] == "state_zero_energy"
 
 
-def test_explicit_h5_loader_reads_and_validates_gap_targets(tmp_path):
+def test_h5_loader_reads_gap_targets(tmp_path):
     pytest.importorskip('hippynn')
     _write_group(tmp_path / "data.h5", "HO")
 
@@ -627,7 +627,7 @@ def test_explicit_h5_loader_reads_and_validates_gap_targets(tmp_path):
     assert summary["gap_table"][0]["gap_key"] == "dE01"
 
 
-def test_explicit_h5_loader_rejects_inconsistent_gap_targets(tmp_path):
+def test_h5_loader_rejects_inconsistent_gaps(tmp_path):
     pytest.importorskip('hippynn')
     path = tmp_path / "data.h5"
     _write_group(path, "HO")
@@ -654,7 +654,7 @@ def test_explicit_h5_loader_rejects_inconsistent_gap_targets(tmp_path):
     ids=["gap_missing", "gap_nonfinite", "force_missing", "coordinates_nonfinite", "energy_nonfinite",
          "force_nonfinite"],
 )
-def test_explicit_h5_loader_rejects_bad_datasets(tmp_path, problem, with_gap, message):
+def test_h5_loader_rejects_bad_datasets(tmp_path, problem, with_gap, message):
     pytest.importorskip('hippynn')
     _write_group(tmp_path / "data.h5", "HO", **problem)
 
@@ -662,7 +662,7 @@ def test_explicit_h5_loader_rejects_bad_datasets(tmp_path, problem, with_gap, me
         ml.load_excited_state_h5_arrays(str(tmp_path), _properties(with_gap=with_gap))
 
 
-def test_explicit_h5_loader_rejects_mixed_atomic_ordering(tmp_path):
+def test_h5_loader_rejects_mixed_atom_order(tmp_path):
     pytest.importorskip('hippynn')
     shard = tmp_path / "data.h5"
     _write_group(shard, "first", species=("H", "O"))
@@ -672,7 +672,7 @@ def test_explicit_h5_loader_rejects_mixed_atomic_ordering(tmp_path):
         ml.load_excited_state_h5_arrays(str(tmp_path), _properties())
 
 
-def test_explicit_h5_loader_validates_configured_shape_and_species(tmp_path):
+def test_h5_loader_checks_configured_atoms(tmp_path):
     pytest.importorskip('hippynn')
     _write_group(tmp_path / "data.h5", "HO")
 
@@ -700,7 +700,7 @@ def test_explicit_h5_loader_validates_configured_shape_and_species(tmp_path):
 
 
 @pytest.mark.parametrize("count", [0, 2, 4])
-def test_filtered_split_capacity_rejects_insufficient_survivors(count):
+def test_too_few_structures_after_filtering_is_rejected(count):
     with pytest.raises(ValueError, match="too few structures"):
         ml.validate_filtered_split_capacity(
             count,
@@ -722,8 +722,8 @@ def test_filtered_split_capacity_rejects_insufficient_survivors(count):
         ({"remove_high_energy_cut": -1.0}, "remove_high_energy_cut"),
         ({"remove_high_forces_std": np.inf}, "remove_high_forces_std"),
     ],
-)
-def test_training_config_rejects_unsupported_features(override, message):
+ids=['periodic_cell', 'no_force_training', 'no_force_gradients', 'unknown_network', 'unsupported_optimizer', 'gap_targets_without_properties', 'csv_export', 'negative_energy_cut', 'infinite_force_std'])
+def test_unsupported_training_settings_are_rejected(override, message):
     with pytest.raises((ValueError, TypeError), match=message):
         ml.validate_excited_state_training_config(
             _config(**override),
@@ -731,7 +731,7 @@ def test_training_config_rejects_unsupported_features(override, message):
         )
 
 
-def test_training_properties_require_energy_force_kinds_and_unique_names():
+def test_training_properties_must_be_well_formed():
     wrong_kind = _properties()
     wrong_kind["F0"] = ["F0", "system", 1.0]
     with pytest.raises(ValueError, match="atomic property"):
@@ -746,7 +746,7 @@ def test_training_properties_require_energy_force_kinds_and_unique_names():
 # ---- Training loss and graph ----
 
 
-def test_loss_matches_fork_formula_exactly():
+def test_loss_combines_weighted_errors():
     actual = ml.compose_excited_state_loss(
         [(2.0, 1.0), (4.0, 3.0)],
         [(6.0, 5.0), (8.0, 7.0)],
@@ -764,7 +764,7 @@ def test_loss_matches_fork_formula_exactly():
     assert actual == pytest.approx(expected)
 
 
-def test_loss_adds_weighted_derived_gap_terms():
+def test_loss_can_include_gap_errors():
     actual = ml.compose_excited_state_loss(
         [(2.0, 1.0)],
         [(6.0, 5.0)],
@@ -811,7 +811,7 @@ def _small_shared_network():
     return network, positions
 
 
-def test_graph_uses_one_shared_trunk_and_all_state_database_names():
+def test_all_states_share_one_network():
     hippynn = pytest.importorskip("hippynn")
     network, positions = _small_shared_network()
     table = ml.validate_excited_state_training_config(
@@ -844,7 +844,7 @@ def test_graph_uses_one_shared_trunk_and_all_state_database_names():
     )
 
 
-def test_graph_exposes_derived_gap_target_without_independent_head():
+def test_gap_target_is_derived_from_states():
     hippynn = pytest.importorskip("hippynn")
 
     network, positions = _small_shared_network()
@@ -892,12 +892,12 @@ def test_graph_exposes_derived_gap_target_without_independent_head():
     ],
     ids=["independent_head", "negative_weight"],
 )
-def test_gap_training_config_rejects_independent_heads_and_bad_weight(gap_targets, message):
+def test_invalid_gap_settings_are_rejected(gap_targets, message):
     with pytest.raises(ValueError, match=message):
         ml.validate_excited_state_training_config(_config(gap_targets=gap_targets), _properties(with_gap=True))
 
 
-def test_model_member_seeds_are_deterministic():
+def test_each_member_gets_a_predictable_seed():
     config = {"random_seed": 42}
     assert [ml.model_member_seed(config, index) for index in range(3)] == [
         42,
@@ -906,7 +906,7 @@ def test_model_member_seeds_are_deterministic():
     ]
 
 
-def test_task_signature_and_destructive_options(tmp_path, monkeypatch):
+def test_unsafe_task_options_are_rejected(tmp_path, monkeypatch):
     assert ml.train_excited_state_HIPPYNN_ensemble_task.executors == [
         "alf_ML_executor"
     ]
@@ -922,7 +922,7 @@ def test_task_signature_and_destructive_options(tmp_path, monkeypatch):
         )
 
 
-def test_nacr_datasets_in_a_shard_are_never_loaded_for_training(tmp_path, monkeypatch):
+def test_nacr_is_never_loaded_for_training(tmp_path, monkeypatch):
     """A shard labeled with coupling trains exactly as an E/F-only shard does.
 
     NACR is stored so a dataset need not be relabeled later, but the MLIP must
@@ -1021,8 +1021,8 @@ def compare(data, options):
     {'remove_high_forces_cut':40., 'remove_high_forces_std':2.,
      'remove_high_energy_cut':4., 'remove_high_energy_std':2.},
     {'remove_high_forces_cut':None, 'remove_high_forces_std':None},
-])
-def test_fixed_standardized_combined_and_disabled_filters_match_upstream(options):
+], ids=['fixed', 'standardized', 'combined', 'disabled'])
+def test_filters_match_upstream_hippynn(options):
     data = arrays()
     data['F0'][-1] = 110.
     data['F0'][-2] = 20.
@@ -1031,8 +1031,8 @@ def test_fixed_standardized_combined_and_disabled_filters_match_upstream(options
 
 
 @pytest.mark.parametrize('cut, expected', [(2., list(range(6))),
-                                         (np.nextafter(2.,0.), list(range(2,6)))])
-def test_nonzero_mean_and_exact_component_cutoff(cut, expected):
+                                         (np.nextafter(2.,0.), list(range(2,6)))], ids=['at_cutoff', 'just_below_cutoff'])
+def test_force_cutoff_measures_distance_from_the_mean(cut, expected):
     data = arrays(6)
     data['F0'][0], data['F0'][1] = 8., 12.
     filtered, _ = compare(data, {'remove_high_forces_cut':cut})
@@ -1040,8 +1040,8 @@ def test_nonzero_mean_and_exact_component_cutoff(cut, expected):
 
 
 @pytest.mark.parametrize('options', [{'remove_high_forces_cut':0.}, {'remove_high_forces_std':0.},
-                                    {'remove_high_forces_cut':0.,'remove_high_forces_std':2.}])
-def test_zero_variance_large_forces_are_not_norm_filtered(options):
+                                    {'remove_high_forces_cut':0.,'remove_high_forces_std':2.}], ids=['fixed_cut', 'std_cut', 'both_cuts'])
+def test_uniform_large_forces_are_kept(options):
     data = arrays()
     # Every vector has a large norm, but every component equals the mean.
     data['F0'][:] = 1000.
@@ -1049,7 +1049,7 @@ def test_zero_variance_large_forces_are_not_norm_filtered(options):
     assert len(filtered['indices']) == 12
 
 
-def test_std_statistics_are_recomputed_after_fixed_cut():
+def test_std_filter_runs_after_fixed_cut():
     data = arrays()
     data['F0'][-1], data['F0'][-2] = 110.,20.
     filtered, summary = compare(data, {'remove_high_forces_cut':40., 'remove_high_forces_std':2.})
@@ -1058,7 +1058,7 @@ def test_std_statistics_are_recomputed_after_fixed_cut():
     assert summary['standard_deviation_failures']['F0'] == 1
 
 
-def test_h5_training_force_filter_keeps_original_store(tmp_path):
+def test_filtering_leaves_the_data_file_untouched(tmp_path):
     pytest.importorskip('hippynn')
     path = tmp_path/'data-0000.h5'
     data = arrays()
@@ -1095,7 +1095,7 @@ def multistate_arrays():
      'remove_high_energy_cut': 5., 'remove_high_energy_std': 2.},
     {'remove_high_forces_cut': None, 'remove_high_forces_std': None},
 ], ids=['fixed', 'standardized', 'combined', 'disabled'])
-def test_multistate_union_is_order_independent_and_preserves_all_rows(options):
+def test_frame_failing_any_state_is_dropped(options):
     data, table = multistate_arrays()
     data['sE1'][16] = 20.
     data['F0'][17] = 30.
@@ -1123,7 +1123,7 @@ def test_multistate_union_is_order_independent_and_preserves_all_rows(options):
     assert summary['final_structures'] == len(expected)
 
 
-def test_minimum_distance_is_applied_before_multistate_statistics():
+def test_close_contacts_are_removed_first():
     data, table = multistate_arrays()
     data['coordinates'][0, 1, 0] = .4
     data['sE1'][0] = 1000.
@@ -1138,7 +1138,7 @@ def test_minimum_distance_is_applied_before_multistate_statistics():
     assert summary['removed_standard_deviation_union'] == 0
 
 
-def test_multistate_zero_variance_retains_all_rows():
+def test_uniform_multistate_data_is_kept():
     data, table = multistate_arrays()
     filtered, summary = ml.filter_excited_state_training_arrays(
         data, table, coordinates_key='coordinates', dist_soft_min=.5,

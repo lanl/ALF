@@ -43,8 +43,8 @@ def native_qm(molecule_objects, QM_config):
 
 
 @pytest.mark.parametrize("mode,batch_size", [(None, None), ("sequential", 2), ("sequential", 5),
-                                             ("native", 2), ("native", 5)])
-def test_coordinator_labels_bootstraps_stores_and_retrains(tmp_path, monkeypatch, mode, batch_size):
+                                             ("native", 2), ("native", 5)], ids=['unbatched', 'sequential_2', 'sequential_5', 'native_2', 'native_5'])
+def test_labeling_completes_a_full_training_cycle(tmp_path, monkeypatch, mode, batch_size):
     # Waiting structures count as queued QM, so with target_queued_QM=2 a batch of 5
     # cannot fill during bootstrap; bootstrap can only finish through timed-out partial batches.
     training_calls, sampler_calls, packed_calls = [], [], []
@@ -118,7 +118,7 @@ def test_coordinator_labels_bootstraps_stores_and_retrains(tmp_path, monkeypatch
         assert group["species"].asstr()[()].tolist() == ["H", "H", "O"]
 
 
-def test_sequential_packing_keeps_successful_labels():
+def test_one_failed_label_keeps_the_others():
     molecules = [MoleculesObject(WATER.copy(), name) for name in ("mol-boot-0000000000", FAILING_ID, "c")]
     labeled = labeling_module.label_sequentially(molecules, single_qm.func, {"QM_config": {}})
     assert [mol.get_moleculeid() for mol in labeled] == ["mol-boot-0000000000", FAILING_ID, "c"]
@@ -127,7 +127,7 @@ def test_sequential_packing_keeps_successful_labels():
     assert labeled[0].get_results()["energy"] == -1.0
 
 
-def test_labeling_settings_require_explicit_mode():
+def test_batching_requires_an_explicit_mode():
     assert labeling_batch_settings({}) is None
     assert labeling_batch_settings({"batching": {"mode": "native", "batch_size": 2}})["mode"] == "native"
     for bad, reason in (({"batch_size": 2}, "mode"), ({"mode": "packed", "batch_size": 2}, "mode"),
@@ -136,28 +136,28 @@ def test_labeling_settings_require_explicit_mode():
             labeling_batch_settings({"batching": bad})
 
 
-def test_coordinator_rejects_labeler_signature_mismatch():
+def test_labeler_must_match_the_batching_mode():
     with pytest.raises(ValueError, match="molecule_objects"):
         LabelingCoordinator(single_qm, "mock.qm", {"batching": {"mode": "native", "batch_size": 2}})
     with pytest.raises(ValueError, match="molecule_object"):
         LabelingCoordinator(native_qm, "mock.qm", {"batching": {"mode": "sequential", "batch_size": 2}})
 
 
-def test_full_only_requires_queue_target_that_can_fill_a_batch():
+def test_full_only_needs_a_queue_that_can_fill():
     settings = {"batching": {"mode": "native", "batch_size": 4, "partial_policy": "full_only"}}
     with pytest.raises(ValueError, match="target_queued_QM"):
         LabelingCoordinator(native_qm, "mock.qm", settings, {"target_queued_QM": 3})
     assert LabelingCoordinator(native_qm, "mock.qm", settings, {"target_queued_QM": 4}).batched
 
 
-def test_unbatched_coordinator_keeps_ordinary_queue():
+def test_no_batching_keeps_the_ordinary_queue():
     coordinator = LabelingCoordinator(single_qm, "mock.qm", {})
     assert type(coordinator.queue) is tool_module.parsl_task_queue
     assert coordinator.poll_delay(60) == 60
     assert coordinator.submit_ready([]) == 0
 
 
-def test_batched_queue_counts_structures_and_flattens_results():
+def test_batched_queue_counts_molecules_not_tasks():
     buffer = BatchBuffer(4)
     queue = BatchedTaskQueue(buffer)
     first, second = MoleculesObject(WATER.copy(), "a"), MoleculesObject(WATER.copy(), "b")
@@ -180,7 +180,7 @@ def test_batched_queue_counts_structures_and_flattens_results():
 
 
 @pytest.mark.parametrize('width', [1, 2])
-def test_real_label_coordinator_submits_timeout_tails_without_flush(tmp_path, width):
+def test_leftover_molecules_submit_after_timeout(tmp_path, width):
     @python_app(executors=['tail'])
     def label(molecule_object):
         return molecule_object

@@ -13,7 +13,7 @@ from tests.helpers.fakes import FakeLangevin, FakeUncertaintyCalculator, FixedCa
 from tests.helpers.interface_checks import check_ase_calculator_interface, check_energy_force_results
 
 
-def test_well_potential():
+def test_well_pulls_outlying_atoms_inward():
     atoms = Atoms("H2", positions=[[0.0, 0.0, 0.0], [2.0, 0.0, 0.0]])
     calc = Well_Potential(r_start=1.0, force=2.0, origin=[0.0, 0.0, 0.0], mass_weighted=False)
 
@@ -23,7 +23,7 @@ def test_well_potential():
     np.testing.assert_allclose(calc.results["forces"], [[0.0, 0.0, 0.0], [-2.0, 0.0, 0.0]])
 
 
-def test_well_potential_defaults_to_mass_weighted_forces():
+def test_well_forces_scale_with_mass():
     atoms = Atoms("HeH", positions=[[2.0, 0.0, 0.0], [3.0, 0.0, 0.0]])
     calc = Well_Potential(r_start=1.0, force=1.0, origin=[0.0, 0.0, 0.0])
 
@@ -33,7 +33,7 @@ def test_well_potential_defaults_to_mass_weighted_forces():
     np.testing.assert_allclose(calc.results["forces"][:, 0], -masses)
 
 
-def test_well_potential_zero_properties_excludes_core_properties():
+def test_well_cannot_zero_energy_or_forces():
     atoms = Atoms("H", positions=[[2.0, 0.0, 0.0]])
     calc = Well_Potential(
         r_start=1.0,
@@ -54,7 +54,7 @@ def test_well_potential_zero_properties_excludes_core_properties():
     assert calc.results["stress"] == 0
 
 
-def test_mlmd_calculator_reports_ensemble_means_and_uncertainties(fixed_calculator_factory):
+def test_mlmd_calculator_averages_the_ensemble(fixed_calculator_factory):
     atoms = Atoms("H2", positions=[[0.0, 0.0, 0.0], [0.0, 0.0, 0.7]])
     model_a = fixed_calculator_factory(energy=1.0, forces=[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
     model_b = fixed_calculator_factory(energy=3.0, forces=[[3.0, 0.0, 0.0], [0.0, 3.0, 0.0]])
@@ -85,7 +85,7 @@ def test_mlmd_calculator_single_model_has_zero_uncertainty(fixed_calculator_fact
     assert calc.results["forces_stdev_max"] == 0.0
 
 
-def test_mlmd_calculator_applies_udd_energy_and_force_bias(fixed_calculator_factory):
+def test_mlmd_calculator_applies_udd_bias(fixed_calculator_factory):
     atoms = Atoms("H2", positions=[[0.0, 0.0, 0.0], [0.0, 0.0, 0.7]])
     model_a = fixed_calculator_factory(energy=1.0, forces=[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
     model_b = fixed_calculator_factory(energy=3.0, forces=[[3.0, 0.0, 0.0], [0.0, 3.0, 0.0]])
@@ -102,7 +102,7 @@ def test_mlmd_calculator_applies_udd_energy_and_force_bias(fixed_calculator_fact
     np.testing.assert_allclose(calc.results["forces"], [[2.5, 0.0, 0.0], [0.0, 2.5, 0.0]])
 
 
-def test_mlmd_calculator_udd_zero_disagreement_has_no_bias(fixed_calculator_factory):
+def test_agreeing_models_get_no_udd_bias(fixed_calculator_factory):
     atoms = Atoms("H", positions=[[0.0, 0.0, 0.0]])
     model_a = fixed_calculator_factory(energy=1.5, forces=[[0.1, 0.2, 0.3]])
     model_b = fixed_calculator_factory(energy=1.5, forces=[[0.1, 0.2, 0.3]])
@@ -117,7 +117,7 @@ def test_mlmd_calculator_udd_zero_disagreement_has_no_bias(fixed_calculator_fact
     np.testing.assert_allclose(calc.results["forces"], calc.results["unbiased_forces"])
 
 
-def test_mlmd_calculator_udd_ignores_well_potential(fixed_calculator_factory):
+def test_udd_bias_ignores_the_well(fixed_calculator_factory):
     atoms = Atoms("H2", positions=[[0.2, 0.0, 0.0], [0.0, 0.0, 0.7]])
     model_a = fixed_calculator_factory(energy=1.0, forces=[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
     model_b = fixed_calculator_factory(energy=3.0, forces=[[3.0, 0.0, 0.0], [0.0, 3.0, 0.0]])
@@ -135,7 +135,7 @@ def test_mlmd_calculator_udd_ignores_well_potential(fixed_calculator_factory):
     assert calc.results["unbiased_energy"] > 2.0
 
 
-def test_mlmd_sampling_updates_density_and_cell_volume(monkeypatch):
+def test_mlmd_sampling_density_schedule_changes_the_cell(monkeypatch):
     mlmd_sampling_module = importlib.import_module("alframework.samplers.mlmd_sampling")
 
     monkeypatch.setattr(mlmd_sampling_module, "Langevin", FakeLangevin)
@@ -185,7 +185,7 @@ def test_mlmd_sampling_updates_density_and_cell_volume(monkeypatch):
     assert np.isclose(result.get_metadata()["cell"].volume, mass / expected_final_density)
 
 
-def test_udd_sampling_task_requires_bias_weight(h2_atoms):
+def test_udd_task_requires_a_bias_weight(h2_atoms):
     udd_sampling_module = importlib.import_module("alframework.samplers.udd_sampling")
     molecule = MoleculesObject(h2_atoms, "h2-udd")
 
@@ -200,7 +200,7 @@ def test_udd_sampling_task_requires_bias_weight(h2_atoms):
         error.reraise()
 
 
-def test_udd_sampling_task_injects_bias_and_delegates(monkeypatch, h2_atoms):
+def test_udd_task_passes_bias_to_the_sampler(monkeypatch, h2_atoms):
     udd_sampling_module = importlib.import_module("alframework.samplers.udd_sampling")
     molecule = MoleculesObject(h2_atoms, "h2-udd")
     captured = {}
@@ -253,8 +253,8 @@ def test_udd_sampling_task_injects_bias_and_delegates(monkeypatch, h2_atoms):
            cell=[[8, 0, 0], [2, 7, 0], [1, .5, 6]], pbc=True), .02*np.sqrt(53)),
     (Atoms('He', cell=[.1]*3, pbc=True), np.inf),
     (Atoms(), np.inf),
-])
-def test_minimum_distance(atoms, expected):
+], ids=['periodic_image', 'nonperiodic_cell', 'overlapping_atoms', 'atoms_one_cell_apart', 'partly_periodic', 'triclinic_cell', 'single_atom', 'no_atoms'])
+def test_minimum_distance_handles_every_cell_type(atoms, expected):
     positions, cell, pbc = atoms.positions.copy(), atoms.cell.copy(), atoms.pbc.copy()
     assert minimum_distance(atoms) == pytest.approx(expected)
     np.testing.assert_array_equal(atoms.positions, positions)
@@ -262,15 +262,15 @@ def test_minimum_distance(atoms, expected):
     np.testing.assert_array_equal(atoms.pbc, pbc)
 
 
-@pytest.mark.parametrize('legacy', [True, False])
+@pytest.mark.parametrize('legacy', [True, False], ids=['legacy', 'batched'])
 @pytest.mark.parametrize('positions, periodic, cutoff, rejected, expected', [
     ([[.1, 0, 0], [9.9, 0, 0]], True, .5, True, .2),
     ([[.1, 0, 0], [9.9, 0, 0]], False, .5, False, 9.8),
     ([[0, 0, 0], [0, 0, 0]], False, .5, True, 0.),
     ([[0, 0, 0], [10, 0, 0]], True, .5, True, 0.),
     ([[0, 0, 0], [1, 0, 0]], False, 1., False, 1.),
-])
-def test_sampler_screening(legacy, positions, periodic, cutoff, rejected, expected):
+], ids=['across_periodic_boundary', 'same_distance_without_periodicity', 'overlapping_atoms', 'overlapping_periodic_image', 'exactly_at_cutoff'])
+def test_close_contacts_are_rejected(legacy, positions, periodic, cutoff, rejected, expected):
     atoms = Atoms('H2', positions=positions, cell=[10]*3, pbc=periodic)
     molecule = MoleculesObject(atoms, 'screen')
     models = [FixedCalculator(0., np.zeros((2, 3))) for _ in range(2)]

@@ -4,7 +4,7 @@ import pytest
 from alframework.tools.pyanitools import anidataloader, datapacker
 
 
-def test_datapacker_and_anidataloader_round_trip_arrays_and_strings(tmp_path):
+def test_anidataloader_reads_back_saved_data(tmp_path):
     h5_path = tmp_path / "dataset.h5"
     packer = datapacker(str(h5_path))
     packer.store_data(
@@ -32,6 +32,6 @@ def test_datapacker_and_anidataloader_round_trip_arrays_and_strings(tmp_path):
         loader.cleanup()
 
 
-def test_anidataloader_missing_file_raises(tmp_path):
+def test_anidataloader_missing_file_gives_a_clear_error(tmp_path):
     with pytest.raises(FileNotFoundError, match="not found"):
         anidataloader(str(tmp_path / "missing.h5"))

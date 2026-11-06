@@ -136,7 +136,7 @@ def _raises(error):
     return run
 
 
-def test_validated_defaults_are_five_root_cam_b3lyp():
+def test_defaults_are_five_root_cam_b3lyp():
     options = validate_gpu4pyscf_config({})
 
     assert options == DEFAULT_GPU4PYSCF_CONFIG
@@ -170,13 +170,13 @@ def test_validated_defaults_are_five_root_cam_b3lyp():
         ({"verbosity": -1}, "verbosity"),
         ({"energy_offset_eV": np.inf}, "energy_offset_eV"),
     ],
-)
-def test_config_validation_rejects_malformed_settings(updates, message):
+ids=['empty_xc', 'empty_basis', 'fractional_charge', 'triplet', 'non_boolean_density_fit', 'auxbasis_without_density_fit', 'negative_grids_level', 'zero_roots', 'nan_scf_tolerance', 'zero_tda_tolerance', 'zero_scf_cycles', 'fractional_tda_cycles', 'boolean_threads', 'negative_memory', 'negative_verbosity', 'infinite_energy_offset'])
+def test_malformed_settings_are_rejected(updates, message):
     with pytest.raises(ValueError, match=message):
         validate_gpu4pyscf_config(updates)
 
 
-def test_configurable_compatible_settings_are_preserved():
+def test_valid_settings_are_kept():
     options = validate_gpu4pyscf_config(
         {
             "xc": "pbe0",
@@ -197,7 +197,7 @@ def test_configurable_compatible_settings_are_preserved():
     assert options["max_memory_mb"] == pytest.approx(16000)
 
 
-def test_property_contract_requires_complete_states_for_root_count():
+def test_properties_must_cover_every_state():
     state_table, gap_table = validate_gpu4pyscf_properties(
         _properties(5, include_gap=True),
         nroots=5,
@@ -214,7 +214,7 @@ def test_property_contract_requires_complete_states_for_root_count():
         validate_gpu4pyscf_properties(missing_force, nroots=1)
 
 
-def test_property_contract_rejects_wrong_kinds_and_unsupported_keys():
+def test_wrong_or_unknown_properties_are_rejected():
     wrong_energy = _properties(1)
     wrong_energy["sE1"][1] = "atomic"
     with pytest.raises(ValueError, match="system property"):
@@ -231,7 +231,7 @@ def test_property_contract_rejects_wrong_kinds_and_unsupported_keys():
         validate_gpu4pyscf_properties(unsupported, nroots=1)
 
 
-def test_scf_and_tda_convergence_flags_are_strict():
+def test_scf_tda_convergence_flags_are_checked_strictly():
     _require_scf_convergence(SimpleNamespace(converged=np.bool_(True)))
     with pytest.raises(GPU4PySCFSCFError, match="one Boolean scalar"):
         _require_scf_convergence(SimpleNamespace(converged=1))
@@ -258,7 +258,7 @@ def test_scf_and_tda_convergence_flags_are_strict():
         )
 
 
-def test_atomic_unit_conversion_has_energy_scale_and_negative_gradient():
+def test_unit_conversion_turns_gradients_into_forces():
     energies, forces = convert_gpu4pyscf_atomic_units(
         np.asarray([1.0, 2.0]),
         np.asarray(
@@ -291,8 +291,8 @@ def test_atomic_unit_conversion_has_energy_scale_and_negative_gradient():
         (np.asarray([0.0, np.nan]), np.zeros((2, 1, 3)), "non-finite"),
         (np.zeros(2), np.full((2, 1, 3), np.inf), "non-finite"),
     ],
-)
-def test_atomic_unit_conversion_rejects_malformed_outputs(
+ids=['too_few_energies', 'too_few_gradients', 'nan_energy', 'infinite_gradient'])
+def test_unit_conversion_rejects_malformed_outputs(
     energies, gradients, message
 ):
     with pytest.raises(GPU4PySCFOutputError, match=message):
@@ -306,7 +306,7 @@ def test_atomic_unit_conversion_rejects_malformed_outputs(
         )
 
 
-def test_cupy_values_are_explicitly_transferred_to_numpy():
+def test_cupy_arrays_are_copied_to_numpy():
     calls = []
 
     class FakeGPUArray:
@@ -324,7 +324,7 @@ def test_cupy_values_are_explicitly_transferred_to_numpy():
     np.testing.assert_allclose(converted, [1.0, 2.0])
 
 
-def test_device_selection_uses_worker_rank_and_requires_cuda(
+def test_worker_rank_picks_the_gpu(
     monkeypatch,
 ):
     selected = []
@@ -372,7 +372,7 @@ def test_device_selection_uses_worker_rank_and_requires_cuda(
         select_gpu4pyscf_device(4)
 
 
-def test_missing_cupy_dependency_has_actionable_error(monkeypatch):
+def test_missing_cupy_gives_a_clear_error(monkeypatch):
     real_import = importlib.import_module
 
     def block_cupy(name):
@@ -491,7 +491,7 @@ def fake_gpu_stack(monkeypatch):
     return calls
 
 
-def test_backend_constructs_rks_tda_and_uses_one_based_gradients(fake_gpu_stack):
+def test_backend_runs_rks_tda_for_every_state(fake_gpu_stack):
     calls = fake_gpu_stack
     options = validate_gpu4pyscf_config(
         {
@@ -530,7 +530,7 @@ def test_backend_constructs_rks_tda_and_uses_one_based_gradients(fake_gpu_stack)
     assert nac_pairs.shape == (0, 2)
 
 
-def test_labeling_maps_states_forces_gap_offset_and_metadata(fake_backend):
+def test_labeling_stores_every_state(fake_backend):
     energies, forces = _predictions(2)
     seen_numbers = []
 
@@ -582,7 +582,7 @@ def test_labeling_maps_states_forces_gap_offset_and_metadata(fake_backend):
     assert metadata["gap_properties"] == ["dE01"]
 
 
-def test_sampler_energy_offset_is_compatibility_fallback(fake_backend):
+def test_sampler_energy_offset_is_the_fallback(fake_backend):
     energies, forces = _predictions(1)
     fake_backend(_returns(energies, forces))
 
@@ -597,7 +597,7 @@ def test_sampler_energy_offset_is_compatibility_fallback(fake_backend):
     assert labeled.get_metadata()["energy_offset_source"] == "sampler_config"
 
 
-def test_failure_clears_partial_labels_and_records_stage(fake_backend):
+def test_failed_run_leaves_no_partial_labels(fake_backend):
 
     fake_backend(_raises(GPU4PySCFTDAError("synthetic root failure", failed_states=(2,))))
     molecule = _molecule("failed")
@@ -646,8 +646,8 @@ def test_failure_clears_partial_labels_and_records_stage(fake_backend):
             True,
         ),
     ],
-)
-def test_stage_failures_return_consistent_convergence_metadata(
+ids=['dependency', 'scf', 'gradient'])
+def test_failed_stage_is_reported(
     fake_backend,
     error,
     stage,
@@ -669,7 +669,7 @@ def test_stage_failures_return_consistent_convergence_metadata(
     assert metadata["qm_tda_converged"] is tda_converged
 
 
-def test_malformed_converted_output_is_rejected(fake_backend):
+def test_malformed_output_marks_frame_failed(fake_backend):
     _, forces = _predictions(1)
     fake_backend(_returns(np.zeros(1), forces))
 
@@ -685,7 +685,7 @@ def test_malformed_converted_output_is_rejected(fake_backend):
     assert failed.get_metadata()["qm_tda_converged"] is True
 
 
-def test_invalid_molecules_fail_before_device_selection(monkeypatch):
+def test_invalid_molecules_never_reach_the_gpu(monkeypatch):
     selected = []
     monkeypatch.setattr(
         gpu4pyscf_module,
@@ -716,7 +716,7 @@ def test_invalid_molecules_fail_before_device_selection(monkeypatch):
     assert selected == []
 
 
-def test_labeling_results_follow_existing_hdf5_storage_path(
+def test_labels_can_be_saved_to_hdf5(
     fake_backend, tmp_path
 ):
     energies, forces = _predictions(1)
@@ -740,7 +740,7 @@ def test_labeling_results_follow_existing_hdf5_storage_path(
         assert group["state_1_forces"].shape == (1, 3, 3)
 
 
-def test_public_task_uses_existing_driver_contract(fake_backend):
+def test_task_accepts_the_coordinator_inputs(fake_backend):
     energies, forces = _predictions(1)
     fake_backend(_returns(energies, forces))
     molecule = _molecule("task-contract")
@@ -765,7 +765,7 @@ def test_public_task_uses_existing_driver_contract(fake_backend):
     assert gpu4pyscf_excited_state_task.executors == ["alf_QM_executor"]
 
 
-def test_excited_excited_pairs_follow_ordered_combinations():
+def test_nac_pairs_are_ordered_combinations():
     assert excited_excited_nac_pairs(1) == ()
     assert excited_excited_nac_pairs(2) == ((1, 2),)
     assert excited_excited_nac_pairs(3) == ((1, 2), (1, 3), (2, 3))
@@ -774,7 +774,7 @@ def test_excited_excited_pairs_follow_ordered_combinations():
     assert len(excited_excited_nac_pairs(6)) == 15
 
 
-def test_compute_nacr_defaults_off_and_requires_two_roots():
+def test_nacr_is_off_by_default():
     assert validate_gpu4pyscf_config({})["compute_nacr"] is False
     assert (
         validate_gpu4pyscf_config({"compute_nacr": True, "nroots": 2})[
@@ -789,7 +789,7 @@ def test_compute_nacr_defaults_off_and_requires_two_roots():
         validate_gpu4pyscf_config({"compute_nacr": "yes"})
 
 
-def test_nacr_property_and_flag_must_agree():
+def test_nacr_property_must_match_the_setting():
     with_nacr = _properties(2, include_nacr=True)
     without = _properties(2)
 
@@ -807,7 +807,7 @@ def test_nacr_property_and_flag_must_agree():
         validate_gpu4pyscf_properties(wrong_scope, nroots=2, compute_nacr=True)
 
 
-def test_nac_output_validation_rejects_bad_pairs_shape_and_values():
+def test_malformed_nacr_is_rejected():
     nacr, pairs = _nac_predictions(3)
     validated_nacr, validated_pairs = gpu4pyscf_module._validated_nac_outputs(
         nacr, pairs, nroots=3, atom_count=3
@@ -835,7 +835,7 @@ def test_nac_output_validation_rejects_bad_pairs_shape_and_values():
         )
 
 
-def test_labeling_stores_nacr_and_pair_metadata(fake_backend):
+def test_labeling_stores_nacr(fake_backend):
     energies, forces = _predictions(2)
     nacr, pairs = _nac_predictions(2)
     fake_backend(_returns(energies, forces, nacr, pairs, {"s1_gradient_source": "nac_solver"}))
@@ -860,7 +860,7 @@ def test_labeling_stores_nacr_and_pair_metadata(fake_backend):
     assert metadata["s1_gradient_source"] == "nac_solver"
 
 
-def test_labeling_without_nacr_stores_no_coupling(fake_backend):
+def test_labeling_without_nacr_stores_none(fake_backend):
     energies, forces = _predictions(2)
     fake_backend(_returns(energies, forces))
 
@@ -877,7 +877,7 @@ def test_labeling_without_nacr_stores_no_coupling(fake_backend):
     assert "nac_pairs" not in metadata
 
 
-def test_nac_failure_marks_molecule_unconverged(fake_backend):
+def test_nac_failure_marks_frame_failed(fake_backend):
 
     fake_backend(_raises(GPU4PySCFNACError("coupling solver exploded", failed_states=(1, 2))))
 
@@ -898,7 +898,7 @@ def test_nac_failure_marks_molecule_unconverged(fake_backend):
     assert NACR_PROPERTY_KEY not in labeled.get_results()
 
 
-def test_nacr_round_trips_through_hdf5_storage(fake_backend, tmp_path):
+def test_nacr_survives_hdf5_storage(fake_backend, tmp_path):
     energies, forces = _predictions(2)
     nacr, pairs = _nac_predictions(2)
     fake_backend(_returns(energies, forces, nacr, pairs))
@@ -924,7 +924,7 @@ def test_nacr_round_trips_through_hdf5_storage(fake_backend, tmp_path):
         assert group["state_0_forces"].shape == (1, 3, 3)
 
 
-def test_optional_optics_are_validated_offset_once_and_stored(fake_backend, tmp_path):
+def test_optical_properties_are_stored(fake_backend, tmp_path):
     def runner(atoms, options, **kw):
         assert options['_compute_optical']
         return (np.array([-10., -9.]), np.zeros((2, len(atoms), 3)), None, None,
@@ -946,7 +946,7 @@ def test_optional_optics_are_validated_offset_once_and_stored(fake_backend, tmp_
 
 
 @pytest.mark.parametrize('strength', [-.1, np.nan])
-def test_invalid_optics_cannot_mark_frame_converged(fake_backend, strength):
+def test_invalid_optics_mark_frame_failed(fake_backend, strength):
     fake_backend(lambda *a, **k: (np.array([-10., -9.]), np.zeros((2, 3, 3)), None, None,
                                   {'_transition_dipoles': np.ones((1, 3)),
                                    '_oscillator_strengths': np.array([strength])}))
@@ -957,7 +957,7 @@ def test_invalid_optics_cannot_mark_frame_converged(fake_backend, strength):
     assert m.get_results() == {}
 
 
-def test_backend_sets_single_device_config_only_during_import(monkeypatch):
+def test_single_gpu_setting_applies_only_during_import(monkeypatch):
     monkeypatch.delitem(sys.modules, 'gpu4pyscf.__config__', raising=False)
     config = SimpleNamespace(num_devices=4)
     fake = SimpleNamespace(__config__=config)
@@ -971,12 +971,12 @@ def test_backend_sets_single_device_config_only_during_import(monkeypatch):
     assert config.num_devices == 4
 
 
-def test_preimported_multigpu_backend_is_rejected(monkeypatch):
+def test_multi_gpu_backend_already_loaded_is_rejected(monkeypatch):
     monkeypatch.setitem(sys.modules, 'gpu4pyscf.__config__', SimpleNamespace(num_devices=4))
     with pytest.raises(GPU4PySCFDeviceError, match='multi-GPU'):
         gpu4pyscf_module._single_device_backend(SimpleNamespace())
 
 
-def test_tight_tda_convergence_keeps_small_davidson_corrections():
+def test_tight_tda_tolerance_keeps_small_corrections():
     config = validate_gpu4pyscf_config({'tda_conv_tol': 1e-8})
     assert config['tda_lindep'] < config['tda_conv_tol']**2

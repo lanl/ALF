@@ -32,7 +32,7 @@ PARALLEL_SAMPLERS = 4
                          ids=["single", "batched", "cohort-stop", "cohort-continue", "torchsim",
                               "torchsim-cohort-continue", "alchemi", "alchemi-cohort-stop",
                               "alchemi-cohort-continue", "alchemi-single"])
-def test_coordinator_bootstraps_samples_batches_labels_and_retrains(tmp_path, monkeypatch, driver, policy):
+def test_active_learning_loop_completes_a_full_cycle(tmp_path, monkeypatch, driver, policy):
     require_engine(driver.get("engine"))
     training_calls, sampler_widths, labeled, engines = [], [], [], []
 
@@ -101,7 +101,7 @@ def test_coordinator_bootstraps_samples_batches_labels_and_retrains(tmp_path, mo
         assert max(sampler_widths) > 1 and max(sampler_widths) <= 3
 
 
-def test_driver_settings_validation():
+def test_driver_settings_are_validated():
     assert driver_settings({})["strategy"] == "single"
     with pytest.raises(ValueError, match="requires a sampler 'batching'"):
         driver_settings({"driver": {"strategy": "batched"}})
@@ -118,7 +118,7 @@ def test_driver_settings_validation():
         driver_settings({"driver": {"stratgy": "single"}})
 
 
-def test_legacy_sampler_is_unchanged_and_rejects_new_blocks():
+def test_legacy_sampler_rejects_batching_settings():
     coordinator = SamplerCoordinator(simple_mlmd_sampling_task, "mlmd", {"dt": 0.5})
     assert type(coordinator.queue) is tool_module.parsl_task_queue and not coordinator.batched
     for key in ("driver", "batching"):
@@ -126,7 +126,7 @@ def test_legacy_sampler_is_unchanged_and_rejects_new_blocks():
             SamplerCoordinator(simple_mlmd_sampling_task, "mlmd", {key: {}})
 
 
-def test_multi_trajectory_sampler_counts_structures():
+def test_batched_sampler_counts_molecules():
     cutoffs = {"Escut": 0.5, "Fscut": 0.3}
     single = SamplerCoordinator(batched_mlmd.mlmd_trajectories_task, "batched", cutoffs)
     assert single.batched and single.settings["batch_size"] == 1 and single.poll_delay(60) == 60
@@ -136,7 +136,7 @@ def test_multi_trajectory_sampler_counts_structures():
     assert batched.queue.get_number() == 1 and batched.poll_delay(60) == pytest.approx(5.0, abs=0.1)
 
 
-def test_real_sampler_coordinator_pins_admission_and_task_generation(tmp_path):
+def test_cohort_stays_on_the_model_it_started_with(tmp_path):
     @python_app(executors=['pinning'])
     def sampler(molecule_objects, sampler_config, current_model_id):
         for m in molecule_objects:
@@ -163,7 +163,7 @@ def test_real_sampler_coordinator_pins_admission_and_task_generation(tmp_path):
         assert coordinator.status()['open'][0]['model_id'] == 1
 
 
-def test_excited_state_admission_is_independent_of_width_and_completion_order(tmp_path):
+def test_state_assignment_ignores_batch_size(tmp_path):
     @python_app(executors=['state_admission'])
     def capture(molecule_objects, current_model_id):
         assert len({m.get_metadata()['selected_state'] for m in molecule_objects}) == 1
@@ -192,8 +192,8 @@ def test_excited_state_admission_is_independent_of_width_and_completion_order(tm
         assert [state for _, state, _ in snapshots[0]] == [0, 1, 1, 1, 0, 1, 0, 1]
 
 
-@pytest.mark.parametrize('failure', [None, 'builder', 'qm'])
-def test_actual_driver_finite_bootstrap_caps_partial_batch_and_reports_exhaustion(tmp_path, monkeypatch, failure):
+@pytest.mark.parametrize('failure', [None, 'builder', 'qm'], ids=['all_succeed', 'builder_fails', 'qm_fails'])
+def test_finite_bootstrap_stops_when_structures_run_out(tmp_path, monkeypatch, failure):
     requested, training, sampled = [], [], []
 
     @python_app(executors=['finite_executor'])

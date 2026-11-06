@@ -15,7 +15,7 @@ from alframework.tools.molecules_class import MoleculesObject
 from alframework.tools.tools import store_current_data
 
 
-def test_flattened_excited_state_contract():
+def test_state_table_lists_each_state():
     table = derive_state_property_table(
         {
             "sE0": ["singlet_0_energy", "system", 1.0],
@@ -59,7 +59,7 @@ def _gap_properties():
     }
 
 
-def test_gap_keys_support_compact_and_multi_digit_forms():
+def test_gap_keys_handle_multi_digit_states():
     assert parse_gap_key("dE01") == (0, 1)
     assert parse_gap_key("dE0_10") == (0, 10)
     assert parse_gap_key("sE1") is None
@@ -67,7 +67,7 @@ def test_gap_keys_support_compact_and_multi_digit_forms():
     assert gap_key_for_pair(0, 10) == "dE0_10"
 
 
-def test_gap_table_defaults_to_properties_and_supports_pair_selection():
+def test_gap_table_can_select_pairs():
     properties = _gap_properties()
     all_rows = derive_gap_property_table(properties)
     selected = derive_gap_property_table(
@@ -98,7 +98,7 @@ def test_gap_table_defaults_to_properties_and_supports_pair_selection():
         ),
     ],
 )
-def test_gap_table_rejects_bad_schema_and_scale(mutator, message):
+def test_gap_table_rejects_wrong_kind_or_scale(mutator, message):
     properties = _gap_properties()
     mutator(properties)
     with pytest.raises(ValueError, match=message):
@@ -114,8 +114,8 @@ def test_gap_table_rejects_bad_schema_and_scale(mutator, message):
         ([[0, 2]], "requires"),
         ([[0, 1.5]], "nonnegative integer"),
     ],
-)
-def test_gap_table_rejects_invalid_configured_pairs(pairs, message):
+ids=['reversed', 'duplicate', 'out_of_range', 'missing_property', 'non_integer'])
+def test_gap_table_rejects_invalid_pairs(pairs, message):
     with pytest.raises(ValueError, match=message):
         derive_gap_property_table(
             _gap_properties(),
@@ -141,7 +141,7 @@ def molecule(order=(0, 1, 2, 3), tagged=True):
     return mol
 
 
-def test_multistate_pair_atomic_and_same_element_identity_roundtrip(tmp_path):
+def test_stored_nacr_labels_follow_topology_ids(tmp_path):
     path = tmp_path/'labels.h5'
     store_current_data(str(path), [molecule(), molecule((2, 3, 0, 1))], PROPERTIES)
     with h5py.File(path) as h5:
@@ -161,7 +161,7 @@ def test_multistate_pair_atomic_and_same_element_identity_roundtrip(tmp_path):
 @pytest.mark.parametrize('pairs', [None, [[1, 2]], [[1, 2], [1, 2]],
                                    [[2, 1], [1, 3]], [[1.5, 2], [1, 3]]],
                          ids=['missing', 'too_few', 'duplicate', 'out_of_order', 'non_integer'])
-def test_bad_pair_index_rejected_before_write(tmp_path, pairs):
+def test_bad_nac_pairs_block_the_write(tmp_path, pairs):
     mol = molecule()
     mol.update_metadata({'nac_pairs': pairs})
     with pytest.raises((ValueError, RuntimeError), match='nac_pairs'):
@@ -169,7 +169,7 @@ def test_bad_pair_index_rejected_before_write(tmp_path, pairs):
     assert not (tmp_path/'bad.h5').exists()
 
 
-def test_changed_pair_mapping_and_mixed_topology_are_rejected(tmp_path):
+def test_mixed_nac_pairs_or_topology_cannot_share_a_file(tmp_path):
     a, b = molecule(), molecule()
     b.update_metadata({'nac_pairs': [[1, 2], [2, 3]]})
     with pytest.raises(RuntimeError, match='different'):
@@ -178,7 +178,7 @@ def test_changed_pair_mapping_and_mixed_topology_are_rejected(tmp_path):
         store_current_data(str(tmp_path/'bad.h5'), [a, molecule(tagged=False)], PROPERTIES)
 
 
-def test_topology_ids_require_explicit_permutation():
+def test_topology_ids_must_be_a_permutation():
     for ids in ([0, 0, 2], [0., 1., 2.], [0, 1, 3]):
         with pytest.raises(ValueError, match='permutation'):
             validated_atom_ids(ids, 3)

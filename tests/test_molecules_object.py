@@ -46,7 +46,7 @@ def test_indexing_a_molecule_is_deprecated():
         molecule[3]
 
 
-def test_update_and_append_atoms():
+def test_atoms_can_be_appended_or_cleared():
     molecule = MoleculesObject(Atoms("H", positions=[[0.0, 0.0, 0.0]]), "h")
 
     molecule.append_atoms(Atoms("O", positions=[[0.0, 0.0, 1.0]]))
@@ -56,7 +56,7 @@ def test_update_and_append_atoms():
     assert molecule.get_atoms() is None
 
 
-def test_composition_and_signature():
+def test_same_composition_is_recognized():
     molecule_a = MoleculesObject(water(), "a")
     molecule_b = MoleculesObject(Atoms("H2O", positions=[[3, 0, 0], [4, 0, 0], [5, 0, 0]]), "b")
 

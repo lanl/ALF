@@ -25,7 +25,7 @@ def read(path):
 
 
 @pytest.mark.parametrize('path', MASTERS, ids=lambda p: str(p.relative_to(ROOT/'examples')))
-def test_tracked_example_configs_load_with_current_validators(path):
+def test_example_configs_are_valid(path):
     master = read(path)
     configs = {role: read(path.parent/master[role+'_config_path'])
                for role in ('builder', 'sampler', 'QM', 'ML')}
@@ -49,7 +49,7 @@ def test_tracked_example_configs_load_with_current_validators(path):
 
 
 @pytest.mark.parametrize('path', MASTERS, ids=lambda p: str(p.relative_to(ROOT/'examples')))
-def test_tracked_example_task_imports(path, monkeypatch):
+def test_example_tasks_can_be_imported(path, monkeypatch):
     monkeypatch.syspath_prepend(str(path.parent))
     for field in TASKS:
         module, name = read(path)[field].rsplit('.', 1)
@@ -61,7 +61,7 @@ def test_tracked_example_task_imports(path, monkeypatch):
 
 
 @pytest.mark.parametrize('name', ['mlmd_config_torchsim.json', 'mlmd_config_alchemi.json'])
-def test_tracked_packed_water_configs(name):
+def test_packed_water_configs_are_valid(name):
     config = read(ROOT/'examples/simple_water'/name)
     assert driver_settings(config)['strategy'] == 'batched'
     batching_settings(config)

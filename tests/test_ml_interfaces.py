@@ -2,7 +2,7 @@ from tests.helpers.fakes import fake_training_pool, import_neurochem_with_fake_b
 from alframework.ml_interfaces import hippynn_interface
 
 
-def test_hippynn_train_ensemble_task_builds_model_configs(tmp_path, monkeypatch):
+def test_hippynn_training_configures_each_member(tmp_path, monkeypatch):
 
     FakePool, pool = fake_training_pool()
     monkeypatch.setattr(hippynn_interface.multiprocessing, "Pool", FakePool)
@@ -38,7 +38,7 @@ def test_hippynn_train_ensemble_task_builds_model_configs(tmp_path, monkeypatch)
     ]
 
 
-def test_hippynn_train_ensemble_task_reports_partial_failure(tmp_path, monkeypatch):
+def test_hippynn_training_reports_failed_members(tmp_path, monkeypatch):
 
     logs = ["Training complete\n", "Stopped before convergence\n"]
     FakePool, _ = fake_training_pool(member_log=logs.__getitem__)
@@ -56,7 +56,7 @@ def test_hippynn_train_ensemble_task_reports_partial_failure(tmp_path, monkeypat
     assert training_id == 4
 
 
-def test_hippynn_ase_load_ensemble_orders_members_by_directory_name(monkeypatch):
+def test_hippynn_ensemble_members_load_in_name_order(monkeypatch):
 
     found_by_glob = ["models/model-0003/model-02/", "models/model-0003/model-00/", "models/model-0003/model-01/"]
     in_member_order = sorted(found_by_glob)
@@ -75,7 +75,7 @@ def test_hippynn_ase_load_ensemble_orders_members_by_directory_name(monkeypatch)
     assert calls == [(model_dir, "cpu") for model_dir in in_member_order]
 
 
-def test_neurochem_train_task_wires_trainer_and_training_config(monkeypatch):
+def test_neurochem_training_passes_settings_to_trainer(monkeypatch):
     neurochem_interface = import_neurochem_with_fake_backend(monkeypatch)
     captured = {}
 

@@ -68,8 +68,8 @@ def replay(results, cohort_size, k, width, order):
     return frames, pool
 
 
-@pytest.mark.parametrize("policy,cap", [("stop", None), ("continue", None), ("continue", 2)])
-def test_selection_is_identical_across_widths_and_completion_orders(policy, cap):
+@pytest.mark.parametrize("policy,cap", [("stop", None), ("continue", None), ("continue", 2)], ids=['stop', 'continue', 'continue_capped'])
+def test_selection_ignores_how_trajectories_finish(policy, cap):
     results = sampled(50, cohort_config(50, 8, policy, cap))
     outcomes = {r.get_metadata()["trajectory_outcome"] for r in results.values()}
     assert {"eligible", "rejected"} <= outcomes
@@ -89,7 +89,7 @@ def test_selection_is_identical_across_widths_and_completion_orders(policy, cap)
             assert pool.status()["finished"] == 1
 
 
-def test_selection_is_the_global_top_k_of_all_candidates():
+def test_selection_takes_the_best_k_overall():
     results = sampled(20, cohort_config(20, 5, "continue"))
     everything = [c for r in results.values() for c in r.get_metadata()["acquisition_candidates"]]
     expected = sorted(everything, key=lambda c: (-c["ranking_score"], c["trajectory_id"], c["step"]))[:5]
@@ -101,7 +101,7 @@ def test_selection_is_the_global_top_k_of_all_candidates():
     assert frame.get_metadata()["ranking_score"] == expected[0]["ranking_score"]
 
 
-def test_worker_pruning_does_not_change_the_selection():
+def test_worker_pruning_keeps_the_selection():
     unpruned = sampled(14, cohort_config(14, 50, "continue"))
     pruned = sampled(14, cohort_config(14, 3, "continue"))
     full, _ = replay(unpruned, 14, 50, 14, "forward")
@@ -123,7 +123,7 @@ def returned(trajectory_id, outcome, candidates=()):
     return molecule
 
 
-def test_ties_fewer_than_k_empty_and_failed_members():
+def test_cohort_edge_cases_still_select_correctly():
     pool = CohortPool({"cohort_size": 4, "k": 3})
     for name in ("b", "a", "c", "d"):
         pool.admit(member(name), model_id=0)
@@ -144,7 +144,7 @@ def test_ties_fewer_than_k_empty_and_failed_members():
     assert empty.ready() == [] and empty.finished[0]["selected"] == []
 
 
-def test_duplicate_and_unknown_reports_are_rejected():
+def test_unexpected_reports_are_rejected():
     pool = CohortPool({"cohort_size": 2, "k": 1})
     pool.admit(member("a"), model_id=0)
     with pytest.raises(ValueError, match="already admitted"):
@@ -156,7 +156,7 @@ def test_duplicate_and_unknown_reports_are_rejected():
         pool.record(returned("z", "completed"))
 
 
-def test_cohorts_larger_than_capacity_are_admitted_incrementally():
+def test_cohort_can_exceed_running_capacity():
     pool = CohortPool({"cohort_size": 10, "k": 2})
     running, selections, admitted = [], [], 0
     while admitted < 10 or running:
@@ -172,7 +172,7 @@ def test_cohorts_larger_than_capacity_are_admitted_incrementally():
     assert [f.get_metadata()["trajectory_id"] for f in selections[-1]] == ["t9", "t8"]
 
 
-def test_model_promotion_finishes_the_open_cohort_on_its_pinned_model():
+def test_open_cohort_finishes_on_its_original_model():
     pool = CohortPool({"cohort_size": 3, "k": 1})
     first = [member(n) for n in ("a", "b")]
     assert [pool.admit(m, model_id=0) for m in first] == [0, 0]
@@ -190,7 +190,7 @@ def test_model_promotion_finishes_the_open_cohort_on_its_pinned_model():
     assert [c["cohort_id"] for c in pool.status()["open"]] == ["cohort-0001-000000"]
 
 
-def test_state_specific_cohorts_pin_each_open_group_across_model_promotions():
+def test_each_state_keeps_its_own_cohort_model():
     pool=CohortPool(dict(cohort_size=2,k=1,group_by_selected_state=True))
     items=[]
     for name,state,model,expected in [('a',0,0,0),('b',1,1,1),('c',0,2,0),('d',1,2,1)]:

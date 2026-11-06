@@ -39,8 +39,8 @@ from alframework.builders.external_geometry import geometry_manifest
         ({"Mg": 2, "Cl": -1}, 9),
         ({"Ca": 2, "F": -1, "O": -2}, 10),
     ],
-)
-def test_create_atomic_system_is_charge_neutral(atom_charges, target_num_atoms):
+ids=['NaCl', 'MgCl2', 'CaFO'])
+def test_atomic_system_is_charge_neutral(atom_charges, target_num_atoms):
     random.seed(1)
 
     system = create_atomic_system(atom_charges, target_num_atoms)
@@ -51,13 +51,13 @@ def test_create_atomic_system_is_charge_neutral(atom_charges, target_num_atoms):
     assert set(system).issubset(atom_charges)
 
 
-def test_to_mic_wraps_distances_into_minimum_image():
+def test_distances_wrap_to_minimum_image():
     distances = np.array([[5.5, -5.5, 0.0], [1.0, 2.0, -6.0]])
 
     np.testing.assert_allclose(to_mic(distances, box_length=10.0), [[-4.5, 4.5, 0.0], [1.0, 2.0, 4.0]])
 
 
-def test_construct_simulation_box_respects_minimum_distance():
+def test_box_respects_minimum_distance():
     np.random.seed(5)
     coords = construct_simulation_box(
         {"Na": 2, "Cl": 2},
@@ -75,7 +75,7 @@ def test_construct_simulation_box_respects_minimum_distance():
         assert np.linalg.norm(to_mic(first - second, 8.0)) > 1.0
 
 
-def test_construct_simulation_box_can_return_scaled_coordinates():
+def test_box_can_return_scaled_coordinates():
     np.random.seed(5)
     coords = construct_simulation_box(
         {"Na": 1, "Cl": 1},
@@ -89,12 +89,12 @@ def test_construct_simulation_box_can_return_scaled_coordinates():
     assert np.all(coords <= 1.0)
 
 
-def test_construct_simulation_box_rejects_too_dense_system():
+def test_overfull_box_is_rejected():
     with pytest.raises(ValueError, match="Density is too high"):
         construct_simulation_box({"Na": 10}, min_distance=2.0, box_length=3.0)
 
 
-def test_atomic_system_builder_returns_molecule_ready_atoms():
+def test_salt_builder_returns_periodic_neutral_atoms():
     random.seed(2)
     np.random.seed(2)
 
@@ -111,7 +111,7 @@ def test_atomic_system_builder_returns_molecule_ready_atoms():
     assert sum(atom_charges[symbol] for symbol in atoms.get_chemical_symbols()) == 0
 
 
-def test_condensed_phase_builders_return_periodic_systems_with_requested_ids():
+def test_condensed_phase_builders_return_periodic_systems():
 
     library = str(Path(__file__).resolve().parents[1] / "examples" / "simple_water_multi_builder" / "fragment_library") + "/"
     settings = {
@@ -152,7 +152,7 @@ def geometry_sources(tmp_path):
     return tmp_path
 
 
-def test_external_geometry_import_strips_labels_preserves_identity(geometry_sources):
+def test_external_geometry_drops_old_labels(geometry_sources):
     config = dict(sources=['source.xyz', 'source.h5'], selection_mode='sequential')
     items = external_geometry_builder_task.func(moleculeid='ignored', moleculeids=['new-0', 'new-1'],
                                                builder_config=config, master_directory=str(geometry_sources))
@@ -170,7 +170,7 @@ def test_external_geometry_import_strips_labels_preserves_identity(geometry_sour
     np.testing.assert_allclose(single.atoms.positions, items[1].atoms.positions)
 
 
-def test_external_geometry_hash_selection_is_stateless(geometry_sources):
+def test_external_geometry_hash_selection_depends_only_on_id(geometry_sources):
     config = dict(sources=['source.xyz', 'source.h5'], selection_seed=19)
     a = build_external_geometries(['a', 'b', 'c'], config, str(geometry_sources))
     b = build_external_geometries(['c', 'a'], config, str(geometry_sources))
@@ -191,7 +191,7 @@ def test_external_geometry_rejects_invalid_selection(geometry_sources, ids, mode
                                   str(geometry_sources))
 
 
-@pytest.mark.parametrize('bad_ids', [[0, 0, 2], [0., 1., 2.]])
+@pytest.mark.parametrize('bad_ids', [[0, 0, 2], [0., 1., 2.]], ids=['duplicate_id', 'float_ids'])
 def test_external_geometry_rejects_invalid_topology(geometry_sources, bad_ids):
     with h5py.File(geometry_sources / 'source.h5', 'a') as h:
         del h['water/topology_atom_ids']
@@ -200,14 +200,14 @@ def test_external_geometry_rejects_invalid_topology(geometry_sources, bad_ids):
         build_external_geometries(['a'], dict(sources=['source.h5']), str(geometry_sources))
 
 
-def test_external_geometry_plain_xyz_does_not_invent_topology(tmp_path):
+def test_plain_xyz_gets_no_invented_topology(tmp_path):
     (tmp_path / 'plain.xyz').write_text('2\nplain molecule\nH 0 0 0\nH 0 0 .74\n')
     m = build_external_geometries(['a'], dict(sources=['plain.xyz']), str(tmp_path))[0]
     assert 'topology_atom_ids' not in m.atoms.arrays
     assert not m.atoms.pbc.any()
 
 
-def test_external_geometry_rejects_empty_and_malformed_h5(tmp_path):
+def test_external_geometry_rejects_empty_or_malformed_sources(tmp_path):
     with pytest.raises(ValueError, match='nonempty'):
         geometry_manifest({})
     with h5py.File(tmp_path / 'bad.h5', 'w') as h:
@@ -227,7 +227,7 @@ def example_config(name):
     return json.loads((EXAMPLES / f'seed_{name}.json').read_text())
 
 
-def test_rdkit_quotas_descriptor_and_fps_are_deterministic():
+def test_rdkit_fps_selection_is_deterministic():
     assert seed.ladder_quotas(50000, 6) == [8334, 8334, 8333, 8333, 8333, 8333]
     assert seed.ladder_quotas(5000, 6) == [834, 834, 833, 833, 833, 833]
     assert [seed.stratum_seed(42, level, 0) for level in range(6)] == [
@@ -252,12 +252,12 @@ def test_rdkit_quotas_descriptor_and_fps_are_deterministic():
     ({'angle_scales': [0.]}, 'same length'),
     ({'geometry_screen': {'typo': 1.}}, 'geometry_screen'),
 ], ids=['seed_larger_than_pool', 'boolean_threads', 'nan_scale', 'mismatched_ladders', 'unknown_screen_setting'])
-def test_rdkit_invalid_configuration_is_rejected(override, reason):
+def test_rdkit_rejects_invalid_seed_settings(override, reason):
     with pytest.raises(ValueError, match=reason):
         seed.resolve_config({**example_config('keto'), **override}, base_directory=EXAMPLES)
 
 
-def test_rdkit_seed_screen_boundaries_and_rejection_priority():
+def test_rdkit_geometry_screen_reports_the_right_failure():
     context = {'numbers': np.array([1, 1]), 'bonds': np.array([[0, 1]]),
                'bond_centers': np.array([1.]), 'pairs': np.array([[0, 1]]),
                'nonbonded': np.empty((0, 2), dtype=int)}
@@ -275,7 +275,7 @@ def test_rdkit_seed_screen_boundaries_and_rejection_priority():
     assert seed.geometry_failure([[0., 0., 0.], [1., 0., 0.], [0., .82, 0.]], context, screen) == 'nonbonded_close'
 
 
-def test_rdkit_reference_centers_and_polar_hydrogen_widening(tmp_path):
+def test_rdkit_polar_hydrogen_bounds_are_wider(tmp_path):
     pytest.importorskip('rdkit')
     reference = tmp_path / 'water.xyz'
     reference.write_text('3\nwater\nO 0 0 0\nH .96 0 0\nH -.24 .93 0\n')
@@ -290,7 +290,7 @@ def test_rdkit_reference_centers_and_polar_hydrogen_widening(tmp_path):
     assert polar[1, 0] < ordinary[1, 0]
 
 
-def test_rdkit_matching_species_are_not_a_topology_mapping():
+def test_rdkit_rejects_same_elements_with_different_topology():
     pytest.importorskip('rdkit')
     config = {**example_config('keto'), 'reference_geometry': 'enol.xyz'}
     with pytest.raises(ValueError, match='connectivity|bond set'):
@@ -309,7 +309,7 @@ def prepared_seed(request, tmp_path_factory):
     return SimpleNamespace(report=report, output=output, repeated=repeated)
 
 
-def test_rdkit_preparation_reports_settings_and_checksums(prepared_seed):
+def test_rdkit_seed_preparation_records_provenance(prepared_seed):
     report = prepared_seed.report
     assert report['pool_count'] == 24 and report['selected_count'] == 12
     assert report['embedding_settings']['useBasicKnowledge'] is True
@@ -319,13 +319,13 @@ def test_rdkit_preparation_reports_settings_and_checksums(prepared_seed):
         assert hashlib.sha256((prepared_seed.output / file).read_bytes()).hexdigest() == digest
 
 
-def test_rdkit_preparation_is_reproducible(prepared_seed):
+def test_rdkit_seed_preparation_is_reproducible(prepared_seed):
     with h5py.File(prepared_seed.output / 'seed.h5') as first, h5py.File(prepared_seed.repeated / 'seed.h5') as second:
         for key in first['molecule']:
             np.testing.assert_array_equal(first['molecule'][key][()], second['molecule'][key][()])
 
 
-def test_rdkit_seed_is_an_unlabeled_stratified_sample_of_the_pool(prepared_seed):
+def test_rdkit_seed_is_a_stratified_sample_of_the_pool(prepared_seed):
     with h5py.File(prepared_seed.output / 'pool.h5') as pool_file, h5py.File(prepared_seed.output / 'seed.h5') as seed_file:
         pool, selected = pool_file['molecule'], seed_file['molecule']
         indices = selected['pool_index'][()]
@@ -341,7 +341,7 @@ def test_rdkit_seed_is_an_unlabeled_stratified_sample_of_the_pool(prepared_seed)
         assert not any(key.startswith(('sE', 'F', 'dE')) for key in selected)
 
 
-def test_rdkit_builder_replays_the_prepared_geometries(prepared_seed):
+def test_rdkit_builder_replays_prepared_geometries(prepared_seed):
     with h5py.File(prepared_seed.output / 'seed.h5') as handle:
         selected = handle['molecule']
         canonical = selected['coordinates'][()][:, np.argsort(selected['topology_atom_ids'][()])]
@@ -357,7 +357,7 @@ def test_rdkit_builder_replays_the_prepared_geometries(prepared_seed):
         seed.build_rdkit_molecules(['mol-boot-0000000012'], builder)
 
 
-def test_rdkit_builder_strips_labels_during_runtime_replay(prepared_seed, tmp_path):
+def test_rdkit_runtime_replay_strips_labels(prepared_seed, tmp_path):
     builder = json.loads((prepared_seed.output / 'builder_config.json').read_text())
     labels = tmp_path / 'labels'
     labels.mkdir()
@@ -368,7 +368,7 @@ def test_rdkit_builder_strips_labels_during_runtime_replay(prepared_seed, tmp_pa
     assert replay[0].get_results() == {} and not replay[0].get_metadata()['replay_external_bootstrap']
 
 
-def test_rdkit_exhausted_embedding_and_existing_outputs_fail_without_overwrite(tmp_path, monkeypatch):
+def test_failed_rdkit_preparation_writes_nothing(tmp_path, monkeypatch):
     pytest.importorskip('rdkit')
     from rdkit.Chem import AllChem
     config = {**example_config('keto'), 'pool_size': 6, 'seed_size': 6}
@@ -385,7 +385,7 @@ def test_rdkit_exhausted_embedding_and_existing_outputs_fail_without_overwrite(t
     assert marker.read_text() == 'unchanged'
 
 
-def test_rdkit_cli_resolves_reference_relative_to_config(tmp_path):
+def test_rdkit_command_line_finds_reference_next_to_config(tmp_path):
     pytest.importorskip('rdkit')
     config_dir = tmp_path / 'config'
     config_dir.mkdir()

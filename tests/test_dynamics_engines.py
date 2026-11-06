@@ -39,8 +39,8 @@ def inputs():
     return molecules
 
 
-@pytest.mark.parametrize('overlap', [False, True])
-def test_periodic_and_overlap_screening(engine_name, overlap):
+@pytest.mark.parametrize('overlap', [False, True], ids=['across_periodic_boundary', 'overlapping_atoms'])
+def test_close_contacts_are_rejected(engine_name, overlap):
     bad = Atoms('H2', positions=[[.1, 0, 0], [.1 if overlap else 9.9, 0, 0]],
                 cell=[10]*3, pbc=True)
     good = Atoms('H2', positions=[[1, 0, 0], [2, 0, 0]], cell=[10]*3, pbc=True)
@@ -67,7 +67,7 @@ def run(groups, config=CONFIG, models=spring_ensemble, engine_name="torchsim"):
     return results
 
 
-def test_zero_friction_zero_temperature_is_velocity_verlet(engine_name):
+def test_zero_friction_langevin_matches_velocity_verlet(engine_name):
     reference = WATER.copy()
     reference.calc = MLMD_calculator(spring_ensemble())
     VelocityVerlet(reference, 0.5 * units.fs).run(40)
@@ -77,7 +77,7 @@ def test_zero_friction_zero_temperature_is_velocity_verlet(engine_name):
     assert engine.steps == [40]
 
 
-def test_grouping_and_order_do_not_change_results(engine_name):
+def test_batching_does_not_change_results(engine_name):
     reference = run([[m] for m in inputs()], engine_name=engine_name)
     assert {"eligible", "rejected"} <= {r.get_metadata()["trajectory_outcome"] for r in reference.values()}
     assert len({r.get_metadata()["step"] for r in reference.values()}) >= 3
@@ -99,7 +99,7 @@ def test_grouping_and_order_do_not_change_results(engine_name):
 
 
 @pytest.mark.parametrize("strategy", ["uncertainty", "summed"])
-def test_cohort_candidates_do_not_depend_on_grouping(engine_name, strategy):
+def test_batching_does_not_change_candidates(engine_name, strategy):
     config = dict(CONFIG, acquisition={"trajectory_policy": "continue", "strategy": strategy,
                                        **({"weights": {"energy": 1., "force_rms": 1.}} if strategy == "summed" else {}),
                                        "selection": {"mode": "cohort_top_k", "cohort_size": 7, "k": 3}})
@@ -110,7 +110,7 @@ def test_cohort_candidates_do_not_depend_on_grouping(engine_name, strategy):
     assert max(len(r.get_metadata()["acquisition_candidates"]) for r in single.values()) > 1
 
 
-def test_well_and_udd_forces_match_mlmd_calculator(engine_name):
+def test_well_udd_forces_match_mlmd_calculator(engine_name):
     options = {"well_params": {"r_start": 0.5, "force": 0.1}, "udd_bias_weight": 0.3}
     atoms = Atoms("OH2CH", positions=np.random.default_rng(0).normal(size=(5, 3)) * 1.6)
     engine = engine_class(engine_name)([atoms.copy()], spring_ensemble(), 0.5, [0.0], [np.random.RandomState(0)],
@@ -121,7 +121,7 @@ def test_well_and_udd_forces_match_mlmd_calculator(engine_name):
     assert float(engine.state.energy[0]) == pytest.approx(calculator.results["energy"])
 
 
-def test_langevin_temperature(engine_name):
+def test_langevin_holds_the_target_temperature(engine_name):
     rng = np.random.default_rng(0)
     systems = [Atoms("H" * 8, positions=rng.normal(size=(8, 3)) * 0.05) for _ in range(32)]
     # Strong friction (inverse ASE time) so the short run holds many independent samples.
@@ -150,7 +150,7 @@ def test_langevin_temperature(engine_name):
         assert mean == pytest.approx(target, rel=0.03)
 
 
-def test_density_schedule_scales_cells(engine_name):
+def test_density_schedule_changes_the_cell(engine_name):
     box = WATER.copy()
     box.set_cell(np.eye(3) * 12.0)
     box.set_pbc(True)
@@ -166,8 +166,8 @@ def test_density_schedule_scales_cells(engine_name):
     np.testing.assert_array_equal(np.asarray(solo["cell"]), np.asarray(results["box-a"].get_metadata()["cell"]))
 
 
-@pytest.mark.parametrize("pooled", [False, True])
-def test_failed_member_does_not_affect_batch_mates(engine_name, pooled):
+@pytest.mark.parametrize("pooled", [False, True], ids=['stop_policy', 'continue_policy'])
+def test_one_failed_trajectory_spares_the_others(engine_name, pooled):
     class Exploding(Calculator):
         implemented_properties = ["energy", "forces"]
 
@@ -227,7 +227,7 @@ def test_batched_hippynn_matches_ase_calculators(periodic, engine_name, trained_
     np.testing.assert_allclose(forces.cpu().numpy(), np.concatenate(reference["forces"], axis=1), rtol=1e-5, atol=1e-5)
 
 
-def test_trained_ensemble_sampling_with_batched_hippynn(engine_name, trained_ensemble):
+def test_batched_hippynn_sampling_uncertainty_matches_ase(engine_name, trained_ensemble):
 
     batched = load_hippynn_batched_ensemble(str(trained_ensemble), device=DEVICE)
     # Keep the actual physical member outputs at each observed geometry. Float32
@@ -288,7 +288,7 @@ def test_trained_ensemble_sampling_with_batched_hippynn(engine_name, trained_ens
             assert abs(actual[key] - expected[key]) <= bound + 1e-12, (key, bound)
 
 
-def test_excited_packed_observations_and_compaction_keep_state_atom_axes(engine_name):
+def test_excited_states_stay_correct_after_a_trajectory_finishes(engine_name):
     model = SelectedStateEvaluator(QuadraticStateEnsemble(), 1, [1,2])
     atoms = [WATER.copy() for _ in range(3)]
     for index,a in enumerate(atoms):
@@ -309,7 +309,7 @@ def test_excited_packed_observations_and_compaction_keep_state_atom_axes(engine_
     assert engine.steps == [1,0,1]
 
 
-def test_topology_initial_rejection_and_physical_force_stop_before_integration(engine_name,tmp_path):
+def test_topology_or_force_rejection_stops_before_first_step(engine_name,tmp_path):
     reference=Atoms('OHH',positions=[[0,0,0],[.9572,0,0],[-.239,.927,0]])
     path=tmp_path/'water.xyz';write(path,reference)
     reference.set_array('topology_atom_ids',np.arange(3))

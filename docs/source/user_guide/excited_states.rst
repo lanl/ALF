@@ -364,11 +364,13 @@ its selected state, and ``Es`` and ``Fs`` uncertainty is measured on that state.
      - Cutoff for the ``gap`` acquisition term. To trigger labeling on gap
        uncertainty, also add ``"gap"`` to ``acquisition.eligibility``. See
        :doc:`acquisition`.
+   * - ``MLMD_calculator_options``
+     - Optional ``well_params`` and ``udd_bias_weight``, as in :doc:`samplers`. They
+       act on the selected state's member energies and forces. Screening and
+       uncertainty still read unbiased predictions.
 
 Limits:
 
-* UDD and well potentials are not available in excited-state mode. ALF stops at
-  startup if ``MLMD_calculator_options`` sets either one.
 * Each sampler task holds one state, so ALF batches trajectories by state.
 * Structures must be nonperiodic.
 

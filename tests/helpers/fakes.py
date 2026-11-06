@@ -222,3 +222,22 @@ class QuadraticStateEnsemble:
         return dict(
             state_energies=e.numpy(), state_forces=[f[:, :, lo:hi].numpy() for lo, hi in zip(offsets[:-1], offsets[1:])]
         )
+
+
+class QuadraticStateMember(Calculator):
+    """One member and state of QuadraticStateEnsemble as an ASE calculator, for MLMD_calculator references."""
+
+    implemented_properties = ["energy", "forces"]
+
+    def __init__(self, member, state):
+        super().__init__()
+        self.member, self.state = member, state
+
+    def calculate(self, atoms=None, properties=None, system_changes=all_changes):
+        super().calculate(atoms, properties, system_changes)
+        states = QuadraticStateEnsemble().predict_states([atoms])
+        self.results = {
+            "energy": float(states["state_energies"][self.member, self.state, 0]),
+            "forces": states["state_forces"][0][self.member, self.state],
+        }
+

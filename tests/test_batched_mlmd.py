@@ -4,6 +4,8 @@ Checks that results match legacy mlmd_sampling, that batching doesn't change the
 failed trajectory leaves the others alone. Some tests skip without torch, HIPPYNN, or RDKit.
 """
 
+import copy
+
 import numpy as np
 import pytest
 from ase import Atoms
@@ -23,7 +25,7 @@ from alframework.samplers.mlmd_sampling import mlmd_sampling
 from alframework.tools.cohorts import CohortPool
 from alframework.tools.molecules_class import MoleculesObject
 from alframework.tools.tools import annealing_schedule
-from tests.helpers.fakes import PairSpringCalculator, QuadraticStateEnsemble
+from tests.helpers.fakes import PairSpringCalculator, QuadraticStateEnsemble, QuadraticStateMember
 from tests.helpers.fakes import spring_ensemble as fake_ensemble
 from tests.helpers.molecules import SPRING_WATER
 
@@ -302,10 +304,99 @@ def test_excited_ase_sampling_follows_the_selected_state():
         config["state_selection"] = bad
         with pytest.raises(ValueError, match=reason):
             sample_trajectories([MoleculesObject(SPRING_WATER.copy(), "bad")], QuadraticStateEnsemble(), config)
-    config["state_selection"] = {"mode": "fixed", "state": 1}
-    config["MLMD_calculator_options"] = {"udd_bias_weight": 0.1}
-    with pytest.raises(ValueError, match="deferred"):
-        sample_trajectories([MoleculesObject(SPRING_WATER.copy(), "bad")], QuadraticStateEnsemble(), config)
+
+
+SELECTED_STATE_BIAS = {
+    "well": {"well_params": {"r_start": 0.5, "force": 0.1}},
+    "udd": {"udd_bias_weight": 0.3},
+    "well_and_udd": {"well_params": {"r_start": 0.5, "force": 0.1}, "udd_bias_weight": 0.3},
+}
+
+
+@pytest.mark.parametrize("options", SELECTED_STATE_BIAS.values(), ids=SELECTED_STATE_BIAS.keys())
+def test_ase_selected_state_bias_matches_mlmd_calculator(options):
+    pytest.importorskip("torch")
+    atoms = SPRING_WATER.copy()
+    models = SelectedStateEvaluator(QuadraticStateEnsemble(), 1)
+    ASEEngine([atoms], models, 0.25, [0.0], [np.random.RandomState(1)], calculator_options=options)
+    reference = MLMD_calculator([QuadraticStateMember(member, 1) for member in range(2)], **copy.deepcopy(options))
+    reference.calculate(atoms, properties=["energy", "forces"])
+    np.testing.assert_allclose(atoms.get_forces(), reference.results["forces"], atol=1e-10)
+    assert atoms.get_potential_energy() == pytest.approx(reference.results["energy"])
+
+
+def test_ase_selected_state_bias_leaves_observations_unbiased():
+    pytest.importorskip("torch")
+    atoms = SPRING_WATER.copy()
+    models = SelectedStateEvaluator(QuadraticStateEnsemble(), 1)
+    options = SELECTED_STATE_BIAS["well_and_udd"]
+    engine = ASEEngine([atoms], models, 0.25, [0.0], [np.random.RandomState(1)], calculator_options=options)
+    unbiased = models.predict([atoms])
+    assert not np.allclose(atoms.get_forces(), unbiased["forces"][0].mean(0))
+    observed = engine.observe(0)["prediction"]
+    np.testing.assert_allclose(observed["forces"][0], unbiased["forces"][0])
+    assert ensemble_statistics(observed) == ensemble_statistics(unbiased)
+
+
+def test_ase_selected_state_bias_changes_the_trajectory():
+    pytest.importorskip("torch")
+    config = dict(
+        dt=0.25,
+        maxt=0.01,
+        Ncheck=2,
+        Escut=1000.0,
+        Fscut=1000.0,
+        distcut=0.1,
+        min_time=0.0,
+        model_mode="excited_state",
+        state_selection={"mode": "fixed", "state": 1},
+        random_seed=1,
+        srt_temp=[0.0, 0.0],
+        end_temp=[0.0, 0.0],
+        amp_temp=[0.0, 0.0],
+        per_temp=[1.0, 1.0],
+        amp_dens=None,
+        per_dens=None,
+        end_dens=None,
+    )
+
+    def final_positions(**options):
+        molecule = MoleculesObject(SPRING_WATER.copy(), "excited")
+        result = sample_trajectories([molecule], QuadraticStateEnsemble(), dict(config, **options))[0]
+        return result.get_metadata()["positions"]
+
+    plain = final_positions()
+    assert not np.allclose(plain, final_positions(MLMD_calculator_options={"udd_bias_weight": 0.3}))
+
+
+def test_force_screen_on_selected_state_ignores_well_forces():
+    pytest.importorskip("torch")
+    config = dict(
+        dt=0.1,
+        maxt=0.001,
+        Ncheck=1,
+        Escut=1000.0,
+        Fscut=1000.0,
+        distcut=0.1,
+        min_time=0.0,
+        model_mode="excited_state",
+        state_selection={"mode": "fixed", "state": 1},
+        srt_temp=[0.0, 0.0],
+        end_temp=[0.0, 0.0],
+        amp_temp=[0.0, 0.0],
+        per_temp=[1.0, 1.0],
+        amp_dens=None,
+        per_dens=None,
+        end_dens=None,
+        max_force_cutoff=1000.0,
+        MLMD_calculator_options={"well_params": {"r_start": 0.1, "force": 1000.0, "mass_weighted": False}},
+    )
+    atoms = SPRING_WATER.copy()
+    states = QuadraticStateEnsemble().predict_states([atoms])
+    unbiased = float(np.linalg.norm(states["state_forces"][0].mean(0), axis=-1).max())
+    result = sample_trajectories([MoleculesObject(atoms, "excited")], QuadraticStateEnsemble(), config)[0]
+    assert result.get_metadata()["screen_audit"]["initial"]["diagnostics"]["Fmeanmax"] == pytest.approx(unbiased)
+    assert result.get_metadata()["step"] > 0, "large well forces alone must not reject the first frame"
 
 
 def test_force_screen_ignores_well_forces():

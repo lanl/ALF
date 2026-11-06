@@ -29,6 +29,7 @@ from alframework.tools.molecules_class import MoleculesObject  # noqa: E402
 from tests.helpers.engines import DEVICE, Tether, engine_class  # noqa: E402
 from tests.helpers.fakes import (
     QuadraticStateEnsemble,
+    QuadraticStateMember,
     spring_ensemble,  # noqa: E402
 )
 
@@ -168,6 +169,31 @@ def test_well_udd_forces_match_mlmd_calculator(engine_name):
     calculator.calculate(atoms, properties=["energy", "forces"])
     np.testing.assert_allclose(engine.state.forces.cpu().numpy(), calculator.results["forces"], atol=1e-12)
     assert float(engine.state.energy[0]) == pytest.approx(calculator.results["energy"])
+
+
+def test_selected_state_well_udd_forces_match_mlmd_calculator(engine_name):
+    options = {"well_params": {"r_start": 0.5, "force": 0.1}, "udd_bias_weight": 0.3}
+    atoms = Atoms("OH2CH", positions=np.random.default_rng(0).normal(size=(5, 3)) * 1.6)
+    models = SelectedStateEvaluator(QuadraticStateEnsemble(), 1)
+    engine = engine_class(engine_name)(
+        [atoms.copy()], models, 0.5, [0.0], [np.random.RandomState(0)], calculator_options=options
+    )
+    reference = MLMD_calculator([QuadraticStateMember(member, 1) for member in range(2)], **copy.deepcopy(options))
+    reference.calculate(atoms, properties=["energy", "forces"])
+    np.testing.assert_allclose(engine.state.forces.cpu().numpy(), reference.results["forces"], atol=1e-10)
+    assert float(engine.state.energy[0]) == pytest.approx(reference.results["energy"])
+
+
+def test_selected_state_bias_leaves_observations_unbiased(engine_name):
+    options = {"well_params": {"r_start": 0.5, "force": 0.1}, "udd_bias_weight": 0.3}
+    atoms = Atoms("OH2CH", positions=np.random.default_rng(0).normal(size=(5, 3)) * 1.6)
+    models = SelectedStateEvaluator(QuadraticStateEnsemble(), 1)
+    engine = engine_class(engine_name)(
+        [atoms.copy()], models, 0.5, [0.0], [np.random.RandomState(0)], calculator_options=options
+    )
+    expected = models.predict([atoms])
+    assert not np.allclose(engine.state.forces.cpu().numpy(), expected["forces"][0].mean(0))
+    assert ensemble_statistics(engine.observe(0)["prediction"])[0] == pytest.approx(ensemble_statistics(expected)[0])
 
 
 def test_langevin_holds_the_target_temperature(engine_name):

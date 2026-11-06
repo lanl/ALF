@@ -44,9 +44,6 @@ def state_settings(config):
         if 'state_selection' in config or 'gap_uncertainty' in config:
             raise ValueError('State selection/gap uncertainty requires model_mode excited_state')
         return None
-    controls = config.get('MLMD_calculator_options') or {}
-    if controls.get('well_params') is not None or controls.get('udd_bias_weight') is not None:
-        raise ValueError('Excited-state UDD and wells are deferred')
     policy = config.get('state_selection')
     if policy is not None:
         if not isinstance(policy, dict) or policy.get('mode') not in ('fixed', 'batch_cycle'):

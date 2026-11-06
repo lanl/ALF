@@ -88,19 +88,47 @@ def draw_schedule(sampler_config, rng):
             'Rend': _draw(rng, sampler_config['end_dens'])}
 
 
-class _StateMeanCalculator(Calculator):
-    """ASE propagation view retaining unbiased member/state observations."""
+class _PredictedMember(Calculator):
+    """One ensemble member's selected-state results, read from its owner's current prediction."""
     implemented_properties = ['energy', 'forces']
 
-    def __init__(self, evaluator):
+    def __init__(self, owner, member):
+        super().__init__()
+        self.owner, self.member = owner, member
+
+    def calculate(self, atoms=None, properties=None, system_changes=all_changes):
+        super().calculate(atoms, properties, system_changes)
+        prediction = self.owner.prediction
+        self.results = dict(energy=float(prediction['energies'][self.member, 0]),
+                            forces=prediction['forces'][0][self.member])
+
+
+class _StateMeanCalculator(Calculator):
+    """ASE propagation view retaining unbiased member/state observations.
+
+    Wells and UDD go through ``MLMD_calculator``, so that the formulas stay in one place.
+    ``prediction`` stays unbiased either way, for screening and uncertainty.
+    """
+    implemented_properties = ['energy', 'forces']
+
+    def __init__(self, evaluator, calculator_options=None):
         super().__init__()
         self.evaluator = evaluator
+        options = copy.deepcopy(calculator_options or {})
+        self.bias = None
+        if options.get('well_params') is not None or options.get('udd_bias_weight') is not None:
+            members = [_PredictedMember(self, member) for member in range(evaluator.n_models)]
+            self.bias = MLMD_calculator(members, **options)
 
     def calculate(self, atoms=None, properties=None, system_changes=all_changes):
         super().calculate(atoms, properties, system_changes)
         self.prediction = self.evaluator.predict([atoms])
-        self.results = dict(energy=float(self.prediction['energies'].mean()),
-                            forces=self.prediction['forces'][0].mean(0))
+        if self.bias is None:
+            self.results = dict(energy=float(self.prediction['energies'].mean()),
+                                forces=self.prediction['forces'][0].mean(0))
+        else:
+            self.bias.calculate(atoms, ['energy', 'forces'])
+            self.results = dict(energy=float(self.bias.results['energy']), forces=self.bias.results['forces'])
 
 
 class ASEEngine:
@@ -123,7 +151,7 @@ class ASEEngine:
         self.steps = [0] * len(self._atoms)
         for atoms, temperature, rng in zip(self._atoms, temperatures_K, rngs):
             # MLMD_calculator appends its well potential to the list and edits its options.
-            atoms.calc = _StateMeanCalculator(models) if self._states else \
+            atoms.calc = _StateMeanCalculator(models, calculator_options) if self._states else \
                 MLMD_calculator(list(models), **copy.deepcopy(calculator_options or {}))
             self._dynamics.append(Langevin(atoms, dt * units.fs, friction=friction,
                                            temperature_K=temperature, rng=rng))

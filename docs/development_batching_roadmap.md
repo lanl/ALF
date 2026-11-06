@@ -221,13 +221,11 @@ running ALF, so they don't mention increments or campaigns.
 to `main`. The public site therefore keeps describing `main` until `development`
 merges.
 
-Known gaps left open:
-
-- Code docstrings produce 27 RST warnings during the build, so the docs job doesn't
-  use `-W`. The user guide itself builds without warnings.
-- `parsl` is in `autodoc_mock_imports`, so functions decorated with `@python_app`,
-  including most `*_task` entry points, don't appear on API pages. The user guide
-  names them, but their API pages don't document them.
+The API pages were then repaired. `conf.py` enables `sphinx.ext.napoleon`, which
+renders the code's Google-style `Args:` sections, and uses real Parsl during the
+build with `python_app` replaced by a shim that keeps the plain function. Mocking
+`parsl` had made autodoc skip every `*_task` entry point. The build has no warnings,
+and the docs job now runs with `-W`, so a new warning fails it.
 
 ## Development and test environments
 

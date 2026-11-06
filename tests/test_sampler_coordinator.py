@@ -177,6 +177,25 @@ def test_legacy_sampler_rejects_batching_settings():
             SamplerCoordinator(simple_mlmd_sampling_task, "mlmd", {key: {}})
 
 
+@pytest.mark.parametrize(
+    "policy,capacity,rejected",
+    [("full_only", 3, True), ("full_only", 4, False), ("timeout", 3, False)],
+    ids=["cannot_fill", "can_fill", "timeout_releases_partial_batches"],
+)
+def test_sampler_full_only_batch_must_be_able_to_fill(policy, capacity, rejected):
+    config = dict(
+        SAMPLER,
+        driver={"strategy": "batched"},
+        batching={"batch_size": 4, "partial_policy": policy, "max_wait_seconds": 1.0},
+    )
+    master = {"parallel_samplers": capacity}
+    if rejected:
+        with pytest.raises(ValueError, match="parallel_samplers"):
+            SamplerCoordinator(batched_mlmd.mlmd_trajectories_task, "batched", config, master)
+    else:
+        SamplerCoordinator(batched_mlmd.mlmd_trajectories_task, "batched", config, master)
+
+
 def test_batched_sampler_counts_molecules():
     cutoffs = {"Escut": 0.5, "Fscut": 0.3}
     single = SamplerCoordinator(batched_mlmd.mlmd_trajectories_task, "batched", cutoffs)

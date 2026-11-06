@@ -126,9 +126,10 @@ class SamplerCoordinator(BatchedSubmitter):
         sampler_task: The loaded ``sampler_task`` Parsl app.
         sampler_task_path (str): Its import string.
         sampler_config (dict): Sampler configuration.
+        master_config (dict): Used to check that ``full_only`` batches can fill.
     """
 
-    def __init__(self, sampler_task, sampler_task_path, sampler_config):
+    def __init__(self, sampler_task, sampler_task_path, sampler_config, master_config=None):
         parameters = inspect.signature(sampler_task.func).parameters
         self._states = state_settings(sampler_config)
         self._admission_ordinal = 0
@@ -148,6 +149,11 @@ class SamplerCoordinator(BatchedSubmitter):
         self.driver = driver_settings(sampler_config)
         settings = self.driver["batching"] or {"batch_size": 1, "partial_policy": "timeout",
                                                "max_wait_seconds": 0.0}
+        capacity = (master_config or {}).get("parallel_samplers")
+        if settings["partial_policy"] == "full_only" and capacity is not None and capacity < settings["batch_size"]:
+            # Waiting structures count toward parallel_samplers, so builders would stop before a batch fills.
+            raise ValueError("Sampler batching with partial_policy 'full_only' requires "
+                             "parallel_samplers >= batching.batch_size.")
         selection = cohort_selection(sampler_config)
         if selection is not None:
             self.pool = CohortPool(selection)

@@ -108,7 +108,7 @@ for cur_Exec in sampler_task.executors:
     if cur_Exec.replace('_executor', '_standby_executor') in executor_list:
         sampler_task.executors.append(cur_Exec.replace('_executor', '_standby_executor'))
 # Single-structure samplers submit one task per structure as before; see sampler_coordinator.
-sampling = SamplerCoordinator(sampler_task, master_config['sampler_task'], sampler_config)
+sampling = SamplerCoordinator(sampler_task, master_config['sampler_task'], sampler_config, master_config)
 sampler_task_queue = sampling.queue
 print("Sampling: " + sampling.describe())
 

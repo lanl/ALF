@@ -2274,8 +2274,25 @@ with the last five minutes reserved for cleanup. The initial launch attempt
 failed before Python because the harness sourced the Darwin login profile
 twice under strict shell settings; this was reproduced and corrected in the
 external harness. All four jobs from that attempt are verified terminated.
-No real acceptance gate is claimed at launch; consult `run-002/result.json`
-and stage reports after completion. The user may disconnect while tmux runs.
+No real acceptance gate was claimed at launch. The user may disconnect while tmux runs.
+
+Qualification progress, November 5 at 17:17 Mountain: all three engines passed
+single/four-trajectory screening and invalid-input isolation. RDKit generated
+all 1,920 accepted geometries and 192 FPS seeds. These accepted prerequisites
+are retained, with code/environment/model/artifact fingerprints verified, in
+`validation/inc11a_20261105/run-003/`. The first pilot stopped before QM:
+a missing trailing newline concatenated `ALF_SOURCE` with Parsl's following
+launcher export, so the provenance guard rejected its malformed expected
+path. The actual imported ALF path was pinned. All five owned jobs in
+`run-002` terminated cleanly. The production template (`e919472`) and external
+harness (`a244a15`) now preserve shell export boundaries; six focused harness
+tests passed. Only the fresh AcAc pilot is retried in persistent tmux, using
+the original 21:02:30 Mountain deadline and unchanged scientific cutoffs.
+The snapshot also includes the user's committed database-reader compatibility
+fix `1db12ef`; reused inference definitions and all other library scientific
+sources were verified unchanged. Job `17379315` is the retry's sampling/builder
+allocation. Consult `run-003/result.json` and `pilot/owned_jobs.json` for the
+active attempt; AcAc labeling/training/promotion acceptance remains pending.
 
 Real acceptance remains pending: all three engines must execute valid widths
 one/four and isolate an invalid input; prepare 1,920 accepted keto geometries

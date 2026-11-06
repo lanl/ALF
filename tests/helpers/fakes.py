@@ -1,3 +1,5 @@
+"""Stand-ins for calculators, Parsl tasks, worker pools, and optional backends."""
+
 import copy
 import importlib
 import sys

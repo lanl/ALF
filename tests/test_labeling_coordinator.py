@@ -1,4 +1,7 @@
-"""Batched labeling through the real ALF coordinator with local mock tasks."""
+"""Reference labeling through the real ALF coordinator, with local stand-ins for its tasks.
+
+Covers batching modes, timeouts, and keeping good labels when one molecule fails.
+"""
 
 import h5py
 import numpy as np

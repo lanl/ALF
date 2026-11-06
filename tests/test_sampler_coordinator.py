@@ -1,4 +1,8 @@
-"""Multi-trajectory sampling through the real ALF coordinator with local tasks."""
+"""Sampling through the real ALF coordinator, with local stand-ins for its tasks.
+
+Covers the full active learning loop, batching, cohorts, and finite bootstrap. TorchSim and ALCHEMI
+cases skip if not installed.
+"""
 
 import os
 

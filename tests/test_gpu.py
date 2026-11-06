@@ -1,4 +1,7 @@
-"""Allocation-relative device selection without process-wide mask mutations."""
+"""Choosing a GPU for a worker, without changing process-wide visibility settings.
+
+Needs no GPU: torch and the visible devices are faked, so this runs anywhere, including Actions.
+"""
 
 import importlib
 import os

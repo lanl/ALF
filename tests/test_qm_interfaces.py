@@ -1,4 +1,8 @@
-"""ORCA, Q-Chem, and ASE-calculator labeling interfaces and task wrappers."""
+"""QM labeling interfaces: ORCA, Q-Chem, and ASE calculators.
+
+No QM programs run: these check input files, output parsing, and task wrappers against fixed
+outputs. Tests for further QM interfaces belong here.
+"""
 
 import numpy as np
 import pytest

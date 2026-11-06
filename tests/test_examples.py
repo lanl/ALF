@@ -1,4 +1,7 @@
-"""Load tracked example settings without submitting jobs or requiring QM tools."""
+"""Every tracked example in examples/ loads with the current validators and names tasks that exist.
+
+Submits no jobs and needs no QM programs. NeuroChem examples are imported against a fake backend.
+"""
 
 import ast
 import importlib

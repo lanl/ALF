@@ -1,3 +1,7 @@
+"""Batching helpers: grouping molecules into tasks, releasing partial batches after a timeout, and
+counting task widths.
+"""
+
 import json
 
 import numpy as np

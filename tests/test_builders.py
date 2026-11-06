@@ -1,3 +1,9 @@
+"""Geometry builders: condensed-phase and salt builders, external geometry import, and RDKit seed
+preparation.
+
+Tests that call RDKit skip without it.
+"""
+
 import hashlib
 import itertools
 import json

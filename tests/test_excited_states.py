@@ -1,4 +1,6 @@
-"""Excited-state key contracts and topology-aware multi-state/NAC storage."""
+"""Excited-state labels: property names (sE#, F#, dE##), gap tables, and storing multi-state and NACR
+labels in HDF5 with atom identity kept.
+"""
 
 import h5py
 import numpy as np

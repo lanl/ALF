@@ -1,4 +1,7 @@
-"""PySEQM labeling: ground-state native batching and native CIS excited states."""
+"""PySEQM labeling: native batching for ground states and CIS excited states.
+
+Most tests use a fake solver. Two run real PySEQM and skip without it.
+"""
 
 import multiprocessing as mp
 import os

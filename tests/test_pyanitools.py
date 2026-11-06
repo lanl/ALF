@@ -1,3 +1,5 @@
+"""pyanitools: saving and reading ANI-style HDF5 datasets."""
+
 import numpy as np
 import pytest
 

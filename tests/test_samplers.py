@@ -1,4 +1,6 @@
-"""Legacy ASE samplers: MLMD_calculator, wells, UDD, mlmd_sampling, and shared distance screening."""
+"""Legacy ASE sampling: MLMD_calculator, the well potential, UDD, mlmd_sampling, and the distance
+screen it shares with batched sampling.
+"""
 
 import importlib
 

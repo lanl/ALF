@@ -1,4 +1,9 @@
-"""HIPPYNN interface: deferred imports, checkpoint loading, the database adapter, and multi-state training."""
+"""HIPPYNN interface: loading checkpoints, the database adapter, multi-state training, and filtering
+training data.
+
+Sections below follow that order. Many tests skip without HIPPYNN, and some train small real models
+on CPU.
+"""
 
 import hashlib
 import json

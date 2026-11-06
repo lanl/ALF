@@ -1,3 +1,5 @@
+"""Fixtures shared across the test suite."""
+
 import pytest
 from ase import Atoms
 

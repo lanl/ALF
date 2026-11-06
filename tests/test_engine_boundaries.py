@@ -1,4 +1,8 @@
-"""Engine mechanics and optional-dependency boundaries shared by both adapters."""
+"""What the packed engines preserve, and what they need in order to run.
+
+Kept apart from test_dynamics_engines.py, which skips entirely without torch, so that the torch-free
+checks here still run.
+"""
 
 import os
 import subprocess

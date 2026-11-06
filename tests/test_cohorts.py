@@ -1,3 +1,5 @@
+"""Cohort selection: picking the best k frames across a group of trajectories, however those trajectories finish."""
+
 import numpy as np
 import pytest
 from ase import Atoms

@@ -1,3 +1,9 @@
+"""MLMD sampling of several trajectories at once on the ASE engine.
+
+Checks that results match legacy mlmd_sampling, that batching doesn't change them, and that one
+failed trajectory leaves the others alone. Some tests skip without torch, HIPPYNN, or RDKit.
+"""
+
 import numpy as np
 import pytest
 from ase import Atoms

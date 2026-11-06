@@ -1,4 +1,4 @@
-"""alframework.tools.tools helpers, HDF5 storage, and the Parsl task queue."""
+"""General helpers in alframework.tools.tools: schedules, config loading, HDF5 storage, and the Parsl task queue."""
 
 import json
 

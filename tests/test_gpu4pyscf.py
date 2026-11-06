@@ -1,3 +1,9 @@
+"""GPU4PySCF excited-state labeling.
+
+GPU4PySCF, PySCF, and CuPy are replaced with fakes, so this needs no GPU. It checks ALF's settings,
+unit conversions, failure handling, and storage, not the quantum chemistry itself.
+"""
+
 import importlib
 import sys
 from types import SimpleNamespace

@@ -1,3 +1,9 @@
+"""Acquisition: deciding which sampled frames are worth labeling.
+
+Covers ensemble uncertainty, the rules that make a frame eligible, ranking scores, top-k selection,
+and gap uncertainty. One test uses a trained HIPPYNN model and skips without HIPPYNN.
+"""
+
 import numpy as np
 import pytest
 from ase import Atoms

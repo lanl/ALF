@@ -1,3 +1,5 @@
+"""MoleculesObject: the container holding one structure with its results and metadata."""
+
 import numpy as np
 import pytest
 from ase import Atoms

@@ -1,3 +1,8 @@
+"""ML model interfaces: training tasks and ensemble loading for HIPPYNN and NeuroChem.
+
+Trainers are faked, so these check how ALF calls them. Tests for further ML models belong here.
+"""
+
 from alframework.ml_interfaces import hippynn_interface
 from tests.helpers.fakes import fake_training_pool, import_neurochem_with_fake_backend
 

@@ -1,3 +1,9 @@
+"""Fixed-topology screening: loading a reference molecule and rejecting frames whose bonds have
+changed.
+
+Tests that parse a reference file skip without RDKit.
+"""
+
 import builtins
 from pathlib import Path
 

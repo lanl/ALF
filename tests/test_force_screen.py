@@ -1,3 +1,5 @@
+"""Physical force screen: rejecting frames whose ensemble-mean force exceeds a cutoff."""
+
 import numpy as np
 import pytest
 

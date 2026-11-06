@@ -1,4 +1,9 @@
-"""Shared numerical conformance for optional TorchSim and ALCHEMI engines."""
+"""Packed dynamics engines: TorchSim and ALCHEMI.
+
+Each test runs once per engine, shown in its test ID, and skips engines that aren't installed.
+Physics is checked against ASE and MLMD_calculator. The whole file needs torch. Set
+ALF_TEST_ENGINE_DEVICE to run on a GPU.
+"""
 
 import copy
 

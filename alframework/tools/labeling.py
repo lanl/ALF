@@ -31,7 +31,7 @@ import logging
 
 from parsl import python_app
 
-from alframework.tools.batching import BatchedSubmitter, batching_settings, flatten_molecule_output
+from alframework.tools.batching import BatchedSubmitter, StartupSettings, batching_settings, flatten_molecule_output
 from alframework.tools.tools import build_input_dict
 
 logger = logging.getLogger(__name__)
@@ -109,6 +109,7 @@ class LabelingCoordinator(BatchedSubmitter):
             if mode == "sequential":
                 self._packed_task = python_app(executors=list(qm_task.executors))(label_sequentially)
         super().__init__(qm_task, settings)
+        self._startup_settings = StartupSettings(QM_config, ("batching",), "QM")
         self.qm_task = qm_task
         self.qm_task_path = qm_task_path
 

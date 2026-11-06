@@ -178,6 +178,13 @@ def test_status_counts_every_structure_in_a_failed_batch(tmp_path, monkeypatch):
     assert run.status["lifetime_failed_QM_structures"] == 2
 
 
+def test_reload_keeps_qm_batching_fixed_at_startup():
+    settings = {"mode": "native", "batch_size": 2}
+    coordinator = LabelingCoordinator(native_qm, "test.native_qm", {"batching": settings, "cis_tol": 1e-8})
+    restored = coordinator.keep_startup_settings({"batching": {"mode": "native", "batch_size": 8}, "cis_tol": 1e-6})
+    assert restored == {"batching": settings, "cis_tol": 1e-6}
+
+
 def test_failed_structures_are_only_counted_once():
     submitter = BatchedSubmitter(FakeTask("exec_done"), {"batch_size": 2, "partial_policy": "timeout", "max_wait_seconds": 1.0})
     submitter.queue.add_task(FakeTask("failed", exception=RuntimeError("worker lost")), width=3)

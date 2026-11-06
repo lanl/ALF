@@ -4,6 +4,7 @@ Covers the full active learning loop, batching, cohorts, and finite bootstrap. T
 cases skip if not installed.
 """
 
+import json
 import os
 
 import numpy as np
@@ -196,7 +197,79 @@ def test_sampler_full_only_batch_must_be_able_to_fill(policy, capacity, rejected
         SamplerCoordinator(batched_mlmd.mlmd_trajectories_task, "batched", config, master)
 
 
-def test_batched_sampler_counts_molecules():
+def test_reload_keeps_sampler_settings_fixed_at_startup(capsys):
+    config = dict(SAMPLER, driver={"strategy": "batched"}, batching={"batch_size": 4, "max_wait_seconds": 1.0})
+    coordinator = SamplerCoordinator(batched_mlmd.mlmd_trajectories_task, "batched", config)
+    reloaded = dict(config, batching={"batch_size": 8, "max_wait_seconds": 1.0}, acquisition={"strategy": "summed"}, Escut=1.0)
+
+    restored = coordinator.keep_startup_settings(reloaded)
+    assert restored["batching"] == config["batching"]
+    assert "acquisition" not in restored
+    assert restored["Escut"] == 1.0, "outside cohort mode, cutoffs can still be tuned during a run"
+    output = capsys.readouterr().out
+    assert "'batching'" in output and "'acquisition'" in output
+
+    coordinator.keep_startup_settings(reloaded)
+    assert capsys.readouterr().out == "", "each changed setting warns once"
+
+
+def test_reload_keeps_cutoffs_fixed_during_cohort_selection():
+    config = dict(SAMPLER, acquisition={"selection": {"mode": "cohort_top_k", "cohort_size": 2, "k": 1}})
+    coordinator = SamplerCoordinator(batched_mlmd.mlmd_trajectories_task, "batched", config)
+    assert coordinator.keep_startup_settings(dict(config, Escut=1.0))["Escut"] == SAMPLER["Escut"]
+
+
+def test_reload_leaves_legacy_sampler_settings_alone():
+    coordinator = SamplerCoordinator(simple_mlmd_sampling_task, "mlmd", dict(SAMPLER))
+    reloaded = dict(SAMPLER, acquisition={"strategy": "summed"})
+    assert coordinator.keep_startup_settings(reloaded) == reloaded
+
+
+def test_coordinator_loop_applies_fixed_settings_on_reload(tmp_path, monkeypatch):
+    fixed = {"batch_size": 2, "max_wait_seconds": 0.05}
+    start = dict(driver={"strategy": "batched"}, batching=fixed, Escut=1.0, Fscut=1.0)
+    seen = []
+
+    @python_app(executors=["alf_builder_executor"])
+    def builder(moleculeid):
+        return MoleculesObject(SPRING_WATER.copy(), moleculeid)
+
+    @python_app(executors=["alf_sampler_executor"])
+    def sampler(molecule_objects, sampler_config):
+        seen.append(sampler_config)
+        return molecule_objects
+
+    @python_app(executors=["alf_QM_executor"])
+    def qm(molecule_object):
+        molecule_object.store_results({"energy": -1.0, "forces": np.zeros((len(molecule_object), 3))})
+        molecule_object.set_converged_flag(True)
+        return molecule_object
+
+    @python_app(executors=["alf_ML_executor"])
+    def ml(current_training_id):
+        (tmp_path / MODEL_PATTERN.format(current_training_id)).mkdir(parents=True)
+        # Edit the sampler file mid-run, as a user might.
+        changed = dict(start, batching={"batch_size": 9, "max_wait_seconds": 0.05}, Escut=2.0)
+        (tmp_path / "sampler.json").write_text(json.dumps(changed))
+        return [True] * 4, current_training_id
+
+    run_alf_driver(
+        tmp_path,
+        monkeypatch,
+        builder=builder,
+        sampler=sampler,
+        qm=qm,
+        ml=ml,
+        sampler_config=start,
+        bootstrap_set=2,
+        parallel_samplers=4,
+        target_queued_QM=4,
+        save_h5_threshold=3,
+        maximum_completed_QM=8,
+    )
+
+    assert seen and all(config["batching"] == fixed for config in seen)
+    assert any(config["Escut"] == 2.0 for config in seen), "the reload must reach the sampler"
     cutoffs = {"Escut": 0.5, "Fscut": 0.3}
     single = SamplerCoordinator(batched_mlmd.mlmd_trajectories_task, "batched", cutoffs)
     assert single.batched and single.settings["batch_size"] == 1 and single.poll_delay(60) == 60

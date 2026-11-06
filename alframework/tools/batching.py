@@ -10,6 +10,7 @@ Waiting batches are held in memory only; unfinished buffers are not restored
 after a process restart.
 """
 
+import copy
 import logging
 import time
 from collections import OrderedDict
@@ -326,6 +327,40 @@ def poll_delay(default, *buffers, now=None):
     return delay
 
 
+_ABSENT = object()
+
+
+class StartupSettings:
+    """Hold the settings a coordinator read at startup, so that a reload can't change their meaning.
+
+    ALF reloads its configuration files every loop, but a coordinator builds its batching and
+    selection once. Letting tasks see newer values would mix two meanings within one run.
+    """
+
+    def __init__(self, config, keys, label):
+        self._values = {key: copy.deepcopy(config[key]) for key in keys if key in config}
+        self._keys = tuple(keys)
+        self._label = label
+        self._warned = set()
+
+    def restore(self, reloaded):
+        """Return ``reloaded`` with the startup values, warning once per changed setting."""
+        restored = dict(reloaded)
+        for key in self._keys:
+            if reloaded.get(key, _ABSENT) == self._values.get(key, _ABSENT):
+                self._warned.discard(key)
+                continue
+            if key not in self._warned:
+                print(f"Ignoring the reloaded {self._label} setting '{key}': it is fixed at startup. "
+                      "Restart ALF to change it.")
+                self._warned.add(key)
+            if key in self._values:
+                restored[key] = copy.deepcopy(self._values[key])
+            else:
+                del restored[key]
+        return restored
+
+
 class BatchedSubmitter:
     """Submit structures to a task one at a time or in compatible batches.
 
@@ -346,6 +381,7 @@ class BatchedSubmitter:
         self.settings = settings
         self.buffer = None
         self._failed_structures_read = 0
+        self._startup_settings = None
         if settings is None:
             self.queue = parsl_task_queue()
         else:
@@ -362,6 +398,10 @@ class BatchedSubmitter:
             return "one structure per task"
         return "batches of up to {batch_size} structures ({partial_policy}, {max_wait_seconds:g} s)".format(
             **self.settings)
+
+    def keep_startup_settings(self, reloaded):
+        """Return a reloaded task configuration with this coordinator's fixed settings restored."""
+        return reloaded if self._startup_settings is None else self._startup_settings.restore(reloaded)
 
     def take_failed_structures(self, failed_tasks):
         """Return the structures lost since the last call, given the ``failed_tasks`` just harvested.

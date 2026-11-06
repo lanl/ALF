@@ -25,11 +25,14 @@ cohort's selected frames for labeling once the whole cohort has finished.
 import inspect
 
 from alframework.samplers.acquisition import cohort_selection
-from alframework.tools.batching import BatchedSubmitter, batching_settings, default_batch_key
+from alframework.tools.batching import BatchedSubmitter, StartupSettings, batching_settings, default_batch_key
 from alframework.tools.cohorts import CohortPool
 
 STRATEGIES = ("single", "batched")
 ENGINES = ("ase", "torchsim", "alchemi")
+# Read once at startup. Cutoffs set what a cohort's scores mean, so they stay fixed only in cohort mode.
+FIXED_SETTINGS = ("driver", "batching", "acquisition", "model_mode", "state_selection", "gap_uncertainty")
+FIXED_COHORT_SETTINGS = ("Escut", "Fscut", "gap_std_cut")
 
 
 def state_settings(config):
@@ -159,6 +162,8 @@ class SamplerCoordinator(BatchedSubmitter):
             self.pool = CohortPool(selection)
         super().__init__(sampler_task, settings, key_function=lambda molecule:
                          _model_batch_key(molecule, excited=self._states is not None))
+        fixed = FIXED_SETTINGS + (FIXED_COHORT_SETTINGS if self.pool is not None else ())
+        self._startup_settings = StartupSettings(sampler_config, fixed, "sampler")
 
     def submit(self, molecule_object, input_dicts):
         """Submit (or buffer) one structure; in cohort mode, admit it to a cohort first."""

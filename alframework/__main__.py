@@ -369,8 +369,8 @@ while True:
     else:
         master_config = master_config_new
         builder_config = builder_config_new
-        sampler_config = sampler_config_new
-        QM_config = QM_config_new
+        sampler_config = sampling.keep_startup_settings(sampler_config_new)
+        QM_config = labeling.keep_startup_settings(QM_config_new)
         ML_config = ML_config_new
         all_configs = [master_config, builder_config, sampler_config, QM_config, ML_config]
 	

@@ -2441,7 +2441,18 @@ batch-size effects must be reported separately.
 Use frozen QM/training environments, pinned source, explicit interpreters, public
 PyTorch kernels and GCC 11. Run sequential QM/training allocations under a new
 two-hour queue-inclusive deadline, with 30-minute QM and one-hour training caps
-and two minutes for owned-job cleanup. Calibration code/tests belong in
+and two minutes for owned-job cleanup. User steering selected `shared-redstone`
+instead of `shared-gpu-ampere`; its A100-SXM4-40GB nodes match the memory target.
+
+Calibration launch, November 6 at 09:38 Mountain: persistent frontend session
+`alf-cpp9-cal-20261106` supervises
+`validation/cpp9_calibration_20261106/run-001/`. Frozen library `4a1caba` and
+external harness `b3cd36b` are assembled in the run snapshot. All 14 focused
+harness tests passed before submission, including the exact 40k/5k/5k split
+and a real coordinator/storage test with a mocked backend. The 50,000-row
+fixture is 581,460,752 bytes and records original source IDs and repeat ordinals;
+no new QM labels were invented by repetition. First owned QM job: `17381055`.
+Scientific outcomes and memory capacity remain unclaimed until measurements finish. Calibration code/tests belong in
 `alf_validation`; generated data/logs remain outside Git. This calibration does
 not launch or complete E6. User guides remain user-owned and are not edited here.
 

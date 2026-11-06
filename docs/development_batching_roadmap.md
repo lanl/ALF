@@ -2707,7 +2707,9 @@ training=1, sampling=1, one node per block, init_blocks=min_blocks=0, four QM
 and sampling workers per node, and one local four-GPU training task. The QM
 queue target is 64. Idle nodes are released by Parsl; no campaign controller
 or ten-node reservation is required on the destination cluster. Native
-cuTENSOR preflight follows worker device selection without changing masks.
+cuTENSOR preflight follows worker device selection. Parsl binds each QM
+worker to one allocated GPU UUID before CUDA imports; calculation tasks leave
+the worker mask unchanged.
 
 Launch evidence: ALF `30ba5ea`, external harness `ac4c0cb`; generated run
 `validation/cpp9_e6_20261106/run-001/`. The focused external suite passed
@@ -2719,6 +2721,39 @@ labeling/storage finishes. The original queue-inclusive window is November 6,
 12:33–16:33 Mountain, with sampling/QM acceptance still pending. The user
 chose to disconnect after launch rather than wait for four bootstrap successes;
 the four-GPU overlap requirement remains an automatic acceptance gate.
+
+The first attempt stopped after 1/32 converged/stored bootstrap labels.
+GPU 0 succeeded; workers selecting local GPU indices 1–3 failed during SCF
+with 21 negative-dimension and ten indexing errors. No GPU OOM was reported.
+All three owned allocations terminated. With only one stored frame, initial
+training could not create nonempty train/validation/test splits; no sampling
+or promotion occurred. This does not invalidate the prior single-worker DCM
+labeling qualification.
+
+The correction (`6f69486`, external harness `941f202`) binds QM workers using
+Parsl's ordinary accelerator mechanism. A short-lived CUDA query resolves
+UUIDs in the scheduler-visible order; the manager retains its allocation
+mask, and each fresh QM worker sees its assigned GPU as local CUDA device 0.
+This is required because upstream single-device kernels explicitly index
+GPU-zero buffers. ALF now rejects nonzero backend device indices before
+backend imports instead of allowing those kernels to fail during SCF. No
+upstream installation, scientific setting or training GPU assignment changed.
+The full library suite passed **510 tests, 42 skipped**; the affected combined
+suite passed **126 tests**, and the latest CPP9 harness/budget suite passed
+**15 tests**.
+
+An initial corrected launch demonstrated four distinct GPU UUIDs/PCI buses
+with local device zero. It was stopped to honor the user's explicit decision
+to give the corrected attempt a fresh four-hour budget; both owned resources
+(`17381880`, `17381882`) have verified termination. `run-002` was preparation
+only. The fresh attempt is `validation/cpp9_e6_20261106/run-004/`, using
+identical verified seed geometries/configuration/environments and no reused
+labels. It runs under persistent frontend `alf-cpp9-e6` tmux; initial owned
+jobs are `17381894` (sampling) and `17381895` (QM). Its queue-inclusive window
+is **15:19:44–19:19:44 Mountain on November 6**, reserving five minutes for
+cleanup. The normal retry path still preserves deadlines; budget renewal is
+an explicit preparation option recorded in the frozen manifest. Native
+convergence, training, acquisition and promotion acceptance remain pending.
 
 **E6 remains incomplete until the pilot passes and owned-job termination is
 verified.** Ten-node scaling, predictive accuracy, long-time stability,

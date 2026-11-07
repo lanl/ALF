@@ -137,6 +137,10 @@ ml_task = load_module_from_string(master_config['ML_task'])
 for cur_Exec in ml_task.executors:
     if cur_Exec.replace('_executor', '_standby_executor') in executor_list:
         ml_task.executors.append(cur_Exec.replace('_executor', '_standby_executor'))
+# An ML task can check its own configuration, so a mistake stops ALF before the bootstrap is labeled.
+validate_ml_config = getattr(getattr(ml_task, 'func', None), 'validate_config', None)
+if validate_ml_config is not None:
+    validate_ml_config(ML_config, master_config)
 
 ##########################################
 ## Step 3: Evaluate restart possibilites #

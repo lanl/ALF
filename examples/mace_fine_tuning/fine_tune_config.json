@@ -1,0 +1,18 @@
+{
+  "fine_tune": {
+    "adapter": "alframework.ml_interfaces.mace_interface.MaceFineTuner",
+    "foundation_model": "foundation/mace-mp-0-small.model",
+    "n_models": 4,
+    "seed": 0,
+    "device": "cuda",
+    "E0s": "average",
+    "learning_rate": 0.001,
+    "max_num_epochs": 50,
+    "batch_size": 4,
+    "valid_fraction": 0.1,
+    "dtype": "float64",
+    "freeze": null,
+    "replay_file": null,
+    "mace_options": {}
+  }
+}

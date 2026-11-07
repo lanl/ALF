@@ -53,6 +53,7 @@ import numpy as np
 STRATEGIES = ("uncertainty", "summed")
 TRAJECTORY_POLICIES = ("stop", "continue")
 SELECTION_MODES = ("first_trigger", "cohort_top_k")
+COHORT_SELECTORS = ("top_k", "fps")
 
 # name: (signal key from ensemble statistics, cutoff key in sampler_config, cutoff multiplier)
 SCORE_TERMS = {
@@ -101,7 +102,8 @@ def _summed_weights(block):
 
 def _selection(block):
     raw = dict(block.get("selection") or {})
-    unknown = set(raw) - {"mode", "cohort_size", "k", "max_candidates_per_trajectory", "group_by_selected_state"}
+    unknown = set(raw) - {"mode", "cohort_size", "k", "max_candidates_per_trajectory", "group_by_selected_state",
+                          "selector"}
     if unknown:
         raise ValueError(f"Unknown acquisition.selection settings: {sorted(unknown)}.")
     mode = raw.get("mode", "first_trigger")
@@ -125,6 +127,14 @@ def _selection(block):
     cap = raw.get("max_candidates_per_trajectory")
     selection["max_candidates_per_trajectory"] = None if cap is None else \
         _positive_integer(cap, "acquisition.selection.max_candidates_per_trajectory")
+    selector = raw.get("selector", "top_k")
+    if selector not in COHORT_SELECTORS:
+        raise ValueError(f"acquisition.selection.selector must be one of {COHORT_SELECTORS}; received {selector!r}.")
+    if selector != "top_k":
+        if cap is None:
+            raise ValueError(f"acquisition.selection.selector '{selector}' requires "
+                             "max_candidates_per_trajectory, which sets how many frames workers keep for it.")
+        selection["selector"] = selector
     return selection
 
 
@@ -265,3 +275,42 @@ def ranking_key(candidate):
 def top_k(candidates, k):
     """Return the ``k`` best candidates in deterministic rank order."""
     return sorted(candidates, key=ranking_key)[:int(k)]
+
+
+def fps_select(candidates, k):
+    """Return up to ``k`` geometrically diverse candidates, by farthest-point sampling.
+
+    Candidates are put in a canonical order first, so that the result doesn't depend on how
+    trajectories were grouped or the order in which they finished. Pair-distance descriptors
+    need one composition and no periodic images.
+    """
+    if not candidates:
+        return []
+    from alframework.builders.rdkit_molecule import farthest_point_order, pair_descriptor
+    ordered = sorted(candidates, key=lambda candidate: (str(candidate["trajectory_id"]), int(candidate["step"])))
+    if any(np.any(candidate["pbc"]) for candidate in ordered):
+        raise ValueError("FPS cohort selection supports nonperiodic molecules only.")
+    if len({tuple(sorted(np.asarray(candidate["numbers"]).tolist())) for candidate in ordered}) > 1:
+        raise ValueError("FPS cohort selection needs every candidate in a cohort to have the same composition.")
+    features = np.concatenate([pair_descriptor(np.asarray(candidate["positions"])[None], candidate["numbers"])
+                               for candidate in ordered])
+    return [ordered[row] for row in farthest_point_order(features, min(int(k), len(ordered)))]
+
+
+def select_candidates(candidates, selection):
+    """Return the frames a finished cohort sends to QM, in rank order."""
+    if selection.get("selector", "top_k") == "fps":
+        return fps_select(candidates, selection["k"])
+    return top_k(candidates, selection["k"])
+
+
+def worker_retention_limit(selection):
+    """Return how many frames one trajectory must keep for this selection.
+
+    Top-K can never select a frame outside a trajectory's own best ``k``. FPS can, so it keeps
+    what ``max_candidates_per_trajectory`` allows, choosing the highest-scoring frames.
+    """
+    cap = selection.get("max_candidates_per_trajectory")
+    if selection.get("selector", "top_k") == "fps":
+        return cap
+    return selection["k"] if cap is None else min(selection["k"], cap)

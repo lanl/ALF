@@ -162,6 +162,9 @@ to the most uncertain frames rather than to whichever frames triggered first:
      - Optional. The most frames one trajectory can keep in the pool. Only its
        highest-scoring frames are kept. Each trajectory is always limited to at
        most ``k``.
+   * - ``selection.selector``
+     - Optional. ``"top_k"`` (default) picks the highest-scoring frames. ``"fps"``
+       picks a geometrically varied set; see below.
    * - ``selection.group_by_selected_state``
      - Optional. ``true`` keeps a separate cohort for each selected state, so each
        state gets its own ``k`` frames rather than competing with the others. It
@@ -179,14 +182,41 @@ How cohorts run:
 * **Model:** a cohort uses the model that was current when it opened. If a new
   model arrives, the open cohort finishes with its original model, and the next
   cohort uses the new one.
-* **Finishing:** once a full cohort's trajectories have all finished, ALF ranks
-  its frames and sends the top ``k`` to QM. A trajectory finishes as ``eligible``,
-  ``completed``, ``rejected``, or ``failed``.
+* **Finishing:** once a full cohort's trajectories have all finished, its selector
+  sends ``k`` frames to QM. A trajectory finishes as ``eligible``, ``completed``,
+  ``rejected``, or ``failed``.
 * **Failures:** frames a trajectory contributed before ending remain in the pool.
   Frames held inside a worker that crashes are lost.
-* **Grouping:** selection depends only on scores and identities, not on how
+* **Grouping:** selection depends only on the frames themselves, not on how
   trajectories were grouped into tasks. Sampler ``batch_size`` and ``cohort_size``
   are independent.
+
+Diverse selection
+   Top-K can spend all of a cohort's labels on near-identical frames from one
+   uncertain region. ``"selector": "fps"`` instead uses farthest-point sampling on
+   each frame's sorted pair distances, so it picks frames that differ from each
+   other. Every frame in the pool is already eligible, but among those, scores
+   don't affect the choice.
+
+   .. code-block:: json
+
+      {
+        "acquisition": {
+          "trajectory_policy": "continue",
+          "selection": {
+            "mode": "cohort_top_k",
+            "cohort_size": 50,
+            "k": 16,
+            "selector": "fps",
+            "max_candidates_per_trajectory": 8
+          }
+        }
+      }
+
+   It requires ``max_candidates_per_trajectory``, which can be larger than ``k``.
+   Each trajectory keeps that many of its highest-scoring frames for the pool, so a
+   larger value gives the selector more to choose from and uses more memory. ALF
+   stops with an error if a cohort's frames mix compositions or are periodic.
 
 Checking Results
 ----------------

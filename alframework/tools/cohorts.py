@@ -9,10 +9,10 @@ until it is full; the next cohort opens on the then-current model. This keeps
 full admission without mixing generations within a cohort.
 
 When every member of a full cohort has a terminal outcome (``eligible``,
-``completed``, ``rejected``, or ``failed``), its candidates are ranked and the
-best ``k`` are released for labeling. The selection depends only on the
-candidates' scores and identities, not on how members were grouped into tasks
-or the order in which tasks finished. Candidates returned before a trajectory
+``completed``, ``rejected``, or ``failed``), its selector releases ``k``
+candidates for labeling: the best-scoring by default, or a diverse set with
+``fps``. The selection depends only on the candidates themselves, not on how
+members were grouped into tasks or the order in which tasks finished. Candidates returned before a trajectory
 failed remain in the pool.
 
 There is no admission timeout and no partial-cohort selection. Cohorts are
@@ -23,7 +23,7 @@ from collections import Counter, deque
 
 from ase import Atoms
 
-from alframework.samplers.acquisition import top_k
+from alframework.samplers.acquisition import select_candidates
 from alframework.tools.molecules_class import MoleculesObject
 
 TERMINAL_OUTCOMES = ("eligible", "completed", "rejected", "failed")
@@ -50,6 +50,7 @@ class CohortPool:
     """
 
     def __init__(self, selection):
+        self.selection = dict(selection)
         self.cohort_size = int(selection["cohort_size"])
         self.k = int(selection["k"])
         self.group_by_state = bool(selection.get("group_by_selected_state", False))
@@ -119,7 +120,7 @@ class CohortPool:
             cohort = self._cohorts[cohort_id]
             if len(cohort.members) < self.cohort_size or len(cohort.outcomes) < len(cohort.members):
                 continue
-            chosen = top_k(cohort.candidates, self.k)
+            chosen = select_candidates(cohort.candidates, self.selection)
             for rank, candidate in enumerate(chosen):
                 selected.append(self._frame(cohort, candidate, rank))
             self.finished.append({

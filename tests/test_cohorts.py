@@ -5,6 +5,7 @@ import pytest
 from ase import Atoms
 
 from alframework.samplers import batched_mlmd
+from alframework.samplers.acquisition import acquisition_settings, select_candidates, top_k
 from alframework.samplers.batched_mlmd import sample_trajectories
 from alframework.tools.cohorts import FINISHED_HISTORY, CohortPool
 from alframework.tools.molecules_class import MoleculesObject
@@ -34,10 +35,12 @@ def member(name):
     return MoleculesObject(Atoms("H"), name)
 
 
-def cohort_config(cohort_size, k, policy="stop", cap=None):
+def cohort_config(cohort_size, k, policy="stop", cap=None, selector=None):
     selection = {"mode": "cohort_top_k", "cohort_size": cohort_size, "k": k}
     if cap is not None:
         selection["max_candidates_per_trajectory"] = cap
+    if selector is not None:
+        selection["selector"] = selector
     return dict(SAMPLER, acquisition={"trajectory_policy": policy, "selection": selection})
 
 
@@ -66,9 +69,9 @@ def selected_ids(frames):
     return [(frame.get_metadata()["frame_id"], frame.get_metadata()["cohort_rank"]) for frame in frames]
 
 
-def replay(results, cohort_size, k, width, order):
+def replay(results, cohort_size, k, width, order, selector="top_k"):
     """Admit all trajectories, then return them in tasks of ``width`` in the given order."""
-    pool = CohortPool({"cohort_size": cohort_size, "k": k})
+    pool = CohortPool({"cohort_size": cohort_size, "k": k, "selector": selector})
     ids = sorted(results)
     for name in ids:
         pool.admit(member(name), model_id=0)
@@ -246,6 +249,92 @@ def test_open_cohort_finishes_on_its_original_model():
     frames = pool.ready()
     assert [f.get_metadata()["cohort_model_id"] for f in frames] == [0]
     assert [c["cohort_id"] for c in pool.status()["open"]] == ["cohort-0001-000000"]
+
+
+def diatomic(trajectory_id, separation, score):
+    frame = candidate(trajectory_id, 0, score)
+    frame["positions"] = np.array([[0.0, 0.0, 0.0], [separation, 0.0, 0.0]])
+    return frame
+
+
+def test_cohort_fps_selector_spreads_over_geometry_where_top_k_does_not():
+    # The three best scores sit in one tight cluster of bond lengths.
+    frames = [
+        diatomic("a", 1.00, 9.0),
+        diatomic("b", 1.01, 8.0),
+        diatomic("c", 1.02, 7.0),
+        diatomic("d", 2.00, 2.0),
+        diatomic("e", 3.00, 1.0),
+    ]
+    selection = {"k": 3, "selector": "fps"}
+    assert {frame["trajectory_id"] for frame in select_candidates(frames, selection)} == {"a", "d", "e"}
+    assert {frame["trajectory_id"] for frame in top_k(frames, 3)} == {"a", "b", "c"}
+    assert select_candidates(frames, {"k": 3}) == top_k(frames, 3)
+
+
+def test_cohort_fps_selector_ignores_how_trajectories_finish():
+    config = cohort_config(12, 4, "continue", cap=3, selector="fps")
+    results = {}
+    for index in range(12):
+        molecule = MoleculesObject(SPRING_WATER.copy(), f"mol-0000-{index:010d}")
+        results[molecule.get_moleculeid()] = sample_trajectories([molecule], spring_ensemble(), dict(config))[0]
+    held = [len(r.get_metadata()["acquisition_candidates"]) for r in results.values()]
+    assert max(held) == 3, "FPS keeps up to the cap, which is more than top-K of k would need here"
+    reference, _ = replay(results, 12, 4, 1, "forward", "fps")
+    assert len(reference) == 4
+    top_scores, _ = replay(results, 12, 4, 1, "forward", "top_k")
+    assert selected_ids(reference) != selected_ids(top_scores), "the pool must use the configured selector"
+    for width in (1, 2, 4, 12):
+        for order in ("forward", "reversed", "shuffled"):
+            frames, _ = replay(results, 12, 4, width, order, "fps")
+            assert selected_ids(frames) == selected_ids(reference), (width, order)
+
+
+def test_cohort_fps_selector_breaks_ties_without_using_arrival_order():
+    # After the middle frame, 1.0 and 3.0 are equally far from it, so only the tie-break decides.
+    frames = [diatomic("a", 1.0, 1.0), diatomic("b", 2.0, 1.0), diatomic("c", 3.0, 1.0)]
+    selection = {"k": 2, "selector": "fps"}
+    assert select_candidates(frames, selection) == select_candidates(frames[::-1], selection)
+
+
+def test_cohort_fps_selector_keeps_more_frames_in_workers_than_k():
+    frames = [candidate("mol", step, float(step)) for step in range(10)]
+    selection = {"k": 2, "max_candidates_per_trajectory": 5, "selector": "fps"}
+    assert [frame["step"] for frame in batched_mlmd._prune(frames, selection)] == [9, 8, 7, 6, 5]
+
+
+def test_cohort_fps_selector_handles_fewer_candidates_than_k():
+    frames = [diatomic("a", 1.0, 1.0), diatomic("b", 2.0, 1.0)]
+    assert len(select_candidates(frames, {"k": 5, "selector": "fps"})) == 2
+    assert select_candidates([], {"k": 5, "selector": "fps"}) == []
+
+
+def test_cohort_fps_selector_rejects_mixed_compositions():
+    other = diatomic("b", 2.0, 1.0)
+    other["numbers"] = np.array([1, 8])
+    with pytest.raises(ValueError, match="same composition"):
+        select_candidates([diatomic("a", 1.0, 1.0), other], {"k": 1, "selector": "fps"})
+
+
+def test_cohort_fps_selector_rejects_periodic_frames():
+    periodic = diatomic("a", 1.0, 1.0)
+    periodic["pbc"] = np.array([True] * 3)
+    with pytest.raises(ValueError, match="nonperiodic"):
+        select_candidates([periodic], {"k": 1, "selector": "fps"})
+
+
+@pytest.mark.parametrize(
+    "selection,message",
+    [
+        ({"mode": "cohort_top_k", "cohort_size": 2, "k": 1, "selector": "fps"}, "max_candidates_per_trajectory"),
+        ({"mode": "cohort_top_k", "cohort_size": 2, "k": 1, "selector": "random"}, "must be one of"),
+        ({"mode": "first_trigger", "selector": "fps"}, "cohort_top_k"),
+    ],
+    ids=["fps_without_a_cap", "unknown_selector", "fps_without_cohorts"],
+)
+def test_cohort_selector_settings_are_validated(selection, message):
+    with pytest.raises(ValueError, match=message):
+        acquisition_settings(dict(SAMPLER, acquisition={"selection": selection}))
 
 
 def test_cohort_history_is_bounded_while_totals_stay_right():

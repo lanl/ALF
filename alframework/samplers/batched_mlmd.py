@@ -51,7 +51,7 @@ from ase.md.langevin import Langevin
 from parsl import python_app
 
 from alframework.ml_interfaces.ensemble_inference import ensemble_statistics, SelectedStateEvaluator
-from alframework.samplers.acquisition import acquisition_settings, assess_frame, frame_id, top_k
+from alframework.samplers.acquisition import acquisition_settings, assess_frame, frame_id, top_k, worker_retention_limit
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator
 from alframework.samplers.geometry import minimum_distance
 from alframework.tools.molecules_class import MoleculesObject
@@ -413,10 +413,7 @@ def _candidate(molecule, engine, index, signals, decision, time_ps):
 
 def _prune(candidates, selection):
     """Keep a trajectory's best frames; never more than the cohort can select from one trajectory."""
-    limit = selection['k']
-    if selection['max_candidates_per_trajectory'] is not None:
-        limit = min(limit, selection['max_candidates_per_trajectory'])
-    return top_k(candidates, limit)
+    return top_k(candidates, worker_retention_limit(selection))
 
 
 def make_engine(engine, atoms_list, models, dt, temperatures_K, rngs, calculator_options=None, device=None, friction=0.02):

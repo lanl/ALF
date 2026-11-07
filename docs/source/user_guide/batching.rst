@@ -100,14 +100,14 @@ is labeled:
      - QM tasks
    * - ``native``
      - The QM code evaluates the whole batch in one call.
-     - Tasks that accept ``molecule_objects``: ``pyseqm_task`` and
-       ``pyseqm_excited_state_batch_task``.
+     - Tasks that accept ``molecule_objects``: ``pyseqm_task``,
+       ``pyseqm_excited_state_batch_task``, and ``teacher_batch_task``.
    * - ``sequential``
      - One Parsl task calls a single-structure QM task on each member in turn.
        This is job packing: it reduces the number of scheduler jobs, but members
        still run one after another.
      - Tasks that accept ``molecule_object``: ORCA, Q-Chem, VASP, ASE calculators,
-       GPU4PySCF, and ``pyseqm_excited_state_task``.
+       GPU4PySCF, ``pyseqm_excited_state_task``, and ``teacher_task``.
 
 ALF stops at startup if the mode doesn't match the QM task. With ``sequential``,
 make sure ``batch_size`` times the runtime of one calculation fits in your

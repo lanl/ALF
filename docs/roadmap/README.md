@@ -31,8 +31,10 @@ This folder is the shared plan for bringing the fork's intended capabilities int
   sampling/plotting checks also passed; see the
   [November 7 hardware record](#current-development-hardware-qualification--passed-with-restart-limits-2026-11-07).
   Crash-safe restart remains unqualified.
-- **Next:** safe restarts (tabled for now; see [`exascale.md`](exascale.md)), teacher labeling, then new
-  uncertainty and acquisition methods. Long runs and staged campaigns come last, and may be
+- **Foundation-model teacher labeling is built,** with real MACE checked locally. UMA and the Darwin
+  gate are pending; see the [record](#teacher-labeling-2026-11-07).
+- **Next:** the restart fixes that don't depend on the Darwin profile, then the rest of safe restarts
+  (see [`exascale.md`](exascale.md)), F1 and F2 fine-tuning, then new uncertainty and acquisition methods. Long runs and staged campaigns come last, and may be
   removed; see [Order of work](future.md#order-of-work).
 - **No merge to `main` is planned** (user decision, November 6).
 - **Outside current acceptance:** legacy NeuroChem and MI350.
@@ -385,6 +387,56 @@ reason, after saving status, for every required executor (user decision: stop ra
 Labels finished since the last store are lost, as at a budget stop. The guide also recommends
 `windowed_error_handler`. Locally, it survived 1 and 2 failed blocks and ran the task, and gave up after 3,
 while the default gave up after 1.
+
+### Teacher labeling (2026-11-07)
+
+A foundation model can label structures in place of QM, so that a HIPPYNN student learns from it:
+`teacher_batch_task` for native batches and `teacher_task` for one structure at a time or
+`"mode": "sequential"`, in `qm_interfaces/teacher_interface.py`. Ground-state energies and forces only.
+See the [guide](../source/user_guide/qm_interfaces.rst).
+
+- **Batches:** `TorchSimTeacher` runs a whole batch through any TorchSim model in one pass, using the
+  first-party TorchSim models that MACE and fairchem ship. `AseTeacher` wraps any ASE calculator.
+  A batch that fails is split in half until the failing structure is isolated.
+- **Safeguards (from review, beyond the original plan):**
+  - ALF stops at startup on unit factors other than 1.0, which catches Hartree factors copied from a
+    QM configuration, and on properties a teacher can't give.
+  - ALF refuses an `h5_dir` holding QM labels or another teacher's, unless `allow_mixed_labels` is set.
+  - Structures with elements the teacher lacks, and charged or open-shell structures for MACE, are
+    marked unconverged with a reason.
+  - UMA requires an explicit `task`.
+  - There's no force limit on labels (user question). Large forces are often real, and the training
+    filters already handle outliers.
+- **Provenance:** every label records the teacher, its package version, and its checkpoint's SHA-256.
+  Storage writes these onto the shard as the `label_provenance` attribute, and both HIPPYNN trainers
+  write `label_sources.json` after training. QM shards don't change.
+- **A small generic hook:** `LabelingCoordinator` calls a labeler's `validate_config`, if it has one,
+  at startup. `__main__.py` doesn't change.
+
+**Real MACE, locally (user approved downloads).** MACE-MP-0 small, `mace-torch` 0.3.17, on CPU in a
+throwaway environment:
+
+- Batches of 1, 2, 4, and 8 matched one-at-a-time labels to 4e-15 eV and 3e-15 eV/Å, with molecules and
+  a periodic copper cell in the same run.
+- Labels matched MACE's own ASE calculator to 3e-14 eV.
+- Forces matched a numerical derivative of the energy to 4e-8 eV/Å.
+- A full ALF cycle stored real MACE labels with provenance, in both native and sequential modes.
+
+That run found a real bug. Thread-based executors share a worker's teacher, and MACE keeps state between
+calls, so concurrent sequential labels failed. A worker now uses its teacher from one thread at a time,
+and a regression test covers it. Parsl's usual executor runs one task per process, so it wasn't affected.
+
+**Not shown yet.**
+
+- **UMA:** Hugging Face refused an anonymous download, so the loader is written against fairchem 2.25's
+  TorchSim interface but hasn't run. A UMA run needs a Hugging Face account that has accepted UMA's
+  license.
+- **GPU, and real student retraining:** both wait for the Darwin gate, since the ground-state trainer
+  has no CPU mode.
+
+**Local results.** 936 passed, 2 skipped (`seqm` not installed), and the teacher tests also pass without
+torch, HIPPYNN, or TorchSim. All 40 deliberate breaks were caught, after tests were added for the five gaps
+the first round found.
 
 ### Progress plots for batched and excited-state runs (2026-11-07)
 

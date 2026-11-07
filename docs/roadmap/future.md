@@ -15,7 +15,7 @@ and [gap/window qualification](README.md#gap-seeking-and-sampling-window-hardwar
 
 1. **Safe restarts and disk races** ([below](#safe-restarts-and-disk-races), with priorities in [`exascale.md`](exascale.md#priority-list)). Tabled for now (user decision, November 6), and next when picked up.
 2. **Placement and memory** ([Group C](#group-c-placement-and-memory)). Multi-node independent-member training passed its bounded Darwin gate on November 7; larger deployments remain unqualified. It buys throughput for larger ensembles, not new methods.
-3. **Teacher labeling, then F1 and F2 fine-tuning** ([Group D](#group-d-model-families-and-labels)).
+3. **Teacher labeling, then F1 and F2 fine-tuning** ([Group D](#group-d-model-families-and-labels)). Teacher labeling is built, and awaits its Darwin gate.
 4. **New uncertainty and acquisition methods** ([Group G](#group-g-new-uncertainty-and-acquisition-methods)).
 5. **Long runs and staged campaigns** ([Group E](#group-e-long-runs)), last: very low priority, and may be removed (user decision, November 6).
 
@@ -142,7 +142,7 @@ Tabled on November 6, before any restart code changed. ALF has since gained exit
 | Model/training handoffs and distillation | Opaque model-artifact references, model-independent inference adapters, and foundation-MLIP reference labeling. | Record teacher identity, version, units, and label provenance separately from the student sampling model. Teacher labeling is an independent track; handoffs and distillation come later. Fine-tuning tiers F1–F3 are planned below. |
 | Further model and sampling extensions | Additional production model families, reactive batching, and separately planned methods. | Follow the same minimal-core-change and existing-workflow compatibility gates. |
 
-- **Foundation-model teacher labeling (independent track).** The
+- **Foundation-model teacher labeling: built November 7, Darwin gate pending.** See the [record](README.md#teacher-labeling-2026-11-07) and the [guide](../source/user_guide/qm_interfaces.rst). The original plan follows. The
   labeling boundary already supports this: `LabelingCoordinator`
   (`tools/labeling.py`) packs `native` batches for any `QM_task` that accepts
   `molecule_objects`, as PySEQM does. Storage, retraining, and promotion see

@@ -2,7 +2,7 @@
 
 An audit of where ALF's file operations could become a problem in campaigns of thousands of nodes, with a priority list for fixing them. It was done on November 6, 2026, by reading the file operations in `alframework/` and the CPP example, and the defaults in HIPPYNN, PySCF, and Parsl.
 
-**Where this stands:** the priority list below is still open, and the wider restart plan is in [Safe restarts and disk races](future.md#safe-restarts-and-disk-races). Three related changes have landed since the audit: ALF now releases allocations on exit, the excited-state loader no longer reads `training_summary.json` on each sampler task, and the multi-node training tasks wait for shards. Bounded measurements now cover two-node operation and 20 independent training members on five nodes; they do not establish exascale performance.
+**Where this stands:** items 1-3 of the priority list were built on November 7 (atomic writes, the shard check in single-node training, and the replay manifest cache), after the Darwin round had measured `ce711d8`. Item 4 onward is open, and the wider restart plan is in [Safe restarts and disk races](future.md#safe-restarts-and-disk-races). Three related changes landed earlier: ALF now releases allocations on exit, the excited-state loader no longer reads `training_summary.json` on each sampler task, and the multi-node training tasks wait for shards. Bounded measurements now cover two-node operation and 20 independent training members on five nodes; they do not establish exascale performance.
 
 **What was and wasn't measured:** the original audit used code inspection and
 in-memory Mac timings. The [November 7 Darwin measurements](#darwin-measurements-2026-11-07)
@@ -68,9 +68,9 @@ The restart implementation remains tabled by the existing user decision.
 
 ## Main findings
 
-- **The largest cost is the replay manifest.** Every builder task reads and hashes every shard in full. By estimate, 1M CPP9 labels is about 8 GB per task, so 1,000 builder tasks would read about 8 TB.
+- **The largest cost is the replay manifest.** Every builder task reads and hashes every shard in full. By estimate, 1M CPP9 labels is about 8 GB per task, so 1,000 builder tasks would read about 8 TB. *Built November 7:* each worker now reads each shard once.
 - **The largest data-loss risk is labels held in memory.** Stores only happen when no training is running, so a crash loses every label finished since the last store. Bootstraps have the same risk.
-- **Both trainers can silently miss a new shard.** They list `h5_dir`, so a stale directory view on another node means training without that shard.
+- **Both trainers can silently miss a new shard.** They list `h5_dir`, so a stale directory view on another node means training without that shard. *Built November 7:* every HIPPYNN training task now waits for the shards the coordinator stored.
 - **The HDF5 store isn't the bottleneck it looked like.** A gzip-6 store of 10,000 CPP9-sized labels (90 atoms, 3 states, 87 MB) took 1.7 s in memory.
 - **The coordinator is the only writer of shared state.** Workers write to paths unique to a structure, member, or task, so there's no worker-against-worker race in normal operation.
 
@@ -78,7 +78,7 @@ The restart implementation remains tabled by the existing user decision.
 
 Order weighs data loss first, then cost at scale, then effort.
 
-**Multi-node training changes two items (November 6).** Its tasks already wait for shards the coordinator listed, which covers item 2 for them; single-node training still needs it. Larger ensembles also raise the value of item 9, because every sampler task loads every member.
+**Multi-node training changes two items (November 6).** Its tasks already wait for shards the coordinator listed, which covers item 2 for them; single-node training got the same check on November 7. Larger ensembles also raise the value of item 9, because every sampler task loads every member.
 
 ### Tier 1: small fixes that protect runs
 
@@ -86,9 +86,9 @@ Worth doing whatever a profile shows, except that item 4 needs a `flock` test fi
 
 | # | Work | Size | Needs from Darwin |
 | --- | --- | --- | --- |
-| 1 | Write status and shards to a temporary file, then rename. `force_screen.py:89` already does this. | Small | Nothing |
-| 2 | Check for every expected shard by name in both trainers, with a bounded wait, then raise. Extra files stay allowed. | Small | Nothing, though a visibility test would show how long to wait |
-| 3 | Cache each shard's manifest per worker, keyed by path, size, and modified time (the `_load_reference_cached` pattern in `molecular_topology.py`), and open the seed once per task. | Small to medium | Nothing |
+| 1 | **Built November 7.** Write status and shards to a temporary file, then rename. `force_screen.py:89` already does this. | Small | Nothing |
+| 2 | **Built November 7.** Check for every expected shard by name in both trainers, with a bounded wait, then raise. Extra files stay allowed. | Small | Nothing, though a visibility test would show how long to wait |
+| 3 | **Built November 7.** Cache each shard's manifest per worker, keyed by path, size, and modified time (the `_load_reference_cached` pattern in `molecular_topology.py`), and open the seed once per task. | Small to medium | Nothing |
 | 4 | Lock the coordinator on `<status_path>.lock`, and refuse to start if it's held. | Small | Whether `flock` works on `/vast` |
 
 ### Tier 2: restarts that keep labels
@@ -123,6 +123,8 @@ Items 5 and 6 ship together, because holding-area labels are only useful if a re
 Measure these on Darwin, at ALF `6e19e7a`, alongside the multi-node round. Nothing here is pass or fail, and no library code should change. Keep evidence outside Git under `validation/`, and record results in `exascale.md`.
 
 If a tool or permission isn't available, record that and move on. Don't substitute an estimate.
+
+**Since this was written,** priority items 1-3 were built (`cbadf9e`, `8d151da`, `6aedf2d`). Run the profile at `6e19e7a` as planned, because it's the baseline. If time allows, repeat the "during a store" row of section 3, and section 5, at the newer commit, to show what changed.
 
 #### 1. `flock` on `/vast` (decides how the coordinator lock works)
 
@@ -223,11 +225,11 @@ For each section, give a short result, and the evidence path. In addition, answe
 | Result | Effect on the restart plan |
 | --- | --- |
 | `flock` refused across nodes | The lock is as simple as planned. Otherwise it needs a lock file holding host and process ID, plus stale-lock detection. |
-| Longest listing delay | Sets the shard wait, and how much item 2 matters. |
+| Longest listing delay | Whether the 120 s shard wait, now used by every HIPPYNN training task, is long enough. |
 | Rename visibility | Confirms that atomic shard writes are safe on `/vast`. |
 | Kill and restart failures | The acceptance tests for items 5 and 6. |
 | File operation counts | Reorders tier 3 in `exascale.md`. |
-| Manifest timing | Whether the manifest cache goes before the label work. |
+| Manifest timing | The cost the manifest cache removes, and, if repeated at the newer commit, what's left. |
 | `/tmp` details | Whether item 8 can go ahead on each partition. |
 
 ## All operations, by severity
@@ -238,10 +240,10 @@ The last column gives the priority item. "Profile" means only if a profile shows
 
 | Operation | Where | Scales with | Why it matters | Item |
 | --- | --- | --- | --- | --- |
-| Replay builder reads and hashes every shard, then scans its groups | `geometry_manifest` in `external_geometry.py:32`; RDKit and CPP ring builders | Builder tasks × total HDF5 bytes | Each task holds each whole shard in memory while hashing it, builds one tuple per frame, and reopens the shard per molecule (`:117`). SHA-256 ran at about 3 GB/s, so the read probably dominates. | 3 |
+| Replay builder reads and hashes every shard, then scans its groups | `geometry_manifest` in `external_geometry.py:32`; RDKit and CPP ring builders | Builder tasks × total HDF5 bytes | Each task holds each whole shard in memory while hashing it, builds one tuple per frame, and reopens the shard per molecule (`:117`). SHA-256 ran at about 3 GB/s, so the read probably dominates. *Built November 7:* indexed once per worker per shard version, with one count per group, and each source opened once per task. | 3 |
 | Finished labels stay in memory while training runs | `__main__.py:435` | Labels finished during training | A crash loses every label since the last store, on every cycle. | 5 |
 | Bootstrap holds all labels until it finishes | `__main__.py:274-329` | `bootstrap_set` | A crash loses the whole bootstrap, which may be the most expensive single loss for large CPP runs. | 5 |
-| Trainer lists `h5_dir` right after a store | `hippynn_interface.py:574` (`os.listdir`, `allow_unfound=True`) and `:1234` (`glob`) | Each store | A stale view silently trains without the new shard. Replay is safer, because it looks up shards by name and raises (`rdkit_molecule.py:425`). The multi-node tasks already wait for the shards the coordinator listed, so this remains for single-node training. | 2 |
+| Trainer lists `h5_dir` right after a store | `hippynn_interface.py:574` (`os.listdir`, `allow_unfound=True`) and `:1234` (`glob`) | Each store | A stale view silently trains without the new shard. Replay is safer, because it looks up shards by name and raises (`rdkit_molecule.py:425`). The multi-node tasks already wait for the shards the coordinator listed. *Built November 7:* the single-node tasks wait for `h5_path` shards numbered below `current_h5_id`. | 2 |
 | One directory per label, under one parent | `QM_scratch_dir/<id>/`; ASE, ORCA, Q-Chem, and VASP only | Labels | Heavy metadata load, and ASE and ORCA never remove them by default. GPU4PySCF and PySeQM create none, so CPP and AcAc are unaffected. | 8 |
 | One metadata pickle per trajectory, in one flat directory | `batched_mlmd.py:437`, `mlmd_sampling.py:165` | Trajectories | Only when `meta_dir` is set. CPP and AcAc don't set it, but the ground-state examples checked do. Progress plots no longer need it, with `trajectory_summary_path`. | 10 |
 
@@ -249,10 +251,10 @@ The last column gives the priority item. "Profile" means only if a profile shows
 
 | Operation | Where | Scales with | Why it matters | Item |
 | --- | --- | --- | --- | --- |
-| Non-atomic status and shard writes | 6 status write sites in `__main__.py`; `datapacker` | Each store and loop | A crash can leave truncated status, which stops a restart, or a partial shard that `w-` mode then refuses to replace. | 1 |
+| Non-atomic status and shard writes | 6 status write sites in `__main__.py`; `datapacker` | Each store and loop | A crash can leave truncated status, which stops a restart, or a partial shard that `w-` mode then refuses to replace. *Built November 7:* status and shards are renamed into place, and a leftover `.partial` is ignored and overwritten. A crash between the rename and the status write still stops a restart, now with a clear message; that's for item 6. | 1 |
 | Two coordinators in one directory | `__main__.py`; no lock anywhere | Operator error | Both write status and collide on shards. | 4 |
 | Loads every ensemble member per sampler task | `_load_member`, `hippynn_interface.py:836` | Sampler tasks × members × 2 or 3 | Happens on every task, not only after promotion. Excited-state ensembles also read the small `member_composition.json`, and the legacy ASE path loads per trajectory. | 9 |
-| Opens `seed.h5` and rehashes inputs | `rdkit_molecule.py:415-435`, CPP `custom_modules.py:24-45` | Molecules, plus builder tasks × seed size | The seed opens twice per molecule during a bootstrap. The seed and reference are hashed on every builder task for the whole campaign, and the manifest is hashed per molecule. | 3 |
+| Opens `seed.h5` and rehashes inputs | `rdkit_molecule.py:415-435`, CPP `custom_modules.py:24-45` | Molecules, plus builder tasks × seed size | The seed opens twice per molecule during a bootstrap. The seed and reference are hashed on every builder task for the whole campaign, and the manifest is hashed per molecule. *Built November 7:* the seed and reference are hashed once per worker per version, the manifest once per task, and the seed opened twice per task. | 3 |
 | HDF5 file locking on reads | Every `h5py.File` read; nothing sets it | Concurrent readers | Can fail or contend on shared filesystems. Shards are never modified once closed, so reads don't need the lock. | 7 |
 | Parsl logs | `runinfo/`; `worker_N.log` per worker and `manager.log` per pool | Nodes × workers | The logs are unconditional, and no ALF config sets `worker_logdir_root`. | 7 |
 | Trajectory files, as often as every step | `Trajectory`; `simple_water` uses 5% of trajectories at interval 1 | Trajectories × frequency × steps | Off by default and in both excited-state examples, so only configs that opt in pay this cost. They share the pickles' flat directory. | 10 |

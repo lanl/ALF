@@ -187,6 +187,15 @@ If ``status.txt`` exists, ALF restarts from it. If no status file exists, ALF
 checks existing model and HDF5 paths to decide whether to bootstrap, start from
 provided HDF5 data, or use an existing seed model.
 
+ALF writes the status file and each shard all at once. It writes a temporary
+file, ``status.txt.tmp`` or ``data-0003.h5.partial``, and renames it when it's
+complete. So a crash leaves either the old file or a temporary one. The next
+store overwrites a leftover ``.partial`` file, and readers ignore it. ALF never
+replaces a shard. If the shard that status points to already exists, ALF stops
+with an error, which happens when a run stopped between storing a shard and
+saving status. Check that shard, then move it aside or raise
+``current_h5_id`` before restarting.
+
 Common Run Lifecycle
 --------------------
 

@@ -33,8 +33,11 @@ This folder is the shared plan for bringing the fork's intended capabilities int
   Crash-safe restart remains unqualified.
 - **Foundation-model teacher labeling is built,** with real MACE checked locally. UMA and the Darwin
   gate are pending; see the [record](#teacher-labeling-2026-11-07).
-- **Next:** the restart fixes that don't depend on the Darwin profile, then the rest of safe restarts
-  (see [`exascale.md`](exascale.md)), F1 and F2 fine-tuning, then new uncertainty and acquisition methods. Long runs and staged campaigns come last, and may be
+- **The restart fixes that don't need Darwin are built:** atomic status and shard writes, the shard
+  check in single-node training, and the replay manifest cache. See the
+  [record](#restart-fixes-without-darwin-2026-11-07).
+- **Next:** the rest of safe restarts after the Darwin profile (see [`exascale.md`](exascale.md)),
+  F1 and F2 fine-tuning, then new uncertainty and acquisition methods. Long runs and staged campaigns come last, and may be
   removed; see [Order of work](future.md#order-of-work).
 - **No merge to `main` is planned** (user decision, November 6).
 - **Outside current acceptance:** legacy NeuroChem and MI350.
@@ -437,6 +440,46 @@ and a regression test covers it. Parsl's usual executor runs one task per proces
 **Local results.** 936 passed, 2 skipped (`seqm` not installed), and the teacher tests also pass without
 torch, HIPPYNN, or TorchSim. All 40 deliberate breaks were caught, after tests were added for the five gaps
 the first round found.
+
+### Restart fixes without Darwin (2026-11-07)
+
+Items 1-3 of the [`exascale.md`](exascale.md) priority list. None needed the Darwin profile.
+
+- **Atomic writes (`cbadf9e`).**
+  - Status is written through `write_status`, which writes a temporary file, fsyncs it and renames it,
+    at all six coordinator sites.
+  - A shard is written to `<shard>.partial` and renamed when complete. The name doesn't end in `.h5`, so
+    every reader ignores it, and the next store overwrites a leftover one.
+  - An existing shard is never replaced. A crash between the rename and the status write still stops a
+    restart, now with a message saying what to check. Reconciling status with disk is item 6.
+  - The shared helpers are in `tools/files.py`, which multi-node training's placement records now use too.
+- **Shard check in single-node training (`8d151da`).** Both single-node HIPPYNN tasks take `h5_path`
+  and `current_h5_id`, which `build_input_dict` already fills in, and wait up to 120 s for every stored
+  shard to appear in the directory listing. `__main__.py` didn't change. Deleting a stored shard now
+  stops training, instead of training without it.
+- **Replay manifest cache (`6aedf2d`).**
+  - Each worker indexes a source once per version: its SHA-256 and one frame count per group. A version is
+    identified by path, inode, size and modified time. The manifest is a compact sequence, not one tuple
+    per frame, and gives the same entries as before, so frame selection is unchanged.
+  - A task opens each HDF5 source once. The RDKit and CPP builders hash their seed and reference once per
+    worker per version, hash their manifest once per task, and open the seed twice per task instead of
+    twice per molecule.
+  - An edit in place that keeps both the size and the modified time wouldn't be noticed. Shards are
+    renamed into place, so that can't happen to them.
+- **Units page (`f1c9d3e`, user request).** [`units.rst`](../source/user_guide/units.rst) now says what
+  each QM task reports, that HIPPYNN sampling expects eV and eV/Å, and what ALF doesn't check.
+
+A test found that a Parsl app's `.func` returns errors as a `RemoteExceptionWrapper` instead of raising
+them, so the new tests re-raise them.
+
+**Local results.**
+- Full suite: 966 passed.
+- With HIPPYNN blocked: 856 passed, 110 skipped. With Torch blocked: 751 passed, 180 skipped.
+- 29 deliberate breaks were caught, after one gap got a test: the hash cache had been tested only through
+  the manifest cache, which hides it.
+- Docs build with no warnings; 80 roadmap links checked, 0 broken.
+- Not measured on Darwin. The profile's rename-visibility test confirms atomic writes on `/vast`, and its
+  listing delay checks whether 120 s is long enough.
 
 ### Progress plots for batched and excited-state runs (2026-11-07)
 

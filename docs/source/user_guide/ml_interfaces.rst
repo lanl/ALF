@@ -107,6 +107,16 @@ Data and property expectations
    backend. See :doc:`units` for how QM results are converted before they reach
    the HDF5 training data.
 
+Waiting for shards
+   Before training, the HIPPYNN tasks wait until every shard ALF has stored
+   appears in ``h5_dir`` on the ML node. Those are the ``h5_path`` names
+   numbered below ``current_h5_id``. On shared filesystems, another node can
+   briefly see an out-of-date directory listing, and training would otherwise
+   leave out the newest shard without an error. After 120 s, training stops with
+   an error naming the missing shard. Other files in ``h5_dir``, such as seed
+   shards, are still used. So deleting a stored shard now stops training,
+   instead of training without it.
+
 HIPPYNN Interface
 -----------------
 

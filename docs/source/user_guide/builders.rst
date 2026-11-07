@@ -214,8 +214,14 @@ External geometry builder
       * - ``selection_seed``
         - Seed for ``"deterministic_hash"``. The default is ``0``.
 
-   Molecule metadata records where each frame came from. To return several
-   structures from one task, set ``maximum_builder_structures``.
+   Molecule metadata records where each frame came from, including the source's
+   SHA-256. To return several structures from one task, set
+   ``maximum_builder_structures``.
+
+   Each worker reads and hashes a source once, and reuses the result while the
+   file's size, modified time, and inode stay the same. Replacing or editing a
+   source is noticed, and it's read again. A task opens each HDF5 source once,
+   however many molecules it builds.
 
 Defect crystal builder
    ``defect_cell_builder_task`` reads these fields:

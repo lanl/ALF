@@ -13,7 +13,7 @@ mechanics have passed; see the [E6 record](excited_states.md),
 [quick-win qualification](README.md#quick-win-hardware-qualification--passed-2026-11-06),
 and [gap/window qualification](README.md#gap-seeking-and-sampling-window-hardware-qualification--passed-2026-11-06).
 
-1. **Safe restarts and disk races** ([below](#safe-restarts-and-disk-races), with priorities in [`exascale.md`](exascale.md#priority-list)). Tabled for now (user decision, November 6), and next when picked up.
+1. **Safe restarts and disk races** ([below](#safe-restarts-and-disk-races), with priorities in [`exascale.md`](exascale.md#priority-list)). The fixes that don't need Darwin were built on November 7; the rest follow the Darwin profile.
 2. **Placement and memory** ([Group C](#group-c-placement-and-memory)). Multi-node independent-member training passed its bounded Darwin gate on November 7; larger deployments remain unqualified. It buys throughput for larger ensembles, not new methods.
 3. **Teacher labeling, then F1 and F2 fine-tuning** ([Group D](#group-d-model-families-and-labels)). Teacher labeling is built, and awaits its Darwin gate.
 4. **New uncertainty and acquisition methods** ([Group G](#group-g-new-uncertainty-and-acquisition-methods)).
@@ -79,21 +79,21 @@ ALF `1055d9c` source boundary; see the [evidence](README.md#gap-seeking-and-samp
 
 ## Safe restarts and disk races
 
-Tabled on November 6, before any restart code changed. ALF has since gained exit handling that releases allocations, but none of the restart fixes below. An audit of ALF's disk writes read all of `alframework/` and traced real coordinator and training test runs on one machine. The November 7 bounded Darwin round subsequently measured cross-node locks, shard visibility, five-node member placement and interruption/restart behavior; see [the measurements](exascale.md#darwin-measurements-2026-11-07). It did not implement crash-safe recovery or establish large-campaign performance.
+Tabled on November 6, before any restart code changed. ALF has since gained exit handling that releases allocations, and on November 7 atomic status and shard writes, the shard check in single-node training, and the replay manifest cache ([record](README.md#restart-fixes-without-darwin-2026-11-07)). The lock, the label holding area, and restart reconciliation are still open. An audit of ALF's disk writes read all of `alframework/` and traced real coordinator and training test runs on one machine. The November 7 bounded Darwin round, at `ce711d8` before those fixes, then measured cross-node locks, shard visibility, five-node member placement and interruption/restart behavior; see [the measurements](exascale.md#darwin-measurements-2026-11-07). It did not establish large-campaign performance, so the caching and scale risks below still come from reading the code.
 
 **ALF has one writer for shared state.** The coordinator alone writes `status.json` and the HDF5 shards. Workers write only to paths unique to a structure, member, or task, stores can't overlap training because one `ML_task_queue` check gates both, and models are read only after promotion. So there's no worker-against-worker race in normal operation.
 
 **Race risks:**
 
-- **Stale directory views.** A trainer lists `h5_dir` right after a store. With attribute caching, another node might not see the new shard, so either trainer could silently train without it. Replay looks up each shard by name and raises `FileNotFoundError`.
+- **Stale directory views.** A trainer lists `h5_dir` right after a store. With attribute caching, another node might not see the new shard, so either trainer could silently train without it. Replay looks up each shard by name and raises `FileNotFoundError`. *Fixed November 7:* every HIPPYNN training task waits for the stored shards by name.
 - **Two coordinators in one directory.** There's no lock. The fork uses `fcntl.flock`.
 - **ID reuse after a crash.** `status.json` can lag one loop. `ase_calculator_task` then raises "Scratch directory exists", while ORCA, Q-Chem, VASP, and metadata pickles silently overwrite.
 
 **Crash risks:**
 
-- A crash after a store, before status is saved: the shard name is reused, and `datapacker`'s `w-` mode makes the next store fail.
-- A crash during a store leaves a partial `*.h5` where training reads it.
-- A crash during a status write leaves a truncated `status.json`.
+- A crash after a store, before status is saved: the shard name is reused, and the next store fails. *Still open:* it now fails with a message saying what to check.
+- A crash during a store leaves a partial `*.h5` where training reads it. *Fixed November 7:* stores write `.partial` files, which readers ignore.
+- A crash during a status write leaves a truncated `status.json`. *Fixed November 7.*
 - A crash after starting training can reuse a training ID, and the excited-state trainer refuses a nonempty directory.
 - A restart during a `finite_bootstrap` fails with "Finite bootstrap exhausted", because `current_molecule_id` has advanced with nothing stored.
 - An interrupted bootstrap loses all its labels, which are stored only at the end. This may be the most expensive risk for large CPP bootstraps.

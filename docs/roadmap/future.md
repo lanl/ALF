@@ -13,12 +13,11 @@ mechanics have passed; see the [E6 record](excited_states.md),
 [quick-win qualification](README.md#quick-win-hardware-qualification--passed-2026-11-06),
 and [gap/window qualification](README.md#gap-seeking-and-sampling-window-hardware-qualification--passed-2026-11-06).
 
-1. **Long runs and staged campaigns** ([Group E](#group-e-long-runs)). This is the largest item. The bounded bias/window mechanics prerequisites have passed.
+1. **Safe restarts and disk races** ([below](#safe-restarts-and-disk-races)). Tabled for now (user decision, November 6), and next when picked up.
 2. **Placement and memory** ([Group C](#group-c-placement-and-memory)), including multi-node training. It buys throughput for larger ensembles, not new methods.
 3. **Teacher labeling, then F1 and F2 fine-tuning** ([Group D](#group-d-model-families-and-labels)).
-4. **New uncertainty and acquisition methods** ([Group G](#group-g-new-uncertainty-and-acquisition-methods)), last (user decision, November 6).
-
-Groups C and D are independent of the bias and long-run work, so they can start earlier if there is capacity.
+4. **New uncertainty and acquisition methods** ([Group G](#group-g-new-uncertainty-and-acquisition-methods)).
+5. **Long runs and staged campaigns** ([Group E](#group-e-long-runs)), last: very low priority, and may be removed (user decision, November 6).
 
 E6 passed on November 6, within its bounded scope. CPP scale-up ([Group F](#group-f-cpp-scale-up)) now depends on the science goals.
 
@@ -77,6 +76,49 @@ ALF `1055d9c` source boundary; see the [evidence](README.md#gap-seeking-and-samp
     - never changes the unbiased predictions used for screening and
       uncertainty;
     - applies in a fixed, documented switching order.
+
+## Safe restarts and disk races
+
+Tabled on November 6, before any code changed. An audit of ALF's disk writes read all of `alframework/` and traced real coordinator and training test runs on one machine. **Nothing was measured on a shared filesystem or at scale,** so the caching and scale risks below come from reading the code.
+
+**ALF has one writer for shared state.** The coordinator alone writes `status.json` and the HDF5 shards. Workers write only to paths unique to a structure, member, or task, stores can't overlap training because one `ML_task_queue` check gates both, and models are read only after promotion. So there's no worker-against-worker race in normal operation.
+
+**Race risks:**
+
+- **Stale directory views.** A trainer lists `h5_dir` right after a store. With attribute caching, another node might not see the new shard, so the ground-state trainer could silently train without it, and a replay builder would raise `FileNotFoundError`.
+- **Two coordinators in one directory.** There's no lock. The fork uses `fcntl.flock`.
+- **Partial metadata pickles,** which the plot process can read while a worker is still writing them.
+- **ID reuse after a crash.** `status.json` can lag one loop, and `ase_calculator_task` then raises "Scratch directory exists".
+
+**Crash risks:**
+
+- A crash after a store, before status is saved: the shard name is reused, and `datapacker`'s `w-` mode makes the next store fail.
+- A crash during a store leaves a partial `*.h5` where training reads it.
+- A crash during a status write leaves a truncated `status.json`.
+- A crash after starting training can reuse a training ID, and the excited-state trainer refuses a nonempty directory.
+- A restart during a `finite_bootstrap` fails with "Finite bootstrap exhausted", because `current_molecule_id` has advanced with nothing stored.
+- An interrupted bootstrap loses all its labels, which are stored only at the end. This may be the most expensive risk for large CPP bootstraps.
+- `maximum_stored_labels` drops labels already finished but not yet stored.
+
+**Scale costs, not races:**
+
+- Each replay-builder task opens and fully SHA-256 hashes every source shard, which is probably the largest I/O cost in a long run.
+- Every sampler task reloads the model from shared storage.
+- Flat directories hold a file per trajectory and a directory per label.
+- The HDF5 store blocks the coordinator loop while it compresses.
+- `~/.matplotlib` and `$TMPDIR/torchinductor_*` are written on workers, and matter if `$HOME` or `$TMPDIR` is shared.
+- HDF5 file locking can fail on shared filesystems.
+
+**Proposed fixes:**
+
+- Atomic status, shard, and pickle writes.
+- A `flock` on `<status_path>.lock`.
+- `wait_for_shards` in trainers and replay builders.
+- Status reconciled with disk on restart, including a molecule-ID margin.
+- Finished labels stored at a budget stop.
+- Restart tests through the real coordinator.
+
+**To measure on Darwin first:** write counts per process with `strace` or Darshan, whether a renamed shard is visible at once on another node on `/vast`, a kill and restart of a small real loop, and whether `flock` works on `/vast`.
 
 ## Group C: Placement and memory
 
@@ -199,32 +241,6 @@ The model/training-boundary work must also address two porting requirements reco
   omits `ML_config`.
 - Move model-family artifact validation behind adapters; common final-training
   validation must not assume HIPPYNN-style `model-NN` member directories.
-
-## Group E: Long runs
-
-| Capability | What it covers | Important boundary |
-| --- | --- | --- |
-| Durable recovery and staged workflows | Persist batching/cohort handoffs; add retained-label budgets, ALF-to-GALF/configuration stages, exact dataset checkpoints, and endpoint training. | Preserve ordinary runs as the default; budgets count retained labeled frames, not candidates or submitted jobs. |
-
-| Area | Current behavior or gap | Follow-up and boundary |
-| --- | --- | --- |
-| Cohort admission | A cohort requires full membership and all terminal reports, with no admission timeout or partial selection. A permanently undersupplied builder leaves it unfinished. | Keep incremental admission for cohorts larger than worker capacity; do not introduce an automatic partial-cohort policy without a separate decision. |
-| Queue thresholds and strict batches | `full_only` can leave a PBC/model group waiting indefinitely when it cannot fill within available capacity. The inherited `minimum_QM` harvest gate can also hold a small number of finished sampler results. | Exercise small capacities and fragmented groups with the existing timeout policy. Check that configured completion thresholds are reachable. Add focused diagnostics/validation or drain behavior only as a separate compatibility change. Strict QM and sampler batches are already checked at startup against `target_queued_QM` and `parallel_samplers`. |
-| Restart and failed work | Buffers, cohorts, model admission sequence, and handoffs are in memory. No new retry journal or exactly-once QM handoff exists. Candidates survive a later isolated failure only if the task returns them; crashed-worker-only frames are lost. | Keep this limitation visible for ordinary screen/tmux runs as well as staged workflows. Add durable snapshots, logical IDs, replay, and handoff recovery in the later recovery increment, without requiring new pause controls now. |
-
-- **Staged campaigns across engines:** durable cohort/handoff
-  persistence, a run-control equivalent, staged configurations, and
-  retained-label budgets. The fork's `run_control`, `workflow_io`,
-  `staged_workflow`, and `dataset_screening` are source material.
-- **Sampling windows.** Landed November 6: `sampling_windows` moves one run from base sampling to UDD or gap-seeking at stored-label counts; see the [record](README.md#sampling-windows-2026-11-06). A bounded real base-to-gap-seeking loop has passed. The staged runner above would add fresh ensembles for each stage, exact dataset checkpoints, inherited-data compatibility checks, and a task journal with resume.
-- **Budgets beyond a stop rule.** `maximum_stored_labels` ends a run after enough converged labels are stored. Retained-label budgets, draining running work, and the other counts below are still open.
-- **Filtering converged labels after QM.** Runtime force and topology screens run on sampled frames, and don't filter stored QM labels. Reuse `tools/molecular_topology.py` where possible, and keep it opt-in, because it changes which data is stored.
-
-Budgeted workflows must distinguish selected candidates, labeling attempts,
-successful labels, stored/retained frames, and rows surviving trainer filters.
-Report these stages separately. Exact checkpoints and final endpoint training
-refer to the chosen retained-data lineage; routine retraining and raw-store
-overshoot are separate concepts.
 
 ## Group F: CPP scale-up
 
@@ -395,6 +411,34 @@ Readiness notes from a review of development at `24028da`, with the finished eli
          only, to prove the engine, evaluator, and uncertainty plumbing.
       3. MACE fine-tuning (more mature entrypoints and smaller models).
       4. UMA fine-tuning.
+
+## Group E: Long runs
+
+Very low priority, and may be removed (user decision, November 6).
+
+| Capability | What it covers | Important boundary |
+| --- | --- | --- |
+| Durable recovery and staged workflows | Persist batching/cohort handoffs; add retained-label budgets, ALF-to-GALF/configuration stages, exact dataset checkpoints, and endpoint training. | Preserve ordinary runs as the default; budgets count retained labeled frames, not candidates or submitted jobs. |
+
+| Area | Current behavior or gap | Follow-up and boundary |
+| --- | --- | --- |
+| Cohort admission | A cohort requires full membership and all terminal reports, with no admission timeout or partial selection. A permanently undersupplied builder leaves it unfinished. | Keep incremental admission for cohorts larger than worker capacity; do not introduce an automatic partial-cohort policy without a separate decision. |
+| Queue thresholds and strict batches | `full_only` can leave a PBC/model group waiting indefinitely when it cannot fill within available capacity. The inherited `minimum_QM` harvest gate can also hold a small number of finished sampler results. | Exercise small capacities and fragmented groups with the existing timeout policy. Check that configured completion thresholds are reachable. Add focused diagnostics/validation or drain behavior only as a separate compatibility change. Strict QM and sampler batches are already checked at startup against `target_queued_QM` and `parallel_samplers`. |
+| Restart and failed work | Buffers, cohorts, model admission sequence, and handoffs are in memory. No new retry journal or exactly-once QM handoff exists. Candidates survive a later isolated failure only if the task returns them; crashed-worker-only frames are lost. | Keep this limitation visible for ordinary screen/tmux runs as well as staged workflows. Add durable snapshots, logical IDs, replay, and handoff recovery in the later recovery increment, without requiring new pause controls now. |
+
+- **Staged campaigns across engines:** durable cohort/handoff
+  persistence, a run-control equivalent, staged configurations, and
+  retained-label budgets. The fork's `run_control`, `workflow_io`,
+  `staged_workflow`, and `dataset_screening` are source material.
+- **Sampling windows.** Landed November 6: `sampling_windows` moves one run from base sampling to UDD or gap-seeking at stored-label counts; see the [record](README.md#sampling-windows-2026-11-06). A bounded real base-to-gap-seeking loop has passed. The staged runner above would add fresh ensembles for each stage, exact dataset checkpoints, inherited-data compatibility checks, and a task journal with resume.
+- **Budgets beyond a stop rule.** `maximum_stored_labels` ends a run after enough converged labels are stored. Retained-label budgets, draining running work, and the other counts below are still open.
+- **Filtering converged labels after QM.** Runtime force and topology screens run on sampled frames, and don't filter stored QM labels. Reuse `tools/molecular_topology.py` where possible, and keep it opt-in, because it changes which data is stored.
+
+Budgeted workflows must distinguish selected candidates, labeling attempts,
+successful labels, stored/retained frames, and rows surviving trainer filters.
+Report these stages separately. Exact checkpoints and final endpoint training
+refer to the chosen retained-data lineage; routine retraining and raw-store
+overshoot are separate concepts.
 
 ## Parking lot
 

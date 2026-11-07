@@ -24,8 +24,9 @@ This folder is the shared plan for bringing the fork's intended capabilities int
 - **Gap-seeking mechanics passed on all three engines**, and the ordinary
   base-to-gap-seeking sampling-window loop passed;
   see the [bounded hardware record](#gap-seeking-and-sampling-window-hardware-qualification--passed-2026-11-06).
-- **Next:** long runs and staged campaigns, multi-node training, and teacher labeling. New uncertainty and
-  acquisition methods come last; see [Order of work](future.md#order-of-work).
+- **Next:** safe restarts (tabled for now), multi-node training, teacher labeling, then new
+  uncertainty and acquisition methods. Long runs and staged campaigns come last, and may be
+  removed; see [Order of work](future.md#order-of-work).
 - **No merge to `main` is planned** (user decision, November 6).
 - **Outside current acceptance:** legacy NeuroChem and MI350.
 

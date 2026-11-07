@@ -13,7 +13,7 @@ mechanics have passed; see the [E6 record](excited_states.md),
 [quick-win qualification](README.md#quick-win-hardware-qualification--passed-2026-11-06),
 and [gap/window qualification](README.md#gap-seeking-and-sampling-window-hardware-qualification--passed-2026-11-06).
 
-1. **Safe restarts and disk races** ([below](#safe-restarts-and-disk-races)). Tabled for now (user decision, November 6), and next when picked up.
+1. **Safe restarts and disk races** ([below](#safe-restarts-and-disk-races), with priorities in [`exascale.md`](exascale.md#priority-list)). Tabled for now (user decision, November 6), and next when picked up.
 2. **Placement and memory** ([Group C](#group-c-placement-and-memory)), including multi-node training. It buys throughput for larger ensembles, not new methods.
 3. **Teacher labeling, then F1 and F2 fine-tuning** ([Group D](#group-d-model-families-and-labels)).
 4. **New uncertainty and acquisition methods** ([Group G](#group-g-new-uncertainty-and-acquisition-methods)).
@@ -85,10 +85,9 @@ Tabled on November 6, before any code changed. An audit of ALF's disk writes rea
 
 **Race risks:**
 
-- **Stale directory views.** A trainer lists `h5_dir` right after a store. With attribute caching, another node might not see the new shard, so the ground-state trainer could silently train without it, and a replay builder would raise `FileNotFoundError`.
+- **Stale directory views.** A trainer lists `h5_dir` right after a store. With attribute caching, another node might not see the new shard, so either trainer could silently train without it. Replay looks up each shard by name and raises `FileNotFoundError`.
 - **Two coordinators in one directory.** There's no lock. The fork uses `fcntl.flock`.
-- **Partial metadata pickles,** which the plot process can read while a worker is still writing them.
-- **ID reuse after a crash.** `status.json` can lag one loop, and `ase_calculator_task` then raises "Scratch directory exists".
+- **ID reuse after a crash.** `status.json` can lag one loop. `ase_calculator_task` then raises "Scratch directory exists", while ORCA, Q-Chem, VASP, and metadata pickles silently overwrite.
 
 **Crash risks:**
 
@@ -98,27 +97,10 @@ Tabled on November 6, before any code changed. An audit of ALF's disk writes rea
 - A crash after starting training can reuse a training ID, and the excited-state trainer refuses a nonempty directory.
 - A restart during a `finite_bootstrap` fails with "Finite bootstrap exhausted", because `current_molecule_id` has advanced with nothing stored.
 - An interrupted bootstrap loses all its labels, which are stored only at the end. This may be the most expensive risk for large CPP bootstraps.
+- A crash during training loses every label finished since the last store, because stores wait for training to finish.
 - `maximum_stored_labels` drops labels already finished but not yet stored.
 
-**Scale costs, not races:**
-
-- Each replay-builder task opens and fully SHA-256 hashes every source shard, which is probably the largest I/O cost in a long run.
-- Every sampler task reloads the model from shared storage.
-- Flat directories hold a file per trajectory and a directory per label.
-- The HDF5 store blocks the coordinator loop while it compresses.
-- `~/.matplotlib` and `$TMPDIR/torchinductor_*` are written on workers, and matter if `$HOME` or `$TMPDIR` is shared.
-- HDF5 file locking can fail on shared filesystems.
-
-**Proposed fixes:**
-
-- Atomic status, shard, and pickle writes.
-- A `flock` on `<status_path>.lock`.
-- `wait_for_shards` in trainers and replay builders.
-- Status reconciled with disk on restart, including a molecule-ID margin.
-- Finished labels stored at a budget stop.
-- Restart tests through the real coordinator.
-
-**To measure on Darwin first:** write counts per process with `strace` or Darshan, whether a renamed shard is visible at once on another node on `/vast`, a kill and restart of a small real loop, and whether `flock` works on `/vast`.
+**File I/O at exascale, and what to fix first.** See [`exascale.md`](exascale.md) for every operation ranked by severity, the [priority list](exascale.md#priority-list), the measurements needed on Darwin, and where node-local storage fits.
 
 ## Group C: Placement and memory
 

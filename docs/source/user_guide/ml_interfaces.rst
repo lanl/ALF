@@ -31,7 +31,7 @@ through its own training task and sampler loading path.
        :ref:`ml-multinode-training`.
    * - NeuroChem/ANI
      - ``alframework.ml_interfaces.neurochem_interface.train_ANI_model_task``
-   * - Fine-tuning an existing model, such as MACE
+   * - Fine-tuning a pretrained HIPPYNN or MACE model
      - ``alframework.ml_interfaces.fine_tuning.fine_tune_ensemble_task``, or
        ``fine_tune_ensemble_multinode_task`` across nodes. See :doc:`fine_tuning`.
 
@@ -362,8 +362,9 @@ You can link from this guide directly to API pages:
 * :doc:`ML interfaces package API <../api_documentation/alframework.ml_interfaces>`
 * :doc:`HIPPYNN interface module <../api_documentation/alframework.ml_interfaces.hippynn_interface>`
 * :doc:`NeuroChem interface module <../api_documentation/alframework.ml_interfaces.neurochem_interface>`
-* :doc:`Fine-tuning module <../api_documentation/alframework.ml_interfaces.fine_tuning>` and
-  :doc:`MACE interface module <../api_documentation/alframework.ml_interfaces.mace_interface>`
+* :doc:`Fine-tuning module <../api_documentation/alframework.ml_interfaces.fine_tuning>`, with its
+  :doc:`HIPPYNN <../api_documentation/alframework.ml_interfaces.hippynn_fine_tuning>` and
+  :doc:`MACE <../api_documentation/alframework.ml_interfaces.mace_interface>` adapters
 * :doc:`MLMD sampler guide <samplers>`
 * :doc:`Parsl execution guide <parsl>`
 

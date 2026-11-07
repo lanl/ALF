@@ -15,7 +15,7 @@ and [gap/window qualification](README.md#gap-seeking-and-sampling-window-hardwar
 
 1. **Safe restarts and disk races** ([below](#safe-restarts-and-disk-races), with priorities in [`exascale.md`](exascale.md#priority-list)). Items 1-6 were built on November 7, after the Darwin profile: atomic writes, the shard check, the manifest cache, the coordinator lock, the label holding area, and restart reconciliation. Items 7 and 8, settings and node-local QM scratch for running at scale, are open.
 2. **Placement and memory** ([Group C](#group-c-placement-and-memory)). Multi-node independent-member training passed its bounded Darwin gate on November 7; larger deployments remain unqualified. It buys throughput for larger ensembles, not new methods.
-3. **Teacher labeling, then fine-tuning with ALF** ([Group D](#group-d-model-families-and-labels)). Teacher labeling is built, and awaits its Darwin gate. ALF-driven fine-tuning is built for MACE (November 7); a HIPPYNN adapter is next.
+3. **Teacher labeling, then fine-tuning with ALF** ([Group D](#group-d-model-families-and-labels)). Teacher labeling is built, and awaits its Darwin gate. ALF-driven fine-tuning is built for MACE and HIPPYNN (November 7); a UMA adapter is next.
 4. **New uncertainty and acquisition methods** ([Group G](#group-g-new-uncertainty-and-acquisition-methods)).
 5. **Long runs and staged campaigns** ([Group E](#group-e-long-runs)), last: very low priority, and may be removed (user decision, November 6).
 
@@ -176,9 +176,10 @@ Tabled on November 6, before any restart code changed. ALF has since gained exit
   - **Order:** ground-state teachers come first; excited-state teachers wait until a
     suitable model exists. UMA or MACE are the first candidates; see the notes in
     [Group G](#group-g-new-uncertainty-and-acquisition-methods).
-- **Fine-tuning with ALF: built for MACE, November 7.** Redefined by user decision on November 7: ALF
-  selects the samples that fine-tune an existing model, foundation models first, with HIPPYNN through the
-  same interface. See the [record](README.md#fine-tuning-with-alf-mace-2026-11-07) and the
+- **Fine-tuning with ALF: built for MACE and HIPPYNN, November 7.** Redefined by user decision on
+  November 7: ALF selects the samples that fine-tune an existing model, through one interface for every
+  model family. See the [MACE record](README.md#fine-tuning-with-alf-mace-2026-11-07), the
+  [HIPPYNN record](README.md#fine-tuning-with-alf-hippynn-2026-11-07), and the
   [guide](../source/user_guide/fine_tuning.rst).
   - **Decisions (user, November 7):** MACE first; a small fine-tuned ensemble supplies uncertainty, so
     ALF's existing measures and cutoffs apply; MD runs on the model being fine-tuned; every round starts
@@ -188,14 +189,21 @@ Tabled on November 6, before any restart code changed. ALF has since gained exit
     multi-node forms, an adapter interface, and `fine_tune_lineage.json`; `mace_interface.py`, with
     `MaceFineTuner` and `load_mace_batched_ensemble`; `examples/mace_fine_tuning`. `__main__.py` gained
     only a startup hook for ML configuration checks.
-  - **Next: a HIPPYNN adapter.** This replaces the old "F1" plan to move `examples/fine_tuning` into the
-    library. That example is HIPPYNN-only, written for `main`, continues from the previous model, copies
-    shards per member, and records no lineage; it stays as it is until the adapter replaces it.
+  - **HIPPYNN adapter built** (`hippynn_fine_tuning.py`), replacing the old "F1" plan. The old
+    `examples/fine_tuning` now uses it, and its local `fine_tune_ml_task.py` is gone. Every round starts
+    from the pretrained model, as for MACE (user decision). Shard cleaning repeats the ground-state
+    trainer's steps in `hippynn_fine_tuning.clean_arrays`, because that trainer can't run on CPU here, so
+    a shared helper couldn't be checked; unify them when it can.
+  - **Next: a UMA adapter.** What's known: fairchem 2.25's `create_uma_finetune_dataset.py` converts
+    labels to an ASE database and fits normalizers and linear references, but reads YAML templates
+    (`configs/uma/finetune/`) that ship only in fairchem's git repository, not the installed package.
+    Training runs through the Hydra `fairchem` CLI. The script's default base is `uma-s-1p1`; whether
+    `uma-s-1p2p1` fine-tunes the same way is untested. Start with a scratch prototype on CPU, which
+    settles where the templates come from.
   - **Later:** F2, starting a multi-state model from a ground-state one, which needs a weight mapping
-    onto the multi-state network; UMA fine-tuning, now that UMA is downloadable (it already labels as a teacher);
-    single-model uncertainty (see [below](#foundation-model-fine-tuning)).
-  - **Gate still open:** a GPU campaign on Darwin, and whether the copies' disagreement tracks error
-    (see the uncertainty note below).
+    onto the multi-state network; single-model uncertainty (see [below](#foundation-model-fine-tuning)).
+  - **Gate still open:** GPU campaigns on Darwin for both families, and whether the copies' disagreement
+    tracks error (see the uncertainty note below).
 The model/training-boundary work must also address two porting requirements recorded during the experimental-fork review:
 
 - The training handoff must tolerate valid trainer callables whose signature

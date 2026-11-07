@@ -37,10 +37,10 @@ This folder is the shared plan for bringing the fork's intended capabilities int
   training, and the replay manifest cache, then the coordinator lock, a holding area for finished
   labels, and restart reconciliation. See the [first](#restart-fixes-without-darwin-2026-11-07) and
   [second](#restarts-that-keep-labels-2026-11-07) records. Not yet run on Darwin.
-- **Fine-tuning with ALF is built for MACE:** ALF selects the samples, and each round fine-tunes copies
-  of the original checkpoint. Teacher–student and fine-tuning user guides are written. Checked on CPU
-  only; see the [record](#fine-tuning-with-alf-mace-2026-11-07).
-- **Next:** a HIPPYNN fine-tuning adapter (see [Group D](future.md#group-d-model-families-and-labels)), then
+- **Fine-tuning with ALF is built for MACE and HIPPYNN,** through one interface: ALF selects the samples,
+  and each round fine-tunes copies of the pretrained model. Checked on CPU only; see the
+  [MACE](#fine-tuning-with-alf-mace-2026-11-07) and [HIPPYNN](#fine-tuning-with-alf-hippynn-2026-11-07) records.
+- **Next:** a UMA fine-tuning adapter (see [Group D](future.md#group-d-model-families-and-labels)), then
   new uncertainty and acquisition methods. Long runs and staged campaigns come last, and may be
   removed; see [Order of work](future.md#order-of-work).
 - **No merge to `main` is planned** (user decision, November 6).
@@ -550,6 +550,66 @@ matching the shards.
 - Docs build with no warnings; 96 roadmap links checked, 0 broken.
 - Not run on Darwin. Rerunning section 3 of the [restart profile](exascale.md#darwin-profile-for-restart-work)
   at this commit would compare against the `ce711d8` baseline.
+
+### Fine-tuning with ALF: HIPPYNN (2026-11-07)
+
+A HIPPYNN adapter for the [fine-tuning interface](#fine-tuning-with-alf-mace-2026-11-07), based on the old
+`examples/fine_tuning`, which now uses it. User decisions: convert that example and drop its local task;
+accept a single model or an ensemble as the source; start every round from the pretrained model, as MACE
+does (asked which is better: this keeps rounds reproducible and stops errors building up from round to
+round; a "continue from the last round" setting can come later if round cost matters).
+
+- **`ml_interfaces/hippynn_fine_tuning.py`:** `HippynnFineTuner` loads each source with
+  `load_checkpoint(..., restart_db=False)`, keeps the graph and weights, and trains with a fresh Adam,
+  `RaiseBatchSizeOnPlateau`, and `PatienceController`, as the old example did, in a child process per copy
+  (`python -m alframework.ml_interfaces.hippynn_fine_tuning`) so each sees only its GPU.
+  - Source: a model directory, or an ensemble of `model-*` members, where copy *i* starts from member *i*,
+    cycling. A pretrained ensemble in `models/model-0000` is sampled with from the start, skipping the
+    bootstrap, as in the old example.
+  - Shards are read in place through `ALFPyAniDirectoryDB(files=...)`, not copied per member.
+  - `E0s` is required: `foundation` keeps the energy head's atomic energies, and `average` refits them.
+  - `freeze` takes graph node names such as `hipnn`, found through the graph's `names_dict`, or parameter
+    prefixes. Integer parameters such as the species map are never trained.
+  - `stopping_key` defaults to the one the pretrained model was trained with, from its saved controller;
+    the old default, `Loss-Error`, doesn't exist in every model.
+  - Small early rounds train: each split gets at least one structure, and when 10% of the training split
+    is less than one structure, HIPPYNN scores the whole split each epoch. Fewer than 3 labels is an error.
+  - The output is HIPPYNN's usual layout, so `HIPNN_ASE_load_ensemble` and `load_hippynn_batched_ensemble`
+    load the copies unchanged. `h5_test_dir` uses `use_separate_test_set`.
+- **The interface:** `train_member` now receives the copy's index, `foundation_model` may be a directory,
+  and an adapter's `fingerprint()` puts each source file's SHA-256 in the lineage as
+  `foundation_model_files`.
+- **Docs:** the fine-tuning guide is rewritten around the one interface, with "two ways to start", common
+  settings, HIPPYNN and MACE sections, freezing, and walkthroughs for both; the example page is rewritten.
+
+**Checked locally, on CPU, with real HIPPYNN** (0.1.3), from small ensembles that `tests.helpers.hippynn`
+trains:
+
+- A round from a two-member ensemble fine-tuned three copies (member 0, 1, 0) in 18 s. Weights changed, the
+  lineage listed all four source files' SHA-256, and `HIPNN_ASE_load_ensemble` and
+  `load_hippynn_batched_ensemble` loaded the copies.
+- The real coordinator, with single water molecules, EMT labels through a teacher, HIPPYNN fine-tuning, and
+  TorchSim MD on the copies:
+  - from a pretrained ensemble in `models/model-0000`: no bootstrap; all 4 stored labels were sampled with
+    the pretrained ensemble, and round 1 was promoted;
+  - from one model and a bootstrap: round 0 was promoted, sampling on its copies selected 3 structures, and
+    round 1 fine-tuned from the original model on both shards and was promoted.
+- **Copies of one model barely disagree.** On one water molecule, two copies fine-tuned for 3 epochs from
+  one model differed by 0.014 eV in energy and 1.4e-6 eV/Å in forces; copies from the two members of an
+  ensemble differed by 0.043 eV and 3.1e-3 eV/Å, and the pretrained ensemble itself by 0.83 eV and
+  0.08 eV/Å. So the single-model loop above used cutoffs of zero. These are tiny models and few epochs,
+  but it's the concern the roadmap raised for foundation models, and the guide now warns about it. Real
+  runs should check `Es` and `Fsmax` against their cutoffs in early rounds.
+- Two bugs found and fixed by these runs: a 10% split of a few labels was empty, and so was 10% of a small
+  training split when HIPPYNN scored it; and HIPPYNN's integer species map can't take a gradient.
+
+**Results.** Full suite: 1040 passed. With the packages CI's HIPPYNN job lacks blocked: 930 passed, 110
+skipped. With Torch blocked: 811 passed, 194 skipped; the new HIPPYNN tests skip there. 27 deliberate breaks
+were caught, after tests were added for three gaps: a copy whose log never finished, integer parameters, and
+shards missing a dataset the model needs. Docs build with no warnings; 109 roadmap links, 0 broken.
+
+**Not shown yet.** GPU runs, a real pretrained HIPPYNN model of useful size, and the multi-node form with
+real HIPPYNN (it ran with a stand-in adapter).
 
 ### Fine-tuning with ALF: MACE (2026-11-07)
 

@@ -295,10 +295,20 @@ for three of them; see [Quick wins](future.md#quick-wins). Two behavior changes 
 
 ### Quick-win hardware qualification — launched (2026-11-06)
 
-The bounded follow-up is frozen at ALF `81a70cd` and external `alf_validation`
-`a1cfae6`, using accepted Increment 9 formaldehyde models and 32 closed labels.
-Evidence remains outside Git under `validation/quickwins_20261106/run-002/`;
-`run-001` was preparation only. No accepted E6 artifact was changed.
+The bounded follow-up uses accepted Increment 9 formaldehyde models and 32
+closed labels. The current frozen attempt is `validation/quickwins_20261106/run-004/`,
+assembled from ALF `158bf71` and external `alf_validation` `569ab28` (combined
+revision `d8ee14c`). Its library is identical to `81a70cd`; the intervening ALF
+commit records this qualification. No accepted E6 artifact was changed.
+
+`run-001` was preparation only. `run-002` stopped before Python because its
+strict login-shell script redundantly sourced `/etc/profile`. `run-003` passed
+the QM checks and static engine checks, then exposed two harness errors:
+width-one profiles retained a batching block, and the training GPU probe
+required CuPy although the qualified training environment uses Torch. These
+were corrected in the external harness, with regressions; no library behavior
+or scientific cutoff was changed. All owned jobs from both attempts terminated
+and were verified before retrying under the original deadline.
 
 The profile includes 24 selected-state baseline/UDD/well/combined cases across
 ASE, TorchSim CUDA and ALCHEMI at actual widths one/four; real ground-state
@@ -309,13 +319,21 @@ propagated labels and promote four genuinely retrained members before normal
 shutdown. It uses no external admission-stop override.
 
 Prelaunch CPU checks passed **591 library tests, 46 skipped** (unavailable
-backends), and **84 affected external tests**. No stale renamed test selectors
+backends), and **85 affected external tests** after the harness corrections.
+No stale renamed test selectors
 were found in the external harness. Reusable PCM/calibration QM launchers now
 bind one scheduler-visible UUID before CUDA imports, preserving old frozen
 runs. The stop-budget timing guard remains without an additional independently
 branch-sensitive regression: control-flow review found immediate normal exit
 after the last promotion. Existing production-driver fast/slow completion and
 bootstrap-stop checks passed; the real loop will verify the observable gate.
+
+The current attempt has passed the GPU4PySCF gate: explicit rejection of an
+unbound four-GPU process, bound gas/DCM full and energy/force-only evaluations,
+native cuTENSOR, common-output agreement, requested-response metadata, and four
+production HDF5 stores. The small formaldehyde fixture uses zero energy offset.
+Sampling, ground-state training/reactive checks, and the ordinary ALF loop are
+still pending; this round is not yet accepted.
 
 Persistent frontend tmux session `alf-quickwins` started the queue-inclusive
 window **18:12:19–22:12:19 Mountain on November 6**, reserving five minutes for

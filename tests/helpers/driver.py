@@ -72,6 +72,7 @@ def run_alf_driver(
     ml,
     sampler_config=None,
     qm_config=None,
+    ml_config=None,
     executors=EXECUTORS,
     stop_when=retrained_once,
     timeout=120,
@@ -113,7 +114,7 @@ def run_alf_driver(
         minimum_QM=0,
         **master_settings,
     )
-    configs = {"master": master, "builder": {}, "sampler": sampler_config or {}, "qm": qm_config or {}, "ml": {}}
+    configs = {"master": master, "builder": {}, "sampler": sampler_config or {}, "qm": qm_config or {}, "ml": ml_config or {}}
     for name, values in configs.items():
         (tmp_path / f"{name}.json").write_text(json.dumps(values))
     monkeypatch.setattr(sys, "argv", ["alframework", "--master", str(tmp_path / "master.json")])

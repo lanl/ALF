@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from parsl import python_app, bash_app
+from parsl import python_app, bash_app, join_app
 import sys
 import multiprocessing
 import re
@@ -16,6 +16,7 @@ import traceback
 from pathlib import Path
 from typing import Any
 from alframework.tools.atom_order import TOPOLOGY_ATOM_IDS, canonical_orders
+from alframework.tools import ensemble_training
 from alframework.tools.excited_state_tools import derive_state_property_table, derive_gap_property_table
 
 
@@ -2341,3 +2342,106 @@ def train_excited_state_HIPPYNN_ensemble_task(
         gpus_per_node=int(gpus_per_node),
         properties_list=dict(properties_list or {}),
     )
+
+
+# ---------------------------------------------------------------------------------------------
+# Multi-node training. One app per member lets ``alf_ML_executor`` place members on any number of
+# nodes. Select these tasks with ``ML_task``; the tasks above stay the single-node default.
+# ---------------------------------------------------------------------------------------------
+
+
+def _train_ground_state_member(arg_dict, attempt):
+    """Run in a fresh child process: choose this worker's GPU, then train one member."""
+    arg_dict = dict(arg_dict)
+    device = ensemble_training.member_device(arg_dict.get('device_string', 'from_multiprocessing'),
+                                             arg_dict.get('from_multiprocessing_nGPU'))
+    arg_dict['device_string'] = device
+    with ensemble_training.member_placement(arg_dict['model_dir'], attempt, device) as record:
+        train_HIPNN_model(**arg_dict)
+        record['completed'] = _ground_state_member_complete(arg_dict['model_dir'])
+    return record['completed']
+
+
+def _train_excited_state_member(arg_dict, attempt):
+    """Run in a fresh child process: choose this worker's GPU, train one member, then reload it."""
+    config = dict(arg_dict['ML_config'])
+    device = ensemble_training.member_device(config.get('device_string', 'from_multiprocessing'),
+                                             arg_dict.get('from_multiprocessing_nGPU'))
+    config['device_string'] = device
+    arg_dict = dict(arg_dict, ML_config=config)
+    with ensemble_training.member_placement(arg_dict['model_dir'], attempt, device) as record:
+        result = _excited_state_training_worker(arg_dict)
+        record['completed'] = _excited_state_member_complete(result)
+        if record['completed']:
+            state_table = validate_excited_state_training_config(config, arg_dict['properties_list'])
+            gap_table = _excited_state_gap_table(config, arg_dict['properties_list'])
+            try:
+                _validate_completed_member(arg_dict['model_dir'], state_table, gap_table)
+            except Exception as exc:
+                record['completed'] = False
+                (Path(arg_dict['model_dir']) / 'training_error.json').write_text(
+                    json.dumps({'error_type': type(exc).__name__, 'error': str(exc),
+                                'traceback': traceback.format_exc()}, indent=2), encoding='utf-8')
+    return record['completed']
+
+
+@python_app(executors=['alf_ML_executor'])
+def _ground_state_member_task(arg_dict, shards, attempt):
+    from alframework.ml_interfaces import hippynn_interface
+    from alframework.tools import ensemble_training
+    ensemble_training.wait_for_shards(shards)
+    return ensemble_training.run_member_in_child(hippynn_interface._train_ground_state_member, arg_dict, attempt)
+
+
+@python_app(executors=['alf_ML_executor'])
+def _excited_state_member_task(arg_dict, shards, attempt):
+    from alframework.ml_interfaces import hippynn_interface
+    from alframework.tools import ensemble_training
+    ensemble_training.wait_for_shards(shards)
+    return ensemble_training.run_member_in_child(hippynn_interface._train_excited_state_member, arg_dict, attempt)
+
+
+def _ml_executor():
+    import parsl
+    return parsl.dfk().executors.get('alf_ML_executor')
+
+
+@join_app
+def train_HIPPYNN_ensemble_multinode_task(ML_config, h5_dir, model_path, current_training_id, gpus_per_node,
+                                          member_retries=1):
+    """Train a ground-state ensemble with one app per member, so it can span any number of nodes.
+
+    This body runs on the coordinator and doesn't train. The ML interfaces guide covers the Parsl setup.
+    """
+    params_list = _ground_state_member_params(ML_config, h5_dir, model_path, current_training_id, gpus_per_node)
+    shards = _h5_shards(h5_dir)
+    return ensemble_training.train_ensemble_across_nodes(
+        lambda member, attempt: _ground_state_member_task(params_list[member], shards, attempt),
+        len(params_list), model_path.format(current_training_id), current_training_id, gpus_per_node,
+        ML_config.get('device_string', 'from_multiprocessing'), member_retries, _ml_executor())
+
+
+@join_app
+def train_excited_state_HIPPYNN_ensemble_multinode_task(ML_config, h5_dir, model_path, current_training_id,
+                                                        gpus_per_node, properties_list, remove_existing=False,
+                                                        h5_test_dir=None, member_retries=1):
+    """Train an excited-state ensemble with one app per member, so it can span any number of nodes.
+
+    This body runs on the coordinator and doesn't train. The ML interfaces guide covers the Parsl setup.
+    """
+    validate_excited_state_task_options(remove_existing=remove_existing, h5_test_dir=h5_test_dir)
+    config = dict(ML_config or {})
+    properties_list = dict(properties_list or {})
+    # A bad configuration fails here, rather than once per member and attempt.
+    validate_excited_state_training_config(config, properties_list)
+    _excited_state_gap_table(config, properties_list)
+    ensemble_dir = model_path.format(int(current_training_id))
+    root = Path(ensemble_dir)
+    if root.exists() and any(root.iterdir()):
+        raise FileExistsError(f'Refusing to overwrite nonempty ensemble directory {root}')
+    params_list = _excited_state_member_params(config, h5_dir, ensemble_dir, gpus_per_node, properties_list)
+    shards = _h5_shards(h5_dir)
+    return ensemble_training.train_ensemble_across_nodes(
+        lambda member, attempt: _excited_state_member_task(params_list[member], shards, attempt),
+        len(params_list), ensemble_dir, int(current_training_id), gpus_per_node,
+        config.get('device_string', 'from_multiprocessing'), member_retries, _ml_executor())

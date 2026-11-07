@@ -480,6 +480,13 @@ How it runs:
   ``gap_seeking_switched``, plus ``gap_seeking_pair`` and the trigger gap, step, and time
   once it has switched. Frames sampled after a switch carry the same fields.
 
+Progress Plots
+--------------
+
+Progress plots work with excited-state runs, and draw one set per selected state when a run has
+more than one. Screens usually end these trajectories, so the ``outcomes`` plot is often the most
+useful. See :ref:`samplers-progress-plots`.
+
 Excited-State API Links
 -----------------------
 

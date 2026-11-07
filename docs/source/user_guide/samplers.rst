@@ -514,6 +514,72 @@ flags, final positions, and cell information. MLMD metadata is commonly written
 to files such as ``sampling/metadata-<moleculeid>.p`` when ``meta_dir`` or a
 compatible metadata path is configured.
 
+With the multi-trajectory sampler:
+
+* ``Es``, ``Fs``, and ``Fsmax`` are from a trajectory's last valid check. If a screen
+  rejects a trajectory, they come from the check before, because the rejected frame is
+  physically suspect. A trajectory rejected on its first check has none.
+* ``peak_Es``, ``peak_Fs``, and ``peak_Fsmax`` are the highest values across its valid
+  checks.
+* ``realtime_simulation`` is the time from the start of the task until that trajectory
+  finished.
+
+.. _samplers-progress-plots:
+
+Progress Plots
+--------------
+
+Progress plots show how sampling changes as the model improves, with one box per model.
+They work with all samplers, in batches, and with several electronic states. To turn them
+on, add this to the master config:
+
+.. code-block:: json
+
+   {
+     "plotting_utility": "alframework.tools.plotting.analysis_plot",
+     "plot_dir": "status_plots/",
+     "trajectory_summary_path": "status_plots/trajectories.jsonl",
+     "update_plots_every": 30
+   }
+
+With ``trajectory_summary_path``, the coordinator appends one small row per trajectory to
+that file, from metadata it already receives, and plots read only that file. Prefer this to
+``meta_dir``, particularly in large runs. ``meta_dir`` writes one file per trajectory into one
+directory from every sampler worker, and plots then reread all of them on each update. Without
+``trajectory_summary_path``, plots read ``meta_dir`` if it's set.
+
+ALF writes these to ``plot_dir``, as ``analysis-plot-<name>.png``:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 28 72
+
+   * - Name
+     - Shows
+   * - ``outcomes``
+     - How many trajectories were completed, eligible, rejected, or failed, per model. It's
+       only available from samplers that record an outcome, which includes the multi-trajectory
+       sampler. ``task_failed`` means a whole batched task failed.
+   * - ``simtime``, ``log_simtime``
+     - Simulated time per trajectory. This should grow as the model improves.
+   * - ``realtime``, ``log_realtime``
+     - Wall time per trajectory.
+   * - ``Es``, ``Fs``, ``Fsmax``
+     - Energy and force uncertainty, using each trajectory's peak when it's recorded. The title
+       says which.
+   * - ``<name>-state<N>``
+     - The same box plots for one selected state, when a run has more than one.
+
+A dashed line marks the first model in each sampling window. A plot with no data is skipped, and
+ALF prints which ones it skipped.
+
+What ``simtime`` means depends on ``trajectory_policy``. With ``stop``, trajectories stop at the
+first frame that triggers, so it's the time until uncertainty got too high. With ``continue``, they
+keep going, so it's the time until a screen rejected them or ``maxt``, and it can't exceed ``maxt``.
+
+At 1 million trajectories, the summary is about 350 MB, and one plot update takes several seconds
+and about 1.3 GB of memory on the coordinator's node. Each update rereads the whole file.
+
 Related Examples
 ----------------
 

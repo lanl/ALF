@@ -382,6 +382,27 @@ Labels finished since the last store are lost, as at a budget stop. The guide al
 `windowed_error_handler`. Locally, it survived 1 and 2 failed blocks and ran the task, and gave up after 3,
 while the default gave up after 1.
 
+### Progress plots for batched and excited-state runs (2026-11-07)
+
+`analysis_plot` was written for one ground-state trajectory per task. On excited-state runs its uncertainty
+plots came out empty or skewed, because a screen rejection replaced `Es`, `Fs`, and `Fsmax` with `None`, and
+every trajectory in a batch recorded the task's duration as its wall time. It also needed `meta_dir`, one of
+the High rows in [`exascale.md`](exascale.md).
+
+- **Metadata:** a rejected trajectory keeps its last valid uncertainty, and trajectories now record `peak_Es`,
+  `peak_Fs`, `peak_Fsmax`, and their own wall time. `alf_validation` may need updating if it relies on the old
+  values, which it couldn't be checked for here.
+- **Summary:** with `trajectory_summary_path`, `SamplerCoordinator.harvest` appends one row per trajectory to
+  one file, so plots need no `meta_dir` (user question: how does this work at exascale?).
+- **Plots:** new outcome and per-state plots, and sampling-window lines. Plots with no data are skipped and
+  reported, and `meta_dir` still works.
+
+Checked with real excited-state trajectories through the real sampler using fake models, a force screen, and a
+run through the real coordinator, and by looking at the images. Local result: 883 passed, 2 skipped (`seqm` not
+installed), and the new tests also pass without Torch. At 1M rows, measured on a laptop: 350 MB, about 8 s
+per update, and 1.3 GB peak memory. Not shown: a real GPU run, or any shared filesystem. Selection and stopping
+don't use the changed fields.
+
 ### Gap-seeking and sampling-window hardware qualification — passed (2026-11-06)
 
 The separate external harness is frozen at ALF `1055d9c` / `alf_validation`

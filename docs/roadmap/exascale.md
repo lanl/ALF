@@ -82,7 +82,7 @@ The last column gives the priority item. "Profile" means only if a profile shows
 | Bootstrap holds all labels until it finishes | `__main__.py:274-329` | `bootstrap_set` | A crash loses the whole bootstrap, which may be the most expensive single loss for large CPP runs. | 5 |
 | Trainer lists `h5_dir` right after a store | `hippynn_interface.py:574` (`os.listdir`, `allow_unfound=True`) and `:1234` (`glob`) | Each store | A stale view silently trains without the new shard. Replay is safer, because it looks up shards by name and raises (`rdkit_molecule.py:425`). The multi-node tasks already wait for the shards the coordinator listed, so this remains for single-node training. | 2 |
 | One directory per label, under one parent | `QM_scratch_dir/<id>/`; ASE, ORCA, Q-Chem, and VASP only | Labels | Heavy metadata load, and ASE and ORCA never remove them by default. GPU4PySCF and PySeQM create none, so CPP and AcAc are unaffected. | 8 |
-| One metadata pickle per trajectory, in one flat directory | `batched_mlmd.py:437`, `mlmd_sampling.py:165` | Trajectories | Only when `meta_dir` is set. CPP and AcAc don't set it, but the ground-state examples checked do. | 10 |
+| One metadata pickle per trajectory, in one flat directory | `batched_mlmd.py:437`, `mlmd_sampling.py:165` | Trajectories | Only when `meta_dir` is set. CPP and AcAc don't set it, but the ground-state examples checked do. Progress plots no longer need it, with `trajectory_summary_path`. | 10 |
 
 ### Medium
 
@@ -108,7 +108,7 @@ The last column gives the priority item. "Profile" means only if a profile shows
 | Reads and hashes the topology reference | `molecular_topology.py:340` | Sampler tasks | A small file, read before the cache lookup. | 9 |
 | Library temp files and config | `~/.matplotlib`, `$TMPDIR/torchinductor_*`, PySCF's per-SCF checkpoint (`pyscf/scf/hf.py:1814`) | Workers or SCF runs | Only an issue if those paths are shared. | 7 |
 | HDF5 store blocks the main loop | `store_current_data` | Labels per store | About 17 s per 100,000 CPP9 labels at the measured rate, before any network cost. | Profile |
-| Plot process scans all pickles | `plotting.py` | Total pickles | Off unless `plotting_utility` is set, and every 1000 loops by default. Partial pickles are caught and only lose a plot point. | Profile |
+| Plot process scans all pickles | `plotting.py` | Total pickles | Off unless `plotting_utility` is set, and every 1000 loops by default. Partial pickles are caught and only lose a plot point. `trajectory_summary_path` avoids this: one file, written by the coordinator. | Profile |
 | Reads five config files per loop | `__main__.py:359-373` | Loops | One process. Pending batch timeouts can shorten the 60 s sleep (`batching.py:318`). | None |
 | Best-model and checkpoint writes, plus plots every 50 epochs | HIPPYNN `routines.py:548-555` | Members × improved epochs | Not atomic, but a failed member isn't promoted. | None |
 

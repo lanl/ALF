@@ -53,7 +53,8 @@ config that fails to load is reported, and ALF keeps using the previous one.
 
 These are read once at startup, so changing them requires a restart:
 
-* The Parsl configuration, the task import strings, and ``maximum_stored_labels``.
+* The Parsl configuration, the task import strings, ``maximum_stored_labels``, and
+  ``trajectory_summary_path``.
 * ``batching`` in the sampler and QM configs.
 * In the sampler config: ``driver``, ``acquisition``, ``model_mode``, ``state_selection``,
   ``gap_uncertainty``, ``gap_seeking``, and ``sampling_windows``.
@@ -135,7 +136,11 @@ The master config controls the workflow wiring. Common fields include:
      - Optional progress plots. ``plotting_utility`` is an import string such as
        ``alframework.tools.plotting.analysis_plot``, and ``plot_dir`` is where it
        writes. ``update_plots_every`` is how many loop iterations separate plot
-       updates, with a default of ``1000``.
+       updates. Its default of ``1000`` can mean many hours, because a loop can take
+       up to a minute. See :ref:`samplers-progress-plots`.
+   * - ``trajectory_summary_path``
+     - Optional file where ALF appends one row per trajectory, for progress plots.
+       See :ref:`samplers-progress-plots`.
 
 Path Conventions
 ----------------

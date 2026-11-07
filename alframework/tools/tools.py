@@ -13,6 +13,7 @@ import json
 from ase.geometry import complete_cell
 from ase import Atoms
 from alframework.tools import pyanitools as pyt
+from alframework.tools.files import fsync_file, write_json_atomic
 from alframework.tools.molecules_class import MoleculesObject
 import inspect
 
@@ -197,7 +198,15 @@ def store_current_data(h5path, system_data, properties):
     Returns:
         (int): The number of converged structures saved.
 
+    The shard is written to ``<h5path>.partial`` and renamed when complete, so a crash never leaves
+    a partial shard under the final name. Readers ignore ``.partial`` files, because they don't end
+    in ``.h5``.
+
     """
+    if os.path.exists(h5path):
+        raise FileExistsError(f'{h5path} already exists. If a previous run stopped between storing this shard '
+                              'and saving status, check the shard and move it aside, or raise current_h5_id '
+                              'in status, before restarting.')
     # system data is a list of [mol-id(string), atoms, properties dictionary]
     data_dict = {}
     print("Saving h5 file: " + h5path)
@@ -299,14 +308,33 @@ def store_current_data(h5path, system_data, properties):
 #                        data_dict[isokey][propkey] = np.array(data_dict[isokey][propkey])
 #                    print('propkey:', propkey,data_dict[isokey][propkey].shape)
 #
-    dpack = pyt.datapacker(h5path)
-    for key in data_dict:
-        dpack.store_data(key, **data_dict[key])
-    sources = label_sources(system for system in system_data if system.check_convergence())
-    if sources:
-        dpack.store.attrs[LABEL_PROVENANCE] = json.dumps(sources)
-    dpack.cleanup()
+    partial = h5path + PARTIAL_SUFFIX
+    try:
+        # Mode 'w' overwrites a .partial left by a crash.
+        dpack = pyt.datapacker(partial, mode='w')
+        try:
+            for key in data_dict:
+                dpack.store_data(key, **data_dict[key])
+            sources = label_sources(system for system in system_data if system.check_convergence())
+            if sources:
+                dpack.store.attrs[LABEL_PROVENANCE] = json.dumps(sources)
+        finally:
+            dpack.cleanup()
+        fsync_file(partial)
+        os.replace(partial, h5path)
+    except BaseException:
+        if os.path.exists(partial):
+            os.remove(partial)
+        raise
     return saved_number
+
+
+PARTIAL_SUFFIX = '.partial'
+
+
+def write_status(status_path, status):
+    """Save the coordinator's status all at once, so a crash mid-write can't stop a restart."""
+    write_json_atomic(status_path, status)
 
 
 LABEL_PROVENANCE = 'label_provenance'

@@ -31,6 +31,7 @@ from alframework.tools.tools import load_module_from_string
 from alframework.tools.tools import build_input_dict
 from alframework.tools.tools import release_allocations_at_exit
 from alframework.tools.tools import stop_if_executor_failed
+from alframework.tools.tools import write_status
 from alframework.tools.pyanitools import anidataloader
 from alframework.tools.molecules_class import MoleculesObject
 from alframework.tools.batching import bootstrap_molecule_ids
@@ -156,8 +157,7 @@ else:
     status['lifetime_failed_ML_tasks'] = 0
     status['lifetime_failed_QM_tasks'] = 0
 
-with open(master_config['status_path'], "w") as outfile:
-    json.dump(status, outfile, indent=2)
+write_status(master_config['status_path'], status)
 
 # Read once, so that a mistaken edit can't stop or crash a long run.
 label_budget = stored_label_budget(master_config)
@@ -246,8 +246,7 @@ if args.test_ml:
                                   raise_on_fail=True)
     ML_task_queue.add_task(ml_task(**task_input))
     status['current_training_id'] = status['current_training_id'] + 1
-    with open(master_config['status_path'], "w") as outfile:
-        json.dump(status, outfile, indent=2)
+    write_status(master_config['status_path'], status)
     ml_result = ML_task_queue.task_list[0].result()
     queue_output = ML_task_queue.get_task_results()
     returned_models = queue_output[0]
@@ -257,8 +256,7 @@ if args.test_ml:
         if all(network[0]) and (network[1] > status['current_model_id']):
             print('New Model: {:04d}'.format(network[1]))
             status['current_model_id'] = network[1]
-    with open(master_config['status_path'], "w") as outfile:
-        json.dump(status, outfile, indent=2)
+    write_status(master_config['status_path'], status)
     testing=True
     
 if testing:
@@ -313,8 +311,7 @@ if status['current_h5_id'] == 0 and status['current_model_id'] < 0:
         print("QM status:")
         QM_task_queue.print_status()
     
-        with open(master_config['status_path'], "w") as outfile:
-            json.dump(status, outfile, indent=2)
+        write_status(master_config['status_path'], status)
         stop_if_executor_failed(parsl.dfk())
 
         time.sleep(labeling.poll_delay(60))
@@ -337,8 +334,7 @@ if status['current_model_id'] < 0:
     
     status['current_training_id'] = status['current_training_id'] + 1
     
-    with open(master_config['status_path'], "w") as outfile:
-        json.dump(status, outfile, indent=2)
+    write_status(master_config['status_path'], status)
     network = ML_task_queue.task_list[0].result()
     if all(network[0]):
         status['current_model_id'] = network[1]
@@ -479,8 +475,7 @@ while True:
     ML_task_queue.print_status()
     sys.stdout.flush()
     
-    with open(master_config['status_path'], "w") as outfile:
-        json.dump(status, outfile, indent=2)
+    write_status(master_config['status_path'], status)
     stop_if_executor_failed(parsl.dfk())
     
     if not admitting and ML_task_queue.get_number() == 0:

@@ -5,7 +5,6 @@ submits one app per member, retries failed members, and returns when every membe
 run out of retries. Nothing here imports Torch, except ``member_device`` on a worker.
 """
 import concurrent.futures
-import json
 import math
 import multiprocessing
 import os
@@ -15,6 +14,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
+from alframework.tools.files import write_json_atomic
 from alframework.tools.gpu import VISIBILITY_VARIABLES, sampling_device
 
 SHARD_WAIT_SECONDS = 120
@@ -99,13 +99,6 @@ def archive_failed_member(ensemble_dir, member, attempt):
         directory.rename(directory.parent / f'failed-{directory.name}-attempt-{attempt}')
 
 
-def _write_json(path, values):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + '.tmp')
-    temporary.write_text(json.dumps(values, indent=2) + '\n')
-    temporary.replace(path)
-
-
 @contextmanager
 def member_placement(model_dir, attempt, device):
     """Record where a member ran, beside its directory so that a lost node still leaves a record.
@@ -119,12 +112,12 @@ def member_placement(model_dir, attempt, device):
                   worker_rank=os.environ.get('PARSL_WORKER_RANK'), slurm_job=os.environ.get('SLURM_JOB_ID'),
                   visibility={key: os.environ.get(key) for key in VISIBILITY_VARIABLES},
                   started=time.time(), finished=None, completed=False)
-    _write_json(path, record)
+    write_json_atomic(path, record)
     try:
         yield record
     finally:
         record['finished'] = time.time()
-        _write_json(path, record)
+        write_json_atomic(path, record)
 
 
 def train_members(submit, n_models, ensemble_dir, training_id, member_retries=1):

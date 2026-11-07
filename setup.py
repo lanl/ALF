@@ -39,6 +39,11 @@ torchsim_requirements = [
 # Qualified separately from TorchSim; sampler workers need Python 3.11+.
 alchemi_requirements = ["nvalchemi-toolkit==0.3.0"]
 
+# Foundation-model teachers label through TorchSim. Install one teacher package per environment,
+# since mace-torch and fairchem-core have needed different e3nn versions.
+mace_teacher_requirements = ["torch-sim-atomistic>=0.6.2", "mace-torch"]
+uma_teacher_requirements = ["torch-sim-atomistic>=0.6.2", "fairchem-core"]
+
 setuptools.setup(
     name="alf",
     version="0.1.0",
@@ -47,7 +52,8 @@ setuptools.setup(
     python_requires=">3.9",
     install_requires=install_requirements,
     extras_require={"docs": doc_requirements, "full": full_requirements, "tests": test_requirements,
-                    "torchsim": torchsim_requirements, "alchemi": alchemi_requirements, "topology": ["rdkit"]},
+                    "torchsim": torchsim_requirements, "alchemi": alchemi_requirements, "topology": ["rdkit"],
+                    "teacher-mace": mace_teacher_requirements, "teacher-uma": uma_teacher_requirements},
     license="BSD 3-Clause License",
     classifiers=[
         "Development Status :: 3 - Alpha",

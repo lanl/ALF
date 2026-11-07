@@ -1,0 +1,9 @@
+{
+  "teacher": {
+    "loader": "alframework.qm_interfaces.teacher_interface.load_mace_teacher",
+    "name": "mace-mp-0-small",
+    "checkpoint": "teachers/mace-mp-0-small.model",
+    "dtype": "float64"
+  },
+  "batching": {"mode": "native", "batch_size": 32, "max_wait_seconds": 30.0}
+}

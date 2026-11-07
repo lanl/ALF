@@ -86,6 +86,20 @@ def test_packed_water_configs_are_valid(name):
     acquisition_settings(config)
 
 
+@pytest.mark.parametrize("name", ["qm_config_teacher_mace.json", "qm_config_teacher_uma.json"])
+def test_teacher_water_configs_are_valid(name, tmp_path):
+    from alframework.qm_interfaces.teacher_interface import validate_teacher_config
+
+    qm_config = read(ROOT / "examples/simple_water" / name)
+    # The example names a checkpoint you download; stand in a file so the rest can be checked.
+    checkpoint = tmp_path / qm_config["teacher"]["checkpoint"]
+    checkpoint.parent.mkdir(parents=True)
+    checkpoint.write_bytes(b"weights")
+    master = read(ROOT / "examples/simple_water/master_config_teacher.json")
+    validate_teacher_config(qm_config, dict(master, master_directory=str(tmp_path)))
+    labeling_batch_settings(qm_config)
+
+
 @pytest.mark.parametrize("name", ["QM_config.json", "QM_config_dcm.json"])
 def test_cpp_gpu4pyscf_configs_are_valid(name):
     validate_gpu4pyscf_config(read(ROOT / "examples/CPP_excited_gpu4pyscf" / name))

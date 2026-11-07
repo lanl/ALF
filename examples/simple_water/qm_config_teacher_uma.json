@@ -1,0 +1,10 @@
+{
+  "teacher": {
+    "loader": "alframework.qm_interfaces.teacher_interface.load_uma_teacher",
+    "name": "uma-s-1p1",
+    "checkpoint": "teachers/uma-s-1p1.pt",
+    "task": "omol",
+    "dtype": "float32"
+  },
+  "batching": {"mode": "native", "batch_size": 32, "max_wait_seconds": 30.0}
+}

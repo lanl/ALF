@@ -25,7 +25,9 @@ This folder is the shared plan for bringing the fork's intended capabilities int
 - **Gap-seeking mechanics passed on all three engines**, and the ordinary
   base-to-gap-seeking sampling-window loop passed;
   see the [bounded hardware record](#gap-seeking-and-sampling-window-hardware-qualification--passed-2026-11-06).
-- **Next:** safe restarts (tabled for now; see [`exascale.md`](exascale.md)), multi-node training, teacher labeling, then new
+- **Multi-node ensemble training is built;** its real run on Darwin is pending. See the
+  [record](#multi-node-training-2026-11-06).
+- **Next:** safe restarts (tabled for now; see [`exascale.md`](exascale.md)), teacher labeling, then new
   uncertainty and acquisition methods. Long runs and staged campaigns come last, and may be
   removed; see [Order of work](future.md#order-of-work).
 - **No merge to `main` is planned** (user decision, November 6).
@@ -321,6 +323,34 @@ ensemble. That runner stays in [Group E](future.md#group-e-long-runs). Compared 
 windows have no fresh ensembles, exact dataset checkpoints, or task journal, and a window can
 only change `gap_seeking` and `MLMD_calculator_options`. A real base-to-gap-seeking
 loop has passed; see the [hardware record](#gap-seeking-and-sampling-window-hardware-qualification--passed-2026-11-06).
+
+### Multi-node training (2026-11-06)
+
+Two opt-in tasks train one ensemble member per GPU on any number of nodes, for example 8 members on
+2 nodes or 40 on 10: `train_HIPPYNN_ensemble_multinode_task` and
+`train_excited_state_HIPPYNN_ensemble_multinode_task`, with helpers in `tools/ensemble_training.py`.
+Single-node training stays the default, and `__main__.py` is unchanged (user decision on retries:
+failed members run again, up to `member_retries`).
+
+**How it works.** A `join_app` runs a control loop on the coordinator. It submits one app per member,
+waits for them, and returns the usual `(completed, training_id)`, so the coordinator sees one task.
+Members pick their GPU from their worker rank, because `model_id % width` would put members 0 and 4
+on one GPU. Each trains in a fresh `spawn` child, using `ProcessPoolExecutor`, because
+`multiprocessing.Pool` hangs if its child dies. Failed directories are renamed out of the `model-*`
+pattern rather than deleted, and each attempt leaves a placement record beside them, since trainers
+refuse a nonempty member directory.
+
+**Local results.** 797 passed, 2 skipped (`seqm` not installed), and the new tests also pass without Torch.
+Each new branch was shown to fail its tests when broken.
+
+Real Parsl workers on one machine (`HighThroughputExecutor`, two local blocks with two workers each,
+four CPU excited-state members) also passed. A plain run trained all four across both pools. When one
+pool was killed mid-training, Parsl reported `ManagerLost` for its two members. Only those were
+retried, a replacement block started, the failed directories stayed, and all four members reloaded.
+
+**Not shown yet.** Real nodes, real GPUs, the ground-state trainer through this path (it has no CPU
+mode, so local tests fake it), and any scale. See the
+[Darwin gate](future.md#group-c-placement-and-memory).
 
 ### Gap-seeking and sampling-window hardware qualification — passed (2026-11-06)
 

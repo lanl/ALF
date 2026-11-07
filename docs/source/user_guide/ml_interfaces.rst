@@ -25,6 +25,10 @@ through its own training task and sampler loading path.
    * - HIPPYNN, several electronic states
      - ``alframework.ml_interfaces.hippynn_interface.train_excited_state_HIPPYNN_ensemble_task``.
        See :doc:`excited_states`.
+   * - HIPPYNN, across several nodes
+     - ``train_HIPPYNN_ensemble_multinode_task`` and
+       ``train_excited_state_HIPPYNN_ensemble_multinode_task``, in the same module. See
+       :ref:`ml-multinode-training`.
    * - NeuroChem/ANI
      - ``alframework.ml_interfaces.neurochem_interface.train_ANI_model_task``
 
@@ -158,7 +162,8 @@ Important HIPPYNN configuration fields include:
      - Device selection behavior. Examples use ``from_multiprocessing`` so
        ensemble members can be distributed across visible GPUs, within any mask the
        scheduler set. Any other value overwrites ``CUDA_VISIBLE_DEVICES`` for that
-       training process.
+       training process. Multi-node training accepts only ``from_multiprocessing``,
+       ``cuda``, or ``cpu``; see :ref:`ml-multinode-training`.
    * - ``remove_high_energy_*``, ``remove_high_forces_*``
      - Optional filters for removing high-energy or high-force structures from
        the training set.
@@ -182,6 +187,59 @@ force_key="forces")`` evaluates each ensemble member on a whole batch of structu
 at once. It needs at least two ``model-*`` members, and a checkpoint trained with a
 cell requires fully periodic systems. ``batched_calculator_options`` can set
 ``energy_key`` and ``force_key``. See :ref:`samplers-multi-trajectory`.
+
+.. _ml-multinode-training:
+
+Training Across Several Nodes
+-----------------------------
+
+The standard HIPPYNN tasks train on one node, so an ensemble of 8 on a 4-GPU node runs 4
+members at a time. The multi-node tasks can spread an ensemble over any number of nodes,
+with each member still training on one GPU. To use one, set ``ML_task``:
+
+.. code-block:: json
+
+   {
+     "ML_task": "alframework.ml_interfaces.hippynn_interface.train_HIPPYNN_ensemble_multinode_task",
+     "gpus_per_node": 4,
+     "member_retries": 1
+   }
+
+For several electronic states, use ``train_excited_state_HIPPYNN_ensemble_multinode_task``.
+Set the ensemble size with ``n_models`` in the ML configuration, and the nodes in the Parsl
+configuration; see :ref:`parsl-multinode-training`. Models are written and loaded the same way
+as with the standard tasks.
+
+ALF waits for the whole ensemble
+   ALF treats the ensemble as one training task. It promotes the new model only after every
+   member has succeeded, and it doesn't store new data or start another training until then.
+   Sampling and labeling continue on the current model in the meantime, and finished labels
+   stay in the coordinator's memory until the next store. Progress appears in the coordinator's
+   output, for example ``Training 0003: 35/40 members finished, 1 retrying, 0 failed``.
+
+Failed members are retried
+   A member that raises an error, loses its worker or node, or doesn't finish training is run
+   again, up to ``member_retries`` more times. The default is ``1``, and ``0`` turns retries off.
+   Members that succeeded aren't rerun. ALF renames a failed member's directory, for example to
+   ``failed-model-03-attempt-1``, which ensemble loaders ignore. Nothing is deleted. If a member
+   runs out of retries, the others still finish, but ALF doesn't promote that ensemble, and the
+   next training starts from a new training ID. There's no time limit, so training waits for as
+   long as Slurm keeps a block queued.
+
+Each member uses one GPU
+   Each member's GPU comes from its Parsl worker, within any mask set by the scheduler or
+   ``available_accelerators``. So ``device_string`` must be ``from_multiprocessing``, ``cuda``, or
+   ``cpu``, and ALF stops with an error if a node has more workers than ``gpus_per_node``.
+
+Each attempt writes ``placement-model-03-attempt-1.json`` in the ensemble directory, with its
+host, worker, device, and start and end times. The record stays even if the node is lost.
+
+More members cost more than training time:
+
+- More nodes make training faster, but not sampling. Every sampler task loads and evaluates every
+  member, so MLMD with 40 members takes about 5 times as long per step as with 8.
+- Every member reads all of the training data, so the load on shared storage grows with both the
+  ensemble and the dataset.
 
 .. _ml-interface-new-architecture-template:
 

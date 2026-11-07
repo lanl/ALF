@@ -209,6 +209,53 @@ assignment when no visibility mask is set; an existing allocation takes
 precedence. GPU numbering inside a worker is relative to that allocation.
 See :doc:`samplers` for explicit device overrides and legacy defaults.
 
+.. _parsl-multinode-training:
+
+Multi-Node ML Training
+^^^^^^^^^^^^^^^^^^^^^^
+
+The multi-node training tasks (see :ref:`ml-multinode-training`) run one Parsl task per ensemble
+member, so ``alf_ML_executor`` needs one worker per GPU. For any number of nodes, use one-node blocks
+and set ``max_blocks`` to the number of nodes:
+
+.. code-block:: python
+
+   HighThroughputExecutor(
+       label="alf_ML_executor",
+       max_workers_per_node=4,
+       available_accelerators=4,
+       provider=SlurmProvider(
+           partition="gpu",
+           account="your_gpu_account",
+           nodes_per_block=1,
+           init_blocks=0,
+           min_blocks=0,
+           max_blocks=10,
+           walltime="04:00:00",
+           scheduler_options="#SBATCH --nodes=1 --gres=gpu:4",
+           worker_init="module load cuda",
+           launcher=SingleNodeLauncher(),
+       ),
+   )
+
+With this setup, 10 nodes give 40 slots. Parsl only requests the blocks that waiting members need, so
+an ensemble of 8 uses 2 nodes. ALF prints a warning if there are fewer slots than members; they still
+all train, but take longer. One-node blocks have these benefits:
+
+- A lost node only affects its own members, and Parsl can request a replacement block. Slurm normally
+  ends a whole job when one of its nodes fails, so losing a node from a 10-node block would stop every
+  member in it.
+- Members start on whichever nodes are ready, and the rest take free slots as they open. Training
+  finishes even if some blocks never start, but more slowly.
+- Parsl can release idle blocks as members finish.
+
+Each block's walltime must cover a member's training, including any retry, and blocks may start at
+different times.
+
+A single multi-node block (``nodes_per_block=10``, ``max_blocks=1``) starts every node together, but
+may queue for longer. It needs ``SrunLauncher``, because ``SingleNodeLauncher`` starts workers on only
+the first node, and members would run a few at a time.
+
 .. _parsl-gpu4pyscf-workers:
 
 GPU4PySCF Workers
@@ -430,7 +477,8 @@ that match the cluster.
 Production executors in this template have separate roles. ``alf_QM_executor``
 runs CPU QM labeling tasks with one ALF worker per node. The optional
 ``alf_QM_standby_executor`` can target lower-priority or shorter-walltime CPU
-resources. ``alf_ML_executor`` runs one ML training task per GPU allocation.
+resources. ``alf_ML_executor`` runs one ML training task per GPU allocation, or one
+task per ensemble member with :ref:`multi-node training <parsl-multinode-training>`.
 ``alf_sampler_executor`` runs MLMD or reactive sampling tasks on GPU resources,
 and ``alf_sampler_standby_executor`` is the optional standby version of that
 sampler pool.

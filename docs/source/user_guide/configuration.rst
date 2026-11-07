@@ -111,6 +111,9 @@ The master config controls the workflow wiring. Common fields include:
        can overshoot by up to ``save_h5_threshold``. ALF reads this once, at startup.
        The count is kept in ``status_path``. By default, a run continues until you
        stop it.
+   * - ``member_retries``
+     - Optional, for the multi-node training tasks. How many more times to run a failed
+       ensemble member. The default is ``1``. See :ref:`ml-multinode-training`.
    * - ``maximum_builder_structures``
      - Optional number of structures one builder task returns. The default is
        ``1``. See :doc:`builders`.

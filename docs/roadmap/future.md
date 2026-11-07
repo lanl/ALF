@@ -14,7 +14,7 @@ mechanics have passed; see the [E6 record](excited_states.md),
 and [gap/window qualification](README.md#gap-seeking-and-sampling-window-hardware-qualification--passed-2026-11-06).
 
 1. **Safe restarts and disk races** ([below](#safe-restarts-and-disk-races), with priorities in [`exascale.md`](exascale.md#priority-list)). Tabled for now (user decision, November 6), and next when picked up.
-2. **Placement and memory** ([Group C](#group-c-placement-and-memory)), including multi-node training. It buys throughput for larger ensembles, not new methods.
+2. **Placement and memory** ([Group C](#group-c-placement-and-memory)). Multi-node training is built and awaits its Darwin gate. It buys throughput for larger ensembles, not new methods.
 3. **Teacher labeling, then F1 and F2 fine-tuning** ([Group D](#group-d-model-families-and-labels)).
 4. **New uncertainty and acquisition methods** ([Group G](#group-g-new-uncertainty-and-acquisition-methods)).
 5. **Long runs and staged campaigns** ([Group E](#group-e-long-runs)), last: very low priority, and may be removed (user decision, November 6).
@@ -106,44 +106,21 @@ Tabled on November 6, before any code changed. An audit of ALF's disk writes rea
 
 | Capability | What it covers | Important boundary |
 | --- | --- | --- |
-| Multi-node ML training | Train ensemble members across nodes, then optionally data-parallel training of one member across GPUs/nodes. | Keep the `ML_task` entrypoint, `(completed, training_id)` return, member directory layout, and model-promotion semantics; single-node training remains the default. Parallel track, independent of the excited-state sequence (see [Order of work](#order-of-work)). |
+| Multi-node ML training | Members across any number of nodes is built, with its Darwin gate pending. Data-parallel training of one member across GPUs or nodes is a separate decision. | Keep the `ML_task` entrypoint, `(completed, training_id)` return, member directory layout, and model-promotion semantics; single-node training remains the default. |
 
 | Area | Current behavior or gap | Follow-up and boundary |
 | --- | --- | --- |
 | Packed inference memory | HIPPYNN pads to the largest system in a task. Capacity is specified in systems, without an atom/pair-memory budget or automatic OOM splitting. A failed batched evaluator call can fail the whole active group. | Profile heterogeneous sizes before increasing widths. Consider adapter-declared memory limits and explicit retry/splitting later, preserving atom order, model pinning, identities, and per-trajectory random streams. This is not a requirement to add every OOM recovery path now. |
 
-- **Multi-node training (parallel track).**
-  - Today `train_HIPPYNN_ensemble_task` runs `multiprocessing.Pool` on one
-    node. Fan members out across `alf_ML_executor` blocks that span nodes,
-    via a `join_app` or per-member apps, returning the existing
-    `(completed, training_id)`. `__main__.py` is unchanged.
-  - Use local-ordinal GPU assignment, as for samplers (`tools/gpu.py`); keep
-    per-member `completed` handling and the existing member directory layout.
-  - Gate: a real two-node Darwin training of four members, then promotion and
-    reload.
-  - Data-parallel training of one member (HIPPYNN's experimental Lightning
-    trainer, with a checkpoint-layout change) is a separate decision.
-
-Readiness notes from a review of development at `24028da`:
-
-- **Multi-node training.** `train_HIPPYNN_ensemble_task` is one Parsl
-  app on `alf_ML_executor` that runs `multiprocessing.Pool(gpus_per_node)` on
-  one node, one member per GPU, using local device numbers. The tracked
-  Darwin/Chicoma configs give the ML executor one node per block. `__main__.py`
-  waits for a single ML task (`ML_task_queue.get_number() < 1`) and promotes the
-  model after it returns.
-  - The first step is to run members across nodes: they train independently,
-    so this is task placement, not distributed numerics. A Parsl `join_app`
-    that fans out one app per member (or per node) and returns the existing
-    `(completed, training_id)` keeps `__main__.py` unchanged. A multi-node
-    block with `srun` placement is the alternative. Both need the
-    local-ordinal GPU assignment already used by the samplers, and the
-    per-member `completed` handling for partial failures must be kept.
-  - A later step is data-parallel training of one member, for datasets or
-    models too large for one GPU. HIPPYNN's Lightning trainer
-    (`hippynn.experiment.lightning_trainer`) is marked experimental and lacks
-    some features. Adopting it changes checkpoint layout and the batched
-    loader's `best_model.pt` assumption, so it is a separate decision.
+- **Multi-node training: built, Darwin gate pending (November 6).** `train_HIPPYNN_ensemble_multinode_task` and `train_excited_state_HIPPYNN_ensemble_multinode_task` train one member per GPU on any number of nodes, using `tools/ensemble_training.py`. `__main__.py`, promotion, and the member layout are unchanged, and single-node training stays the default. See the [record](README.md#multi-node-training-2026-11-06).
+  - **Gate on Darwin, for this to count as qualified:**
+    1. 8 members on 2 nodes × 4 GPUs, for both trainers. Placement records show 8 distinct host and GPU pairs, with members overlapping in time. All 8 reload, the model promotes, and sampling runs on it.
+    2. Every member's training records list the same shards.
+    3. Cancel one block mid-training. Only its members are retried, failed directories stay, and the ensemble promotes and reloads.
+    4. With `member_retries: 0`, the same cancellation leaves the coordinator running, promotes nothing, and the next training uses a new ID.
+    5. For one trainer, the largest allocation available, ideally 40 members on 10 nodes. Record wall time against the 2-node run, how long members take to load data, and whether late nodes still get work.
+  - **Not included:** promoting a partial ensemble, a training deadline, and restart recovery of a partly trained ensemble after a coordinator crash.
+- **Data-parallel training of one member (separate decision).** For datasets or models too large for one GPU. HIPPYNN's Lightning trainer (`hippynn.experiment.lightning_trainer`) is marked experimental and lacks some features. Adopting it changes the checkpoint layout and the batched loader's `best_model.pt` assumption.
 
 ## Group D: Model families and labels
 

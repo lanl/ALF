@@ -1,0 +1,17 @@
+{
+  "fine_tune": {
+    "adapter": "alframework.ml_interfaces.uma_fine_tuning.UmaFineTuner",
+    "foundation_model": "foundation/checkpoints/uma-s-1p2p1.pt",
+    "task": "omol",
+    "n_models": 4,
+    "seed": 0,
+    "device": "cuda",
+    "E0s": "average",
+    "epochs": 10,
+    "steps": null,
+    "batch_size": 2,
+    "lr": 4e-4,
+    "weight_decay": 1e-3,
+    "valid_fraction": 0.1
+  }
+}

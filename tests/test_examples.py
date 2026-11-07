@@ -26,6 +26,7 @@ FAMILIES = (
     "UO2",
     "fine_tuning",
     "mace_fine_tuning",
+    "uma_fine_tuning",
     "molten_salt",
     "reactive_sampling",
     "seeded_active_learning",

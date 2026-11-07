@@ -14,6 +14,8 @@ from pathlib import Path
 
 import numpy as np
 
+from alframework.ml_interfaces.torchsim_ensemble import TorchSimBatchedEnsemble
+
 MODEL_NAME = 'mace'
 ENERGY_KEY, FORCES_KEY = 'REF_energy', 'REF_forces'
 DTYPES = ('float32', 'float64')
@@ -147,9 +149,15 @@ class MaceFineTuner:
 
 
 def shard_frames(shards, energy_dataset='energy', forces_dataset='forces'):
-    """Read ALF shards as ``ase.Atoms`` carrying ``REF_energy`` and ``REF_forces``."""
+    """Read ALF shards as ``ase.Atoms`` carrying ``REF_energy`` and ``REF_forces``.
+
+    A shard's ``total_charge`` and ``spin_multiplicity``, if it has them, go to ``atoms.info`` as
+    ``charge`` and ``spin``.
+    """
     import h5py
     from ase import Atoms
+
+    from alframework.tools.tools import STRUCTURE_STATE_DATASETS
 
     frames = []
     for shard in shards:
@@ -170,48 +178,25 @@ def shard_frames(shards, energy_dataset='energy', forces_dataset='forces'):
                                   cell=None if cells is None else cells[index], pbc=cells is not None)
                     atoms.info[ENERGY_KEY] = float(energies[index])
                     atoms.arrays[FORCES_KEY] = np.asarray(forces[index], dtype=float)
+                    for key, dataset in zip(('charge', 'spin'), STRUCTURE_STATE_DATASETS):
+                        if dataset in group:
+                            atoms.info[key] = int(group[dataset][index])
                     frames.append(atoms)
     return frames
 
 
-class MaceBatchedEnsemble:
-    """Evaluate every fine-tuned copy on a whole batch, for the batched sampling engines.
-
-    Implements ``evaluate(numbers, positions, cells, pbc, counts)``: ``cells`` are row vectors, as
-    in ASE, and the result is ``(energies [models, systems], forces [models, atoms, 3])`` in eV and
-    eV/Å, through MACE's own TorchSim interface.
-    """
+class MaceBatchedEnsemble(TorchSimBatchedEnsemble):
+    """Every fine-tuned MACE copy, evaluated on a whole batch through MACE's own TorchSim interface."""
 
     def __init__(self, model_directory, device='cuda:0', dtype='float32', models=None):
-        import torch
-        self._torch = torch
-        self.device = torch.device(device)
-        self.dtype = torch.float64 if dtype == 'float64' else torch.float32
         if models is None:
+            import torch
             from mace.calculators.mace_torchsim import MaceTorchSimModel
             paths = sorted(Path(model_directory).glob(f'model-*/{MODEL_NAME}.model'))
-            models = [MaceTorchSimModel(str(path), device=self.device, dtype=self.dtype, compute_forces=True,
-                                        compute_stress=False) for path in paths]
-        if len(models) < 2:
-            raise ValueError(f'An uncertainty ensemble requires at least two fine-tuned copies in {model_directory}.')
-        self._members = list(models)
-        self.n_models = len(self._members)
-
-    def evaluate(self, numbers, positions, cells, pbc, counts):
-        torch = self._torch
-        counts = torch.as_tensor(counts, device=self.device)
-        system_idx = torch.repeat_interleave(torch.arange(len(counts), device=self.device), counts)
-        positions = positions.detach().to(self.device, self.dtype)
-        state = dict(positions=positions, masses=torch.ones(len(positions), device=self.device, dtype=self.dtype),
-                     cell=cells.detach().to(self.device, self.dtype).transpose(-1, -2),
-                     pbc=torch.as_tensor([bool(value) for value in pbc], device=self.device),
-                     atomic_numbers=numbers.to(self.device, torch.long), system_idx=system_idx)
-        energies, forces = [], []
-        for model in self._members:
-            output = model(dict(state))
-            energies.append(output['energy'].detach().reshape(len(counts)))
-            forces.append(output['forces'].detach().reshape(len(positions), 3))
-        return torch.stack(energies), torch.stack(forces)
+            models = [MaceTorchSimModel(str(path), device=torch.device(device),
+                                        dtype=torch.float64 if dtype == 'float64' else torch.float32,
+                                        compute_forces=True, compute_stress=False) for path in paths]
+        super().__init__(models, device=device, dtype=dtype, source=model_directory)
 
 
 def load_mace_batched_ensemble(model_directory, device='cuda:0', dtype='float32'):

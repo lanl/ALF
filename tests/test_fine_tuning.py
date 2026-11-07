@@ -295,33 +295,40 @@ def test_mace_failure_reports_the_end_of_its_log(tmp_path, monkeypatch):
     assert not mace(tmp_path).member_complete(tmp_path)
 
 
-def test_mace_batched_ensemble_evaluates_every_copy_on_the_batch():
+def test_torchsim_ensemble_evaluates_every_copy_on_the_batch():
     torch = pytest.importorskip("torch")
+    pytest.importorskip("torch_sim")
     from alframework.ml_interfaces.mace_interface import MaceBatchedEnsemble
+    from alframework.ml_interfaces.torchsim_ensemble import TorchSimBatchedEnsemble
 
     seen = []
 
-    class FakeMace:
+    class FakeModel:
         def __init__(self, scale):
             self.scale = scale
 
         def __call__(self, state):
             seen.append(state)
-            n_systems = int(state["system_idx"].max()) + 1
-            return {"energy": torch.full((n_systems,), self.scale, dtype=torch.float64),
-                    "forces": state["positions"] * self.scale}
+            return {"energy": torch.full((state.n_systems,), self.scale, dtype=torch.float64),
+                    "forces": state.positions * self.scale}
 
-    ensemble = MaceBatchedEnsemble("unused", device="cpu", dtype="float64", models=[FakeMace(1.0), FakeMace(2.0)])
     rows = torch.tensor([[[5.0, 0.0, 0.0], [1.0, 6.0, 0.0], [0.0, 0.0, 7.0]]] * 2, dtype=torch.float64)
     positions = torch.arange(15, dtype=torch.float64).reshape(5, 3)
-    energies, forces = ensemble.evaluate(torch.tensor([8, 1, 1, 8, 1]), positions, rows, [True, True, True], [3, 2])
+    numbers = torch.tensor([8, 1, 1, 8, 1])
+    ensemble = MaceBatchedEnsemble("unused", device="cpu", dtype="float64", models=[FakeModel(1.0), FakeModel(2.0)])
+    energies, forces = ensemble.evaluate(numbers, positions, rows, [True, True, True], [3, 2])
     assert energies.shape == (2, 2) and forces.shape == (2, 5, 3)
     torch.testing.assert_close(forces[1], positions * 2)
     state = seen[0]
-    assert state["system_idx"].tolist() == [0, 0, 0, 1, 1] and state["pbc"].tolist() == [True, True, True]
-    torch.testing.assert_close(state["cell"][0], rows[0].T, msg="TorchSim cells are column vectors")
+    assert state.system_idx.tolist() == [0, 0, 0, 1, 1] and state.pbc.tolist() == [True, True, True]
+    torch.testing.assert_close(state.cell[0], rows[0].T, msg="TorchSim cells are column vectors")
+    assert not state.has_extras("charge"), "MACE gets no charge or spin"
+
+    charged = TorchSimBatchedEnsemble([FakeModel(1.0), FakeModel(2.0)], device="cpu", dtype="float64", charge=-1, spin=2)
+    charged.evaluate(numbers, positions, rows, [False] * 3, [3, 2])
+    assert seen[-1].charge.tolist() == [-1, -1] and seen[-1].spin.tolist() == [2, 2]
     with pytest.raises(ValueError, match="at least two"):
-        MaceBatchedEnsemble("unused", device="cpu", models=[FakeMace(1.0)])
+        MaceBatchedEnsemble("unused", device="cpu", models=[FakeModel(1.0)])
 
 
 def test_mace_example_configuration_is_valid():
@@ -664,3 +671,178 @@ def test_hippynn_names_what_the_shards_lack(tmp_path, pretrained):
         fine_tune_hippynn_member(dict(source=str(tuner.source(0)), data=tuner.prepare_data(
             [str(labels / "data-0000.h5")], tmp_path / "copy"), member_dir=str(tmp_path / "copy"), seed=0,
             device="cpu", settings=tuner.settings))
+
+
+# --- UMA --------------------------------------------------------------------------------------------
+# fairchem isn't installed here; real UMA rounds run in a separate environment.
+
+UMA = "alframework.ml_interfaces.uma_fine_tuning.UmaFineTuner"
+
+
+def uma(tmp_path, **settings):
+    from alframework.ml_interfaces.uma_fine_tuning import UmaFineTuner
+
+    (tmp_path / "uma.pt").write_bytes(b"weights")
+    block = {**dict(adapter=UMA, foundation_model=str(tmp_path / "uma.pt"), task="omol", E0s="average"), **settings}
+    return UmaFineTuner(fine_tune_settings({"fine_tune": block}))
+
+
+@pytest.mark.parametrize("settings, message", [
+    (dict(task=None), "task is required"),
+    (dict(task="omol25"), "task is required"),
+    (dict(E0s=None), "E0s is required"),
+    (dict(E0s="estimated"), "E0s is required"),
+    (dict(epochs=None), "exactly one of fine_tune.epochs and fine_tune.steps"),
+    (dict(steps=10), "exactly one of fine_tune.epochs and fine_tune.steps"),
+    (dict(batch_size=0), "batch_size"),
+    (dict(lr=0), "lr must be a positive number"),
+    (dict(valid_fraction=1.5), "valid_fraction"),
+], ids=["no_task", "bad_task", "no_E0s", "mace_E0s", "neither", "both", "batch_size", "lr", "valid_fraction"])
+def test_uma_refuses_mistakes(tmp_path, settings, message):
+    from alframework.ml_interfaces.uma_fine_tuning import UmaFineTuner
+
+    block = {**dict(adapter=UMA, foundation_model="x", task="omol", E0s="average"), **settings}
+    for key in [key for key, value in block.items() if value is None and key in ("task", "E0s")]:
+        del block[key]
+    with pytest.raises(ValueError, match=message):
+        UmaFineTuner(fine_tune_settings({"fine_tune": block}))
+
+
+def test_uma_startup_check(tmp_path):
+    uma(tmp_path).validate({"properties_list": PROPERTIES})
+    with pytest.raises(ValueError, match="fine_tune.forces_dataset"):
+        uma(tmp_path).validate({"properties_list": {"energy": ["energy", "system", 27.2],
+                                                    "forces": ["gradients", "atomic", 51.4]}})
+    with pytest.raises(ValueError, match="checkpoint file"):
+        uma(tmp_path, foundation_model=str(tmp_path)).validate({"properties_list": PROPERTIES})
+
+
+def test_uma_training_config_follows_fairchems_template(tmp_path):
+    from alframework.ml_interfaces.uma_fine_tuning import training_config
+
+    tuner = uma(tmp_path, task="omat", steps=8, epochs=None, lr=1e-4)
+    config = training_config(tuner.settings, tmp_path / "train", tmp_path / "valid", [0.5] * 100, 1.3,
+                             tmp_path / "runs", 7, "cpu")
+    job = config["job"]
+    assert (job["device_type"], job["seed"], job["timestamp_id"], job["run_dir"]) == ("CPU", 7, "copy", str(tmp_path / "runs"))
+    assert job["logger"] is None and job["scheduler"]["mode"] == "LOCAL"
+    model = config["runner"]["train_eval_unit"]["model"]
+    assert model["checkpoint_location"] == str(tmp_path / "uma.pt"), "a local file, so nothing downloads"
+    assert (config["epochs"], config["steps"], config["lr"]) == (None, 8, 1e-4)
+    data = config["data"]
+    assert data["dataset_name"] == "omat" and data["elem_refs"] == [0.5] * 100 and data["normalizer_rmsd"] == 1.3
+    assert data["train_dataset"]["splits"]["train"]["src"] == str(tmp_path / "train")
+    assert data["train_dataset"]["a2g_args"] == {"r_data_keys": ["spin", "charge"]}
+    assert data["regress_stress"] is False and [task["name"] for task in data["tasks_list"]] == ["energy", "forces"]
+    assert config["train_dataset"]["dataset_configs"] == {"omat": "${data.train_dataset}"}
+    samplers = [config[key]["batch_sampler_fn"]["seed"] for key in ("train_dataloader", "eval_dataloader")]
+    assert samplers == [7, 7]
+    json.dumps(config)  # Written as JSON, which Hydra reads as YAML.
+
+
+def test_uma_splits_differ_by_seed_and_keep_one_structure_aside(tmp_path):
+    from alframework.ml_interfaces.uma_fine_tuning import split
+
+    frames = list(range(10))
+    train, valid = split(frames, 0.1, seed=0)
+    assert len(valid) == 1 and sorted(train + valid) == frames
+    assert split(frames, 0.3, seed=0)[1] != split(frames, 0.3, seed=1)[1]
+    assert split([1, 2], 0.1, seed=0)[1] and split([1, 2], 0.9, seed=0)[0], "two labels still train"
+    with pytest.raises(ValueError, match="at least 2"):
+        split([1], 0.1, seed=0)
+
+
+def test_uma_refit_references_are_least_squares_per_element():
+    from ase.build import molecule
+    from ase.calculators.singlepoint import SinglePointCalculator
+
+    from alframework.ml_interfaces.uma_fine_tuning import fitted_references
+
+    frames = []
+    for name in ("H2O", "H2", "O2"):
+        atoms = molecule(name)
+        energy = -13.6 * (atoms.numbers == 1).sum() - 2042.0 * (atoms.numbers == 8).sum()
+        atoms.calc = SinglePointCalculator(atoms, energy=energy, forces=np.full((len(atoms), 3), 0.5))
+        frames.append(atoms)
+    references, force_rms = fitted_references(frames)
+    assert references[1] == pytest.approx(-13.6) and references[8] == pytest.approx(-2042.0)
+    assert force_rms == pytest.approx(0.5)
+
+
+def test_uma_keeps_the_checkpoints_own_references(tmp_path):
+    torch = pytest.importorskip("torch")
+    from types import SimpleNamespace
+
+    from alframework.ml_interfaces.uma_fine_tuning import checkpoint_references
+
+    references = [float(value) for value in range(100)]
+    checkpoint = SimpleNamespace(tasks_config=[
+        {"name": "omat_energy", "element_references": {"element_references": {"_args_": [[0.0] * 100]}},
+         "normalizer": {"rmsd": 2.0}},
+        {"name": "omol_energy", "element_references": {"element_references": {"_args_": [references]}},
+         "normalizer": {"rmsd": 1.342}}])
+    torch.save(checkpoint, tmp_path / "uma.pt")
+    assert checkpoint_references(tmp_path / "uma.pt", "omol") == (references, 1.342)
+    with pytest.raises(ValueError, match="no reference energies for task 'odac'"):
+        checkpoint_references(tmp_path / "uma.pt", "odac")
+
+
+def test_uma_reads_charge_and_spin_from_the_shards(tmp_path):
+    from alframework.tools.tools import store_current_data
+
+    hydroxide = Atoms("OH", positions=[[0, 0, 0], [0.97, 0, 0]])
+    anion, plain = labeled("anion", hydroxide), labeled("plain", hydroxide)
+    anion.update_metadata({"charge": -1})
+    store_current_data(str(tmp_path / "data-0000.h5"), [anion, plain], PROPERTIES)
+    store_current_data(str(tmp_path / "data-0001.h5"), [labeled("water")], PROPERTIES)
+    frames = shard_frames([str(tmp_path / "data-0000.h5"), str(tmp_path / "data-0001.h5")])
+    assert [(frame.info.get("charge"), frame.info.get("spin")) for frame in frames] == [(-1, 1), (0, 1), (None, None)]
+
+
+def test_uma_copy_runs_fairchem_in_a_child_and_reports_its_failure(tmp_path, monkeypatch):
+    import subprocess
+
+    tuner = uma(tmp_path)
+    member_dir = tmp_path / "copy"
+    member_dir.mkdir()
+    calls = []
+
+    def fails(command, cwd, env, stdout, stderr):
+        calls.append(command)
+        stdout.write("Fine-tuning UMA task omol\nTraceback\nRuntimeError: out of memory\n")
+        return subprocess.CompletedProcess(command, 1)
+
+    monkeypatch.setattr(subprocess, "run", fails)
+    with pytest.raises(RuntimeError, match="exited with 1: Fine-tuning UMA task omol | Traceback | RuntimeError: out of memory"):
+        tuner.train_member(tuner.prepare_data(["a.h5"], member_dir), member_dir, 0, 5, "cpu", dict(os.environ))
+    assert calls[0][1:3] == ["-m", "alframework.ml_interfaces.uma_fine_tuning"]
+    arguments = json.loads((member_dir / "fine_tune_args.json").read_text())
+    assert (arguments["seed"], arguments["device"], arguments["shards"]) == (5, "cpu", ["a.h5"])
+    assert not tuner.member_complete(member_dir)
+    (member_dir / "uma.pt").write_bytes(b"weights")
+    assert tuner.member_complete(member_dir)
+    with pytest.raises(ValueError, match="no labeled shards"):
+        tuner.prepare_data([], member_dir)
+
+
+def test_uma_loader_needs_the_fine_tuning_task():
+    from alframework.ml_interfaces.uma_fine_tuning import load_uma_batched_ensemble
+
+    with pytest.raises(ValueError, match="needs the task the copies were fine-tuned on"):
+        load_uma_batched_ensemble("models/model-0000", task=None)
+
+
+def test_uma_example_configuration_is_valid(tmp_path):
+    from alframework.ml_interfaces.uma_fine_tuning import UmaFineTuner
+
+    example = Path(__file__).resolve().parents[1] / "examples" / "uma_fine_tuning"
+    master = json.loads((example / "master_config.json").read_text())
+    config = json.loads((example / "fine_tune_config.json").read_text())
+    checkpoint = tmp_path / config["fine_tune"]["foundation_model"]  # Where hf download puts it.
+    checkpoint.parent.mkdir(parents=True)
+    checkpoint.write_bytes(b"weights")
+    tuner = UmaFineTuner(fine_tune_settings(config, str(tmp_path)))
+    tuner.validate(master)
+    sampler = json.loads((example / "mlmd_config.json").read_text())
+    assert sampler["batched_calculator"] == "alframework.ml_interfaces.uma_fine_tuning.load_uma_batched_ensemble"
+    assert sampler["batched_calculator_options"]["task"] == tuner.settings["task"]

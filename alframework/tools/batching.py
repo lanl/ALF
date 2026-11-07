@@ -98,10 +98,23 @@ def flatten_molecule_output(output):
 
 def bootstrap_molecule_ids(start, total, width, finite=False):
     """Bound an opt-in finite source without changing ordinary bootstrap admission."""
+    return next_bootstrap_ids(start, total, width, finite)[0]
+
+
+def next_bootstrap_ids(start, total, width, finite=False, skip=frozenset()):
+    """Return up to ``width`` bootstrap IDs from ``start``, and the counter to continue from.
+
+    IDs in ``skip`` are passed over, so a restarted finite bootstrap rebuilds only what it doesn't hold.
+    """
     if finite and (isinstance(total, bool) or not isinstance(total, int) or total < 1):
         raise ValueError('finite_bootstrap requires a positive integer bootstrap_set')
-    stop = min(start + width, total) if finite else start + width
-    return [f'mol-boot-{index:010d}' for index in range(start, stop)]
+    ids, index = [], start
+    while len(ids) < width and not (finite and index >= total):
+        moleculeid = f'mol-boot-{index:010d}'
+        if moleculeid not in skip:
+            ids.append(moleculeid)
+        index += 1
+    return ids, index
 
 
 def default_batch_key(molecule):

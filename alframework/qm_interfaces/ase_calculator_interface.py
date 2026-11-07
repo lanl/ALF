@@ -14,6 +14,22 @@ from alframework.tools.tools import load_module_from_config
 from alframework.tools.molecules_class import MoleculesObject
 
 
+def fresh_scratch_directory(directory):
+    """Create an empty scratch directory, moving aside one left by an earlier attempt at this structure.
+
+    A restarted finite bootstrap rebuilds the IDs it didn't finish, and a crashed run may have
+    started their calculations. Their files are kept, beside the new directory.
+    """
+    if os.path.isdir(directory):
+        attempt = 0
+        while os.path.exists(f'{directory}.previous-{attempt}'):
+            attempt += 1
+        os.rename(directory, f'{directory}.previous-{attempt}')
+        print(f'Warning: {directory} already existed, from an earlier attempt at this structure; '
+              f'moved it to {directory}.previous-{attempt}.', flush=True)
+    os.makedirs(directory)
+
+
 @python_app(executors=['alf_QM_executor'])
 def ase_calculator_task(molecule_object, QM_config, QM_scratch_dir, properties_list):
     """Creates an ASE calculator based on the parameters in qm_config.json.
@@ -35,10 +51,7 @@ def ase_calculator_task(molecule_object, QM_config, QM_scratch_dir, properties_l
     properties = list(properties_list.keys())
     atoms = molecule_object.get_atoms()
 
-    if os.path.isdir(directory):
-        raise RuntimeError('Scratch directory exists: ' + directory)
-    else:
-       os.makedirs(directory)
+    fresh_scratch_directory(directory)
     # This isn't the prettist thing
     # ase calculators are classes residing within a similarly named module
     # Pass in the full class path, This code seperates the two

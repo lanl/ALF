@@ -17,6 +17,7 @@ from alframework.tools import tools as tool_module
 from alframework.tools.batching import BatchBuffer, BatchedSubmitter, BatchedTaskQueue
 from alframework.tools.labeling import LabelingCoordinator, labeling_batch_settings
 from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.restarts import STORED_AT_BUDGET_STOP
 from alframework.tools.tools import stored_label_budget
 from tests.helpers.driver import MODEL_PATTERN, loaded_parsl, run_alf_driver, stored_ids
 from tests.helpers.fakes import FakeTask
@@ -217,10 +218,19 @@ def test_coordinator_finishes_running_training_but_starts_no_more_after_the_budg
     status = json.loads((tmp_path / "status.json").read_text())
     assert training_calls[-1] > 0, "the budget must be reached during active learning, not the bootstrap"
     assert status["current_model_id"] == training_calls[-1], "the running training must finish and be promoted"
-    # Labels that finish while that training runs must stay unstored, so only the last shard crossed the budget.
+    # Labels that finish while that training runs wait outside h5_dir, so only the last trained shard crossed
+    # the budget. They're stored in one more shard at the stop, which no model trained on.
     shards = sorted((tmp_path / "h5").glob("data-*.h5"))
+    if stored_at_stop(shards[-1]):
+        shards = shards[:-1]
+    assert not any(stored_at_stop(shard) for shard in shards)
     before_last = sum(len(stored_ids_in(shard)) for shard in shards[:-1])
     assert before_last < 12 <= before_last + len(stored_ids_in(shards[-1]))
+
+
+def stored_at_stop(shard):
+    with h5py.File(shard) as handle:
+        return handle.attrs.get(STORED_AT_BUDGET_STOP) == "true"
 
 
 def stored_ids_in(shard):

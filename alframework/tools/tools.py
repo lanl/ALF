@@ -186,7 +186,7 @@ def store_pair_index(group, system, properties):
         )
 
 
-def store_current_data(h5path, system_data, properties):
+def store_current_data(h5path, system_data, properties, attributes=None):
     """Stores the key results of the QM calculations in the database.
 
     Args:
@@ -194,6 +194,7 @@ def store_current_data(h5path, system_data, properties):
         system_data (list): A list of MoleculesObjects objects.
         properties (dict): Dictionary defined in master.json whose keys are the properties that we want to retrieve
                            from the QM calculations and store in the database.
+        attributes (dict): Optional strings to record as attributes on the shard.
 
     Returns:
         (int): The number of converged structures saved.
@@ -204,9 +205,9 @@ def store_current_data(h5path, system_data, properties):
 
     """
     if os.path.exists(h5path):
-        raise FileExistsError(f'{h5path} already exists. If a previous run stopped between storing this shard '
-                              'and saving status, check the shard and move it aside, or raise current_h5_id '
-                              'in status, before restarting.')
+        # A restart moves past shards stored before a crash, so this means something else wrote here.
+        raise FileExistsError(f'{h5path} already exists, and ALF never replaces a shard. Check whether another '
+                              'process is writing to this directory.')
     # system data is a list of [mol-id(string), atoms, properties dictionary]
     data_dict = {}
     print("Saving h5 file: " + h5path)
@@ -318,6 +319,8 @@ def store_current_data(h5path, system_data, properties):
             sources = label_sources(system for system in system_data if system.check_convergence())
             if sources:
                 dpack.store.attrs[LABEL_PROVENANCE] = json.dumps(sources)
+            for name, value in (attributes or {}).items():
+                dpack.store.attrs[name] = value
         finally:
             dpack.cleanup()
         fsync_file(partial)

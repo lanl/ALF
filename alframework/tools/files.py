@@ -1,11 +1,14 @@
-"""Write files so that a crash never leaves a half-written one, and hash files once per worker.
+"""Write files so that a crash never leaves a half-written one, hash files once per worker, and lock a run.
 
 A reader sees either the old file or the new one: each write goes to a temporary name in the same
 directory, is flushed to disk, and is then renamed over the final name.
 """
+import fcntl
 import hashlib
 import json
 import os
+import socket
+import time
 from pathlib import Path
 
 
@@ -18,17 +21,59 @@ def fsync_file(path):
         os.close(descriptor)
 
 
-def write_json_atomic(path, values):
-    """Replace ``path`` with ``values`` as indented JSON, all at once."""
+def _replace_atomically(path, write):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(path.name + '.tmp')
-    with open(temporary, 'w') as handle:
-        json.dump(values, handle, indent=2)
-        handle.write('\n')
-        handle.flush()
-        os.fsync(handle.fileno())
-    os.replace(temporary, path)
+    try:
+        with open(temporary, 'wb') as handle:
+            write(handle)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    except BaseException:
+        if temporary.exists():
+            temporary.unlink()
+        raise
+
+
+def write_json_atomic(path, values):
+    """Replace ``path`` with ``values`` as indented JSON, all at once."""
+    _replace_atomically(path, lambda handle: handle.write((json.dumps(values, indent=2) + '\n').encode()))
+
+
+def write_bytes_atomic(path, data):
+    """Replace ``path`` with ``data``, all at once."""
+    _replace_atomically(path, lambda handle: handle.write(data))
+
+
+_LOCKS = {}
+
+
+def hold_lock(path):
+    """Take an exclusive lock on ``path`` for the rest of this process, or raise if another process holds it.
+
+    ``flock`` is released when the holder exits or is killed, so a crash never leaves a stale lock.
+    The host and process recorded in the file are only there to name the holder in the error.
+    """
+    path = str(Path(path).resolve())
+    if path in _LOCKS:
+        return _LOCKS[path]
+    handle = open(path, 'a+')
+    try:
+        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        handle.seek(0)
+        holder = handle.read().strip() or 'an unknown process'
+        handle.close()
+        raise RuntimeError(f'Another ALF coordinator is using this run: {path} is locked by {holder}. '
+                           'Two coordinators would overwrite each other\'s status and shards.') from None
+    handle.seek(0)
+    handle.truncate()
+    handle.write(f'host {socket.gethostname()}, process {os.getpid()}, since {time.ctime()}\n')
+    handle.flush()
+    _LOCKS[path] = handle
+    return handle
 
 
 def file_key(path):

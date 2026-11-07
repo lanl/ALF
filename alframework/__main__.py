@@ -32,9 +32,11 @@ from alframework.tools.tools import build_input_dict
 from alframework.tools.tools import release_allocations_at_exit
 from alframework.tools.tools import stop_if_executor_failed
 from alframework.tools.tools import write_status
+from alframework.tools.files import hold_lock
 from alframework.tools.pyanitools import anidataloader
 from alframework.tools.molecules_class import MoleculesObject
-from alframework.tools.batching import bootstrap_molecule_ids
+from alframework.tools.batching import next_bootstrap_ids
+from alframework.tools.restarts import HELD_PIECES, STORED_AT_BUDGET_STOP, HeldLabels, held_labels_directory, reconcile_status
 from alframework.tools.labeling import LabelingCoordinator
 from alframework.tools.sampler_coordinator import SamplerCoordinator
 #import logging
@@ -67,6 +69,10 @@ ML_config = load_config_file(master_config['ML_config_path'], master_config['mas
 
 # All configs
 all_configs = [master_config, builder_config, sampler_config, QM_config, ML_config]
+
+# One coordinator per run, in every mode, since each one rewrites status. Taken before any
+# allocation is requested, so a refused second coordinator holds nothing.
+hold_lock(master_config['status_path'] + '.lock')
 
 # Define queues (the QM queue is created with the QM task below):
 ML_task_queue = parsl_task_queue()
@@ -135,9 +141,13 @@ for cur_Exec in ml_task.executors:
 ##########################################
 ## Step 3: Evaluate restart possibilites #
 ##########################################
+# Finished labels wait here, outside h5_dir, until they're stored; see alframework/tools/restarts.py.
+held = HeldLabels(held_labels_directory(master_config))
 if os.path.exists(master_config['status_path']):
     with open(master_config['status_path'],'r') as input_file:
         status = json.load(input_file)
+    for change in reconcile_status(status, master_config, held):
+        print('Restart: ' + change)
 else:
     status = {}
     status['current_training_id'] = find_empty_directory(master_config['model_path'])
@@ -161,6 +171,31 @@ write_status(master_config['status_path'], status)
 
 # Read once, so that a mistaken edit can't stop or crash a long run.
 label_budget = stored_label_budget(master_config)
+
+
+def hold_finished_labels():
+    """Move finished QM work out of memory, so a crash can't lose it."""
+    results, failed = QM_task_queue.get_task_results()
+    lost = labeling.take_failed_structures(failed)
+    status['lifetime_failed_QM_tasks'] = status['lifetime_failed_QM_tasks'] + failed
+    status['lifetime_failed_QM_structures'] = status.get('lifetime_failed_QM_structures', 0) + lost
+    held.hold(results, lost)
+
+
+def store_held_labels(**attributes):
+    """Store every held label as the next shard. The caller saves status afterwards.
+
+    Order matters for restarts: the shard is renamed into place first, recording the pieces it
+    holds, then the pieces are removed. A restart that finds the shard ahead of status moves past it.
+    """
+    hold_finished_labels()
+    results, pieces = held.take()
+    stored = store_current_data(master_config['h5_path'].format(status['current_h5_id']), results,
+                                master_config['properties_list'], attributes={HELD_PIECES: json.dumps(pieces), **attributes})
+    status['lifetime_stored_labels'] = status.get('lifetime_stored_labels', 0) + stored
+    held.discard(pieces)
+    status['current_h5_id'] = status['current_h5_id'] + 1
+    return stored
 
 ######################################
 # Step 4: Check if testing requested #
@@ -269,27 +304,31 @@ if testing:
 #If there is no data and no models, start boostrap jobs
 if status['current_h5_id'] == 0 and status['current_model_id'] < 0:
     print("Building Bootstrap Set")
-    while QM_task_queue.get_exec_done_number() < master_config['bootstrap_set']:
+    finite_bootstrap = master_config.get('finite_bootstrap', False)
+    # A restarted finite bootstrap rebuilds only the IDs it doesn't hold, which give the same structures.
+    bootstrap_skip = held.molecule_ids() if finite_bootstrap else frozenset()
+    while held.successful() + QM_task_queue.get_exec_done_number() < master_config['bootstrap_set']:
         if (master_config.get('finite_bootstrap', False)
                 and status['current_molecule_id'] >= master_config['bootstrap_set']
                 and builder_task_queue.get_number() == 0
                 and QM_task_queue.get_queued_number() + QM_task_queue.get_running_number() == 0
                 and not (getattr(labeling, 'buffer', None) and len(labeling.buffer))
-                and QM_task_queue.get_exec_done_number() < master_config['bootstrap_set']):
+                and held.successful() + QM_task_queue.get_exec_done_number() < master_config['bootstrap_set']):
             raise RuntimeError('Finite bootstrap exhausted before all requested labeling tasks completed; inspect failed work')
         if QM_task_queue.get_queued_number() < master_config['target_queued_QM']:
             while builder_task_queue.get_number() * master_config.get('maximum_builder_structures', 1) < master_config['parallel_samplers']:
-                moleculeids = bootstrap_molecule_ids(status['current_molecule_id'], master_config['bootstrap_set'],
-                    master_config.get('maximum_builder_structures', 1), master_config.get('finite_bootstrap', False))
+                moleculeids, next_molecule_id = next_bootstrap_ids(
+                    status['current_molecule_id'], master_config['bootstrap_set'],
+                    master_config.get('maximum_builder_structures', 1), finite_bootstrap, bootstrap_skip)
+                status['current_molecule_id'] = next_molecule_id
                 if not moleculeids:
                     break
                 task_input = build_input_dict(builder_task.func,
-                                              [{"moleculeid": 'mol-boot-{:010d}'.format(status['current_molecule_id']),
+                                              [{"moleculeid": moleculeids[0],
                                                 "moleculeids": moleculeids, "builder_config": builder_config},
                                                *all_configs, status],
                                               raise_on_fail=True)
                 builder_task_queue.add_task(builder_task(**task_input))
-                status['current_molecule_id'] = status['current_molecule_id'] + len(moleculeids)
         
         if (builder_task_queue.get_exec_done_number() > master_config['minimum_QM']
                 or (master_config.get('finite_bootstrap', False) and builder_task_queue.get_completed_number() > 0)):
@@ -304,6 +343,7 @@ if status['current_h5_id'] == 0 and status['current_model_id'] < 0:
                         assert isinstance(substructure, MoleculesObject), 'substructure must be a MoleculesObject instance'
                         labeling.submit(substructure, [{"QM_config": QM_config}, *all_configs, status])
         labeling.submit_ready([{"QM_config": QM_config}, *all_configs, status])
+        hold_finished_labels()
 
         print("### Bootstraping Learning Status at: " + time.ctime() + " ###")
         print("builder status:")
@@ -317,14 +357,7 @@ if status['current_h5_id'] == 0 and status['current_model_id'] < 0:
         time.sleep(labeling.poll_delay(60))
 
     print("Saving Bootstrap and training model")
-    results_list, failed = QM_task_queue.get_task_results()
-    status['lifetime_failed_QM_tasks'] = status['lifetime_failed_QM_tasks'] + failed    
-    status['lifetime_failed_QM_structures'] = status.get('lifetime_failed_QM_structures', 0) + labeling.take_failed_structures(failed)
-    status['lifetime_stored_labels'] = status.get('lifetime_stored_labels', 0) + store_current_data(
-        master_config['h5_path'].format(status['current_h5_id']),
-        results_list,
-        master_config['properties_list'])
-    status['current_h5_id'] = status['current_h5_id'] + 1
+    store_held_labels()
     
 if status['current_model_id'] < 0:
     task_input = build_input_dict(ml_task.func,
@@ -384,7 +417,7 @@ while True:
 
     # Run more builders
     if admitting and (QM_task_queue.get_queued_number() < master_config['target_queued_QM']) and \
-            (QM_task_queue.get_number() < master_config.get('maximum_completed_QM', 1e12)):
+            (QM_task_queue.get_number() + held.finished() < master_config.get('maximum_completed_QM', 1e12)):
         while sampler_task_queue.get_number() + builder_task_queue.get_number() * master_config.get('maximum_builder_structures', 1) \
                 < master_config['parallel_samplers']:
             moleculeids = ['mol-{:04d}-{:010d}'.format(status['current_model_id'], it_ind) for it_ind in
@@ -426,21 +459,12 @@ while True:
             labeling.submit(structure, [{"QM_config": QM_config}, master_config, *all_configs, status])
     if admitting:
         labeling.submit_ready([{"QM_config": QM_config}, master_config, *all_configs, status])
+    # Including during training, when labels can't go into h5_dir.
+    hold_finished_labels()
 
     # Train more models
-    if admitting and (QM_task_queue.get_completed_number() > master_config['save_h5_threshold']) and (ML_task_queue.get_number() < 1):
-        #print(QM_task_queue.task_list[0].result())
-    	  #store_current_data(h5path, system_data, properties):
-        results_list, failed = QM_task_queue.get_task_results()
-        status['lifetime_failed_QM_tasks'] = status['lifetime_failed_QM_tasks'] + failed
-        status['lifetime_failed_QM_structures'] = status.get('lifetime_failed_QM_structures', 0) + labeling.take_failed_structures(failed)
-        #with open('temp-{:04d}.pkl'.format(status['current_h5_id']),'wb') as pickle_file:
-        #    pickle.dump(results_list,pickle_file)
-        status['lifetime_stored_labels'] = status.get('lifetime_stored_labels', 0) + store_current_data(
-            master_config['h5_path'].format(status['current_h5_id']), results_list, master_config['properties_list'])
-#        with open('data-bk-{:04d}.pickle'.format(status['current_h5_id']),'wb') as pkbk: 
-#            pickle.dump(results_list,pkbk)
-        status['current_h5_id'] = status['current_h5_id'] + 1
+    if admitting and (held.finished() > master_config['save_h5_threshold']) and (ML_task_queue.get_number() < 1):
+        store_held_labels()
         task_input = build_input_dict(ml_task.func,
                                       [{"ML_config": ML_config}, *all_configs, status],
                                       raise_on_fail=True)
@@ -479,10 +503,13 @@ while True:
     stop_if_executor_failed(parsl.dfk())
     
     if not admitting and ML_task_queue.get_number() == 0:
-        print("Stopping: stored {} labels (maximum_stored_labels is {}). Dropped {} builder, {} sampler, and {} QM "
-              "structures, including {} finished QM structures not yet stored.".format(
-                  status['lifetime_stored_labels'], label_budget, builder_task_queue.get_number(),
-                  sampler_task_queue.get_number(), QM_task_queue.get_number(), QM_task_queue.get_completed_number()))
+        # Finished labels were paid for, so keep them, although no model trained on them.
+        beyond_budget = store_held_labels(**{STORED_AT_BUDGET_STOP: 'true'}) if held.successful() else 0
+        write_status(master_config['status_path'], status)
+        print("Stopping: stored {} labels (maximum_stored_labels is {}), including {} finished labels stored at the "
+              "stop without training. Dropped {} builder, {} sampler, and {} unfinished QM structures.".format(
+                  status['lifetime_stored_labels'], label_budget, beyond_budget, builder_task_queue.get_number(),
+                  sampler_task_queue.get_number(), QM_task_queue.get_number()))
         sys.stdout.flush()
         break
 

@@ -31,8 +31,8 @@ This folder is the shared plan for bringing the fork's intended capabilities int
   sampling/plotting checks also passed; see the
   [November 7 hardware record](#current-development-hardware-qualification--passed-with-restart-limits-2026-11-07).
   Crash-safe restart remains unqualified.
-- **Foundation-model teacher labeling is built,** with real MACE checked locally. UMA and the Darwin
-  gate are pending; see the [record](#teacher-labeling-2026-11-07).
+- **Foundation-model teacher labeling is built,** with real MACE and real UMA (uma-s-1p2p1) checked
+  locally. The Darwin gate is pending; see the [record](#teacher-labeling-2026-11-07).
 - **Restarts keep their labels:** atomic status and shard writes, the shard check in single-node
   training, and the replay manifest cache, then the coordinator lock, a holding area for finished
   labels, and restart reconciliation. See the [first](#restart-fixes-without-darwin-2026-11-07) and
@@ -435,15 +435,33 @@ and a regression test covers it. Parsl's usual executor runs one task per proces
 
 **Not shown yet.**
 
-- **UMA:** Hugging Face refused an anonymous download, so the loader is written against fairchem 2.25's
-  TorchSim interface but hasn't run. A UMA run needs a Hugging Face account that has accepted UMA's
-  license.
 - **GPU, and real student retraining:** both wait for the Darwin gate, since the ground-state trainer
   has no CPU mode.
 
 **Local results.** 936 passed, 2 skipped (`seqm` not installed), and the teacher tests also pass without
 torch, HIPPYNN, or TorchSim. All 40 deliberate breaks were caught, after tests were added for the five gaps
 the first round found.
+
+**Real UMA, locally (added later on November 7).** The user logged in with the `hf` CLI and accepted UMA's
+license, so `facebook/UMA` became downloadable. uma-s-1p2p1 (2.3 GB, SHA-256 `b2673b85…d0d5ce`, FAIR
+Chemistry License), fairchem-core 2.25.0, on CPU in a scratch environment, loaded from a local file as on
+compute nodes:
+
+- `omol`: batches of 1, 2, 4, and 8 gave identical energies to one-at-a-time labels, and forces within
+  4e-6 eV/Å, for eight molecules, OH⁻ (charge −1), and the OH radical (multiplicity 2).
+- Labels matched fairchem's own ASE calculator to 1.2e-4 eV and 5e-7 eV/Å, within float32. Forces matched a
+  numerical derivative of the energy to 2e-4 eV/Å.
+- Charge and spin reach the model: OH⁻, the OH radical, and neutral singlet OH all differ.
+- Energies are totals: water −76.4335 Ha, an isolated O atom (triplet) −75.0780 Ha, so water's atomization
+  energy is 9.99 eV. A local checkpoint loads without fairchem's separate reference energies, which only
+  serve isolated atoms, and this checkpoint labels those itself.
+- `omat`: a periodic copper cell, batched and alone, agreed exactly and matched fairchem's calculator to
+  2e-6 eV, at −3.74 eV per atom.
+- A full ALF cycle through the real coordinator stored real UMA labels with provenance (`task` `omol`, the
+  checkpoint's SHA-256), in native and sequential modes, and `label_sources.json` named the teacher.
+
+No code change was needed. The example and the [guide](../source/user_guide/teacher_student.rst) now name
+uma-s-1p2p1 and show the `hf auth login` and `hf download` steps.
 
 ### Restart fixes without Darwin (2026-11-07)
 

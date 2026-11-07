@@ -1,8 +1,8 @@
 {
   "teacher": {
     "loader": "alframework.qm_interfaces.teacher_interface.load_uma_teacher",
-    "name": "uma-s-1p1",
-    "checkpoint": "teachers/uma-s-1p1.pt",
+    "name": "uma-s-1p2p1",
+    "checkpoint": "teachers/checkpoints/uma-s-1p2p1.pt",
     "task": "omol",
     "dtype": "float32"
   },

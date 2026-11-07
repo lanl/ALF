@@ -134,6 +134,30 @@ MACE saves it under ``~/.cache/mace/``. Copy that ``.model`` file to
 ``teachers/mace-mp-0-small.model`` in the example directory, where ``qm_config_teacher_mace.json``
 looks for it.
 
+**For UMA instead,** the weights are gated on Hugging Face, so the download needs your account. Only
+the download does: compute nodes read the local file and never need a token.
+
+1. Sign in at `huggingface.co/facebook/UMA <https://huggingface.co/facebook/UMA>`__ and accept the
+   license. Access may need approval.
+2. Create a read token at `huggingface.co/settings/tokens <https://huggingface.co/settings/tokens>`__.
+   A fine-grained token needs "Read access to contents of all public gated repos you can access".
+3. On a machine with network access, such as a login node, with ``fairchem-core`` installed, which
+   provides the ``hf`` command:
+
+   .. code-block:: bash
+
+      hf auth login      # Paste the token. It is saved to ~/.cache/huggingface/token.
+      hf auth whoami     # Check which account is logged in.
+      hf download facebook/UMA checkpoints/uma-s-1p2p1.pt --local-dir teachers
+
+   The checkpoint lands at ``teachers/checkpoints/uma-s-1p2p1.pt``, where
+   ``qm_config_teacher_uma.json`` looks for it. It is about 2.3 GB.
+
+Use ``qm_config_teacher_uma.json`` as ``QM_config_path`` in ``master_config_teacher.json`` to label
+with UMA. Its ``task`` is ``omol``, for molecules, and it reads each structure's ``charge`` and
+``mult`` metadata. Keep a UMA run's shards apart from a MACE run's, since ALF refuses to mix labels
+from two teachers.
+
 2. Check the teacher's labels
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

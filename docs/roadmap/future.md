@@ -142,7 +142,7 @@ Tabled on November 6, before any restart code changed. ALF has since gained exit
 | Model/training handoffs and distillation | Opaque model-artifact references, model-independent inference adapters, and foundation-MLIP reference labeling. | Record teacher identity, version, units, and label provenance separately from the student sampling model. Teacher labeling is an independent track; handoffs and distillation come later. Fine-tuning tiers F1–F3 are planned below. |
 | Further model and sampling extensions | Additional production model families, reactive batching, and separately planned methods. | Follow the same minimal-core-change and existing-workflow compatibility gates. |
 
-- **Foundation-model teacher labeling: built November 7, Darwin gate pending.** See the [record](README.md#teacher-labeling-2026-11-07) and the [guide](../source/user_guide/qm_interfaces.rst). The original plan follows. The
+- **Foundation-model teacher labeling: built November 7, Darwin gate pending.** See the [record](README.md#teacher-labeling-2026-11-07) and the [guide](../source/user_guide/teacher_student.rst). The original plan follows. The
   labeling boundary already supports this: `LabelingCoordinator`
   (`tools/labeling.py`) packs `native` batches for any `QM_task` that accepts
   `molecule_objects`, as PySEQM does. Storage, retraining, and promotion see
@@ -192,7 +192,7 @@ Tabled on November 6, before any restart code changed. ALF has since gained exit
     library. That example is HIPPYNN-only, written for `main`, continues from the previous model, copies
     shards per member, and records no lineage; it stays as it is until the adapter replaces it.
   - **Later:** F2, starting a multi-state model from a ground-state one, which needs a weight mapping
-    onto the multi-state network; UMA, once a Hugging Face account with UMA's license is available;
+    onto the multi-state network; UMA fine-tuning, now that UMA is downloadable (it already labels as a teacher);
     single-model uncertainty (see [below](#foundation-model-fine-tuning)).
   - **Gate still open:** a GPU campaign on Darwin, and whether the copies' disagreement tracks error
     (see the uncertainty note below).
@@ -360,8 +360,9 @@ Readiness notes from a review of development at `24028da`, with the finished eli
 
       Calibrate cutoffs for each method; do not reuse ensemble `Escut`/`Fscut`.
     - **Access, license, and environments.**
-      - UMA weights are gated on Hugging Face: workers need an accepted
-        license and a token.
+      - UMA weights are gated on Hugging Face: downloading needs an accepted
+        license and a token, but workers only read the local file. Access
+        works since November 7; see the teacher guide.
       - Record each base checkpoint, version, and license: UMA's FAIR
         Chemistry license and MACE's model licenses.
       - Each family pins its own torch/e3nn range, so each gets its own

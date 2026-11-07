@@ -6,6 +6,7 @@ these helpers run it with ``runpy`` and stop it from inside its own ``time.sleep
 
 import json
 import runpy
+import signal
 import sys
 import time
 from contextlib import contextmanager
@@ -137,11 +138,13 @@ def run_alf_driver(
         original_sleep(min(seconds, 0.01))
 
     monkeypatch.setattr(time, "sleep", driver_sleep)
+    sigterm_handler = signal.getsignal(signal.SIGTERM)  # The coordinator sets its own.
     try:
         runpy.run_module("alframework", run_name="__main__")
     except _DriverStopped:
         pass
     finally:
+        signal.signal(signal.SIGTERM, sigterm_handler)
         try:
             parsl.dfk().cleanup()
         except NoDataFlowKernelError:

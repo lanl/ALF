@@ -1,7 +1,10 @@
+import atexit
 import os
 from pathlib import Path
 import glob
 import logging
+import signal
+import sys
 
 from importlib import import_module
 from alframework.tools.atom_order import TOPOLOGY_ATOM_IDS, validated_atom_ids
@@ -425,6 +428,29 @@ class parsl_task_queue():
 
 
 # Used to find current version of directories to re-start with
+def release_allocations_at_exit(dfk):
+    """Stop Parsl's interchange and cancel its blocks however the coordinator ends.
+
+    Parsl's own exit hook only logs a warning. Without ``cleanup``, the interchange outlives the
+    coordinator and keeps answering worker heartbeats, so the scheduler holds the nodes until walltime.
+    This covers ``exit()``, uncaught errors, Ctrl-C, and ``SIGTERM`` from ``scancel``, but not ``SIGKILL``.
+
+    Args:
+        dfk (parsl.dataflow.dflow.DataFlowKernel): The object returned by ``parsl.load``.
+
+    """
+    def release():
+        if dfk.cleanup_called:
+            return
+        try:
+            dfk.cleanup()
+        except Exception as exc:  # Don't hide the error that ended the run.
+            print("Could not release Parsl allocations: {}: {}".format(type(exc).__name__, exc), flush=True)
+
+    atexit.register(release)
+    signal.signal(signal.SIGTERM, lambda signum, frame: sys.exit(128 + signum))
+
+
 def find_empty_directory(pattern):
     """Find an empty directory to restart.
 

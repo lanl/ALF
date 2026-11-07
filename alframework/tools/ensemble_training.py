@@ -1,6 +1,6 @@
 """Train ensemble members as separate Parsl tasks, so an ensemble can span any number of nodes.
 
-The coordinator still sees one ML task. Its body runs ``train_members`` on the coordinator, which
+The coordinator still sees one ML task. Its body starts ``train_members`` on the coordinator, which
 submits one app per member, retries failed members, and returns when every member has succeeded or
 run out of retries. Nothing here imports Torch, except ``member_device`` on a worker.
 """
@@ -10,6 +10,7 @@ import math
 import multiprocessing
 import os
 import socket
+import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -47,9 +48,11 @@ def check_capacity(n_models, gpus_per_node, device_string, executor):
     provider = getattr(executor, 'provider', None)
     if provider is None or workers is None or not math.isfinite(workers):
         return
-    if gpus_per_node and workers > gpus_per_node and str(device_string).lower() != 'cpu':
+    # With available_accelerators each worker has its own GPU, and gpus_per_node may describe sampler nodes.
+    pinned = bool(getattr(executor, 'available_accelerators', None))
+    if gpus_per_node and workers > gpus_per_node and not pinned and str(device_string).lower() != 'cpu':
         raise ValueError(f'alf_ML_executor has {workers} workers per node but gpus_per_node is {gpus_per_node}, '
-                         'so members would share a GPU.')
+                         'so members would share a GPU. Set available_accelerators if each worker has its own.')
     slots = workers * provider.nodes_per_block * provider.max_blocks
     if slots < n_models:
         print(f'Warning: alf_ML_executor has {slots} slots for {n_models} ensemble members, so some members will '
@@ -167,8 +170,21 @@ def train_members(submit, n_models, ensemble_dir, training_id, member_retries=1)
 
 def train_ensemble_across_nodes(submit, n_models, ensemble_dir, training_id, gpus_per_node, device_string,
                                 member_retries, executor):
-    """Run the body of a multi-node ML task, returning the finished future that a ``join_app`` needs."""
+    """Start the body of a multi-node ML task, returning the future that a ``join_app`` waits on.
+
+    The control loop runs on a daemon thread. Python waits for Parsl's internal threads before it runs
+    exit hooks, so a loop on one of them would keep a crashed coordinator alive until training ended.
+    """
+    # Before the thread starts, so that these errors reach the coordinator as they are.
+    validated_retries(member_retries)
     check_capacity(n_models, gpus_per_node, device_string, executor)
     outcome = concurrent.futures.Future()
-    outcome.set_result((train_members(submit, n_models, ensemble_dir, training_id, member_retries), training_id))
+
+    def control_loop():
+        try:
+            outcome.set_result((train_members(submit, n_models, ensemble_dir, training_id, member_retries), training_id))
+        except Exception as exc:
+            outcome.set_exception(exc)
+
+    threading.Thread(target=control_loop, name=f'alf-training-{training_id:04d}', daemon=True).start()
     return outcome

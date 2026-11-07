@@ -29,6 +29,7 @@ from alframework.tools.tools import find_empty_directory
 from alframework.tools.tools import system_checker
 from alframework.tools.tools import load_module_from_string
 from alframework.tools.tools import build_input_dict
+from alframework.tools.tools import release_allocations_at_exit
 from alframework.tools.pyanitools import anidataloader
 from alframework.tools.molecules_class import MoleculesObject
 from alframework.tools.batching import bootstrap_molecule_ids
@@ -80,7 +81,7 @@ for curExec in parsl_configuration.executors:
     executor_list.append(curExec.label)
 
 # Load the Parsl config
-parsl.load(parsl_configuration)
+release_allocations_at_exit(parsl.load(parsl_configuration))
 
 if master_config.get('plotting_utility', None) is not None:
     analysis_plot = load_module_from_string(master_config['plotting_utility'])

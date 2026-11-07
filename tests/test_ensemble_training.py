@@ -10,6 +10,7 @@ import os
 import re
 import sys
 import threading
+import time
 from concurrent.futures import Future
 from concurrent.futures.process import BrokenProcessPool
 from pathlib import Path
@@ -227,6 +228,32 @@ def test_train_members_keeps_going_when_a_retry_cannot_be_submitted(tmp_path, ca
     assert "could not retry member 1: no executor" in capsys.readouterr().out
 
 
+def test_multinode_control_loop_returns_at_once_on_a_daemon_thread(tmp_path):
+    """Python waits for Parsl's internal threads before exit hooks, so the loop must not hold one."""
+    never_finishes, threads = Future(), []
+
+    def submit(member, attempt):
+        threads.append(threading.current_thread())
+        return never_finishes
+
+    outcome = ensemble_training.train_ensemble_across_nodes(submit, 1, tmp_path, 3, 0, "cpu", 0, None)
+    try:
+        assert not outcome.done()
+        deadline = time.monotonic() + 30
+        while not threads and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert threads[0].daemon and threads[0] is not threading.current_thread()
+    finally:
+        never_finishes.set_result(True)  # Otherwise a failure here would leave pytest unable to exit.
+    assert outcome.result(timeout=30) == ([True], 3)
+
+
+def test_multinode_control_loop_error_fails_the_task(tmp_path):
+    outcome = ensemble_training.train_ensemble_across_nodes(lambda member, attempt: 1 / 0, 1, tmp_path, 3, 0, "cpu", 0, None)
+    with pytest.raises(ZeroDivisionError):
+        outcome.result(timeout=30)
+
+
 def test_archived_member_is_invisible_to_ensemble_loaders(tmp_path, monkeypatch):
     for name in ("model-00", "model-01"):
         (tmp_path / name).mkdir()
@@ -393,6 +420,22 @@ def test_check_capacity_warns_when_members_must_wait(capsys):
 def test_check_capacity_refuses_members_sharing_a_gpu():
     with pytest.raises(ValueError, match="share a GPU"):
         ensemble_training.check_capacity(8, 4, "from_multiprocessing", executor(8, 1, 1))
+
+
+def test_check_capacity_allows_more_workers_when_each_has_its_own_gpu(capsys):
+    """``gpus_per_node`` is shared with samplers, so ML nodes can have more GPUs than it says."""
+    pinned = executor(8, 1, 1)
+    pinned.available_accelerators = [str(index) for index in range(8)]
+    ensemble_training.check_capacity(8, 4, "from_multiprocessing", pinned)
+    assert capsys.readouterr().out == ""
+
+
+def test_check_capacity_treats_no_accelerators_as_unpinned():
+    """An executor without ``available_accelerators`` has an empty list."""
+    unpinned = executor(8, 1, 1)
+    unpinned.available_accelerators = []
+    with pytest.raises(ValueError, match="share a GPU"):
+        ensemble_training.check_capacity(8, 4, "from_multiprocessing", unpinned)
 
 
 @pytest.mark.parametrize("gpus,device", [(0, "from_multiprocessing"), (4, "cpu")], ids=["no_gpu_cap", "cpu"])

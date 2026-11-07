@@ -12,12 +12,12 @@ from ase import Atoms
 from ase.calculators.calculator import Calculator, all_changes
 
 from alframework.ml_interfaces.ensemble_inference import SelectedStateEvaluator, ensemble_statistics
+from alframework.samplers import batched_mlmd
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator
 from alframework.samplers.batched_mlmd import ASEEngine, sample_trajectories
 from alframework.tools.gap_seeking import adjacent_pairs, gap_seeking_settings, lcm_energy_forces, select_trigger
 from alframework.tools.molecules_class import MoleculesObject
 from alframework.tools.sampler_coordinator import SamplerCoordinator, state_settings
-from alframework.samplers import batched_mlmd
 from tests.helpers.engines import DEVICE, engine_class, require_engine
 
 BLOCK = {"enabled": True, "trigger_gap_threshold_eV": 0.05, "sigma": 3.5, "alpha_eV": 0.05}

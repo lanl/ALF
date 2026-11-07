@@ -8,7 +8,7 @@ Everything here is unfinished. Delivered work is recorded in [`batching.md`](bat
 
 Updated November 6, 2026, after E6 passed. The user set the sequence on November 3, and revised the bias work on November 6.
 
-1. **Biased dynamics on excited states** ([Group B](#group-b-biased-dynamics-on-excited-states)): real runs for selected-state UDD and wells, then LCM gap seeking. The other real runs under [Quick wins](#quick-wins) can go alongside.
+1. **Biased dynamics on excited states** ([Group B](#group-b-biased-dynamics-on-excited-states)): real runs for selected-state UDD, wells, and LCM. The other real runs under [Quick wins](#quick-wins) can go alongside.
 2. **Long runs and staged campaigns** ([Group E](#group-e-long-runs)). This is the largest item.
 3. **Placement and memory** ([Group C](#group-c-placement-and-memory)), including multi-node training. It buys throughput for larger ensembles, not new methods.
 4. **Teacher labeling, then F1 and F2 fine-tuning** ([Group D](#group-d-model-families-and-labels)).
@@ -31,6 +31,7 @@ All landed on November 6; see the [record](README.md#quick-wins-2026-11-06). The
 **Real runs still needed.** These were only tested with fake GPU libraries:
 
 - Selected-state UDD and wells: real width-one and width-four runs on ASE, TorchSim CUDA, and ALCHEMI.
+- LCM gap seeking: the same runs, and parity with the fork's ALCHEMI LCM behavior.
 - Ground-state training device selection: a real training run, ideally on an allocation with a mask.
 - Reactive sampler device selection: a real reactive task.
 
@@ -48,9 +49,8 @@ All landed on November 6; see the [record](README.md#quick-wins-2026-11-06). The
 
 1. **Selected-state UDD and wells.** Landed November 6, and tested with fakes only: forces match the `MLMD_calculator` formulas on the selected state across ASE, TorchSim, and ALCHEMI, and screening still reads unbiased predictions.
    - Gate still open: real width-one and width-four runs.
-2. **LCM gap seeking.** A per-replica permanent mode switch. Source material: the fork's `samplers/alchemi_sampling.py`.
-   - `max_force_cutoff` must keep excluding bias and LCM forces.
-   - Gate: parity with the fork's ALCHEMI LCM behavior, across ASE, TorchSim, and ALCHEMI.
+2. **LCM gap seeking.** Landed November 6 on all three engines, and tested with fakes only; see the [record](README.md#lcm-gap-seeking-2026-11-06).
+   - Gate still open: real width-one and width-four runs, and parity with the fork's ALCHEMI LCM behavior.
 3. **General bias/control interface, only when a further method needs one.** Each control:
     - receives physical predictions and returns propagation forces;
     - keeps replica-local state (for example, the permanent LCM switch);

@@ -379,6 +379,65 @@ Cohorts can also be kept separate for each state, with
 break a bond or develop unphysical forces on any state, see
 :ref:`samplers-runtime-screens`.
 
+Gap Seeking
+-----------
+
+Gap seeking samples geometries near a state crossing. Once a trajectory's gap to an
+adjacent state is small enough, it permanently leaves its selected state and moves on a
+Levine-Coe-Martinez (LCM) penalty surface for that pair, which pushes it toward the
+crossing.
+
+.. code-block:: json
+
+   {
+     "gap_seeking": {
+       "enabled": true,
+       "trigger_gap_threshold_eV": 0.05,
+       "sigma": 3.5,
+       "alpha_eV": 0.05
+     }
+   }
+
+For states :math:`i` and :math:`j`, with ensemble-mean energies :math:`E_i` and
+:math:`E_j` and :math:`\Delta E = E_j - E_i`, the surface is:
+
+.. math::
+
+   E_\mathrm{LCM} = \frac{E_i + E_j}{2}
+   + \sigma \frac{\Delta E^2}{\sqrt{\Delta E^2 + 10^{-12}} + \alpha}
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 66
+
+   * - Field
+     - Meaning
+   * - ``enabled``
+     - ``true`` turns this on. The default is ``false``. It requires
+       ``"model_mode": "excited_state"``.
+   * - ``trigger_gap_threshold_eV``
+     - Required. A trajectory switches when its gap, in eV, is at or below this value.
+   * - ``sigma``, ``alpha_eV``
+     - Required. :math:`\sigma` and :math:`\alpha` in the surface above.
+   * - ``mode``, ``switch_policy``, ``candidate_pairs``
+     - Optional. The only supported values are ``levine_coe_martinez_switch``,
+       ``stay_fixed``, and ``adjacent``.
+
+How it runs:
+
+* **Check:** at each ``Ncheck``, after the usual screening and uncertainty checks, each
+  trajectory still running looks at the adjacent pairs containing its selected state,
+  and takes the smallest absolute gap. On a tie, it takes the lower pair.
+* **Switch:** only that trajectory switches, and it never switches back, even if the gap
+  grows again. Each trajectory can pick its own pair.
+* **What changes:** only the forces that move the trajectory. Screening, ``Es``, ``Fs``,
+  and the rest of acquisition still read unbiased predictions on the selected state.
+* **Wells:** ``well_params`` adds on top of the surface. ALF stops at startup if
+  ``udd_bias_weight`` is also set, because UDD's bias describes the selected state.
+* **Records:** each molecule's metadata has ``gap_seeking_current_mode`` and
+  ``gap_seeking_switched``, plus ``gap_seeking_pair`` and the trigger gap, step, and time
+  once it has switched. Frames sampled after a switch carry the same fields.
+
 Excited-State API Links
 -----------------------
 

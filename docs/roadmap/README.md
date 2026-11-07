@@ -21,8 +21,7 @@ This folder is the shared plan for bringing the fork's intended capabilities int
   propagated, stored samples covering S0–S3 in a promoted four-member ensemble;
   see [Increment 11B](excited_states.md#increment-11b--completed-cpp9-active-learning-qualification-e6).
   Ten-node scaling, predictive accuracy and long-time stability remain unqualified.
-- **Next:** real runs for selected-state UDD and wells, then LCM gap seeking,
-  then staged campaigns, multi-node training, and teacher labeling. New uncertainty and
+- **Next:** real runs for selected-state UDD, wells, and LCM, then staged campaigns, multi-node training, and teacher labeling. New uncertainty and
   acquisition methods come last; see [Order of work](future.md#order-of-work).
 - **No merge to `main` is planned** (user decision, November 6).
 - **Outside current acceptance:** legacy NeuroChem and MI350.
@@ -290,6 +289,23 @@ Local result: 635 passed, 2 skipped (`seqm` not installed). Real GPU runs are st
 for three of them; see [Quick wins](future.md#quick-wins). Two behavior changes could affect
 `alf_validation` on Darwin: editing a fixed setting mid-run now has no effect, and
 `from_multiprocessing` training no longer sets `CUDA_VISIBLE_DEVICES`.
+
+### LCM gap seeking (2026-11-06)
+
+Ported from the fork's ALCHEMI sampler to ASE, TorchSim, and ALCHEMI, in
+`tools/gap_seeking.py`, `PackedMLMDEngine._apply_lcm`, and `_StateMeanCalculator`. The
+settings block, trigger, surface, and analytic force match the fork. Tested with fakes
+only, so real runs are still needed; see [Quick wins](future.md#quick-wins).
+
+Differences from the fork:
+
+- It runs on all three engines, not only ALCHEMI.
+- `gap_seeking` with `udd_bias_weight` is rejected at startup, because UDD's bias comes
+  from the selected state's spread. Wells add on top of the surface, as in the fork.
+- Pairs come from the ensemble's states, so no `dE#` properties are needed.
+- The fork's `lcm_bias_Fmax` and `lcm_correction_Fmax` diagnostics and its
+  `gap_seeking_switch_events` list aren't ported. The switch is recorded in
+  `gap_seeking_*` metadata.
 
 ## Development and test environments
 

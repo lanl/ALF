@@ -9,30 +9,19 @@ Everything here is unfinished. Delivered work is recorded in [`batching.md`](bat
 Updated November 6, 2026. The user set the sequence on November 3, and revised the bias work on November 6.
 
 1. **Finish E6.** The CPP9 pilot is running on Darwin; see [`excited_states.md`](excited_states.md).
-2. **Biased dynamics on excited states** ([Group B](#group-b-biased-dynamics-on-excited-states)): real runs for selected-state UDD and wells, then LCM gap seeking.
+2. **Biased dynamics on excited states** ([Group B](#group-b-biased-dynamics-on-excited-states)): real runs for selected-state UDD and wells, then LCM gap seeking. The other real runs under [Quick wins](#quick-wins) can go alongside.
 3. **Long runs and staged campaigns** ([Group E](#group-e-long-runs)). This is the largest item.
+4. **Placement and memory** ([Group C](#group-c-placement-and-memory)), including multi-node training. It buys throughput for larger ensembles, not new methods.
+5. **Teacher labeling, then F1 and F2 fine-tuning** ([Group D](#group-d-model-families-and-labels)).
+6. **New uncertainty and acquisition methods** ([Group G](#group-g-new-uncertainty-and-acquisition-methods)), last (user decision, November 6).
 
-Available whenever there is capacity, independent of that sequence:
-
-- **Selection and retention** ([Group A](#group-a-selection-and-retention)).
-- **Multi-node training** ([Group C](#group-c-placement-and-memory)). It buys throughput for larger ensembles, not new methods.
-- **Teacher labeling and fine-tuning** ([Group D](#group-d-model-families-and-labels)).
-
-The real runs listed under [Quick wins](#quick-wins) still need doing on Darwin.
+Groups C and D are independent of steps 1-3, so they can start earlier if there is capacity.
 
 CPP scale-up ([Group F](#group-f-cpp-scale-up)) depends on the E6 result and the science goals.
 
 **No merge to `main` is planned (user decision, November 6).** `main` and the public documentation site, which deploys from it, stay as they are.
 
 **Why the bias work changed (user decision, November 6).** The November 3 plan built a general bias/control interface first, then moved UDD, wells, and LCM onto it. But the packed engines already apply UDD and wells, and `SelectedStateEvaluator.evaluate` already gives them the selected state's member arrays. So the direct path comes first, and a general interface waits until a further method needs one.
-
-Method extensibility comes from three seams:
-
-1. named uncertainty signals from inference (done);
-2. eligibility from configured signal/cutoff pairs (done);
-3. the selector/retention interface in [Group A](#group-a-selection-and-retention).
-
-Single-network estimators (Group D) plug into seams 1-2, and diversity selection (Group A) plugs into seam 3. Differentiable estimators used for biasing would need the general interface in [Group B](#group-b-biased-dynamics-on-excited-states).
 
 The fork remains source material; `production_excited_states` (`c364fa8`) holds the LCM implementation.
 
@@ -48,25 +37,9 @@ All landed on November 6; see the [record](README.md#quick-wins-2026-11-06). The
 
 **Look easy, but aren't:**
 
-- **Single-member sampling.** With no ensemble spread, it first needs a decision on what triggers labeling.
+- **Single-member sampling.** With no ensemble spread, it first needs a decision on what triggers labeling. See [Group G](#group-g-new-uncertainty-and-acquisition-methods).
 - **F1 fine-tuning.** It moves 353 lines of example code into the library, and its gate is a real fine-tuning round.
 - **Teacher labeling.** The adapter is small, but it needs a provenance path and a campaign gate.
-
-## Group A: Selection and retention
-
-| Capability | What it covers | Important boundary |
-| --- | --- | --- |
-| Additional acquisition strategies | Custom import-string strategies and geometry-based demonstrations, followed by production distance-based acquisition and diversity-aware batch selection within cohorts (and later against the existing training set). | Eligibility, ranking, trajectory policy, and selection remain separate; future selectors declare their retention needs. |
-
-`selection.selector` now chooses between `top_k` and `fps`, and `worker_retention_limit` says what workers keep for each. What's left:
-
-- Custom selectors and strategies through import strings. The `acquisition.selection` keys are validated against a fixed set, so these need an extension.
-- Selectors that use scores as well as geometry, such as score-weighted farthest-point or k-center. `fps` ignores scores among eligible frames, apart from which frames a worker keeps.
-- Keeping frames for `fps` by something other than score. A worker's cap still drops candidates by score before the pool sees them.
-- Diversity against the existing training set. It needs read access to the HDF5 store, and is a separate step from within-cohort diversity.
-- Model-latent descriptors, which would require evaluators to return features and candidates to carry them, which costs memory.
-
-Any new selector must stay invariant to grouping and completion order: canonicalize candidates by `(trajectory_id, step)` first and break ties deterministically. First-trigger mode has no pool. A `max_candidates_per_trajectory` below `k` can still change the unrestricted global top-K.
 
 ## Group B: Biased dynamics on excited states
 
@@ -135,7 +108,6 @@ Readiness notes from a review of development at `24028da`:
 | --- | --- | --- |
 | Model/training handoffs and distillation | Opaque model-artifact references, model-independent inference adapters, and foundation-MLIP reference labeling. | Record teacher identity, version, units, and label provenance separately from the student sampling model. Teacher labeling is an independent track; handoffs and distillation come later. Fine-tuning tiers F1–F3 are planned below. |
 | Further model and sampling extensions | Additional production model families, reactive batching, and separately planned methods. | Follow the same minimal-core-change and existing-workflow compatibility gates. |
-| Non-ensemble uncertainty | Pluggable uncertainty estimators, including single-network methods, alongside the existing ensemble disagreement. | New signals carry their own names, units, and cutoffs; `Es`/`Fs`/`Fsmax` and `Escut`/`Fscut` keep their ensemble-std meaning. First planned use: foundation-model fine-tuning (F3). |
 
 - **Foundation-model teacher labeling (independent track).** The
   labeling boundary already supports this: `LabelingCoordinator`
@@ -169,10 +141,11 @@ Readiness notes from a review of development at `24028da`:
     (multi-fidelity or delta learning), teacher-driven dynamics,
     fine-tuning/distillation handoffs, and opaque model-artifact references.
   - **Order:** ground-state teachers come first; excited-state teachers wait until a
-    suitable model exists.
+    suitable model exists. UMA or MACE are the first candidates; see the notes in
+    [Group G](#group-g-new-uncertainty-and-acquisition-methods).
 - **Fine-tuning with ALF (later goal; added 2026-11-03).**
-  - **Prerequisites.** F1 and F2 can start at any time. F3 needs teacher labeling
-    and multi-node training.
+  - **Prerequisites.** F1 and F2 can start at any time. F3 is in
+    [Group G](#group-g-new-uncertainty-and-acquisition-methods).
   - **What exists.** `examples/fine_tuning/` (and its Darwin variant) uses a
     local `ML_task`, `fine_tune_ml_task.fine_tune_HIPPYNN_ensemble_task`. It:
     - loads a trained HIPPYNN seed ensemble from `models/model-0000/`;
@@ -201,6 +174,126 @@ Readiness notes from a review of development at `24028da`:
     a pretrained ground-state or earlier multi-state HIPPYNN; for example,
     seed the cpp ring model from a ground-state model. Use the F1 lineage and
     settings, with an explicit mapping from source to new heads and targets.
+The model/training-boundary work must also address two porting requirements recorded during the experimental-fork review:
+
+- The training handoff must tolerate valid trainer callables whose signature
+  omits `ML_config`.
+- Move model-family artifact validation behind adapters; common final-training
+  validation must not assume HIPPYNN-style `model-NN` member directories.
+
+## Group E: Long runs
+
+| Capability | What it covers | Important boundary |
+| --- | --- | --- |
+| Durable recovery and staged workflows | Persist batching/cohort handoffs; add retained-label budgets, ALF-to-GALF/configuration stages, exact dataset checkpoints, and endpoint training. | Preserve ordinary runs as the default; budgets count retained labeled frames, not candidates or submitted jobs. |
+
+| Area | Current behavior or gap | Follow-up and boundary |
+| --- | --- | --- |
+| Cohort admission | A cohort requires full membership and all terminal reports, with no admission timeout or partial selection. A permanently undersupplied builder leaves it unfinished. | Keep incremental admission for cohorts larger than worker capacity; do not introduce an automatic partial-cohort policy without a separate decision. |
+| Queue thresholds and strict batches | `full_only` can leave a PBC/model group waiting indefinitely when it cannot fill within available capacity. The inherited `minimum_QM` harvest gate can also hold a small number of finished sampler results. | Exercise small capacities and fragmented groups with the existing timeout policy. Check that configured completion thresholds are reachable. Add focused diagnostics/validation or drain behavior only as a separate compatibility change. Strict QM and sampler batches are already checked at startup against `target_queued_QM` and `parallel_samplers`. |
+| Restart and failed work | Buffers, cohorts, model admission sequence, and handoffs are in memory. No new retry journal or exactly-once QM handoff exists. Candidates survive a later isolated failure only if the task returns them; crashed-worker-only frames are lost. | Keep this limitation visible for ordinary screen/tmux runs as well as staged workflows. Add durable snapshots, logical IDs, replay, and handoff recovery in the later recovery increment, without requiring new pause controls now. |
+
+- **Staged campaigns across engines:** durable cohort/handoff
+  persistence, a run-control equivalent, staged configurations, and
+  retained-label budgets. The fork's `run_control`, `workflow_io`,
+  `staged_workflow`, and `dataset_screening` are source material.
+- **Budgets beyond a stop rule.** `maximum_stored_labels` ends a run after enough converged labels are stored. Retained-label budgets, draining running work, and the other counts below are still open.
+- **Filtering converged labels after QM.** Runtime force and topology screens run on sampled frames, and don't filter stored QM labels. Reuse `tools/molecular_topology.py` where possible, and keep it opt-in, because it changes which data is stored.
+
+Budgeted workflows must distinguish selected candidates, labeling attempts,
+successful labels, stored/retained frames, and rows surviving trainer filters.
+Report these stages separately. Exact checkpoints and final endpoint training
+refer to the chosen retained-data lineage; routine retraining and raw-store
+overshoot are separate concepts.
+
+## Group F: CPP scale-up
+
+These depend on the E6 result. None has been shown so far; see [`excited_states.md`](excited_states.md).
+
+- Ten-node scaling.
+- Production width 50, and the 50,000-to-5,000 preparation.
+- Predictive accuracy and long-time stability.
+- GPU capacity for the smaller HIP-HOP100, HIP-HOP64, and HIP-NN64 models.
+- Full-epoch validation and checkpoint export at the recommended batch size of 8, which the calibration didn't run.
+
+## Group G: New uncertainty and acquisition methods
+
+These come last (user decision, November 6). They add new ways to measure uncertainty or choose frames, so they wait until the other groups are done.
+
+Method extensibility comes from three seams:
+
+1. named uncertainty signals from inference (done);
+2. eligibility from configured signal/cutoff pairs (done);
+3. the selector/retention interface below.
+
+Single-network estimators plug into seams 1-2, and diversity selection plugs into seam 3. Differentiable estimators used for biasing would need the general interface in [Group B](#group-b-biased-dynamics-on-excited-states).
+
+### Selection and retention
+
+| Capability | What it covers | Important boundary |
+| --- | --- | --- |
+| Additional acquisition strategies | Custom import-string strategies and geometry-based demonstrations, followed by production distance-based acquisition and diversity-aware batch selection within cohorts (and later against the existing training set). | Eligibility, ranking, trajectory policy, and selection remain separate; future selectors declare their retention needs. |
+
+`selection.selector` now chooses between `top_k` and `fps`, and `worker_retention_limit` says what workers keep for each. What's left:
+
+- Custom selectors and strategies through import strings. The `acquisition.selection` keys are validated against a fixed set, so these need an extension.
+- Selectors that use scores as well as geometry, such as score-weighted farthest-point or k-center. `fps` ignores scores among eligible frames, apart from which frames a worker keeps.
+- Keeping frames for `fps` by something other than score. A worker's cap still drops candidates by score before the pool sees them.
+- Diversity against the existing training set. It needs read access to the HDF5 store, and is a separate step from within-cohort diversity.
+- Model-latent descriptors, which would require evaluators to return features and candidates to carry them, which costs memory.
+
+Any new selector must stay invariant to grouping and completion order: canonicalize candidates by `(trajectory_id, step)` first and break ties deterministically. First-trigger mode has no pool. A `max_candidates_per_trajectory` below `k` can still change the unrestricted global top-K.
+
+### Non-ensemble uncertainty
+
+| Capability | What it covers | Important boundary |
+| --- | --- | --- |
+| Non-ensemble uncertainty | Pluggable uncertainty estimators, including single-network methods, alongside the existing ensemble disagreement. | New signals carry their own names, units, and cutoffs; `Es`/`Fs`/`Fsmax` and `Escut`/`Fscut` keep their ensemble-std meaning. First planned use: foundation-model fine-tuning (F3). |
+
+Readiness notes from a review of development at `24028da`, with the finished eligibility item removed.
+
+- **Non-ensemble uncertainty.** This is partly ready.
+  - Ready: acquisition reads a signal dictionary, and ranking terms are a
+    table (`SCORE_TERMS`). Packed engines keep physical predictions separate
+    from propagation.
+  - Ensemble assumptions to factor out:
+    - both evaluators require at least two members, and the evaluator contract
+      returns per-member `[models, ...]` arrays;
+    - `run_mlmd_trajectories` calls `ensemble_statistics` directly;
+    - propagation uses the member mean;
+    - UDD needs member deviations;
+    - legacy samplers read `MLMD_calculator`'s `energy_stdev` results;
+    - training assumes `n_models` member directories.
+  - Proposed contract: the evaluator returns a mean prediction plus named
+    uncertainty signals, with ensemble statistics as the default estimator.
+    Eligibility then reads configurable signal/cutoff pairs. Methods that need
+    repeated stochastic passes (for example MC dropout) can still use the
+    member layout.
+  - A single-network estimator may provide only energy uncertainty or no
+    per-atom force uncertainty, so eligibility must allow a subset of signals.
+  - Calibration and cutoffs need per-method validation; ensemble cutoffs must
+    not be reused.
+  - UDD-style biasing needs a differentiable uncertainty, which ties this to
+    the general interface in Group B.
+
+### Single-member sampling
+
+- **Single-member excited-state sampling (user addition, November 5).**
+  - Allow selection/loading of one ensemble member for selected-state
+    propagation, at trajectory widths one/four across ASE, TorchSim, and
+    ALCHEMI. Keep full-ensemble sampling as the default.
+  - Define the acquisition policy explicitly when committee uncertainty is
+    unavailable: support sampling without committee acquisition or a separately
+    qualified uncertainty signal. Specify any optional full-ensemble checks
+    separately from the single-member propagation path.
+  - Gate: only the requested checkpoint is loaded for single-member execution;
+    propagation matches that member's selected-state forces, single/batched
+    observations agree, and existing ensemble/ground-state paths remain valid.
+    This is future work, not an additional cpp-ring prerequisite.
+
+### Foundation-model fine-tuning
+
+- **Fine-tuning with ALF, tier F3.** It needs teacher labeling and multi-node training, and one of the uncertainty options below.
   - **F3, foundation-model fine-tuning under active learning.** ALF samples with the model being fine-tuned and labels with QM or a
     teacher. It needs:
     - **Uncertainty.** Foundation models are usually single networks.
@@ -282,86 +375,6 @@ Readiness notes from a review of development at `24028da`:
          only, to prove the engine, evaluator, and uncertainty plumbing.
       3. MACE fine-tuning (more mature entrypoints and smaller models).
       4. UMA fine-tuning.
-- **Single-member excited-state sampling (user addition, November 5).**
-  - Allow selection/loading of one ensemble member for selected-state
-    propagation, at trajectory widths one/four across ASE, TorchSim, and
-    ALCHEMI. Keep full-ensemble sampling as the default.
-  - Define the acquisition policy explicitly when committee uncertainty is
-    unavailable: support sampling without committee acquisition or a separately
-    qualified uncertainty signal. Specify any optional full-ensemble checks
-    separately from the single-member propagation path.
-  - Gate: only the requested checkpoint is loaded for single-member execution;
-    propagation matches that member's selected-state forces, single/batched
-    observations agree, and existing ensemble/ground-state paths remain valid.
-    This is future work, not an additional cpp-ring prerequisite.
-
-The model/training-boundary work must also address two porting requirements recorded during the experimental-fork review:
-
-- The training handoff must tolerate valid trainer callables whose signature
-  omits `ML_config`.
-- Move model-family artifact validation behind adapters; common final-training
-  validation must not assume HIPPYNN-style `model-NN` member directories.
-
-Readiness notes from a review of development at `24028da`, with the finished eligibility item removed.
-
-- **Non-ensemble uncertainty.** This is partly ready.
-  - Ready: acquisition reads a signal dictionary, and ranking terms are a
-    table (`SCORE_TERMS`). Packed engines keep physical predictions separate
-    from propagation.
-  - Ensemble assumptions to factor out:
-    - both evaluators require at least two members, and the evaluator contract
-      returns per-member `[models, ...]` arrays;
-    - `run_mlmd_trajectories` calls `ensemble_statistics` directly;
-    - propagation uses the member mean;
-    - UDD needs member deviations;
-    - legacy samplers read `MLMD_calculator`'s `energy_stdev` results;
-    - training assumes `n_models` member directories.
-  - Proposed contract: the evaluator returns a mean prediction plus named
-    uncertainty signals, with ensemble statistics as the default estimator.
-    Eligibility then reads configurable signal/cutoff pairs. Methods that need
-    repeated stochastic passes (for example MC dropout) can still use the
-    member layout.
-  - A single-network estimator may provide only energy uncertainty or no
-    per-atom force uncertainty, so eligibility must allow a subset of signals.
-  - Calibration and cutoffs need per-method validation; ensemble cutoffs must
-    not be reused.
-  - UDD-style biasing needs a differentiable uncertainty, which ties this to
-    the general interface in Group B.
-
-## Group E: Long runs
-
-| Capability | What it covers | Important boundary |
-| --- | --- | --- |
-| Durable recovery and staged workflows | Persist batching/cohort handoffs; add retained-label budgets, ALF-to-GALF/configuration stages, exact dataset checkpoints, and endpoint training. | Preserve ordinary runs as the default; budgets count retained labeled frames, not candidates or submitted jobs. |
-
-| Area | Current behavior or gap | Follow-up and boundary |
-| --- | --- | --- |
-| Cohort admission | A cohort requires full membership and all terminal reports, with no admission timeout or partial selection. A permanently undersupplied builder leaves it unfinished. | Keep incremental admission for cohorts larger than worker capacity; do not introduce an automatic partial-cohort policy without a separate decision. |
-| Queue thresholds and strict batches | `full_only` can leave a PBC/model group waiting indefinitely when it cannot fill within available capacity. The inherited `minimum_QM` harvest gate can also hold a small number of finished sampler results. | Exercise small capacities and fragmented groups with the existing timeout policy. Check that configured completion thresholds are reachable. Add focused diagnostics/validation or drain behavior only as a separate compatibility change. Strict QM and sampler batches are already checked at startup against `target_queued_QM` and `parallel_samplers`. |
-| Restart and failed work | Buffers, cohorts, model admission sequence, and handoffs are in memory. No new retry journal or exactly-once QM handoff exists. Candidates survive a later isolated failure only if the task returns them; crashed-worker-only frames are lost. | Keep this limitation visible for ordinary screen/tmux runs as well as staged workflows. Add durable snapshots, logical IDs, replay, and handoff recovery in the later recovery increment, without requiring new pause controls now. |
-
-- **Staged campaigns across engines:** durable cohort/handoff
-  persistence, a run-control equivalent, staged configurations, and
-  retained-label budgets. The fork's `run_control`, `workflow_io`,
-  `staged_workflow`, and `dataset_screening` are source material.
-- **Budgets beyond a stop rule.** `maximum_stored_labels` ends a run after enough converged labels are stored. Retained-label budgets, draining running work, and the other counts below are still open.
-- **Filtering converged labels after QM.** Runtime force and topology screens run on sampled frames, and don't filter stored QM labels. Reuse `tools/molecular_topology.py` where possible, and keep it opt-in, because it changes which data is stored.
-
-Budgeted workflows must distinguish selected candidates, labeling attempts,
-successful labels, stored/retained frames, and rows surviving trainer filters.
-Report these stages separately. Exact checkpoints and final endpoint training
-refer to the chosen retained-data lineage; routine retraining and raw-store
-overshoot are separate concepts.
-
-## Group F: CPP scale-up
-
-These depend on the E6 result. None has been shown so far; see [`excited_states.md`](excited_states.md).
-
-- Ten-node scaling.
-- Production width 50, and the 50,000-to-5,000 preparation.
-- Predictive accuracy and long-time stability.
-- GPU capacity for the smaller HIP-HOP100, HIP-HOP64, and HIP-NN64 models.
-- Full-epoch validation and checkpoint export at the recommended batch size of 8, which the calibration didn't run.
 
 ## Parking lot
 

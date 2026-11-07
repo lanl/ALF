@@ -20,8 +20,8 @@ This folder is the shared plan for bringing the fork's intended capabilities int
   qualified. The CPP9 E6 pilot's ordinary active-learning loop hasn't passed yet; see
   [Increment 11B](excited_states.md#increment-11b--calibration-and-dcm-labeling-qualified-cpp-ring-alf-e6-planned).
 - **Next after E6:** real runs for selected-state UDD and wells, then LCM gap seeking,
-  then staged campaigns. Selectors, multi-node training, and teacher labeling are independent
-  tracks; see [Order of work](future.md#order-of-work).
+  then staged campaigns, multi-node training, and teacher labeling. New uncertainty and
+  acquisition methods come last; see [Order of work](future.md#order-of-work).
 - **No merge to `main` is planned** (user decision, November 6).
 - **Outside current acceptance:** legacy NeuroChem and MI350.
 

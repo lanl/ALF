@@ -737,11 +737,14 @@ def _ensemble_member_device(device_string, n_gpus):
     """Return the Torch device for this training process.
 
     ``'from_multiprocessing'`` picks a local device from the pool worker's number, leaving the
-    scheduler's visibility mask alone. Any other value is a mask for this process, as it always was.
+    scheduler's visibility mask alone. ``'cuda:N'`` is a device already chosen for this process.
+    Any other value is a mask for this process, as it always was.
     """
     if device_string.lower() == "from_multiprocessing":
         member = multiprocessing.current_process()._identity[-1] - 1
         return excited_training_device(device_string, member, n_gpus)
+    if device_string.lower().startswith('cuda:'):
+        return device_string
     os.environ["CUDA_VISIBLE_DEVICES"] = device_string
     return 'cuda:0'
 
@@ -749,9 +752,8 @@ def _ensemble_member_device(device_string, n_gpus):
 def train_HIPNN_model_wrapper(arg_dict):
     return(train_HIPNN_model(**arg_dict))
 
-@python_app(executors=['alf_ML_executor'])
-def train_HIPPYNN_ensemble_task(ML_config,h5_dir,model_path,current_training_id,gpus_per_node,remove_existing=False,h5_test_dir=None):
-    p = multiprocessing.Pool(gpus_per_node)
+
+def _ground_state_member_params(ML_config, h5_dir, model_path, current_training_id, gpus_per_node):
     general_configuration = ML_config.copy()
     n_models = general_configuration.pop('n_models')
     params_list = [general_configuration.copy() for i in range(n_models)]
@@ -759,19 +761,25 @@ def train_HIPPYNN_ensemble_task(ML_config,h5_dir,model_path,current_training_id,
         cur_dict['model_dir'] = model_path.format(current_training_id) + '/model-{:02d}'.format(i)
         cur_dict['h5_train_dir'] = h5_dir
         cur_dict['from_multiprocessing_nGPU'] = gpus_per_node
+    return params_list
+
+
+def _ground_state_member_complete(model_dir):
+    log = open(model_dir + '/training_log.txt','r').read()
+    return len(re.findall('Training complete', log)) == 1
+
+
+@python_app(executors=['alf_ML_executor'])
+def train_HIPPYNN_ensemble_task(ML_config,h5_dir,model_path,current_training_id,gpus_per_node,remove_existing=False,h5_test_dir=None):
+    p = multiprocessing.Pool(gpus_per_node)
+    params_list = _ground_state_member_params(ML_config, h5_dir, model_path, current_training_id, gpus_per_node)
     out = p.map(train_HIPNN_model_wrapper,params_list)
-    completed = []
-    HIPNN_complete = re.compile('Training complete')
-    
     p.close()
-    for i in range(n_models):
-        log = open(model_path.format(current_training_id) + '/model-{:02d}/training_log.txt'.format(i),'r').read()
-        if len(HIPNN_complete.findall(log))==1:
-            completed.append(True)
-        else:
-            completed.append(False)
+    completed = [_ground_state_member_complete(params['model_dir']) for params in params_list]
     return(completed, current_training_id)
-    
+
+
+
 
 def HIPNN_ASE_calculator(HIPNN_model_directory,energy_key='energy',device="cuda:0"):
     from hippynn.experiment.serialization import load_checkpoint
@@ -2124,17 +2132,85 @@ def _training_complete(model_dir: str) -> bool:
     )
 
 
-def _validate_completed_ensemble(ensemble_dir, state_table, gap_table=None):
-    """Reload members using absolute checkpoint paths, without changing cwd."""
+def _validate_completed_member(directory, state_table, gap_table=None):
+    """Reload one member using an absolute checkpoint path, without changing cwd."""
     keys = [row[key] for row in state_table for key in ('energy_db_name', 'force_db_name')]
     keys += [row['gap_db_name'] for row in (gap_table or [])]
+    model = _load_member(Path(directory).resolve(), 'cpu')
+    for key in keys:
+        _target(model, key)
+
+
+def _validate_completed_ensemble(ensemble_dir, state_table, gap_table=None):
     members = sorted(Path(ensemble_dir).glob('model-*'))
     if not members:
         raise RuntimeError('No completed HIPPYNN model members were found')
     for directory in members:
-        model = _load_member(directory.resolve(), 'cpu')
-        for key in keys:
-            _target(model, key)
+        _validate_completed_member(directory, state_table, gap_table)
+
+
+def _excited_state_gap_table(config, properties_list):
+    gap_options = dict(config.get("gap_targets") or {})
+    return (
+        derive_gap_property_table(
+            properties_list,
+            gap_config=gap_options,
+            require_properties=True,
+        )
+        if bool(gap_options.get("enabled", False))
+        else []
+    )
+
+
+def _excited_state_member_params(config, h5_dir, ensemble_dir, gpus_per_node, properties_list):
+    return [
+        {
+            "model_id": model_id,
+            "model_dir": os.path.join(
+                ensemble_dir,
+                f"model-{model_id:02d}",
+            ),
+            "h5_train_dir": str(h5_dir),
+            "properties_list": dict(properties_list),
+            "ML_config": config,
+            "from_multiprocessing_nGPU": (
+                int(gpus_per_node) if int(gpus_per_node) > 0 else None
+            ),
+        }
+        for model_id in range(int(config["n_models"]))
+    ]
+
+
+def _excited_state_member_complete(result: dict[str, Any]) -> bool:
+    """Judge one member from its worker's result, and write down why if it failed."""
+    payload = result["payload"]
+    model_dir = Path(payload["model_dir"]).expanduser().resolve()
+    if bool(result["ok"]):
+        member_complete = _training_complete(str(model_dir))
+        if not member_complete:
+            model_dir.mkdir(parents=True, exist_ok=True)
+            (model_dir / "training_error.json").write_text(
+                json.dumps(
+                    {
+                        "model_id": int(payload["model_id"]),
+                        "model_dir": str(model_dir),
+                        "error_type": "IncompleteTrainingError",
+                        "error": (
+                            "HIPPYNN returned without a single "
+                            "'Training complete' marker."
+                        ),
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+        return member_complete
+    model_dir.mkdir(parents=True, exist_ok=True)
+    (model_dir / "training_error.json").write_text(
+        json.dumps(_json_safe(payload), indent=2),
+        encoding="utf-8",
+    )
+    return False
 
 
 def _worker_count(ML_config, *, n_models, gpus_per_node):
@@ -2166,34 +2242,10 @@ def train_excited_state_ensemble(
         config,
         properties_list,
     )
-    gap_options = dict(config.get("gap_targets") or {})
-    gap_table = (
-        derive_gap_property_table(
-            properties_list,
-            gap_config=gap_options,
-            require_properties=True,
-        )
-        if bool(gap_options.get("enabled", False))
-        else []
-    )
+    gap_table = _excited_state_gap_table(config, properties_list)
     n_models = int(config["n_models"])
     ensemble_dir = model_path.format(int(current_training_id))
-    params_list = [
-        {
-            "model_id": model_id,
-            "model_dir": os.path.join(
-                ensemble_dir,
-                f"model-{model_id:02d}",
-            ),
-            "h5_train_dir": str(h5_dir),
-            "properties_list": dict(properties_list),
-            "ML_config": config,
-            "from_multiprocessing_nGPU": (
-                int(gpus_per_node) if int(gpus_per_node) > 0 else None
-            ),
-        }
-        for model_id in range(n_models)
-    ]
+    params_list = _excited_state_member_params(config, h5_dir, ensemble_dir, gpus_per_node, properties_list)
 
     root = Path(ensemble_dir)
     if root.exists() and any(root.iterdir()):
@@ -2215,37 +2267,7 @@ def train_excited_state_ensemble(
     finally:
         pool.join()
 
-    completed: list[bool] = []
-    for result in raw_results:
-        payload = result["payload"]
-        model_dir = Path(payload["model_dir"]).expanduser().resolve()
-        if bool(result["ok"]):
-            member_complete = _training_complete(str(model_dir))
-            completed.append(member_complete)
-            if not member_complete:
-                model_dir.mkdir(parents=True, exist_ok=True)
-                (model_dir / "training_error.json").write_text(
-                    json.dumps(
-                        {
-                            "model_id": int(payload["model_id"]),
-                            "model_dir": str(model_dir),
-                            "error_type": "IncompleteTrainingError",
-                            "error": (
-                                "HIPPYNN returned without a single "
-                                "'Training complete' marker."
-                            ),
-                        },
-                        indent=2,
-                    ),
-                    encoding="utf-8",
-                )
-        else:
-            completed.append(False)
-            model_dir.mkdir(parents=True, exist_ok=True)
-            (model_dir / "training_error.json").write_text(
-                json.dumps(_json_safe(payload), indent=2),
-                encoding="utf-8",
-            )
+    completed = [_excited_state_member_complete(result) for result in raw_results]
 
     if all(completed):
         try:

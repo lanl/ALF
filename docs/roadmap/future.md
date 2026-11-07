@@ -14,7 +14,7 @@ mechanics have passed; see the [E6 record](excited_states.md),
 and [gap/window qualification](README.md#gap-seeking-and-sampling-window-hardware-qualification--passed-2026-11-06).
 
 1. **Safe restarts and disk races** ([below](#safe-restarts-and-disk-races), with priorities in [`exascale.md`](exascale.md#priority-list)). Tabled for now (user decision, November 6), and next when picked up.
-2. **Placement and memory** ([Group C](#group-c-placement-and-memory)). Multi-node training is built and awaits its Darwin gate. It buys throughput for larger ensembles, not new methods.
+2. **Placement and memory** ([Group C](#group-c-placement-and-memory)). Multi-node independent-member training passed its bounded Darwin gate on November 7; larger deployments remain unqualified. It buys throughput for larger ensembles, not new methods.
 3. **Teacher labeling, then F1 and F2 fine-tuning** ([Group D](#group-d-model-families-and-labels)).
 4. **New uncertainty and acquisition methods** ([Group G](#group-g-new-uncertainty-and-acquisition-methods)).
 5. **Long runs and staged campaigns** ([Group E](#group-e-long-runs)), last: very low priority, and may be removed (user decision, November 6).
@@ -79,7 +79,7 @@ ALF `1055d9c` source boundary; see the [evidence](README.md#gap-seeking-and-samp
 
 ## Safe restarts and disk races
 
-Tabled on November 6, before any restart code changed. ALF has since gained exit handling that releases allocations, but none of the restart fixes below. An audit of ALF's disk writes read all of `alframework/` and traced real coordinator and training test runs on one machine. **Nothing was measured on a shared filesystem or at scale,** so the caching and scale risks below come from reading the code.
+Tabled on November 6, before any restart code changed. ALF has since gained exit handling that releases allocations, but none of the restart fixes below. An audit of ALF's disk writes read all of `alframework/` and traced real coordinator and training test runs on one machine. The November 7 bounded Darwin round subsequently measured cross-node locks, shard visibility, five-node member placement and interruption/restart behavior; see [the measurements](exascale.md#darwin-measurements-2026-11-07). It did not implement crash-safe recovery or establish large-campaign performance.
 
 **ALF has one writer for shared state.** The coordinator alone writes `status.json` and the HDF5 shards. Workers write only to paths unique to a structure, member, or task, stores can't overlap training because one `ML_task_queue` check gates both, and models are read only after promotion. So there's no worker-against-worker race in normal operation.
 
@@ -106,14 +106,22 @@ Tabled on November 6, before any restart code changed. ALF has since gained exit
 
 | Capability | What it covers | Important boundary |
 | --- | --- | --- |
-| Multi-node ML training | Members across any number of nodes is built, with its Darwin gate pending. Data-parallel training of one member across GPUs or nodes is a separate decision. | Keep the `ML_task` entrypoint, `(completed, training_id)` return, member directory layout, and model-promotion semantics; single-node training remains the default. |
+| Multi-node ML training | Independent-member training passed on two and five real GPU nodes; larger deployments remain unqualified. Data-parallel training of one member across GPUs or nodes is a separate decision. | Keep the `ML_task` entrypoint, `(completed, training_id)` return, member directory layout, and model-promotion semantics; single-node training remains the default. |
 
 | Area | Current behavior or gap | Follow-up and boundary |
 | --- | --- | --- |
 | Packed inference memory | HIPPYNN pads to the largest system in a task. Capacity is specified in systems, without an atom/pair-memory budget or automatic OOM splitting. A failed batched evaluator call can fail the whole active group. | Profile heterogeneous sizes before increasing widths. Consider adapter-declared memory limits and explicit retry/splitting later, preserving atom order, model pinning, identities, and per-trajectory random streams. This is not a requirement to add every OOM recovery path now. |
 
-- **Multi-node training: built, Darwin gate pending (November 6).** `train_HIPPYNN_ensemble_multinode_task` and `train_excited_state_HIPPYNN_ensemble_multinode_task` train one member per GPU on any number of nodes, using `tools/ensemble_training.py`. `__main__.py`, promotion, and the member layout are unchanged, and single-node training stays the default. See the [record](README.md#multi-node-training-2026-11-06).
-  - **Gate on Darwin, for this to count as qualified:**
+- **Multi-node training: bounded Darwin qualification passed (November 7).** `train_HIPPYNN_ensemble_multinode_task` and `train_excited_state_HIPPYNN_ensemble_multinode_task` train one member per GPU on any number of nodes, using `tools/ensemble_training.py`. `__main__.py`, promotion, and the member layout are unchanged, and single-node training stays the default. See the [record](README.md#multi-node-training-2026-11-06).
+  - **Result:** both trainers passed eight-member/two-node clean and cancelled-block
+    retry runs; excited-state training passed 20 members on five nodes. The ordinary
+    ALF loop verified zero-retry failure isolation and a later eight-member promotion.
+    Real sampling, composition-only loading, `--test_ml` cleanup, coordinator `SIGTERM`
+    and dead-executor handling passed. See the
+    [hardware record](README.md#current-development-hardware-qualification--passed-with-restart-limits-2026-11-07).
+    The recorded cleanup signal was coordinator `SIGTERM`, not literal `scancel` of
+    a batch-hosted coordinator; `SIGKILL` still required supervisor cleanup.
+  - **Original Darwin gates and boundaries:**
     1. 8 members on 2 nodes × 4 GPUs, for both trainers. Placement records show 8 distinct host and GPU pairs, with members overlapping in time. All 8 reload, the model promotes, and sampling runs on it.
     2. Every member's training records list the same shards.
     3. Cancel one block mid-training. Only its members are retried, failed directories stay, and the ensemble promotes and reloads.

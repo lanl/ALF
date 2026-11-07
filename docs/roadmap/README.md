@@ -25,9 +25,12 @@ This folder is the shared plan for bringing the fork's intended capabilities int
 - **Gap-seeking mechanics passed on all three engines**, and the ordinary
   base-to-gap-seeking sampling-window loop passed;
   see the [bounded hardware record](#gap-seeking-and-sampling-window-hardware-qualification--passed-2026-11-06).
-- **Multi-node ensemble training is built;** its real run on Darwin is pending. So is confirmation of
-  the fixes for allocations held after `--test_ml` and for dead executors. See the
-  [record](#multi-node-training-2026-11-06).
+- **Multi-node ensemble training passed bounded Darwin qualification:** both trainers
+  at eight members/two nodes, cancellation/retry recovery, and excited-state training
+  at 20 members/five nodes. Exit cleanup, dead-executor handling and all three engines'
+  sampling/plotting checks also passed; see the
+  [November 7 hardware record](#current-development-hardware-qualification--passed-with-restart-limits-2026-11-07).
+  Crash-safe restart remains unqualified.
 - **Next:** safe restarts (tabled for now; see [`exascale.md`](exascale.md)), teacher labeling, then new
   uncertainty and acquisition methods. Long runs and staged campaigns come last, and may be
   removed; see [Order of work](future.md#order-of-work).
@@ -351,9 +354,10 @@ four CPU excited-state members) also passed. A plain run trained all four across
 pool was killed mid-training, Parsl reported `ManagerLost` for its two members. Only those were
 retried, a replacement block started, the failed directories stayed, and all four members reloaded.
 
-**Not shown yet.** Real nodes, real GPUs, the ground-state trainer through this path (it has no CPU
-mode, so local tests fake it), and any scale. See the
-[Darwin gate](future.md#group-c-placement-and-memory).
+**Subsequent Darwin qualification passed November 7.** Both trainers ran eight members
+on two real GPU nodes; excited-state training also ran 20 members on five nodes.
+See the [hardware record](#current-development-hardware-qualification--passed-with-restart-limits-2026-11-07)
+for retry, promotion, sampling and cleanup evidence and scope limits.
 
 **Exit fixes found in review.** An older bug: when `--test_ml` finished, the node stayed held (user
 report, also on `main`, which is unchanged). ALF called Parsl's `cleanup` only at a
@@ -400,8 +404,73 @@ the High rows in [`exascale.md`](exascale.md).
 Checked with real excited-state trajectories through the real sampler using fake models, a force screen, and a
 run through the real coordinator, and by looking at the images. Local result: 883 passed, 2 skipped (`seqm` not
 installed), and the new tests also pass without Torch. At 1M rows, measured on a laptop: 350 MB, about 8 s
-per update, and 1.3 GB peak memory. Not shown: a real GPU run, or any shared filesystem. Selection and stopping
-don't use the changed fields.
+per update, and 1.3 GB peak memory. Selection and stopping don't use the changed fields.
+Real GPU sampling and plotting on shared storage subsequently passed on all three
+engines; see the [November 7 hardware record](#current-development-hardware-qualification--passed-with-restart-limits-2026-11-07).
+
+### Current development hardware qualification — passed with restart limits (2026-11-07)
+
+Qualified ALF **`ce711d8`**, preserving the earlier E6, quick-win and gap/window
+source boundaries. Evidence is outside Git under
+`validation/development_20261107/`: `qualification_summary.json` and
+`qualification_summary.md`, frozen `run-002/` and `run-003/`, and the preserved-loop
+recheck `loop-recheck-002/verification.json`. Harness revisions include `a50afa9`,
+`60104bb`, `fa0ff20` and final verifier `b36e02d`, committed separately in
+`alf_validation`. Qualified environments and accepted Increment 9 formaldehyde
+inputs were reused without dependency upgrades. No ALF library fix was needed.
+
+- **Both trainers:** eight members on two nodes/four GPUs each passed clean and
+  cancelled-block runs. Placement showed eight distinct host/GPU pairs and actual
+  optimizer overlap. Every member ran five epochs, changed parameters, preserved
+  its GPU mask, loaded the same shards and reloaded. Only the four members on the
+  cancelled block retried; failed directories were retained.
+- **Scale:** 20 excited-state members trained concurrently on 20 distinct GPUs on
+  five ml4chem nodes: cn4071–72 (A6000) and cn4073–75 (A5000). All members reloaded;
+  maximum representative force finite-difference error was **1.65e-6 eV/Å**.
+  This is independent-member placement, not distributed training of one member;
+  ten-node/40-member scaling and larger-dataset throughput remain unqualified.
+- **Sampling and plots:** ASE, TorchSim CUDA and ALCHEMI passed actual widths
+  one/four, S0/S1 propagation, initial-invalid-input isolation and identity checks
+  using the new eight-member models. Exact harvested summary rows, peak/final
+  diagnostics, state plots and legacy-pickle plots passed. Ground-state sampling
+  also ran with the newly trained ensemble. New excited-state models loaded from
+  `member_composition.json` without reading `training_summary.json`.
+- **Exit paths:** real `--test_ml` allocations released automatically; coordinator
+  `SIGTERM` and a permanently failed ML executor produced the expected exit and
+  cleanup. The latter released the other executors too. This does not demonstrate
+  `SIGKILL` cleanup or literal `scancel` of a batch-hosted coordinator.
+- **Ordinary ALF loop:** cancellation with `member_retries=0` left failed generation
+  1 unpromoted and allowed generation 2 to train/promote. All eight final members
+  retained **20 new propagated labels**, with all 20 represented across actual
+  training splits. The loop stored **52 frames** (32 bootstrap + 20 sampled),
+  exceeding its 48-label budget by four. Independent FPS reconstruction, both
+  base/gap-seeking windows, finite reloads and consistent gaps passed. Final
+  representative force finite-difference error was **3.96e-6 eV/Å**.
+
+The raw `run-003/result.json` remains **incomplete**, preserving its frozen
+verifier's failure: it required another polling record after final promotion,
+although ALF promoted and exited normally without another sleep. A separate
+verification of unchanged evidence passed. It also accounts explicitly for four
+sampler results completed after the budget stopped harvesting; they were reported
+as dropped, not missing harvested summary rows. Shutdown reported two remaining QM
+structures, zero finished-but-unstored QM structures and zero builder structures.
+All original failed reports remain intact.
+
+Filesystem/lock measurements passed, but restart work is **baseline evidence, not
+crash-safe recovery acceptance**: 11 interruption observations completed and one
+best-effort store-interruption repeat did not hit its trigger. Finite-bootstrap
+restart failed; `SIGKILL` left allocations alive beyond the 120-second observation
+window until owned-resource cleanup. See the
+[measured I/O/restart record](exascale.md#darwin-measurements-2026-11-07).
+
+The library suite passed **807 tests with 78 optional-backend skips**, counting the
+single socket-restricted test rerun outside the sandbox. The external suite passed
+196 tests; the final affected harness suite passed 25. Persistent frontend `tmux`
+supervision used the original **08:41:58–12:41:58 Mountain** queue-inclusive budget;
+cleanup finished at approximately **11:47:38**, before the deadline. Both attempts'
+watchdogs and a final scheduler inspection verified all owned jobs terminated.
+No user-guide changes, dependency upgrades, new campaign or push accompanied this
+round. Safe restarts remain tabled; the priority order is unchanged.
 
 ### Gap-seeking and sampling-window hardware qualification — passed (2026-11-06)
 

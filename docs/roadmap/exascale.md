@@ -2,9 +2,69 @@
 
 An audit of where ALF's file operations could become a problem in campaigns of thousands of nodes, with a priority list for fixing them. It was done on November 6, 2026, by reading the file operations in `alframework/` and the CPP example, and the defaults in HIPPYNN, PySCF, and Parsl.
 
-**Where this stands:** the priority list below is still open, and the wider restart plan is in [Safe restarts and disk races](future.md#safe-restarts-and-disk-races). Three related changes have landed since the audit: ALF now releases allocations on exit, the excited-state loader no longer reads `training_summary.json` on each sampler task, and the multi-node training tasks wait for shards. None has been measured at scale.
+**Where this stands:** the priority list below is still open, and the wider restart plan is in [Safe restarts and disk races](future.md#safe-restarts-and-disk-races). Three related changes have landed since the audit: ALF now releases allocations on exit, the excited-state loader no longer reads `training_summary.json` on each sampler task, and the multi-node training tasks wait for shards. Bounded measurements now cover two-node operation and 20 independent training members on five nodes; they do not establish exascale performance.
 
-**What was and wasn't measured:** nothing was measured on a shared filesystem or at scale, so severities are estimates from reading the code. The only timings are in-memory ones on a Mac, using random floats. GPU4PySCF wasn't installed there, so whether it inherits PySCF's temp-file behavior is unconfirmed.
+**What was and wasn't measured:** the original audit used code inspection and
+in-memory Mac timings. The [November 7 Darwin measurements](#darwin-measurements-2026-11-07)
+add real shared-filesystem and bounded multi-node evidence. Large-dataset costs
+remain estimates; GPU4PySCF temp-file behavior was not measured in this round.
+
+## Darwin measurements (2026-11-07)
+
+ALF `ce711d8`; frozen environments; evidence under
+`validation/development_20261107/`. Use `qualification_summary.json`,
+`run-003/io-profile/result.json`, `run-003/restart-profile/result.json` and their
+referenced original observations. Functional qualification is recorded in the
+[roadmap index](README.md#current-development-hardware-qualification--passed-with-restart-limits-2026-11-07).
+These are measurements, not implementation of the priority list below.
+
+**Locks:** `/vast/home` was NFSv3. `flock` refused a second holder on the same
+node and across nodes. After normal release, the other node acquired in 0.00242 s;
+after killing the holder child, in 0.00275 s. Cancelled-node observations in the
+retry run also acquired the lock (0.00216–0.00363 s). This supports the proposed
+coordinator lock; ALF still has no coordinator lock.
+
+**Visibility:** 50 direct and 50 temporary-file/rename publications were checked
+from another node, with all listing, named lookup and readable-content measurements
+present and all content hashes matching. Observed median/maximum delays, seconds:
+
+| Publication | Listing | Named lookup | Readable, matching contents |
+| --- | --- | --- | --- |
+| Direct | 0.108 / 0.198 | 0.108 / 0.198 | 0.113 / 0.202 |
+| Rename | 0.103 / 0.240 | 0.097 / 0.199 | 0.101 / 0.204 |
+
+Polling was about 0.2 s, so these are observation bounds, not precise filesystem
+latencies. The longest listing delay was 0.240 s in this corrected probe. Earlier
+harness file barriers showed delayed visibility; the rerun used a live control
+barrier rather than weakening concurrency assertions. No mismatched completed
+content was accepted. This small probe does not prove crash-atomic publication or
+justify shortening production shard waits.
+
+**Restart baseline:** 11 interruptions were observed; the second best-effort
+store-interruption trigger was not hit. Both finite-bootstrap `SIGTERM` and
+`SIGKILL` restart attempts exited unsuccessfully. One store-interruption restart
+also exited unsuccessfully. Idle/training restarts remained alive during bounded
+observation; that is not a verified complete recovery. `SIGKILL` left one to three
+worker allocations alive after approximately 121 s; the supervisor then cleaned
+up owned jobs. The short `SIGTERM` baseline observed allocations still settling
+after about 6.5 s; dedicated cleanup gates separately verified automatic release
+with a longer wait. No status or shard repair was performed by hand. All owned
+jobs ultimately terminated. Interrupted-bootstrap recovery, durable labels and
+status/disk reconciliation remain open.
+
+**Small-fixture costs and local storage:** the replay manifest for a 61,260-byte,
+32-frame fixture took 0.0096–0.0102 s; this cannot establish large-dataset cost.
+Fresh-process imports took 9.62–10.29 s and repeats 8.30–8.70 s. On the two profiled
+ml4chem nodes, `/tmp` resolved to `/ram`, a roughly 63 GB tmpfs, with `TMPDIR=/tmp`.
+It competes with host memory. Other partitions and post-job file survival were
+not qualified. Darshan was unavailable; no complete per-role file-operation or
+large-dataset contention profile was established.
+
+**Priority impact:** retain items 1–6 and their order. Cross-node lock mechanics
+support item 4; observed restart failures reinforce items 5–6. These small-fixture
+measurements do not justify lowering replay/training I/O severity, claiming
+exascale throughput, or enabling node-local environments/scratch across partitions.
+The restart implementation remains tabled by the existing user decision.
 
 ## Main findings
 

@@ -396,6 +396,66 @@ The bond check has these requirements:
 * Sampler workers need the ``topology`` extra, because RDKit reads the reference; see
   :doc:`../getting_started/installation`.
 
+.. _samplers-sampling-windows:
+
+Sampling Windows
+----------------
+
+A run can start on ordinary sampling and move to UDD or gap-seeking later, once it has
+enough labels. It stays one run: the same dataset, with the ensemble continuing to
+retrain. ``sampling_windows`` goes in the sampler config, and requires
+``mlmd_trajectories_task``.
+
+.. code-block:: json
+
+   {
+     "sampling_windows": [
+       {"until_stored_labels": 40000},
+       {
+         "until_stored_labels": 50000,
+         "MLMD_calculator_options": {"udd_bias_weight": 0.1}
+       },
+       {
+         "gap_seeking": {
+           "enabled": true,
+           "trigger_gap_threshold_eV": 0.1,
+           "sigma": 3.5,
+           "alpha_eV": 0.05
+         }
+       }
+     ]
+   }
+
+Here, sampling is unchanged up to 40,000 stored labels, uses UDD up to 50,000, and then
+uses gap-seeking.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 66
+
+   * - Field
+     - Meaning
+   * - ``until_stored_labels``
+     - The window applies while the stored label count is below this value. Limits must
+       increase. The last window must not set one. The count includes bootstrap labels,
+       and is kept in ``status_path`` as ``lifetime_stored_labels``.
+   * - ``MLMD_calculator_options``, ``gap_seeking``
+     - Optional. These replace the same settings in the rest of the sampler config for
+       this window. Windows don't build on each other, so a setting from one window
+       doesn't carry into the next.
+
+Things to know:
+
+* ALF checks every window at startup, so a window that combines gap-seeking with UDD,
+  for example, stops the run before it starts. The list can't change during a run.
+* A switch happens on the first loop after stored labels reach the limit, so a run can
+  go past the limit by up to ``save_h5_threshold``.
+* Tasks already running finish under the old window. A batch uses the window current when
+  it's submitted, and each molecule's metadata records its ``sampling_window``.
+* A cohort that spans a switch pools frames from both windows. Selection still works,
+  because scores use unbiased predictions.
+* Gap-seeking also needs ``"model_mode": "excited_state"``; see :doc:`excited_states`.
+
 GPU Selection
 -------------
 

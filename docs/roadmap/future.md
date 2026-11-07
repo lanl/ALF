@@ -32,6 +32,7 @@ All landed on November 6; see the [record](README.md#quick-wins-2026-11-06). The
 
 - Selected-state UDD and wells: real width-one and width-four runs on ASE, TorchSim CUDA, and ALCHEMI.
 - Gap-seeking: the same runs, and parity with the fork's ALCHEMI behavior.
+- Sampling windows: a short run switching from base ALF to gap-seeking.
 - Ground-state training device selection: a real training run, ideally on an allocation with a mask.
 - Reactive sampler device selection: a real reactive task.
 
@@ -196,6 +197,7 @@ The model/training-boundary work must also address two porting requirements reco
   persistence, a run-control equivalent, staged configurations, and
   retained-label budgets. The fork's `run_control`, `workflow_io`,
   `staged_workflow`, and `dataset_screening` are source material.
+- **Sampling windows.** Landed November 6: `sampling_windows` moves one run from base sampling to UDD or gap-seeking at stored-label counts; see the [record](README.md#sampling-windows-2026-11-06). The staged runner above would add fresh ensembles for each stage, exact dataset checkpoints, inherited-data compatibility checks, and a task journal with resume.
 - **Budgets beyond a stop rule.** `maximum_stored_labels` ends a run after enough converged labels are stored. Retained-label budgets, draining running work, and the other counts below are still open.
 - **Filtering converged labels after QM.** Runtime force and topology screens run on sampled frames, and don't filter stored QM labels. Reuse `tools/molecular_topology.py` where possible, and keep it opt-in, because it changes which data is stored.
 

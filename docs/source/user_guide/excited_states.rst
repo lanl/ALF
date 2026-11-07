@@ -434,6 +434,8 @@ How it runs:
   and the rest of acquisition still read unbiased predictions on the selected state.
 * **Wells:** ``well_params`` adds on top of the surface. ALF stops at startup if
   ``udd_bias_weight`` is also set, because UDD's bias describes the selected state.
+* **Starting later:** to begin with ordinary sampling and turn this on after enough
+  labels are stored, see :ref:`samplers-sampling-windows`.
 * **Records:** each molecule's metadata has ``gap_seeking_current_mode`` and
   ``gap_seeking_switched``, plus ``gap_seeking_pair`` and the trigger gap, step, and time
   once it has switched. Frames sampled after a switch carry the same fields.

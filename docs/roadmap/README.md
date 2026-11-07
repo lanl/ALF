@@ -307,6 +307,16 @@ Differences from the fork:
   `gap_seeking_switch_events` list aren't ported. The switch is recorded in
   `gap_seeking_*` metadata.
 
+### Sampling windows (2026-11-06)
+
+`sampling_windows` lets one run start on base sampling and move to UDD or gap-seeking at
+stored-label counts, in `tools/sampling_windows.py` (user decision). The fork does this with
+a staged runner of about 1,400 lines, where each stage is a separate run with a fresh
+ensemble. That runner stays in [Group E](future.md#group-e-long-runs). Compared with it,
+windows have no fresh ensembles, exact dataset checkpoints, or task journal, and a window can
+only change `gap_seeking` and `MLMD_calculator_options`. Tested with fakes only, so a real run
+is still needed; see [Quick wins](future.md#quick-wins).
+
 ## Development and test environments
 
 Policy, decided 2026-11-03: test development work against fresh installs with

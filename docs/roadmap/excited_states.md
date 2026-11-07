@@ -4,7 +4,7 @@ The E1-E6 plan and Increments 8-11B: excited-state contracts, labeling, training
 
 ## Delivered increments
 
-Moved from [`README.md`](README.md) on November 6, 2026. **Merged** means in official `lanl/ALF:development`. Increment 11B's bounded E6 qualification passed; its close-out is **done locally**, awaiting the user's push. See [Increment status](README.md#increment-status).
+Moved from [`README.md`](README.md) on November 6, 2026. **Merged** means in official `lanl/ALF:development`. See [Increment status](README.md#increment-status).
 
 | Increment | Status | Deliverable | Acceptance gate |
 | --- | --- | --- | --- |
@@ -12,7 +12,7 @@ Moved from [`README.md`](README.md) on November 6, 2026. **Merged** means in off
 | 9. Multi-state training and external geometries (E3–E4) | merged (`7c24cb2`, live remote verified 2026-11-05) | Shared-trunk state heads and force gradients in the existing HIPPYNN interface; unlabeled XYZ/HDF5 geometry builder. | 402 library tests pass; real 32-frame import/label/store/four-member GPU training and reload passed. |
 | 10. Selected-state sampling and acquisition (E5) | merged (`a5090e0`, `6c2751d`, `1c367ba`) | Multi-state inference, state selection and grouping, and named gap uncertainty across ASE, TorchSim CUDA, and ALCHEMI. | Focused compatibility/parity tests; real widths one/four on each engine; one shared small acquisition/label/store/retraining qualification. |
 | 11A. Chemical topology screening and fixed-keto AcAc ALF | merged (`4a1caba`) | Opt-in reference-based chemical topology screening across ASE, TorchSim, and ALCHEMI; an ordinary AcAc ALF loop. | Screens passed on all three engines; newly sampled labels entered a promoted four-member ensemble. |
-| 11B. cpp-ring active learning (E6) | done locally; bounded CPP9 DCM pilot passed 2026-11-06 | Run the ordinary ring ALF loop. | All 32 fresh bootstrap frames and eight propagated S0–S3 samples were stored; all four promoted members retained the new IDs, trained and reloaded; owned-job cleanup verified. |
+| 11B. cpp-ring active learning (E6) | merged (`81a70cd`); bounded CPP9 DCM pilot passed 2026-11-06 | Run the ordinary ring ALF loop. | All 32 fresh bootstrap frames and eight propagated S0–S3 samples were stored; all four promoted members retained the new IDs, trained and reloaded; owned-job cleanup verified. |
 
 ## Delivered capabilities
 

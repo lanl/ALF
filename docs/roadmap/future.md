@@ -6,18 +6,17 @@ Everything here is unfinished. Delivered work is recorded in [`batching.md`](bat
 
 ## Order of work
 
-Updated November 6, 2026. The user set the sequence on November 3, and revised the bias work on November 6.
+Updated November 6, 2026, after E6 passed. The user set the sequence on November 3, and revised the bias work on November 6.
 
-1. **Finish E6.** The CPP9 pilot is running on Darwin; see [`excited_states.md`](excited_states.md).
-2. **Biased dynamics on excited states** ([Group B](#group-b-biased-dynamics-on-excited-states)): real runs for selected-state UDD and wells, then LCM gap seeking. The other real runs under [Quick wins](#quick-wins) can go alongside.
-3. **Long runs and staged campaigns** ([Group E](#group-e-long-runs)). This is the largest item.
-4. **Placement and memory** ([Group C](#group-c-placement-and-memory)), including multi-node training. It buys throughput for larger ensembles, not new methods.
-5. **Teacher labeling, then F1 and F2 fine-tuning** ([Group D](#group-d-model-families-and-labels)).
-6. **New uncertainty and acquisition methods** ([Group G](#group-g-new-uncertainty-and-acquisition-methods)), last (user decision, November 6).
+1. **Biased dynamics on excited states** ([Group B](#group-b-biased-dynamics-on-excited-states)): real runs for selected-state UDD and wells, then LCM gap seeking. The other real runs under [Quick wins](#quick-wins) can go alongside.
+2. **Long runs and staged campaigns** ([Group E](#group-e-long-runs)). This is the largest item.
+3. **Placement and memory** ([Group C](#group-c-placement-and-memory)), including multi-node training. It buys throughput for larger ensembles, not new methods.
+4. **Teacher labeling, then F1 and F2 fine-tuning** ([Group D](#group-d-model-families-and-labels)).
+5. **New uncertainty and acquisition methods** ([Group G](#group-g-new-uncertainty-and-acquisition-methods)), last (user decision, November 6).
 
-Groups C and D are independent of steps 1-3, so they can start earlier if there is capacity.
+Groups C and D are independent of steps 1-2, so they can start earlier if there is capacity.
 
-CPP scale-up ([Group F](#group-f-cpp-scale-up)) depends on the E6 result and the science goals.
+E6 passed on November 6, within its bounded scope. CPP scale-up ([Group F](#group-f-cpp-scale-up)) now depends on the science goals.
 
 **No merge to `main` is planned (user decision, November 6).** `main` and the public documentation site, which deploys from it, stay as they are.
 
@@ -208,7 +207,7 @@ overshoot are separate concepts.
 
 ## Group F: CPP scale-up
 
-These depend on the E6 result. None has been shown so far; see [`excited_states.md`](excited_states.md).
+E6 passed within a bounded pilot, and none of these has been shown so far; see [`excited_states.md`](excited_states.md).
 
 - Ten-node scaling.
 - Production width 50, and the 50,000-to-5,000 preparation.

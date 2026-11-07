@@ -434,7 +434,9 @@ these checks are part of the future plan.
     `train_ANI_model_task`;
   - the original builders.
 - The only deliberate config change is `"distcut": 0.7` in four water
-  examples, made at the user's direction; the code default stays 1.2 Å.
+  examples and IL, made at the user's direction; the code default stays 1.2 Å.
+  Without it, every trajectory stops at its first check, because these systems
+  have bonds shorter than 1.2 Å.
 - The first smoke matrix ran during Increment 7. Simple water and fine-tuning passed. The user accepted the other cases as validation gaps at the close-out, not as passes; see [`batching.md`](batching.md#increment-7--closed-by-user-acceptance-2026-11-05). It hasn't run since, including the planned run after E5.
 - `tests/test_examples.py` loads every tracked example's configurations and checks their tasks on each push.
 

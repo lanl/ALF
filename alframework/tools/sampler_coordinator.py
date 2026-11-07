@@ -27,11 +27,13 @@ import inspect
 from alframework.samplers.acquisition import cohort_selection
 from alframework.tools.batching import BatchedSubmitter, StartupSettings, batching_settings, default_batch_key
 from alframework.tools.cohorts import CohortPool
+from alframework.tools.gap_seeking import gap_seeking_settings
 
 STRATEGIES = ("single", "batched")
 ENGINES = ("ase", "torchsim", "alchemi")
 # Read once at startup. Cutoffs set what a cohort's scores mean, so they stay fixed only in cohort mode.
-FIXED_SETTINGS = ("driver", "batching", "acquisition", "model_mode", "state_selection", "gap_uncertainty")
+FIXED_SETTINGS = ("driver", "batching", "acquisition", "model_mode", "state_selection", "gap_uncertainty",
+                  "gap_seeking")
 FIXED_COHORT_SETTINGS = ("Escut", "Fscut", "gap_std_cut")
 
 
@@ -40,6 +42,7 @@ def state_settings(config):
     mode = config.get('model_mode', 'ground_state')
     if mode not in ('ground_state', 'excited_state'):
         raise ValueError('model_mode must be ground_state or excited_state')
+    seeking = gap_seeking_settings(config)
     if mode == 'ground_state':
         if 'state_selection' in config or 'gap_uncertainty' in config:
             raise ValueError('State selection/gap uncertainty requires model_mode excited_state')
@@ -65,7 +68,7 @@ def state_settings(config):
             _state_index(state)
         if pair[0] >= pair[1]:
             raise ValueError('Gap pair must be lower state followed by upper state')
-    return dict(policy=policy, gap_pair=pair)
+    return dict(policy=policy, gap_pair=pair, gap_seeking=seeking)
 
 
 def _state_index(value):

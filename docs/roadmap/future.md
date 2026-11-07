@@ -8,14 +8,15 @@ This file lists remaining work and its completed prerequisites. Delivered work i
 
 Updated November 6, 2026, after E6 passed. The user set the sequence on November 3, and revised the bias work on November 6.
 
-E6 and the bounded quick-win hardware round have passed; see the
-[E6 record](excited_states.md) and [hardware qualification](README.md#quick-win-hardware-qualification--passed-2026-11-06).
+E6, the bounded quick-win hardware round, and gap-seeking/sampling-window
+mechanics have passed; see the [E6 record](excited_states.md),
+[quick-win qualification](README.md#quick-win-hardware-qualification--passed-2026-11-06),
+and [gap/window qualification](README.md#gap-seeking-and-sampling-window-hardware-qualification--passed-2026-11-06).
 
-1. **Real runs for gap-seeking and sampling windows** ([Group B](#group-b-biased-dynamics-on-excited-states)). Selected-state UDD and wells have passed real qualification.
-2. **Long runs and staged campaigns** ([Group E](#group-e-long-runs)). This is the largest item.
-3. **Placement and memory** ([Group C](#group-c-placement-and-memory)), including multi-node training. It buys throughput for larger ensembles, not new methods.
-4. **Teacher labeling, then F1 and F2 fine-tuning** ([Group D](#group-d-model-families-and-labels)).
-5. **New uncertainty and acquisition methods** ([Group G](#group-g-new-uncertainty-and-acquisition-methods)), last (user decision, November 6).
+1. **Long runs and staged campaigns** ([Group E](#group-e-long-runs)). This is the largest item. The bounded bias/window mechanics prerequisites have passed.
+2. **Placement and memory** ([Group C](#group-c-placement-and-memory)), including multi-node training. It buys throughput for larger ensembles, not new methods.
+3. **Teacher labeling, then F1 and F2 fine-tuning** ([Group D](#group-d-model-families-and-labels)).
+4. **New uncertainty and acquisition methods** ([Group G](#group-g-new-uncertainty-and-acquisition-methods)), last (user decision, November 6).
 
 Groups C and D are independent of the bias and long-run work, so they can start earlier if there is capacity.
 
@@ -38,10 +39,16 @@ GPU4PySCF guard/response checks. A small ordinary ALF loop also qualified FPS
 selection, native width-four labeling, retraining/promotion and the production
 label-budget stop. See the [evidence](README.md#quick-win-hardware-qualification--passed-2026-11-06).
 
-**Real runs still needed.** These came after that round, and have only been tested with fake GPU libraries:
+**Subsequent real mechanics gates passed November 6.** These use the later
+ALF `1055d9c` source boundary; see the [evidence](README.md#gap-seeking-and-sampling-window-hardware-qualification--passed-2026-11-06).
 
-- Gap-seeking: real width-one and width-four runs on ASE, TorchSim CUDA, and ALCHEMI, and parity with the fork's ALCHEMI behavior.
-- Sampling windows: a short run switching from base ALF to gap-seeking.
+- Gap-seeking: real width-one/four runs with and without wells on all three
+  engines, permanent switching and no-switch controls, independent surface-force
+  checks and preservation of unbiased screening. The frozen 20 eV trigger tests
+  mechanics; near-crossing accuracy remains unqualified.
+- Sampling windows: an ordinary ALF loop switched at 40 stored labels, stored
+  eight new propagated labels in each window, retrained/promoted twice, and exited
+  normally at its 48-label budget with owned-job termination verified.
 
 **Look easy, but aren't:**
 
@@ -58,9 +65,12 @@ label-budget stop. See the [evidence](README.md#quick-win-hardware-qualification
 1. **Selected-state UDD and wells — qualified November 6.** Real width-one/four
    runs passed across ASE, TorchSim and ALCHEMI. Common-frame forces match the
    `MLMD_calculator` formulas, including active example-radius wells, and screening
-   still reads unbiased predictions. This gate is closed; gap-seeking remains separate.
-2. **Gap-seeking.** Landed November 6 on all three engines, and tested with fakes only; see the [record](README.md#gap-seeking-2026-11-06).
-   - Gate still open: real width-one and width-four runs, and parity with the fork's ALCHEMI behavior.
+   still reads unbiased predictions. This gate is closed.
+2. **Gap-seeking — mechanics qualified November 6.** Real width-one/four runs
+   passed on all three engines, including wells, switch/no-switch controls and
+   independent checks of the fork's surface formula; see the
+   [hardware record](README.md#gap-seeking-and-sampling-window-hardware-qualification--passed-2026-11-06).
+   Physically small-gap acquisition and long-time behavior remain unqualified.
 3. **General bias/control interface, only when a further method needs one.** Each control:
     - receives physical predictions and returns propagation forces;
     - keeps replica-local state (for example, the permanent gap-seeking switch);
@@ -206,7 +216,7 @@ The model/training-boundary work must also address two porting requirements reco
   persistence, a run-control equivalent, staged configurations, and
   retained-label budgets. The fork's `run_control`, `workflow_io`,
   `staged_workflow`, and `dataset_screening` are source material.
-- **Sampling windows.** Landed November 6: `sampling_windows` moves one run from base sampling to UDD or gap-seeking at stored-label counts; see the [record](README.md#sampling-windows-2026-11-06). The staged runner above would add fresh ensembles for each stage, exact dataset checkpoints, inherited-data compatibility checks, and a task journal with resume.
+- **Sampling windows.** Landed November 6: `sampling_windows` moves one run from base sampling to UDD or gap-seeking at stored-label counts; see the [record](README.md#sampling-windows-2026-11-06). A bounded real base-to-gap-seeking loop has passed. The staged runner above would add fresh ensembles for each stage, exact dataset checkpoints, inherited-data compatibility checks, and a task journal with resume.
 - **Budgets beyond a stop rule.** `maximum_stored_labels` ends a run after enough converged labels are stored. Retained-label budgets, draining running work, and the other counts below are still open.
 - **Filtering converged labels after QM.** Runtime force and topology screens run on sampled frames, and don't filter stored QM labels. Reuse `tools/molecular_topology.py` where possible, and keep it opt-in, because it changes which data is stored.
 

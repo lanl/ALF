@@ -21,7 +21,10 @@ This folder is the shared plan for bringing the fork's intended capabilities int
   propagated, stored samples covering S0–S3 in a promoted four-member ensemble;
   see [Increment 11B](excited_states.md#increment-11b--completed-cpp9-active-learning-qualification-e6).
   Ten-node scaling, predictive accuracy and long-time stability remain unqualified.
-- **Next:** real runs for gap-seeking and sampling windows, then staged campaigns, multi-node training, and teacher labeling. New uncertainty and
+- **Gap-seeking mechanics passed on all three engines**, and the ordinary
+  base-to-gap-seeking sampling-window loop passed;
+  see the [bounded hardware record](#gap-seeking-and-sampling-window-hardware-qualification--passed-2026-11-06).
+- **Next:** long runs and staged campaigns, multi-node training, and teacher labeling. New uncertainty and
   acquisition methods come last; see [Order of work](future.md#order-of-work).
 - **No merge to `main` is planned** (user decision, November 6).
 - **Outside current acceptance:** legacy NeuroChem and MI350.
@@ -294,8 +297,8 @@ have since passed; see [the hardware record](#quick-win-hardware-qualification--
 
 Ported from the fork's ALCHEMI sampler to ASE, TorchSim, and ALCHEMI, in
 `tools/gap_seeking.py`, `PackedMLMDEngine._apply_gap_seeking`, and `_StateMeanCalculator`. The
-settings block, trigger, surface, and analytic force match the fork. Tested with fakes
-only, so real runs are still needed; see [Quick wins](future.md#quick-wins).
+settings block, trigger, surface, and analytic force match the fork. Real mechanics
+checks have passed; see the [hardware record](#gap-seeking-and-sampling-window-hardware-qualification--passed-2026-11-06).
 
 Differences from the fork:
 
@@ -314,35 +317,59 @@ stored-label counts, in `tools/sampling_windows.py` (user decision). The fork do
 a staged runner of about 1,400 lines, where each stage is a separate run with a fresh
 ensemble. That runner stays in [Group E](future.md#group-e-long-runs). Compared with it,
 windows have no fresh ensembles, exact dataset checkpoints, or task journal, and a window can
-only change `gap_seeking` and `MLMD_calculator_options`. Tested with fakes only, so a real run
-is still needed; see [Quick wins](future.md#quick-wins).
+only change `gap_seeking` and `MLMD_calculator_options`. A real base-to-gap-seeking
+loop has passed; see the [hardware record](#gap-seeking-and-sampling-window-hardware-qualification--passed-2026-11-06).
 
-### Gap-seeking and sampling-window hardware qualification — running (2026-11-06)
+### Gap-seeking and sampling-window hardware qualification — passed (2026-11-06)
 
 The separate external harness is frozen at ALF `1055d9c` / `alf_validation`
 `f64a70c` (assembled `2bcfafe`). Evidence is outside Git under
-`validation/gap_windows_20261106/run-001/`. It reuses isolated copies of the
-accepted Increment 9 formaldehyde ensemble and 32 labels, with the qualified
+`validation/gap_windows_20261106/run-001/`, including `result.json`,
+`evidence_summary.json`, per-engine results, loop events and training manifests.
+It reused isolated copies of the accepted Increment 9 formaldehyde ensemble
+and 32 labels, with the qualified
 environments unchanged. Earlier E6 and quick-win passes retain their source boundaries.
 
 By user choice this is a **mechanics qualification**, with a frozen **20 eV**
 switch threshold, `sigma=3.5` and `alpha_eV=0.05`; it makes no near-crossing accuracy
-claim. The suite runs gap-seeking with/without wells at widths one/four on ASE,
-TorchSim CUDA and ALCHEMI, plus a no-switch control on each engine. Common-frame
-checks use an independent LCM derivative and verify unbiased screening; trained-model
-surface-force finite-difference errors were at most **1.67e-6 eV/Å** in preparation.
+claim. **All 15 GPU cases passed:** gap-seeking with/without wells at widths
+one/four on ASE, TorchSim CUDA and ALCHEMI, plus a width-four no-switch control
+on each engine. All 48 positive trajectories switched and propagated afterward;
+all 12 control trajectories stayed on the selected state. Actual entered widths
+matched submitted widths. Common-frame checks used an independent LCM derivative,
+including both adjacent S1 pairs, and verified unchanged unbiased predictions,
+uncertainty and physical-force screening. At the frozen `sigma=3.5`, maximum force
+disagreement was **2.39e-7 eV/Å**. Large artificial forces at `sigma=1000` also
+passed mixed `rtol=atol=1e-5` checks without contaminating the physical screen.
+Trained-model surface-force finite-difference errors were at most
+**1.67e-6 eV/Å** in preparation.
 
-An ordinary ALCHEMI ALF loop starts at 32 stored labels, switches from base
-sampling to gap-seeking at 40, and stops at 48 using the production budget rule.
-Acceptance requires eight new propagated, converged/stored labels from each
-window, native width-four labeling, retention by every final member, actual
-training-split contributions from both windows, retraining/promotion and cleanup.
+The ordinary ALCHEMI ALF loop **passed**, starting at 32 stored labels, switching
+from base sampling to gap-seeking at exactly **40**, and exiting normally at **48**
+through the production label-budget rule. Four width-four tasks executed in each
+window. Independent FPS reconstruction matched all eight cohorts' selections.
+All **16** selected, genuinely propagated IDs (eight per window) converged and
+were stored in **four native width-four solves**. Every final member retained
+all 16; the ensemble's actual training splits included all eight from each window.
+All four members performed five real epochs and changed parameters in both
+training rounds. Both ensembles promoted; model 2 reloaded with finite four-state
+predictions and consistent member-derived gaps/population spreads. Maximum final
+model-force finite-difference error was **2.11e-7 eV/Å**.
+
+There were **zero failed tasks/structures, screening rejections, label overshoot,
+or converged unstored labels**. The builder returned 36 geometries; 32 entered
+dynamics, and one completed four-frame builder task remained unused at shutdown.
+No sampler or QM work remained queued. All **ten owned Slurm jobs** were verified
+terminated, with an independent empty-queue check; persistent supervision ended.
+Source, inputs and passed-stage evidence fingerprints were reverified unchanged.
 
 CPU checks passed **662 library tests, 78 unavailable-engine skips**, and
 **96 affected external tests**. Persistent Darwin tmux supervision started the
-four-hour queue-inclusive window at **19:25:44 Mountain**, ending **23:25:44**;
-five minutes are reserved for cleanup and allocations are capped at 30 minutes.
-Real GPU and ordinary-loop gates remain pending until recorded as passed.
+four-hour queue-inclusive window at **19:25:44 Mountain** (deadline **23:25:44**);
+the complete round, including queues and verified cleanup, took **20.05 minutes**.
+Allocations were capped at 30 minutes. No library fix or dependency upgrade was
+needed. Physical near-crossing accuracy, long-time behavior and full staged
+campaigns remain unqualified.
 
 ### Quick-win hardware qualification — passed (2026-11-06)
 

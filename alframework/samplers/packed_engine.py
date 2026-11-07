@@ -38,6 +38,7 @@ from ase.io.trajectory import Trajectory
 
 from alframework.ml_interfaces.ensemble_inference import ASEEnsembleEvaluator
 from alframework.samplers.geometry import minimum_distance
+from alframework.tools.gap_seeking import lcm_energy_forces
 
 KB_EV_PER_K = 8.617333262145e-5
 CALCULATOR_OPTIONS = ("well_params", "udd_bias_weight", "udd_bias_eps", "debug_print")
@@ -89,6 +90,7 @@ class PackedMLMDEngine:
         self._dt = float(dt) * units.fs
         self._friction = float(friction)
         self._writers = {}
+        self._lcm = {}
         self.steps = [0] * len(self._atoms)
 
         def tensor(values, dtype=self.dtype):
@@ -174,6 +176,8 @@ class PackedMLMDEngine:
         self._host = None
         self._stale = False
         energy, force = energies.mean(0), forces.mean(0)
+        if self._lcm:
+            self._apply_lcm(energy, force)
         well = self._options["well_params"]
         if well is not None:
             well_energy, well_force = self._well(well)
@@ -191,6 +195,26 @@ class PackedMLMDEngine:
         bad_atoms = (~torch.isfinite(force)).any(1).to(self.dtype)
         bad = ~torch.isfinite(energy) | (torch.zeros_like(energy).index_add_(0, state.system_idx, bad_atoms) > 0)
         return [self._rows[row] for row in torch.nonzero(bad).flatten().tolist()]
+
+    def _apply_lcm(self, energy, force):
+        """Replace switched systems' propagation mean; ``_members`` stay unbiased for observations."""
+        state_energies, state_forces = self._state_members
+        mean_energies = state_energies.mean(0).to(self.device, self.dtype)
+        mean_forces = state_forces.mean(0).to(self.device, self.dtype)
+        for index, control in self._lcm.items():
+            if index not in self._position:
+                continue
+            row, selection = self._position[index], self._slices[index]
+            lower, upper = control["pair"]
+            energy[row], force[selection] = lcm_energy_forces(
+                mean_energies[lower, row], mean_energies[upper, row],
+                mean_forces[lower, selection], mean_forces[upper, selection],
+                control["sigma"], control["alpha_eV"])
+
+    def set_lcm(self, index, pair, sigma, alpha_eV):
+        """Permanently move one trajectory to the LCM surface for ``pair``."""
+        self._lcm[index] = {"pair": tuple(pair), "sigma": float(sigma), "alpha_eV": float(alpha_eV)}
+        self._stale = True
 
     def _well(self, params):
         torch, state = self._torch, self.state

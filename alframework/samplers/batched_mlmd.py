@@ -53,6 +53,7 @@ from parsl import python_app
 from alframework.ml_interfaces.ensemble_inference import ensemble_statistics, SelectedStateEvaluator
 from alframework.samplers.acquisition import acquisition_settings, assess_frame, frame_id, top_k, worker_retention_limit
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator
+from alframework.tools.gap_seeking import adjacent_pairs, gap_seeking_settings, lcm_energy_forces, select_trigger
 from alframework.samplers.geometry import minimum_distance
 from alframework.tools.molecules_class import MoleculesObject
 from alframework.tools.gpu import sampling_device
@@ -107,7 +108,8 @@ class _StateMeanCalculator(Calculator):
     """ASE propagation view retaining unbiased member/state observations.
 
     Wells and UDD go through ``MLMD_calculator``, so that the formulas stay in one place.
-    ``prediction`` stays unbiased either way, for screening and uncertainty.
+    ``prediction`` stays unbiased either way, for screening and uncertainty. After ``set_lcm``,
+    the LCM surface replaces the selected state's mean, and any well still adds on top.
     """
     implemented_properties = ['energy', 'forces']
 
@@ -116,19 +118,34 @@ class _StateMeanCalculator(Calculator):
         self.evaluator = evaluator
         options = copy.deepcopy(calculator_options or {})
         self.bias = None
+        self.lcm = None
         if options.get('well_params') is not None or options.get('udd_bias_weight') is not None:
             members = [_PredictedMember(self, member) for member in range(evaluator.n_models)]
             self.bias = MLMD_calculator(members, **options)
 
+    def set_lcm(self, pair, sigma, alpha_eV):
+        self.lcm = {'pair': tuple(pair), 'sigma': float(sigma), 'alpha_eV': float(alpha_eV)}
+        self.reset()
+
     def calculate(self, atoms=None, properties=None, system_changes=all_changes):
         super().calculate(atoms, properties, system_changes)
         self.prediction = self.evaluator.predict([atoms])
+        mean_energy = float(self.prediction['energies'].mean())
+        mean_forces = self.prediction['forces'][0].mean(0)
         if self.bias is None:
-            self.results = dict(energy=float(self.prediction['energies'].mean()),
-                                forces=self.prediction['forces'][0].mean(0))
+            energy, forces = mean_energy, mean_forces
         else:
             self.bias.calculate(atoms, ['energy', 'forces'])
-            self.results = dict(energy=float(self.bias.results['energy']), forces=self.bias.results['forces'])
+            energy, forces = float(self.bias.results['energy']), self.bias.results['forces']
+        if self.lcm is not None:
+            lower, upper = self.lcm['pair']
+            state_energies = self.prediction['state_energies'][:, :, 0].mean(0)
+            state_forces = self.prediction['state_forces'][0].mean(0)
+            lcm_energy, lcm_forces = lcm_energy_forces(
+                float(state_energies[lower]), float(state_energies[upper]), state_forces[lower], state_forces[upper],
+                self.lcm['sigma'], self.lcm['alpha_eV'])
+            energy, forces = energy + lcm_energy - mean_energy, forces + lcm_forces - mean_forces
+        self.results = dict(energy=float(energy), forces=forces)
 
 
 class ASEEngine:
@@ -155,6 +172,9 @@ class ASEEngine:
                 MLMD_calculator(list(models), **copy.deepcopy(calculator_options or {}))
             self._dynamics.append(Langevin(atoms, dt * units.fs, friction=friction,
                                            temperature_K=temperature, rng=rng))
+
+    def set_lcm(self, index, pair, sigma, alpha_eV):
+        self._atoms[index].calc.set_lcm(pair, sigma, alpha_eV)
 
     def attach_trajectory(self, index, path, interval):
         writer = Trajectory(path, mode='w', atoms=self._atoms[index])
@@ -239,6 +259,28 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
         engine.finish(index)
         active.remove(index)
 
+    seeking = gap_seeking_settings(sampler_config)
+    if seeking is not None:
+        for molecule in molecule_objects:
+            molecule.update_metadata(dict(gap_seeking_enabled=True, gap_seeking_current_mode='selected_state',
+                                          gap_seeking_switched=False))
+
+    def seek_gap(index, prediction, time_ps):
+        """Switch a running trajectory to the LCM surface once its gap is small enough."""
+        molecule = molecule_objects[index]
+        if molecule.get_metadata()['gap_seeking_switched']:
+            return
+        state_energies = np.asarray(prediction['state_energies'], dtype=float)
+        pairs = adjacent_pairs(prediction['selected_state'], state_energies.shape[1])
+        trigger = select_trigger(state_energies[:, :, 0].mean(0), pairs, seeking['trigger_gap_threshold_eV'])
+        if trigger is None:
+            return
+        engine.set_lcm(index, trigger['pair'], seeking['sigma'], seeking['alpha_eV'])
+        molecule.update_metadata(dict(gap_seeking_current_mode='lcm', gap_seeking_switched=True,
+                                      gap_seeking_pair=list(trigger['pair']), gap_seeking_trigger_gap_eV=trigger['gap_eV'],
+                                      gap_seeking_trigger_step=int(engine.steps[index]),
+                                      gap_seeking_trigger_time_ps=float(time_ps)))
+
     cutoff = sampler_config.get('max_force_cutoff')
     screening = topology is not None or cutoff is not None
     if cutoff is not None:
@@ -315,6 +357,8 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
                 if decision['outcome'] != 'continue':
                     finish(index, decision['outcome'])
                     continue
+                if seeking is not None:
+                    seek_gap(index, observation['prediction'], time_ps)
                 set_temp = annealing_schedule(time_ps, maxt, schedule['Tamp'], schedule['Tper'],
                                               schedule['Tsrt'], schedule['Tend'])
                 engine.set_temperature(index, set_temp)
@@ -492,6 +536,8 @@ def sample_trajectories(molecule_objects, models, sampler_config, engine_class=N
             if TOPOLOGY_ATOM_IDS in atoms.arrays:
                 validated_atom_ids(atoms.arrays[TOPOLOGY_ATOM_IDS], len(atoms))
         models = SelectedStateEvaluator(models, selected.pop(), states['gap_pair'])
+        if states['gap_seeking'] is not None:
+            adjacent_pairs(models.selected_state, models.evaluator.n_states)
     seeds, rngs, schedules, trajectory_files = [], [], [], []
     for molecule in molecule_objects:
         assert isinstance(molecule, MoleculesObject), 'molecule_objects must contain MoleculesObject instances'

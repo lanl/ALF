@@ -80,7 +80,8 @@ If you use ALF in your research, **citations to papers 1-4 and this repository a
 Please also consider citing paper 5.  
 
 [1] Code release paper and molten salts case study   
-*in preparation - link will appear here*
+Vitor F. Grizzi, Patrick J. Lohr, Nikita Fedik, Steven Anaya, Jared Averitt, Joseph Gomes, Ying Wai Li, Kipton Barros, Nicholas Lubbers, Richard A. Messerly, Jan Janssen, Maksim Kulichenko, Justin Smith, Sergei Tretiak, Benjamin T. Nebgen. "ALF: Open-Source Active Learning Framework for Atomistic Modeling" J. Chem. Theory Comput. 2026, 22, 8145-8155.
+https://doi.org/10.1021/acs.jctc.6c01122
 
 [2] ALF-produced MLIP for bulk aluminum    
 Justin S. Smith, Benjamin Nebgen, Nithin Mathew, Jie Chen, Nicholas Lubbers, Leonid Burakovsky, Sergei Tretiak, Hai Ah Nam, Timothy Germann, Saryu Fensin, Kipton Barros. "Automated discovery of a robust interatomic potential for aluminum" Nat. Comm. 2021,  12, 1257. 

@@ -196,3 +196,57 @@ def test_alframework_modules_compile_without_syntax_warnings():
         with warnings.catch_warnings():
             warnings.simplefilter("error", SyntaxWarning)
             compile(path.read_text(), str(path), "exec")
+
+
+# ---- Total charge and spin multiplicity in shards ----
+
+STATE_PROPERTIES = {"energy": ["energy", "system", 1.0], "forces": ["forces", "atomic", 1.0]}
+
+
+def charged(name, atoms, **state):
+    molecule = MoleculesObject(atoms.copy(), name)
+    molecule.store_results({"energy": -1.0, "forces": np.zeros((len(atoms), 3))})
+    molecule.set_converged_flag(True)
+    if state:
+        molecule.update_metadata(state)
+    return molecule
+
+
+HYDROXIDE = Atoms("OH", positions=[[0, 0, 0], [0.97, 0, 0]])
+WATER_MOLECULE = Atoms("OH2", positions=[[0, 0, 0], [0.96, 0, 0], [-0.24, 0.93, 0]])
+
+
+def test_shards_store_charge_and_spin_when_any_structure_records_them(tmp_path):
+    from alframework.tools.tools import store_current_data
+
+    store_current_data(str(tmp_path / "data-0000.h5"), [
+        charged("anion", HYDROXIDE, charge=-1), charged("radical", HYDROXIDE, mult=2),
+        charged("plain", HYDROXIDE), charged("water", WATER_MOLECULE)], STATE_PROPERTIES)
+    with h5py.File(tmp_path / "data-0000.h5") as handle:
+        rows = {name.decode(): (int(charge), int(mult)) for group in handle.values()
+                for name, charge, mult in zip(group["_id"][()], group["total_charge"][()], group["spin_multiplicity"][()])}
+    assert rows == {"anion": (-1, 1), "radical": (0, 2), "plain": (0, 1), "water": (0, 1)}
+
+
+def test_shards_without_charge_or_spin_metadata_are_unchanged(tmp_path):
+    from alframework.tools.tools import store_current_data
+
+    store_current_data(str(tmp_path / "data-0000.h5"), [charged("water", WATER_MOLECULE)], STATE_PROPERTIES)
+    with h5py.File(tmp_path / "data-0000.h5") as handle:
+        assert sorted(handle["H02_O01"]) == ["_id", "coordinates", "energy", "forces", "species"]
+
+
+def test_hippynn_reads_shards_with_and_without_charge_and_spin(tmp_path):
+    pytest.importorskip("hippynn")
+    from alframework.ml_interfaces.hippynn_interface import ALFPyAniDirectoryDB
+    from alframework.tools.tools import store_current_data
+
+    store_current_data(str(tmp_path / "data-0000.h5"), [charged(f"w{i}", WATER_MOLECULE) for i in range(3)],
+                       STATE_PROPERTIES)
+    store_current_data(str(tmp_path / "data-0001.h5"), [charged(f"c{i}", WATER_MOLECULE, charge=0, mult=1)
+                                                         for i in range(3)], STATE_PROPERTIES)
+    schema = dict(species_key="species", coordinates_key="coordinates", atom_keys=("coordinates", "forces"))
+    database = ALFPyAniDirectoryDB(directory=str(tmp_path), allow_unfound=True, quiet=True, seed=0, inputs=None,
+                                   targets=None, **schema)
+    assert len(database.arr_dict["energy"]) == 6
+    assert "total_charge" not in database.arr_dict, "structure state isn't a training target"

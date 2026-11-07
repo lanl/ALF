@@ -18,6 +18,7 @@ from typing import Any
 from alframework.tools.atom_order import TOPOLOGY_ATOM_IDS, canonical_orders
 from alframework.tools import ensemble_training
 from alframework.tools.excited_state_tools import derive_state_property_table, derive_gap_property_table
+from alframework.tools.tools import STRUCTURE_STATE_DATASETS
 
 
 def __getattr__(name):
@@ -48,7 +49,15 @@ def __getattr__(name):
             # Newer HIPPYNN passes permit_only; older releases do not accept it.
             if self.excited_state_properties is None:
                 extra = {} if permit_only is None else {'permit_only': permit_only}
-                return super().extract_full_file(file, species_key=species_key, **extra)
+                batches, n_atoms_max, count = super().extract_full_file(file, species_key=species_key, **extra)
+                # Charge and spin describe a structure, not a target, and only some shards have them. Kept,
+                # they would make shards with and without them disagree on their keys.
+                wanted = set(self.inputs or ()) | set(self.targets or ())
+                dropped = [key for key in STRUCTURE_STATE_DATASETS if key not in wanted]
+                for batch in batches:
+                    for key in dropped:
+                        batch.pop(key, None)
+                return batches, n_atoms_max, count
             # The excited-state path selects its datasets explicitly below.
             states = validate_excited_state_training_properties(self.excited_state_properties)
             gaps = derive_gap_property_table(self.excited_state_properties)

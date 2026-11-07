@@ -196,6 +196,9 @@ def store_current_data(h5path, system_data, properties, attributes=None):
                            from the QM calculations and store in the database.
         attributes (dict): Optional strings to record as attributes on the shard.
 
+    When any converged structure has ``charge`` or ``mult`` metadata, every structure in the shard
+    gets ``total_charge`` and ``spin_multiplicity`` datasets, which default to 0 and 1.
+
     Returns:
         (int): The number of converged structures saved.
 
@@ -210,6 +213,8 @@ def store_current_data(h5path, system_data, properties, attributes=None):
                               'process is writing to this directory.')
     # system data is a list of [mol-id(string), atoms, properties dictionary]
     data_dict = {}
+    # Total charge and spin multiplicity, stored for the whole shard when any structure records them.
+    states, has_state = {}, False
     print("Saving h5 file: " + h5path)
     total_number = len(system_data)
     saved_number = 0
@@ -237,8 +242,12 @@ def store_current_data(h5path, system_data, properties, attributes=None):
             if molkey in data_dict and ((topology_ids is not None) !=
                                          (TOPOLOGY_ATOM_IDS in data_dict[molkey])):
                 raise ValueError("Cannot mix tagged and untagged topology layouts in one formula group.")
+            state = system.get_metadata()
+            has_state = has_state or STATE_METADATA[0] in state or STATE_METADATA[1] in state
+            row_state = (int(state.get(STATE_METADATA[0], 0)), int(state.get(STATE_METADATA[1], 1)))
             # If there is already a molecule with the same formula, append
             if molkey in data_dict:
+                states[molkey].append(row_state)
                 data_dict[molkey]["_id"].append(cur_moliculeid)
                 data_dict[molkey]["coordinates"].append(cur_atoms.get_positions()[atom_index])
                 if topology_ids is not None:
@@ -262,6 +271,7 @@ def store_current_data(h5path, system_data, properties, attributes=None):
                 store_pair_index(data_dict[molkey], system, properties)
             # If there is not already a molecule with this empirical formula, make a new one
             else:
+                states[molkey] = [row_state]
                 data_dict[molkey] = {}
                 data_dict[molkey]["species"] = np.array(cur_atoms.get_chemical_symbols())[atom_index]
                 data_dict[molkey]["_id"] = [cur_moliculeid]
@@ -294,6 +304,10 @@ def store_current_data(h5path, system_data, properties, attributes=None):
     print("NAN Systems: " + str(nan_number))
     print("Unconverged Systems: " + str(unconverged_number))
 
+    if has_state:
+        for isokey, rows in states.items():
+            data_dict[isokey][STRUCTURE_STATE_DATASETS[0]] = [charge for charge, _ in rows]
+            data_dict[isokey][STRUCTURE_STATE_DATASETS[1]] = [mult for _, mult in rows]
     for isokey in data_dict:
         # print('isokeys:',isokey)
         for propkey in data_dict[isokey]:
@@ -333,6 +347,9 @@ def store_current_data(h5path, system_data, properties, attributes=None):
 
 
 PARTIAL_SUFFIX = '.partial'
+# Molecule metadata keys, as the teacher and builders set them, and the shard datasets they're stored in.
+STATE_METADATA = ('charge', 'mult')
+STRUCTURE_STATE_DATASETS = ('total_charge', 'spin_multiplicity')
 
 
 def write_status(status_path, status):

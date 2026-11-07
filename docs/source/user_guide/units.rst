@@ -116,6 +116,9 @@ take energies in eV and forces in eV/Å. A model trained on other units still
 trains without error. But the samplers then run dynamics with every energy and
 force scaled by the wrong factor.
 
+**Fine-tuned MACE models use eV and eV/Å.** Shards must hold those units, whatever the QM engine;
+see :doc:`fine_tuning`.
+
 **ANI models use Hartree.** The UO2 example trains ANI, so its factor of
 ``0.0367`` converts VASP's eV *to* Hartree.
 

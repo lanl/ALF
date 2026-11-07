@@ -1,5 +1,11 @@
-Fine-Tuning Existing Models
-===========================
+Fine-Tuning HIPPYNN Models (Older Example)
+==========================================
+
+.. note::
+
+   This example predates ALF's fine-tuning task. It works only for HIPPYNN ensembles in ALF's
+   layout, and each round continues from the previous model. To fine-tune a foundation model such
+   as MACE on structures ALF selects, see :doc:`../user_guide/fine_tuning`.
 
 This fine-tuning example demonstrates how to start ALF from existing HIPPYNN
 weights and adapt them to new ALF data. The cleanest starting point is a

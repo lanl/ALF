@@ -37,8 +37,11 @@ This folder is the shared plan for bringing the fork's intended capabilities int
   training, and the replay manifest cache, then the coordinator lock, a holding area for finished
   labels, and restart reconciliation. See the [first](#restart-fixes-without-darwin-2026-11-07) and
   [second](#restarts-that-keep-labels-2026-11-07) records. Not yet run on Darwin.
-- **Next:** fine-tuning with ALF, MACE first (see [Group D](future.md#group-d-model-families-and-labels)),
-  then teacher–student and fine-tuning user guides, then new uncertainty and acquisition methods. Long runs and staged campaigns come last, and may be
+- **Fine-tuning with ALF is built for MACE:** ALF selects the samples, and each round fine-tunes copies
+  of the original checkpoint. Teacher–student and fine-tuning user guides are written. Checked on CPU
+  only; see the [record](#fine-tuning-with-alf-mace-2026-11-07).
+- **Next:** a HIPPYNN fine-tuning adapter (see [Group D](future.md#group-d-model-families-and-labels)), then
+  new uncertainty and acquisition methods. Long runs and staged campaigns come last, and may be
   removed; see [Order of work](future.md#order-of-work).
 - **No merge to `main` is planned** (user decision, November 6).
 - **Outside current acceptance:** legacy NeuroChem and MI350.
@@ -529,6 +532,53 @@ matching the shards.
 - Docs build with no warnings; 96 roadmap links checked, 0 broken.
 - Not run on Darwin. Rerunning section 3 of the [restart profile](exascale.md#darwin-profile-for-restart-work)
   at this commit would compare against the `ce711d8` baseline.
+
+### Fine-tuning with ALF: MACE (2026-11-07)
+
+ALF now selects the samples that fine-tune an existing model (user decisions in
+[Group D](future.md#group-d-model-families-and-labels)). Guides: [fine-tuning](../source/user_guide/fine_tuning.rst)
+and [teacher–student labeling](../source/user_guide/teacher_student.rst).
+
+- **The loop is unchanged.** The bootstrap is labeled, then each round's `ML_task` fine-tunes `n_models` copies
+  of the original checkpoint on every stored label, each with seed `seed + i`. MD runs on the copies through
+  the batched engines, and their disagreement selects frames as for any ensemble.
+- **`ml_interfaces/fine_tuning.py`:** `fine_tune_ensemble_task` (one GPU per copy at a time on one node, or
+  one after another on CPU) and `fine_tune_ensemble_multinode_task` (one app per copy, with retries and
+  placement records). Both wait for stored shards, refuse a nonempty ensemble directory, and write
+  `label_sources.json` and `fine_tune_lineage.json`: checkpoint path and SHA-256, adapter, package version,
+  effective settings, shards, seeds. A model family plugs in with an adapter of five methods.
+- **`ml_interfaces/mace_interface.py`:** `MaceFineTuner` writes the shards as extended XYZ and runs
+  `mace.cli.run_train` per copy, in its own directory, with `--multiheads_finetuning False` unless
+  `replay_file` is set (MACE would otherwise download replay data). `E0s` is required. Settings ALF manages
+  are refused in `mace_options`. `load_mace_batched_ensemble` evaluates every copy through MACE's TorchSim
+  model, turning ALF's row-vector cells into TorchSim's column vectors.
+- **`__main__.py`:** one startup hook, so an ML task's `validate_config` stops a bad configuration before the
+  bootstrap, as labeling already does.
+- **`h5_test_dir` fixed.** The ground-state trainer's separate test set changed the training arrays and
+  called numpy methods on tensors, so it failed whenever it was set; the teacher guide recommends it. Now
+  `use_separate_test_set` gives the test arrays the training arrays' form.
+- **Docs:** a teacher–student page with a walkthrough, moved out of the QM page; a fine-tuning page; the
+  old `examples/fine_tuning` page retitled as the older HIPPYNN-only example; `examples/mace_fine_tuning`.
+
+**Checked locally, on CPU, with real MACE** (`mace-torch` 0.3.17, MACE-MP-0 small, in a scratch environment
+layered on the ALF one):
+
+- Two copies fine-tuned on 60 water frames labeled with EMT, so the labels differ from MACE, in 28 s. On
+  held-out frames, energy error against EMT fell from 0.94 eV for the foundation model to 0.04 and 0.10 eV,
+  after removing each model's constant offset. The copies disagreed by 0.39 eV and 0.30 eV/Å on average.
+- The real coordinator, with the real condensed-phase builder, EMT labels through a teacher, MACE fine-tuning,
+  and TorchSim MD on the copies: the bootstrap fine-tuned `model-0000`, sampling on it selected new water
+  boxes, and the second round fine-tuned from the original checkpoint on both shards and was promoted, in 39 s.
+- The teacher walkthrough's `--test_qm` ran with real MACE-MP-0 small; the page shows its output.
+
+**Results.** Full suite: 1017 passed. With the packages CI's HIPPYNN job lacks blocked: 907 passed, 110
+skipped. With Torch blocked: 800 passed, 182 skipped. 30 deliberate breaks were caught, after one test fix:
+`E0s` given as JSON, with string keys, wasn't tested. Docs build with no warnings; 105 roadmap links, 0 broken.
+
+**Not shown yet.** GPU runs, and the multi-node form with real MACE (it ran with a stand-in adapter).
+Whether copies fine-tuned from one checkpoint disagree enough to track error is open; the roadmap's earlier
+note expected them to agree too closely. Large label sets: each copy rewrites every label to extended XYZ
+each round.
 
 ### Progress plots for batched and excited-state runs (2026-11-07)
 

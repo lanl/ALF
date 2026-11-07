@@ -42,6 +42,8 @@ pieces to a concrete run.
    user_guide/acquisition
    user_guide/ml_interfaces
    user_guide/qm_interfaces
+   user_guide/teacher_student
+   user_guide/fine_tuning
    user_guide/excited_states
    user_guide/batching
    user_guide/parsl

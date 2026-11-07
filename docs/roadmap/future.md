@@ -15,7 +15,7 @@ and [gap/window qualification](README.md#gap-seeking-and-sampling-window-hardwar
 
 1. **Safe restarts and disk races** ([below](#safe-restarts-and-disk-races), with priorities in [`exascale.md`](exascale.md#priority-list)). Items 1-6 were built on November 7, after the Darwin profile: atomic writes, the shard check, the manifest cache, the coordinator lock, the label holding area, and restart reconciliation. Items 7 and 8, settings and node-local QM scratch for running at scale, are open.
 2. **Placement and memory** ([Group C](#group-c-placement-and-memory)). Multi-node independent-member training passed its bounded Darwin gate on November 7; larger deployments remain unqualified. It buys throughput for larger ensembles, not new methods.
-3. **Teacher labeling, then fine-tuning with ALF** ([Group D](#group-d-model-families-and-labels)). Teacher labeling is built, and awaits its Darwin gate. Fine-tuning is next: ALF selects the samples that fine-tune an existing model, MACE first (user decision, November 7).
+3. **Teacher labeling, then fine-tuning with ALF** ([Group D](#group-d-model-families-and-labels)). Teacher labeling is built, and awaits its Darwin gate. ALF-driven fine-tuning is built for MACE (November 7); a HIPPYNN adapter is next.
 4. **New uncertainty and acquisition methods** ([Group G](#group-g-new-uncertainty-and-acquisition-methods)).
 5. **Long runs and staged campaigns** ([Group E](#group-e-long-runs)), last: very low priority, and may be removed (user decision, November 6).
 
@@ -52,7 +52,7 @@ ALF `1055d9c` source boundary; see the [evidence](README.md#gap-seeking-and-samp
 **Look easy, but aren't:**
 
 - **Single-member sampling.** With no ensemble spread, it first needs a decision on what triggers labeling. See [Group G](#group-g-new-uncertainty-and-acquisition-methods).
-- **F1 fine-tuning.** It moves 353 lines of example code into the library, and its gate is a real fine-tuning round.
+- **F1 fine-tuning.** Superseded on November 7: fine-tuning is now ALF-driven and built for MACE, with a HIPPYNN adapter next. See [Group D](#group-d-model-families-and-labels).
 - **Teacher labeling.** The adapter is small, but it needs a provenance path and a campaign gate.
 
 ## Group B: Biased dynamics on excited states
@@ -176,37 +176,26 @@ Tabled on November 6, before any restart code changed. ALF has since gained exit
   - **Order:** ground-state teachers come first; excited-state teachers wait until a
     suitable model exists. UMA or MACE are the first candidates; see the notes in
     [Group G](#group-g-new-uncertainty-and-acquisition-methods).
-- **Fine-tuning with ALF (later goal; added 2026-11-03).**
-  - **Prerequisites.** F1 and F2 can start at any time. F3 is in
-    [Group G](#group-g-new-uncertainty-and-acquisition-methods).
-  - **What exists.** `examples/fine_tuning/` (and its Darwin variant) uses a
-    local `ML_task`, `fine_tune_ml_task.fine_tune_HIPPYNN_ensemble_task`. It:
-    - loads a trained HIPPYNN seed ensemble from `models/model-0000/`;
-    - keeps the checkpoint graph and weights, with a fresh optimizer and
-      controller at a lower learning rate;
-    - rebuilds the training database from `h5store/`, filtered to the
-      checkpoint's inputs and targets;
-    - writes each adapted ensemble to the next model slot.
-
-    `__main__.py` is unchanged and `--test_ml` runs fine-tuning only. The
-    example is part of the compatibility baseline. Fine-tuning is example
-    code, not library code, and it covers HIPPYNN ensembles in ALF's own
-    layout only.
-  - **F1, library HIPPYNN fine-tuning.**
-    - Move the task beside `train_HIPPYNN_ensemble_task` as an ordinary
-      `ML_task`.
-    - Make its settings explicit: source checkpoint, optimizer reset, learning
-      rate, frozen layers, and training-data filter.
-    - Record lineage: the parent checkpoint hash and generation.
-    - Keep the example working by pointing it at the library task, with its
-      results unchanged.
-    - Inherit multi-node placement, and do not conflict with it.
-    - Gate: the existing fine-tuning example gives equivalent results through
-      the library task, including a real Darwin fine-tuning round.
-  - **F2, multi-state fine-tuning.** Start a multi-state model from
-    a pretrained ground-state or earlier multi-state HIPPYNN; for example,
-    seed the cpp ring model from a ground-state model. Use the F1 lineage and
-    settings, with an explicit mapping from source to new heads and targets.
+- **Fine-tuning with ALF: built for MACE, November 7.** Redefined by user decision on November 7: ALF
+  selects the samples that fine-tune an existing model, foundation models first, with HIPPYNN through the
+  same interface. See the [record](README.md#fine-tuning-with-alf-mace-2026-11-07) and the
+  [guide](../source/user_guide/fine_tuning.rst).
+  - **Decisions (user, November 7):** MACE first; a small fine-tuned ensemble supplies uncertainty, so
+    ALF's existing measures and cutoffs apply; MD runs on the model being fine-tuned; every round starts
+    from the original checkpoint on all labels so far; plain fine-tuning by default, with MACE's replay
+    only from a configured local file.
+  - **Built:** `ml_interfaces/fine_tuning.py`, a model-family-neutral `ML_task` with single-node and
+    multi-node forms, an adapter interface, and `fine_tune_lineage.json`; `mace_interface.py`, with
+    `MaceFineTuner` and `load_mace_batched_ensemble`; `examples/mace_fine_tuning`. `__main__.py` gained
+    only a startup hook for ML configuration checks.
+  - **Next: a HIPPYNN adapter.** This replaces the old "F1" plan to move `examples/fine_tuning` into the
+    library. That example is HIPPYNN-only, written for `main`, continues from the previous model, copies
+    shards per member, and records no lineage; it stays as it is until the adapter replaces it.
+  - **Later:** F2, starting a multi-state model from a ground-state one, which needs a weight mapping
+    onto the multi-state network; UMA, once a Hugging Face account with UMA's license is available;
+    single-model uncertainty (see [below](#foundation-model-fine-tuning)).
+  - **Gate still open:** a GPU campaign on Darwin, and whether the copies' disagreement tracks error
+    (see the uncertainty note below).
 The model/training-boundary work must also address two porting requirements recorded during the experimental-fork review:
 
 - The training handoff must tolerate valid trainer callables whose signature
@@ -302,6 +291,7 @@ Readiness notes from a review of development at `24028da`, with the finished eli
 ### Foundation-model fine-tuning
 
 - **Fine-tuning with ALF, tier F3.** It needs teacher labeling and multi-node training, and one of the uncertainty options below. Multi-node training exists for HIPPYNN only; MACE and fairchem would still need theirs.
+  - **Built November 7 for MACE,** with a fine-tuned ensemble as the uncertainty (user decision) and member placement through `ensemble_training`; see [Group D](#group-d-model-families-and-labels). The notes below are the original plan. Still open from them: whether copies fine-tuned from one checkpoint disagree enough to track error, UMA, single-network uncertainty, and MACE's native distributed training.
   - **F3, foundation-model fine-tuning under active learning.** ALF samples with the model being fine-tuned and labels with QM or a
     teacher. It needs:
     - **Uncertainty.** Foundation models are usually single networks.

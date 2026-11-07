@@ -7,6 +7,7 @@ on CPU.
 
 import hashlib
 import json
+import shutil
 import os
 import pickle
 import subprocess
@@ -457,6 +458,55 @@ def test_training_records_what_it_did(two_state_ensemble):
     assert summary["hippynn_kernel"] == "pytorch"
     assert manifest["filtered_indices"] == [11]
     assert sorted(i for split in manifest["splits"].values() for i in split) == list(range(11))
+
+
+def test_training_summary_keeps_its_full_record(two_state_ensemble):
+    summary = json.loads((two_state_ensemble.member / "training_summary.json").read_text())
+    assert len(summary["data"]["frames"]) == 12 and summary["data"]["files"]
+    assert summary["data"]["atomic_numbers"] == [8, 1, 1]
+    assert {"seed", "device", "state_table", "gap_table", "metric", "split_counts"} <= set(summary)
+
+
+def test_training_writes_a_small_composition_file(two_state_ensemble):
+    written = json.loads((two_state_ensemble.member / "member_composition.json").read_text())
+    assert written == {"atomic_numbers": [8, 1, 1]}
+
+
+def _copied_ensemble(ensemble, tmp_path):
+    copy = tmp_path / "ensemble"
+    shutil.copytree(ensemble.directory, copy, ignore=shutil.ignore_patterns("data"))
+    return SimpleNamespace(directory=copy)
+
+
+def test_evaluator_does_not_need_the_training_summary(two_state_ensemble, tmp_path):
+    """Each sampler task loads every member, and a summary can reach hundreds of MB."""
+    copy = _copied_ensemble(two_state_ensemble, tmp_path)
+    for summary in copy.directory.glob("model-*/training_summary.json"):
+        summary.unlink()
+    assert _load_evaluator(copy).n_models == 2
+
+
+def test_evaluator_loads_models_trained_before_the_composition_file(two_state_ensemble, tmp_path):
+    copy = _copied_ensemble(two_state_ensemble, tmp_path)
+    for composition in copy.directory.glob("model-*/member_composition.json"):
+        composition.unlink()
+    assert _load_evaluator(copy).n_models == 2
+
+
+@pytest.mark.parametrize("file_name", ["member_composition.json", "training_summary.json"], ids=["small_file", "summary"])
+def test_evaluator_rejects_members_with_different_compositions(two_state_ensemble, tmp_path, file_name):
+    copy = _copied_ensemble(two_state_ensemble, tmp_path)
+    member = copy.directory / "model-01"
+    if file_name == "training_summary.json":
+        (member / "member_composition.json").unlink()
+        (copy.directory / "model-00/member_composition.json").unlink()
+        summary = json.loads((member / file_name).read_text())
+        summary["data"]["atomic_numbers"] = [6, 1, 1]
+        (member / file_name).write_text(json.dumps(summary))
+    else:
+        (member / file_name).write_text(json.dumps({"atomic_numbers": [6, 1, 1]}))
+    with pytest.raises(ValueError, match="disagree on molecular composition"):
+        _load_evaluator(copy)
 
 
 def test_checkpoint_restores_the_training_database(two_state_ensemble):

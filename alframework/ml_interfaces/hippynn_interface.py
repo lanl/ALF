@@ -942,6 +942,17 @@ class HippynnBatchedEnsemble:
         return torch.stack(energies), torch.stack(forces)
 
 
+def _member_atomic_numbers(directory):
+    """Read one member's atoms from its small file, since the summary lists every training frame.
+
+    Models trained before that file existed only have the summary.
+    """
+    composition = directory / 'member_composition.json'
+    if composition.exists():
+        return json.loads(composition.read_text())['atomic_numbers']
+    return json.loads((directory / 'training_summary.json').read_text())['data']['atomic_numbers']
+
+
 def load_hippynn_excited_state_ensemble(model_directory, device, properties_list, hippynn_kernel="pytorch"):
     """Load molecular state heads in physical eV and eV/Angstrom units."""
     return HippynnExcitedStateEnsemble(model_directory, device, properties_list, hippynn_kernel)
@@ -973,8 +984,7 @@ class HippynnExcitedStateEnsemble:
         if len(directories) < 2:
             raise ValueError('Excited-state uncertainty requires at least two model-* members')
         for directory in directories:
-            summary = json.loads((directory / 'training_summary.json').read_text())
-            composition = sorted(summary['data']['atomic_numbers'])
+            composition = sorted(_member_atomic_numbers(directory))
             if self._composition is not None and self._composition != composition:
                 raise ValueError('Ensemble members disagree on molecular composition')
             self._composition = composition
@@ -2095,6 +2105,10 @@ def train_single_excited_state_model(
             }
             Path("training_summary.json").write_text(
                 json.dumps(_json_safe(summary), indent=2, allow_nan=False),
+                encoding="utf-8",
+            )
+            Path("member_composition.json").write_text(
+                json.dumps({"atomic_numbers": data_summary["atomic_numbers"]}) + "\n",
                 encoding="utf-8",
             )
 

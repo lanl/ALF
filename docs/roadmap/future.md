@@ -2,20 +2,22 @@
 
 What's left, in what order, and what's easy. See the [roadmap index](README.md) for current status and standing rules.
 
-Everything here is unfinished. Delivered work is recorded in [`batching.md`](batching.md) and [`excited_states.md`](excited_states.md).
+This file lists remaining work and its completed prerequisites. Delivered work is recorded in [`batching.md`](batching.md) and [`excited_states.md`](excited_states.md).
 
 ## Order of work
 
 Updated November 6, 2026. The user set the sequence on November 3, and revised the bias work on November 6.
 
-1. **Finish E6.** The CPP9 pilot is running on Darwin; see [`excited_states.md`](excited_states.md).
-2. **Biased dynamics on excited states** ([Group B](#group-b-biased-dynamics-on-excited-states)): real runs for selected-state UDD and wells, then LCM gap seeking. The other real runs under [Quick wins](#quick-wins) can go alongside.
-3. **Long runs and staged campaigns** ([Group E](#group-e-long-runs)). This is the largest item.
-4. **Placement and memory** ([Group C](#group-c-placement-and-memory)), including multi-node training. It buys throughput for larger ensembles, not new methods.
-5. **Teacher labeling, then F1 and F2 fine-tuning** ([Group D](#group-d-model-families-and-labels)).
-6. **New uncertainty and acquisition methods** ([Group G](#group-g-new-uncertainty-and-acquisition-methods)), last (user decision, November 6).
+E6 and the bounded quick-win hardware round have passed; see the
+[E6 record](excited_states.md) and [hardware qualification](README.md#quick-win-hardware-qualification--passed-2026-11-06).
 
-Groups C and D are independent of steps 1-3, so they can start earlier if there is capacity.
+1. **LCM gap seeking** ([Group B](#group-b-biased-dynamics-on-excited-states)). Selected-state UDD and wells have passed real qualification.
+2. **Long runs and staged campaigns** ([Group E](#group-e-long-runs)). This is the largest item.
+3. **Placement and memory** ([Group C](#group-c-placement-and-memory)), including multi-node training. It buys throughput for larger ensembles, not new methods.
+4. **Teacher labeling, then F1 and F2 fine-tuning** ([Group D](#group-d-model-families-and-labels)).
+5. **New uncertainty and acquisition methods** ([Group G](#group-g-new-uncertainty-and-acquisition-methods)), last (user decision, November 6).
+
+Groups C and D are independent of the bias and long-run work, so they can start earlier if there is capacity.
 
 CPP scale-up ([Group F](#group-f-cpp-scale-up)) depends on the E6 result and the science goals.
 
@@ -29,11 +31,12 @@ The fork remains source material; `production_excited_states` (`c364fa8`) holds 
 
 All landed on November 6; see the [record](README.md#quick-wins-2026-11-06). The guide publishes only from `main` for now (user decision), so publishing it from `development` was dropped.
 
-**Real runs still needed.** These were only tested with fake GPU libraries:
-
-- Selected-state UDD and wells: real width-one and width-four runs on ASE, TorchSim CUDA, and ALCHEMI.
-- Ground-state training device selection: a real training run, ideally on an allocation with a mask.
-- Reactive sampler device selection: a real reactive task.
+**Real hardware gates passed November 6:** all 24 selected-state UDD/well cases
+across three engines and widths one/four; ground-state training with reordered
+four-GPU and restricted two-GPU masks; real NEB/dimer device checks; and the
+GPU4PySCF guard/response checks. A small ordinary ALF loop also qualified FPS
+selection, native width-four labeling, retraining/promotion and the production
+label-budget stop. See the [evidence](README.md#quick-win-hardware-qualification--passed-2026-11-06).
 
 **Look easy, but aren't:**
 
@@ -47,8 +50,10 @@ All landed on November 6; see the [record](README.md#quick-wins-2026-11-06). The
 | --- | --- | --- |
 | Composable sampling | Separate propagation from UDD, confinement, and other bias/force controls; support callable extensions and grouped non-MD evaluations. | Preserve physical predictions, formulas, switching order, and replica-local state. |
 
-1. **Selected-state UDD and wells.** Landed November 6, and tested with fakes only: forces match the `MLMD_calculator` formulas on the selected state across ASE, TorchSim, and ALCHEMI, and screening still reads unbiased predictions.
-   - Gate still open: real width-one and width-four runs.
+1. **Selected-state UDD and wells — qualified November 6.** Real width-one/four
+   runs passed across ASE, TorchSim and ALCHEMI. Common-frame forces match the
+   `MLMD_calculator` formulas, including active example-radius wells, and screening
+   still reads unbiased predictions. This gate is closed; LCM remains separate.
 2. **LCM gap seeking.** A per-replica permanent mode switch. Source material: the fork's `samplers/alchemi_sampling.py`.
    - `max_force_cutoff` must keep excluding bias and LCM forces.
    - Gate: parity with the fork's ALCHEMI LCM behavior, across ASE, TorchSim, and ALCHEMI.
@@ -426,7 +431,10 @@ these checks are part of the future plan.
    IL, molten salt (VASP), UO2 (ANI), and reactive sampling need their
    backends. Record a missing backend as "unverified, backend unavailable",
    never as passed.
-2. **UDD/well parity.** In Group B, test the selected-state forces against the legacy `MLMD_calculator` well and UDD forces, using the examples' actual `well_params` values (`r_start` 3.0 and 10).
+2. **UDD/well parity — completed November 6.** Selected-state forces matched the
+   legacy `MLMD_calculator` well and UDD forces, including active translated
+   geometries with the examples' `r_start` values 3.0 and 10. New bias methods
+   still require their own checks.
 
 Existing ordinary workflows must not acquire a new fixed-topology requirement when screening is disabled.
 

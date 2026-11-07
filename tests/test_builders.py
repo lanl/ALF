@@ -235,6 +235,202 @@ def test_external_geometry_rejects_empty_or_malformed_sources(tmp_path):
         geometry_manifest(dict(sources=["bad.h5"]), str(tmp_path))
 
 
+# ---- Reading replay sources once per worker ----
+
+
+def write_frames(path, counts, offset=0.0):
+    """Write a shard with a root group and nested groups holding ``counts`` frames of H2."""
+    with h5py.File(path, "w") as handle:
+        for name, frames in counts.items():
+            group = handle if name == "/" else handle.require_group(name)
+            group["coordinates"] = np.full((frames, 2, 3), offset) + [[0, 0, 0], [0.74, 0, 0]]
+            group["species"] = np.array(["H", "H"], dtype="S")
+
+
+@pytest.fixture
+def fresh_caches(monkeypatch):
+    from alframework.builders import external_geometry
+    from alframework.tools import files
+
+    monkeypatch.setattr(files, "_HASHES", {})
+    monkeypatch.setattr(external_geometry, "_SOURCE_INDEX", {})
+
+
+@pytest.fixture
+def counted(monkeypatch, fresh_caches):
+    """Count hashes, HDF5 opens and XYZ reads made by the replay code."""
+    from alframework.builders import external_geometry
+    from alframework.tools import files
+
+    counts = SimpleNamespace(hashes=0, opens=0, reads=0)
+    real_sha256, real_file, real_read = hashlib.sha256, h5py.File, external_geometry.read
+
+    def sha256(*args):
+        counts.hashes += 1
+        return real_sha256(*args)
+
+    def open_file(*args, **kwargs):
+        counts.opens += 1
+        return real_file(*args, **kwargs)
+
+    def read(*args, **kwargs):
+        counts.reads += 1
+        return real_read(*args, **kwargs)
+
+    monkeypatch.setattr(files, "hashlib", SimpleNamespace(sha256=sha256))
+    monkeypatch.setattr(external_geometry.h5py, "File", open_file)
+    monkeypatch.setattr(external_geometry, "read", read)
+    return counts
+
+
+def test_geometry_manifest_lists_every_frame_in_order(tmp_path, fresh_caches):
+    write(tmp_path / "frames.xyz", [Atoms("H2", positions=[[0, 0, 0], [0, 0, d]]) for d in (0.7, 0.8)])
+    write_frames(tmp_path / "data.h5", {"/": 1, "b": 2, "a": 1, "a/c": 3, "a/empty": 0, "z": 0})
+    manifest = geometry_manifest(dict(sources=["frames.xyz", "data.h5"]), str(tmp_path))
+    xyz, h5 = str((tmp_path / "frames.xyz").resolve()), str((tmp_path / "data.h5").resolve())
+    xyz_hash, h5_hash = (hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in (xyz, h5))
+    expected = ([(xyz, None, i, xyz_hash) for i in range(2)] + [(h5, "/", 0, h5_hash)]
+                + [(h5, "a", 0, h5_hash)] + [(h5, "a/c", i, h5_hash) for i in range(3)]
+                + [(h5, "b", i, h5_hash) for i in range(2)])
+    assert len(manifest) == len(expected) and list(manifest) == expected
+    assert manifest[-1] == expected[-1] and manifest[2:4] == expected[2:4]
+    with pytest.raises(IndexError):
+        manifest[len(expected)]
+
+
+def test_cached_sha256_hashes_each_version_of_a_file_once(tmp_path, counted):
+    from alframework.tools.files import cached_sha256
+
+    path = tmp_path / "seed.h5"
+    path.write_bytes(b"first")
+    assert cached_sha256(path) == cached_sha256(path) == hashlib.sha256(b"first").hexdigest()
+    assert counted.hashes == 1
+    path.write_bytes(b"second, longer")
+    assert cached_sha256(path) == hashlib.sha256(b"second, longer").hexdigest()
+    assert counted.hashes == 2
+
+
+def test_geometry_manifest_reads_each_source_once_per_worker(tmp_path, counted):
+    write(tmp_path / "frames.xyz", Atoms("H2", positions=[[0, 0, 0], [0, 0, 0.7]]))
+    write_frames(tmp_path / "data.h5", {"a": 2})
+    config = dict(sources=["frames.xyz", "data.h5"])
+    counted.hashes = counted.opens = counted.reads = 0
+    first = list(geometry_manifest(config, str(tmp_path)))
+    assert (counted.hashes, counted.opens, counted.reads) == (2, 1, 1)
+    assert list(geometry_manifest(config, str(tmp_path))) == first
+    assert (counted.hashes, counted.opens, counted.reads) == (2, 1, 1)
+
+
+def test_geometry_manifest_notices_a_changed_source(tmp_path, fresh_caches):
+    path = tmp_path / "data-0000.h5"
+    write_frames(path, {"a": 2})
+    config = dict(sources=[path.name])
+    before = list(geometry_manifest(config, str(tmp_path)))
+
+    write_frames(tmp_path / "new.h5", {"a": 3})
+    os.replace(tmp_path / "new.h5", path)
+    replaced = list(geometry_manifest(config, str(tmp_path)))
+    assert len(replaced) == 3 and replaced[0][3] != before[0][3]
+
+    # An edit in place that keeps the size still changes the modified time.
+    data = bytearray(path.read_bytes())
+    stat = path.stat()
+    with h5py.File(path, "r+") as handle:
+        handle["a/coordinates"][0, 0, 0] = 0.25
+    assert path.stat().st_size == stat.st_size and path.read_bytes() != bytes(data)
+    os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000))
+    assert list(geometry_manifest(config, str(tmp_path)))[0][3] == hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def test_external_geometry_opens_each_source_once_per_task(tmp_path, counted):
+    write_frames(tmp_path / "data.h5", {"a": 3})
+    config = dict(sources=["data.h5"], selection_mode="sequential")
+    build_external_geometries(["m-0"], config, str(tmp_path))  # Indexes the source.
+    counted.opens = 0
+    molecules = build_external_geometries(["m-0", "m-1", "m-2"], config, str(tmp_path))
+    assert counted.opens == 1
+    assert [m.get_metadata()["geometry_frame"] for m in molecules] == [0, 1, 2]
+
+
+def test_rdkit_builder_rejects_a_changed_seed_after_caching_it(prepared_seed, tmp_path, fresh_caches):
+    copy = tmp_path / "prepared"
+    shutil.copytree(prepared_seed.output, copy)
+    builder = dict(json.loads((copy / "builder_config.json").read_text()),
+                   seed_manifest_path=str(copy / "provenance.json"))
+    seed.build_rdkit_molecules(["mol-boot-0000000000"], builder)
+    with h5py.File(copy / "seed.h5", "a") as handle:
+        handle.attrs["edited"] = 1
+    with pytest.raises(ValueError, match="Prepared RDKit input changed: seed.h5"):
+        seed.build_rdkit_molecules(["mol-boot-0000000001"], builder)
+
+
+def seed_opens(monkeypatch, seed_path):
+    """Record each time any code opens ``seed_path`` with h5py."""
+    real_file, opened, target = h5py.File, [], Path(seed_path).resolve()
+
+    def open_file(*args, **kwargs):
+        opened.append(Path(args[0]).resolve() == target)
+        return real_file(*args, **kwargs)
+
+    monkeypatch.setattr(h5py, "File", open_file)
+    return opened
+
+
+def test_rdkit_builder_opens_the_seed_twice_per_task(prepared_seed, monkeypatch, fresh_caches):
+    builder = json.loads((prepared_seed.output / "builder_config.json").read_text())
+    seed.build_rdkit_molecules(["mol-boot-0000000000"], builder)  # Indexes the seed.
+    opened = seed_opens(monkeypatch, prepared_seed.output / "seed.h5")
+    hashed = []
+    monkeypatch.setattr(seed, "_sha256", lambda path: hashed.append(Path(path).name) or "digest")
+    molecules = seed.build_rdkit_molecules([f"mol-boot-{i:010d}" for i in range(4)], builder)
+    assert sum(opened) == 2  # Once for the frames and once for their metadata, however many molecules.
+    assert hashed == ["provenance.json"]  # The seed and reference hashes are cached.
+    assert len({m.get_metadata()["rdkit_manifest_sha256"] for m in molecules}) == 1
+
+
+@pytest.fixture
+def ring_pool(tmp_path):
+    """A hand-made CPP ring preparation, as the CPP example's prepare.py writes it."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "cpp_custom_modules", ROOT / "examples/CPP_excited_gpu4pyscf/custom_modules.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    prepared = tmp_path / "prepared"
+    prepared.mkdir()
+    write_frames(prepared / "seed.h5", {"ring": 3})
+    with h5py.File(prepared / "seed.h5", "a") as handle:
+        group = handle["ring"]
+        group["tier_index"] = [0, 1, 2]
+        group["rotation_angles_degrees"] = np.zeros((3, 2))
+        group["rattle_rms_angstrom"] = [0.0, 0.01, 0.02]
+    write(prepared / "reference.xyz", Atoms("H2", positions=[[0, 0, 0], [0.74, 0, 0]]))
+    manifest = dict(schema=module.SCHEMA, status="completed", ring_size=6, artifacts_sha256={
+        name: hashlib.sha256((prepared / name).read_bytes()).hexdigest() for name in ("seed.h5", "reference.xyz")})
+    (prepared / "manifest.json").write_text(json.dumps(manifest))
+    return SimpleNamespace(module=module, prepared=prepared,
+                           builder={"seed_manifest_path": str(prepared / "manifest.json")})
+
+
+def test_cpp_ring_builder_replays_its_seed_and_opens_it_twice_per_task(ring_pool, monkeypatch, fresh_caches):
+    ring_pool.module.build_ring_molecules(["mol-boot-0000000000"], ring_pool.builder)  # Indexes the seed.
+    opened = seed_opens(monkeypatch, ring_pool.prepared / "seed.h5")
+    hashed = []
+    monkeypatch.setattr(ring_pool.module, "_sha256", lambda path: hashed.append(Path(path).name) or "digest")
+    molecules = ring_pool.module.build_ring_molecules([f"mol-boot-{i:010d}" for i in range(3)], ring_pool.builder)
+    assert [m.get_metadata()["ring_tier"] for m in molecules] == [0, 1, 2]
+    assert sum(opened) == 2  # Once for the frames and once for their metadata, however many molecules.
+    assert hashed == ["manifest.json"]  # The seed and reference hashes are cached.
+
+
+def test_cpp_ring_builder_rejects_a_changed_reference_after_caching_it(ring_pool, fresh_caches):
+    ring_pool.module.build_ring_molecules(["mol-boot-0000000000"], ring_pool.builder)
+    write(ring_pool.prepared / "reference.xyz", Atoms("H2", positions=[[0, 0, 0], [0.80, 0, 0]]))
+    with pytest.raises(ValueError, match="Prepared ring input changed: reference.xyz"):
+        ring_pool.module.build_ring_molecules(["mol-boot-0000000001"], ring_pool.builder)
+
+
 # ---- Preparing molecular seeds with RDKit (an optional builder capability) ----
 
 ROOT = Path(__file__).resolve().parents[1]

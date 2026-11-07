@@ -6,6 +6,8 @@ from pathlib import Path
 import h5py
 from parsl import python_app
 
+from alframework.tools.files import cached_sha256
+
 SCHEMA = "alf.cpp_ring_pool.v1"
 
 def _sha256(path):
@@ -20,8 +22,9 @@ def build_ring_molecules(moleculeids, builder_config, h5_path=None, current_h5_i
     manifest = json.loads(path.read_text())
     if manifest.get('schema') != SCHEMA or manifest.get('status') != 'completed':
         raise ValueError('Ring builder requires a completed preparation manifest')
+    # Hashed once per worker per version of each file, not on every task.
     for name in ('seed.h5', 'reference.xyz'):
-        if _sha256(path.parent/name) != manifest['artifacts_sha256'][name]:
+        if cached_sha256(path.parent/name) != manifest['artifacts_sha256'][name]:
             raise ValueError('Prepared ring input changed: '+name)
     if int(current_h5_id) == 0:
         replay = dict(sources=[str(path.parent/'seed.h5')], selection_mode='sequential')
@@ -38,11 +41,13 @@ def build_ring_molecules(moleculeids, builder_config, h5_path=None, current_h5_i
         replay = dict(sources=sources, selection_mode='deterministic_hash',
                       selection_seed=builder_config.get('selection_seed', 42))
     molecules = build_external_geometries(moleculeids, replay, root)
+    manifest_sha256 = _sha256(path)
     for molecule in molecules:
-        molecule.update_metadata(dict(ring_manifest_sha256=_sha256(path), ring_size=manifest['ring_size'],
+        molecule.update_metadata(dict(ring_manifest_sha256=manifest_sha256, ring_size=manifest['ring_size'],
                                       replay_external_bootstrap=int(current_h5_id)==0))
-        if int(current_h5_id) == 0:
-            with h5py.File(path.parent/'seed.h5') as handle:
+    if int(current_h5_id) == 0:
+        with h5py.File(path.parent/'seed.h5', 'r') as handle:
+            for molecule in molecules:
                 metadata = molecule.get_metadata()
                 group, frame = handle[metadata['geometry_group']], metadata['geometry_frame']
                 molecule.update_metadata(dict(ring_tier=int(group['tier_index'][frame]),

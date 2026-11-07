@@ -21,6 +21,7 @@ import numpy as np
 from ase.data import chemical_symbols, covalent_radii
 
 from alframework.tools.atom_order import TOPOLOGY_ATOM_IDS
+from alframework.tools.files import cached_sha256
 
 
 SCHEMA = "alf.rdkit_kdg_fps.v1"
@@ -411,8 +412,9 @@ def build_rdkit_molecules(moleculeids, builder_config, h5_path=None, current_h5_
     if manifest.get('schema') != SCHEMA or manifest.get('status') != 'completed':
         raise ValueError('RDKit builder requires a completed preparation manifest')
     seed = manifest_path.parent / 'seed.h5'
+    # Hashed once per worker per version of each file, not on every task.
     for name in ('seed.h5', 'reference'+Path(manifest['settings']['reference_geometry']).suffix.lower()):
-        if _sha256(manifest_path.parent/name) != manifest['artifacts_sha256'][name]:
+        if cached_sha256(manifest_path.parent/name) != manifest['artifacts_sha256'][name]:
             raise ValueError('Prepared RDKit input changed: '+name)
     if int(current_h5_id) == 0:
         config = dict(sources=[str(seed)], selection_mode='sequential')
@@ -427,12 +429,14 @@ def build_rdkit_molecules(moleculeids, builder_config, h5_path=None, current_h5_
         config = dict(sources=paths, selection_mode='deterministic_hash',
                       selection_seed=int(builder_config.get('selection_seed', 42)))
     molecules = build_external_geometries(moleculeids, config, master_directory)
+    manifest_sha256 = _sha256(manifest_path)
     for molecule in molecules:
-        md = molecule.get_metadata()
-        molecule.update_metadata(dict(rdkit_manifest_sha256=_sha256(manifest_path),
+        molecule.update_metadata(dict(rdkit_manifest_sha256=manifest_sha256,
                                       replay_external_bootstrap=int(current_h5_id)==0))
-        if int(current_h5_id) == 0:
-            with h5py.File(seed, 'r') as handle:
+    if int(current_h5_id) == 0:
+        with h5py.File(seed, 'r') as handle:
+            for molecule in molecules:
+                md = molecule.get_metadata()
                 group = handle[md['geometry_group']]
                 index = md['geometry_frame']
                 molecule.update_metadata(dict(rdkit_pool_index=int(group['pool_index'][index]),

@@ -1,7 +1,10 @@
 """Import unlabeled geometries without inheriting a source calculation."""
 
+import bisect
 import hashlib
 import re
+from collections.abc import Sequence
+from contextlib import ExitStack
 from pathlib import Path
 
 import h5py
@@ -12,11 +15,80 @@ from ase.io import read
 from parsl import python_app
 
 from alframework.tools.atom_order import TOPOLOGY_ATOM_IDS, validated_atom_ids
+from alframework.tools.files import cached_sha256, file_key
 from alframework.tools.molecules_class import MoleculesObject
 
 
 def _text(value):
     return value.decode('utf8') if isinstance(value, bytes) else str(value)
+
+
+class GeometryManifest(Sequence):
+    """Every frame in the configured sources, in order, as ``(path, group, frame, sha256)``.
+
+    It stores one count per group rather than one entry per frame, and finds a frame from cumulative
+    counts, so it stays small with millions of frames.
+    """
+
+    def __init__(self, blocks):
+        # A group with no frames shares its start with the next block, and bisect_right skips it.
+        self._blocks = list(blocks)
+        self._starts, total = [], 0
+        for block in self._blocks:
+            self._starts.append(total)
+            total += block[3]
+        self._length = total
+
+    def __len__(self):
+        return self._length
+
+    def __getitem__(self, index):
+        if isinstance(index, slice):
+            return [self[i] for i in range(*index.indices(len(self)))]
+        if index < 0:
+            index += len(self)
+        if not 0 <= index < len(self):
+            raise IndexError('geometry manifest index out of range')
+        block = bisect.bisect_right(self._starts, index) - 1
+        path, group, fingerprint, _ = self._blocks[block]
+        return path, group, index - self._starts[block], fingerprint
+
+
+_SOURCE_INDEX = {}
+
+
+def _index_source(path):
+    """Return a source's SHA-256 and its ``(group, frames)`` counts, scanning it once per worker per version.
+
+    Label shards are written once and renamed into place, so after the first builder task on a worker
+    each shard costs one ``stat``, not a full read.
+    """
+    key = file_key(path)
+    cached = _SOURCE_INDEX.get(key[0])
+    if cached is not None and cached[0] == key:
+        return cached[1]
+    fingerprint = cached_sha256(path)
+    if path.suffix.lower() in {'.xyz', '.extxyz'}:
+        counts = [(None, len(read(str(path), index=':', parallel=False)))]
+    elif path.suffix.lower() in {'.h5', '.hdf5'}:
+        with h5py.File(path, 'r') as handle:
+            groups = []
+            if 'coordinates' in handle and 'species' in handle:
+                groups.append('/')
+            handle.visititems(lambda name, obj: groups.append(name)
+                              if isinstance(obj, h5py.Group) and 'coordinates' in obj
+                              and 'species' in obj else None)
+            counts = []
+            for name in sorted(groups):
+                coordinates = handle[name]['coordinates']
+                if coordinates.ndim != 3 or coordinates.shape[-1] != 3:
+                    raise ValueError(f'{path}:{name}/coordinates must be [frames, atoms, 3]')
+                counts.append((name, len(coordinates)))
+    else:
+        raise ValueError(f'Unsupported geometry file: {path}')
+    # Only the latest version of each path is kept.
+    _SOURCE_INDEX[key[0]] = (key, (fingerprint, counts))
+    return fingerprint, counts
 
 
 def geometry_manifest(builder_config, master_directory=None):
@@ -25,33 +97,16 @@ def geometry_manifest(builder_config, master_directory=None):
     if not isinstance(sources, list) or not sources:
         raise ValueError('builder_config.sources must be a nonempty list of files')
     root = Path(master_directory or '.').expanduser().resolve()
-    entries = []
+    blocks = []
     for source in sources:
         path = Path(source).expanduser()
         path = (root / path).resolve() if not path.is_absolute() else path.resolve()
-        fingerprint = hashlib.sha256(path.read_bytes()).hexdigest()
-        if path.suffix.lower() in {'.xyz', '.extxyz'}:
-            frames = read(str(path), index=':', parallel=False)
-            entries.extend((str(path), None, i, fingerprint) for i in range(len(frames)))
-        elif path.suffix.lower() in {'.h5', '.hdf5'}:
-            with h5py.File(path, 'r') as handle:
-                groups = []
-                if 'coordinates' in handle and 'species' in handle:
-                    groups.append('/')
-                handle.visititems(lambda name, obj: groups.append(name)
-                                  if isinstance(obj, h5py.Group) and 'coordinates' in obj
-                                  and 'species' in obj else None)
-                for name in sorted(groups):
-                    coordinates = handle[name]['coordinates']
-                    if coordinates.ndim != 3 or coordinates.shape[-1] != 3:
-                        raise ValueError(f'{path}:{name}/coordinates must be [frames, atoms, 3]')
-                    entries.extend((str(path), name, i, fingerprint)
-                                   for i in range(len(coordinates)))
-        else:
-            raise ValueError(f'Unsupported geometry file: {path}')
-    if not entries:
+        fingerprint, counts = _index_source(path)
+        blocks.extend((str(path), group, fingerprint, frames) for group, frames in counts)
+    manifest = GeometryManifest(blocks)
+    if not len(manifest):
         raise ValueError('No geometry frames in configured sources')
-    return entries
+    return manifest
 
 
 def _h5_frame(group, index):
@@ -98,40 +153,48 @@ def build_external_geometries(moleculeids, builder_config, master_directory=None
     if mode not in {'sequential', 'deterministic_hash'}:
         raise ValueError('selection_mode must be sequential or deterministic_hash')
     outputs = []
-    for moleculeid in ids:
-        if mode == 'sequential':
-            match = re.search(r'(\d+)$', moleculeid)
-            if match is None:
-                raise ValueError('Sequential selection requires a trailing integer in each ID')
-            selected = int(match.group(1))
-            if selected >= len(manifest):
-                raise IndexError(f'Geometry source exhausted at {selected}; {len(manifest)} frames available')
-        else:
-            key = f'{moleculeid}|{int(builder_config.get("selection_seed", 0))}'.encode()
-            selected = int.from_bytes(hashlib.sha256(key).digest()[:8], 'big') % len(manifest)
-        path, group, frame, fingerprint = manifest[selected]
-        if group is None:
-            source = read(path, index=frame, parallel=False)
-            source_id = source.info.get('_id', source.info.get('id'))
-        else:
-            with h5py.File(path, 'r') as handle:
-                source, source_id = _h5_frame(handle[group], frame)
-        if (not len(source) or not np.isfinite(source.positions).all()
-                or np.any(source.numbers <= 0)):
-            raise ValueError(f'Invalid geometry in {path}, frame {frame}')
-        # Copy only geometry and explicitly supplied identity, never calculators,
-        # source info/labels, velocities, or other per-atom calculation outputs.
-        atoms = Atoms(numbers=source.numbers, positions=source.positions,
-                      cell=source.cell, pbc=source.pbc)
-        if TOPOLOGY_ATOM_IDS in source.arrays:
-            atoms.set_array(TOPOLOGY_ATOM_IDS,
-                            validated_atom_ids(source.arrays[TOPOLOGY_ATOM_IDS], len(source)))
-        molecule = MoleculesObject(atoms, moleculeid)
-        molecule.update_metadata(dict(geometry_source=path, geometry_source_sha256=fingerprint,
-                                      geometry_group=group, geometry_frame=frame,
-                                      geometry_source_id=source_id, geometry_index=selected))
-        outputs.append(molecule)
+    with ExitStack() as stack:
+        handles = {}
+        for moleculeid in ids:
+            outputs.append(_build_one(moleculeid, manifest, mode, builder_config, handles, stack))
     return outputs
+
+
+def _build_one(moleculeid, manifest, mode, builder_config, handles, stack):
+    """Build one molecule, opening each HDF5 source once per task through ``handles``."""
+    if mode == 'sequential':
+        match = re.search(r'(\d+)$', moleculeid)
+        if match is None:
+            raise ValueError('Sequential selection requires a trailing integer in each ID')
+        selected = int(match.group(1))
+        if selected >= len(manifest):
+            raise IndexError(f'Geometry source exhausted at {selected}; {len(manifest)} frames available')
+    else:
+        key = f'{moleculeid}|{int(builder_config.get("selection_seed", 0))}'.encode()
+        selected = int.from_bytes(hashlib.sha256(key).digest()[:8], 'big') % len(manifest)
+    path, group, frame, fingerprint = manifest[selected]
+    if group is None:
+        source = read(path, index=frame, parallel=False)
+        source_id = source.info.get('_id', source.info.get('id'))
+    else:
+        if path not in handles:
+            handles[path] = stack.enter_context(h5py.File(path, 'r'))
+        source, source_id = _h5_frame(handles[path][group], frame)
+    if (not len(source) or not np.isfinite(source.positions).all()
+            or np.any(source.numbers <= 0)):
+        raise ValueError(f'Invalid geometry in {path}, frame {frame}')
+    # Copy only geometry and explicitly supplied identity, never calculators,
+    # source info/labels, velocities, or other per-atom calculation outputs.
+    atoms = Atoms(numbers=source.numbers, positions=source.positions,
+                  cell=source.cell, pbc=source.pbc)
+    if TOPOLOGY_ATOM_IDS in source.arrays:
+        atoms.set_array(TOPOLOGY_ATOM_IDS,
+                        validated_atom_ids(source.arrays[TOPOLOGY_ATOM_IDS], len(source)))
+    molecule = MoleculesObject(atoms, moleculeid)
+    molecule.update_metadata(dict(geometry_source=path, geometry_source_sha256=fingerprint,
+                                  geometry_group=group, geometry_frame=frame,
+                                  geometry_source_id=source_id, geometry_index=selected))
+    return molecule
 
 
 @python_app(executors=['alf_sampler_executor'])

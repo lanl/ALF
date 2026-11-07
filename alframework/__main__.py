@@ -23,6 +23,7 @@ import alframework
 #from alframework.parsl_resource_configs.darwin import config_atdm_ml
 from alframework.tools.tools import parsl_task_queue
 from alframework.tools.tools import store_current_data
+from alframework.tools.tools import stored_label_budget
 from alframework.tools.tools import load_config_file
 from alframework.tools.tools import find_empty_directory
 from alframework.tools.tools import system_checker
@@ -155,6 +156,9 @@ else:
 
 with open(master_config['status_path'], "w") as outfile:
     json.dump(status, outfile, indent=2)
+
+# Read once, so that a mistaken edit can't stop or crash a long run.
+label_budget = stored_label_budget(master_config)
 
 ######################################
 # Step 4: Check if testing requested #
@@ -316,9 +320,10 @@ if status['current_h5_id'] == 0 and status['current_model_id'] < 0:
     results_list, failed = QM_task_queue.get_task_results()
     status['lifetime_failed_QM_tasks'] = status['lifetime_failed_QM_tasks'] + failed    
     status['lifetime_failed_QM_structures'] = status.get('lifetime_failed_QM_structures', 0) + labeling.take_failed_structures(failed)
-    store_current_data(master_config['h5_path'].format(status['current_h5_id']),
-                       results_list,
-                       master_config['properties_list'])
+    status['lifetime_stored_labels'] = status.get('lifetime_stored_labels', 0) + store_current_data(
+        master_config['h5_path'].format(status['current_h5_id']),
+        results_list,
+        master_config['properties_list'])
     status['current_h5_id'] = status['current_h5_id'] + 1
     
 if status['current_model_id'] < 0:
@@ -374,8 +379,11 @@ while True:
         ML_config = ML_config_new
         all_configs = [master_config, builder_config, sampler_config, QM_config, ML_config]
 	
+    # Once the label budget is reached, start nothing new; only running training finishes.
+    admitting = label_budget is None or status.get('lifetime_stored_labels', 0) < label_budget
+
     # Run more builders
-    if (QM_task_queue.get_queued_number() < master_config['target_queued_QM']) and \
+    if admitting and (QM_task_queue.get_queued_number() < master_config['target_queued_QM']) and \
             (QM_task_queue.get_number() < master_config.get('maximum_completed_QM', 1e12)):
         while sampler_task_queue.get_number() + builder_task_queue.get_number() * master_config.get('maximum_builder_structures', 1) \
                 < master_config['parallel_samplers']:
@@ -390,7 +398,7 @@ while True:
             status['current_molecule_id'] = status['current_molecule_id'] + master_config.get('maximum_builder_structures',1)
             
     # Builders go stright into samplers
-    if builder_task_queue.get_exec_done_number() > 0:
+    if admitting and builder_task_queue.get_exec_done_number() > 0:
         structure_list, failed = builder_task_queue.get_task_results()
         status['lifetime_failed_builder_tasks'] = status['lifetime_failed_builder_tasks'] + failed
         # Douple loop to facilitate possiblitiy of multiple sctructures returned by builder
@@ -403,10 +411,11 @@ while True:
                 for substructure in structure:
                     assert isinstance(substructure, MoleculesObject), 'substructure must be a MoleculesObject instance'
                     sampling.submit(substructure, [{"sampler_config": sampler_config}, *all_configs, status])
-    sampling.submit_ready([{"sampler_config": sampler_config}, *all_configs, status])
+    if admitting:
+        sampling.submit_ready([{"sampler_config": sampler_config}, *all_configs, status])
 
     # Run more QM
-    if sampler_task_queue.get_completed_number() > master_config['minimum_QM']:
+    if admitting and sampler_task_queue.get_completed_number() > master_config['minimum_QM']:
         sampler_results, failed = sampler_task_queue.get_task_results()
         status['lifetime_failed_sampler_tasks'] = status['lifetime_failed_sampler_tasks'] + failed
         status['lifetime_failed_sampler_structures'] = status.get('lifetime_failed_sampler_structures', 0) + sampling.take_failed_structures(failed)
@@ -415,10 +424,11 @@ while True:
         # Without cohort selection this is every result whose atoms is set, as before.
         for structure in sampling.harvest(sampler_results):
             labeling.submit(structure, [{"QM_config": QM_config}, master_config, *all_configs, status])
-    labeling.submit_ready([{"QM_config": QM_config}, master_config, *all_configs, status])
+    if admitting:
+        labeling.submit_ready([{"QM_config": QM_config}, master_config, *all_configs, status])
 
     # Train more models
-    if (QM_task_queue.get_completed_number() > master_config['save_h5_threshold']) and (ML_task_queue.get_number() < 1):
+    if admitting and (QM_task_queue.get_completed_number() > master_config['save_h5_threshold']) and (ML_task_queue.get_number() < 1):
         #print(QM_task_queue.task_list[0].result())
     	  #store_current_data(h5path, system_data, properties):
         results_list, failed = QM_task_queue.get_task_results()
@@ -426,7 +436,8 @@ while True:
         status['lifetime_failed_QM_structures'] = status.get('lifetime_failed_QM_structures', 0) + labeling.take_failed_structures(failed)
         #with open('temp-{:04d}.pkl'.format(status['current_h5_id']),'wb') as pickle_file:
         #    pickle.dump(results_list,pickle_file)
-        store_current_data(master_config['h5_path'].format(status['current_h5_id']), results_list, master_config['properties_list'])
+        status['lifetime_stored_labels'] = status.get('lifetime_stored_labels', 0) + store_current_data(
+            master_config['h5_path'].format(status['current_h5_id']), results_list, master_config['properties_list'])
 #        with open('data-bk-{:04d}.pickle'.format(status['current_h5_id']),'wb') as pkbk: 
 #            pickle.dump(results_list,pkbk)
         status['current_h5_id'] = status['current_h5_id'] + 1
@@ -467,6 +478,17 @@ while True:
     with open(master_config['status_path'], "w") as outfile:
         json.dump(status, outfile, indent=2)
     
+    if not admitting and ML_task_queue.get_number() == 0:
+        print("Stopping: stored {} labels (maximum_stored_labels is {}). Dropped {} builder, {} sampler, and {} QM "
+              "structures, including {} finished QM structures not yet stored.".format(
+                  status['lifetime_stored_labels'], label_budget, builder_task_queue.get_number(),
+                  sampler_task_queue.get_number(), QM_task_queue.get_number(), QM_task_queue.get_completed_number()))
+        sys.stdout.flush()
+        break
+
     master_loop_iter += 1
     time.sleep(labeling.poll_delay(sampling.poll_delay(60)))
+
+# Release the allocations; a run without a label budget never reaches this.
+parsl.dfk().cleanup()
 	

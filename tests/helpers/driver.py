@@ -15,6 +15,7 @@ from types import SimpleNamespace
 import h5py
 import parsl
 from parsl.config import Config
+from parsl.errors import NoDataFlowKernelError
 from parsl.executors import ThreadPoolExecutor
 
 from alframework.tools import tools as tool_module
@@ -117,7 +118,7 @@ def run_alf_driver(
         (tmp_path / f"{name}.json").write_text(json.dumps(values))
     monkeypatch.setattr(sys, "argv", ["alframework", "--master", str(tmp_path / "master.json")])
 
-    run = SimpleNamespace(status={}, sleeps=[], sampler_queue_sizes=[])
+    run = SimpleNamespace(status={}, sleeps=[], sampler_queue_sizes=[], coordinator_cleaned_up=False)
     original_sleep = time.sleep
     deadline = time.monotonic() + timeout
 
@@ -142,6 +143,8 @@ def run_alf_driver(
     finally:
         try:
             parsl.dfk().cleanup()
+        except NoDataFlowKernelError:
+            run.coordinator_cleaned_up = True  # It finished on its own.
         finally:
             parsl.clear()
     return run

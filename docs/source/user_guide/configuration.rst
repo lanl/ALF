@@ -103,6 +103,14 @@ The master config controls the workflow wiring. Common fields include:
        reading a fixed list of seeds. ALF stops with an error if builders run out
        before that many are labeled. The default is ``false``, which keeps building
        until enough labeling tasks have finished.
+   * - ``maximum_stored_labels``
+     - Optional. ALF stops after storing at least this many converged labels. It
+       starts no new work, lets any running training finish and be promoted, reports
+       what it dropped, releases its allocations, and exits. Sampler and QM work still
+       running isn't stored, and labels are counted when a batch is stored, so a run
+       can overshoot by up to ``save_h5_threshold``. ALF reads this once, at startup.
+       The count is kept in ``status_path``. By default, a run continues until you
+       stop it.
    * - ``maximum_builder_structures``
      - Optional number of structures one builder task returns. The default is
        ``1``. See :doc:`builders`.

@@ -192,7 +192,7 @@ def store_current_data(h5path, system_data, properties):
                            from the QM calculations and store in the database.
 
     Returns:
-        (None)
+        (int): The number of converged structures saved.
 
     """
     # system data is a list of [mol-id(string), atoms, properties dictionary]
@@ -300,6 +300,18 @@ def store_current_data(h5path, system_data, properties):
     for key in data_dict:
         dpack.store_data(key, **data_dict[key])
     dpack.cleanup()
+    return saved_number
+
+
+def stored_label_budget(master_config):
+    """Return the validated ``maximum_stored_labels`` setting, or ``None`` when it isn't set."""
+    budget = master_config.get('maximum_stored_labels')
+    if budget is None:
+        return None
+    if isinstance(budget, bool) or not isinstance(budget, int) or budget < 1:
+        raise ValueError(f'maximum_stored_labels must be a positive integer; received {budget!r}.')
+    return budget
+
 
 def is_final_task(task):
     """

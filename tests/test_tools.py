@@ -121,6 +121,16 @@ def test_only_converged_frames_are_saved(tmp_path):
         assert group["cell"].shape == (1, 3, 3)
 
 
+def test_store_current_data_returns_only_converged_structures(tmp_path):
+    converged, unconverged = (MoleculesObject(Atoms("H2", positions=[[0, 0, 0], [1, 0, 0]]), name) for name in "ab")
+    for molecule in (converged, unconverged):
+        molecule.store_results({"energy": -1.0, "forces": np.zeros((2, 3))})
+    converged.set_converged_flag(True)
+    unconverged.set_converged_flag(False)
+    properties = {"energy": ["energy", "system", 1.0], "forces": ["forces", "atomic", 1.0]}
+    assert store_current_data(str(tmp_path / "labels.h5"), [converged, unconverged], properties) == 1
+
+
 def test_nonperiodic_frames_are_saved_without_a_cell(tmp_path):
     atoms = Atoms("OH2", positions=[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], cell=[20.0] * 3)
     molecule = MoleculesObject(atoms, "sample")

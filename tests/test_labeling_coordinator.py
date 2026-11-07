@@ -3,6 +3,9 @@
 Covers batching modes, timeouts, and keeping good labels when one molecule fails.
 """
 
+import json
+import time
+
 import h5py
 import numpy as np
 import pytest
@@ -14,6 +17,7 @@ from alframework.tools import tools as tool_module
 from alframework.tools.batching import BatchBuffer, BatchedSubmitter, BatchedTaskQueue
 from alframework.tools.labeling import LabelingCoordinator, labeling_batch_settings
 from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.tools import stored_label_budget
 from tests.helpers.driver import MODEL_PATTERN, loaded_parsl, run_alf_driver, stored_ids
 from tests.helpers.fakes import FakeTask
 from tests.helpers.molecules import WATER
@@ -143,6 +147,114 @@ def test_labeling_completes_a_full_training_cycle(tmp_path, monkeypatch, mode, b
     with h5py.File(tmp_path / "h5/data-0000.h5") as handle:
         group = next(iter(handle.values()))
         assert group["species"].asstr()[()].tolist() == ["H", "H", "O"]
+
+
+def stop_rule_tasks(tmp_path, training_calls, builder_calls, training_seconds=0.0):
+    @python_app(executors=["alf_builder_executor"])
+    def builder(moleculeid):
+        builder_calls.append(moleculeid)
+        return MoleculesObject(WATER.copy(), moleculeid)
+
+    @python_app(executors=["alf_sampler_executor"])
+    def sampler(molecule_object):
+        return molecule_object
+
+    @python_app(executors=["alf_QM_executor"])
+    def qm(molecule_object, QM_config):
+        return label(molecule_object)
+
+    @python_app(executors=["alf_ML_executor"])
+    def ml(current_training_id):
+        training_calls.append(current_training_id)
+        if current_training_id > 0:
+            time.sleep(training_seconds)
+        (tmp_path / MODEL_PATTERN.format(current_training_id)).mkdir(parents=True)
+        return [True] * 4, current_training_id
+
+    return dict(builder=builder, sampler=sampler, qm=qm, ml=ml)
+
+
+def test_coordinator_stops_after_maximum_stored_labels(tmp_path, monkeypatch, capfd):
+    training_calls, builder_calls = [], []
+    run = run_alf_driver(
+        tmp_path,
+        monkeypatch,
+        **stop_rule_tasks(tmp_path, training_calls, builder_calls),
+        stop_when=lambda status: False,  # Only the budget can end this run.
+        bootstrap_set=2,
+        parallel_samplers=2,
+        target_queued_QM=2,
+        save_h5_threshold=3,
+        maximum_completed_QM=8,
+        maximum_stored_labels=5,
+    )
+
+    status = json.loads((tmp_path / "status.json").read_text())
+    assert status["lifetime_stored_labels"] >= 5
+    assert status["lifetime_stored_labels"] == len(stored_ids(tmp_path / "h5"))
+    assert status["current_model_id"] == training_calls[-1], "the last training must finish and be promoted"
+    assert "Stopping: stored" in capfd.readouterr().out
+    assert run.coordinator_cleaned_up, "stopping must release the allocations"
+
+
+@pytest.mark.parametrize("training_seconds", [0.0, 0.3], ids=["fast_training", "slow_training"])
+def test_coordinator_finishes_running_training_but_starts_no_more_after_the_budget(
+    tmp_path, monkeypatch, training_seconds
+):
+    training_calls, builder_calls = [], []
+    run_alf_driver(
+        tmp_path,
+        monkeypatch,
+        **stop_rule_tasks(tmp_path, training_calls, builder_calls, training_seconds=training_seconds),
+        stop_when=lambda status: False,
+        bootstrap_set=2,
+        parallel_samplers=4,
+        target_queued_QM=4,
+        save_h5_threshold=0,
+        maximum_stored_labels=12,
+    )
+
+    status = json.loads((tmp_path / "status.json").read_text())
+    assert training_calls[-1] > 0, "the budget must be reached during active learning, not the bootstrap"
+    assert status["current_model_id"] == training_calls[-1], "the running training must finish and be promoted"
+    # Labels that finish while that training runs must stay unstored, so only the last shard crossed the budget.
+    shards = sorted((tmp_path / "h5").glob("data-*.h5"))
+    before_last = sum(len(stored_ids_in(shard)) for shard in shards[:-1])
+    assert before_last < 12 <= before_last + len(stored_ids_in(shards[-1]))
+
+
+def stored_ids_in(shard):
+    with h5py.File(shard) as handle:
+        return [name for group in handle.values() for name in group["_id"].asstr()[()]]
+
+
+def test_coordinator_stops_right_after_bootstrap_when_it_meets_the_budget(tmp_path, monkeypatch):
+    training_calls, builder_calls = [], []
+    run_alf_driver(
+        tmp_path,
+        monkeypatch,
+        **stop_rule_tasks(tmp_path, training_calls, builder_calls),
+        stop_when=lambda status: False,
+        bootstrap_set=2,
+        parallel_samplers=2,
+        target_queued_QM=2,
+        save_h5_threshold=3,
+        maximum_stored_labels=1,
+    )
+
+    assert training_calls == [0]
+    assert all(name.startswith("mol-boot-") for name in builder_calls), "active learning must not start"
+
+
+@pytest.mark.parametrize("budget", [0, -1, True, 2.5, "5"], ids=["zero", "negative", "boolean", "float", "string"])
+def test_maximum_stored_labels_must_be_a_positive_integer(budget):
+    with pytest.raises(ValueError, match="maximum_stored_labels"):
+        stored_label_budget({"maximum_stored_labels": budget})
+
+
+def test_maximum_stored_labels_is_optional():
+    assert stored_label_budget({}) is None
+    assert stored_label_budget({"maximum_stored_labels": 5}) == 5
 
 
 def test_status_counts_every_structure_in_a_failed_batch(tmp_path, monkeypatch):

@@ -36,7 +36,7 @@ This folder is the shared plan for bringing the fork's intended capabilities int
 - **The restart fixes that don't need Darwin are built:** atomic status and shard writes, the shard
   check in single-node training, and the replay manifest cache. See the
   [record](#restart-fixes-without-darwin-2026-11-07).
-- **Next:** the rest of safe restarts after the Darwin profile (see [`exascale.md`](exascale.md)),
+- **Next:** the rest of safe restarts, now that the Darwin profile has run (see [`exascale.md`](exascale.md)),
   F1 and F2 fine-tuning, then new uncertainty and acquisition methods. Long runs and staged campaigns come last, and may be
   removed; see [Order of work](future.md#order-of-work).
 - **No merge to `main` is planned** (user decision, November 6).
@@ -478,8 +478,10 @@ them, so the new tests re-raise them.
 - 29 deliberate breaks were caught, after one gap got a test: the hash cache had been tested only through
   the manifest cache, which hides it.
 - Docs build with no warnings; 80 roadmap links checked, 0 broken.
-- Not measured on Darwin. The profile's rename-visibility test confirms atomic writes on `/vast`, and its
-  listing delay checks whether 120 s is long enough.
+- Not run on Darwin at this commit. The November 7 profile measured `ce711d8`, before these fixes: 50 of 50
+  renamed files appeared on another node with matching contents, and the longest listing delay was
+  0.240 s, far inside the 120 s wait. It didn't test a crash during a rename. See the
+  [measurements](exascale.md#darwin-measurements-2026-11-07).
 
 ### Progress plots for batched and excited-state runs (2026-11-07)
 

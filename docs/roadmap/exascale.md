@@ -87,7 +87,7 @@ Worth doing whatever a profile shows, except that item 4 needs a `flock` test fi
 | # | Work | Size | Needs from Darwin |
 | --- | --- | --- | --- |
 | 1 | **Built November 7.** Write status and shards to a temporary file, then rename. `force_screen.py:89` already does this. | Small | Nothing |
-| 2 | **Built November 7.** Check for every expected shard by name in both trainers, with a bounded wait, then raise. Extra files stay allowed. | Small | Nothing, though a visibility test would show how long to wait |
+| 2 | **Built November 7.** Check for every expected shard by name in both trainers, with a bounded wait, then raise. Extra files stay allowed. | Small | Nothing. On Darwin the longest listing delay was 0.240 s, well inside the 120 s wait |
 | 3 | **Built November 7.** Cache each shard's manifest per worker, keyed by path, size, and modified time (the `_load_reference_cached` pattern in `molecular_topology.py`), and open the seed once per task. | Small to medium | Nothing |
 | 4 | Lock the coordinator on `<status_path>.lock`, and refuse to start if it's held. | Small | Whether `flock` works on `/vast` |
 
@@ -120,11 +120,11 @@ Items 5 and 6 ship together, because holding-area labels are only useful if a re
 
 ### Darwin profile for restart work
 
-Measure these on Darwin, at ALF `6e19e7a`, alongside the multi-node round. Nothing here is pass or fail, and no library code should change. Keep evidence outside Git under `validation/`, and record results in `exascale.md`.
+**Ran on November 7, at ALF `ce711d8`;** results are in [Darwin measurements](#darwin-measurements-2026-11-07). The plan is kept below as it was written. Measure these on Darwin, alongside the multi-node round. Nothing here is pass or fail, and no library code should change. Keep evidence outside Git under `validation/`, and record results in `exascale.md`.
 
 If a tool or permission isn't available, record that and move on. Don't substitute an estimate.
 
-**Since this was written,** priority items 1-3 were built (`cbadf9e`, `8d151da`, `6aedf2d`). Run the profile at `6e19e7a` as planned, because it's the baseline. If time allows, repeat the "during a store" row of section 3, and section 5, at the newer commit, to show what changed.
+**Since it ran,** priority items 1-3 were built on top of the measured baseline. One store-interruption restart failed at `ce711d8`, which is the case item 1 targets, and the record doesn't say why. Repeating the "during a store" row of section 3, and section 5, at the newer commit would show what changed.
 
 #### 1. `flock` on `/vast` (decides how the coordinator lock works)
 

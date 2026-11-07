@@ -13,7 +13,7 @@ mechanics have passed; see the [E6 record](excited_states.md),
 [quick-win qualification](README.md#quick-win-hardware-qualification--passed-2026-11-06),
 and [gap/window qualification](README.md#gap-seeking-and-sampling-window-hardware-qualification--passed-2026-11-06).
 
-1. **Safe restarts and disk races** ([below](#safe-restarts-and-disk-races), with priorities in [`exascale.md`](exascale.md#priority-list)). The fixes that don't need Darwin were built on November 7; the rest follow the Darwin profile.
+1. **Safe restarts and disk races** ([below](#safe-restarts-and-disk-races), with priorities in [`exascale.md`](exascale.md#priority-list)). The fixes that don't need Darwin were built on November 7. The Darwin profile also ran that day, so the lock, the label holding area and restart reconciliation can go next.
 2. **Placement and memory** ([Group C](#group-c-placement-and-memory)). Multi-node independent-member training passed its bounded Darwin gate on November 7; larger deployments remain unqualified. It buys throughput for larger ensembles, not new methods.
 3. **Teacher labeling, then F1 and F2 fine-tuning** ([Group D](#group-d-model-families-and-labels)). Teacher labeling is built, and awaits its Darwin gate.
 4. **New uncertainty and acquisition methods** ([Group G](#group-g-new-uncertainty-and-acquisition-methods)).

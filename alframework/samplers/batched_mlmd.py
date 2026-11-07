@@ -259,6 +259,9 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
         engine.finish(index)
         active.remove(index)
 
+    if 'sampling_window' in sampler_config:
+        for molecule in molecule_objects:
+            molecule.update_metadata(dict(sampling_window=sampler_config['sampling_window']))
     seeking = gap_seeking_settings(sampler_config)
     if seeking is not None:
         for molecule in molecule_objects:

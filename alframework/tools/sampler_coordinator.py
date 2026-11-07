@@ -28,12 +28,13 @@ from alframework.samplers.acquisition import cohort_selection
 from alframework.tools.batching import BatchedSubmitter, StartupSettings, batching_settings, default_batch_key
 from alframework.tools.cohorts import CohortPool
 from alframework.tools.gap_seeking import gap_seeking_settings
+from alframework.tools.sampling_windows import validated_windows, window_number, windowed_config
 
 STRATEGIES = ("single", "batched")
 ENGINES = ("ase", "torchsim", "alchemi")
 # Read once at startup. Cutoffs set what a cohort's scores mean, so they stay fixed only in cohort mode.
 FIXED_SETTINGS = ("driver", "batching", "acquisition", "model_mode", "state_selection", "gap_uncertainty",
-                  "gap_seeking")
+                  "gap_seeking", "sampling_windows")
 FIXED_COHORT_SETTINGS = ("Escut", "Fscut", "gap_std_cut")
 
 
@@ -138,7 +139,11 @@ class SamplerCoordinator(BatchedSubmitter):
         self._admission_ordinal = 0
         self.multi_trajectory = "molecule_objects" in parameters
         self.pool = None
+        self._windows = validated_windows(sampler_config)
+        self._window = None
         if not self.multi_trajectory:
+            if self._windows is not None:
+                raise ValueError("sampling_windows requires a sampler_task that accepts molecule_objects.")
             if self._states is not None:
                 raise ValueError('Excited-state sampling requires a multi-trajectory sampler task')
             if "driver" in sampler_config or "batching" in sampler_config or \
@@ -149,6 +154,9 @@ class SamplerCoordinator(BatchedSubmitter):
             super().__init__(sampler_task, None)
             self.driver = None
             return
+        for number in range(len(self._windows or ())):
+            # A window that would fail later, such as gap-seeking with UDD, should stop the run now.
+            driver_settings(windowed_config(sampler_config, self._windows, number))
         self.driver = driver_settings(sampler_config)
         settings = self.driver["batching"] or {"batch_size": 1, "partial_policy": "timeout",
                                                "max_wait_seconds": 0.0}
@@ -164,6 +172,16 @@ class SamplerCoordinator(BatchedSubmitter):
                          _model_batch_key(molecule, excited=self._states is not None))
         fixed = FIXED_SETTINGS + (FIXED_COHORT_SETTINGS if self.pool is not None else ())
         self._startup_settings = StartupSettings(sampler_config, fixed, "sampler")
+
+    def apply_window(self, sampler_config, stored_labels):
+        """Return the configuration new sampler tasks should use at this count of stored labels."""
+        if self._windows is None:
+            return sampler_config
+        number = window_number(self._windows, stored_labels)
+        if number != self._window:
+            print(f"Sampling window {number} of {len(self._windows) - 1} applies at {stored_labels} stored labels.")
+            self._window = number
+        return windowed_config(sampler_config, self._windows, number)
 
     def submit(self, molecule_object, input_dicts):
         """Submit (or buffer) one structure; in cohort mode, admit it to a cohort first."""

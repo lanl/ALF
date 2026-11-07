@@ -19,6 +19,7 @@ from alframework.tools.gap_seeking import adjacent_pairs, gap_seeking_settings, 
 from alframework.tools.molecules_class import MoleculesObject
 from alframework.tools.sampler_coordinator import SamplerCoordinator, state_settings
 from tests.helpers.engines import DEVICE, engine_class, require_engine
+from tests.helpers.fakes import CrossingStates
 
 BLOCK = {"enabled": True, "trigger_gap_threshold_eV": 0.05, "sigma": 3.5, "alpha_eV": 0.05}
 
@@ -174,44 +175,6 @@ def test_gap_seeking_setting_is_fixed_on_reload():
 
 
 # ---- Engines and the trajectory loop ----
-
-
-class CrossingStates:
-    """Three states where each gap depends on its own coordinates: gap(0,1) = sum x^2, gap(1,2) = sum y^2.
-
-    The members differ by a constant, so the spread stays fixed and the mean gaps are exact.
-    """
-
-    n_models = 2
-    n_states = 3
-
-    def evaluate_states(self, numbers, positions, cells, pbc, counts):
-        import torch
-
-        x = torch.as_tensor(positions, dtype=torch.float64)
-        system = torch.repeat_interleave(
-            torch.arange(len(counts), device=x.device), torch.as_tensor(counts, device=x.device)
-        )
-        u = x.new_zeros(len(counts)).index_add_(0, system, x[:, 0] ** 2)
-        v = x.new_zeros(len(counts)).index_add_(0, system, x[:, 1] ** 2)
-        state_energies = torch.stack([torch.zeros_like(u), u, u + v])
-        force_u, force_v = torch.zeros_like(x), torch.zeros_like(x)
-        force_u[:, 0], force_v[:, 1] = -2 * x[:, 0], -2 * x[:, 1]
-        state_forces = torch.stack([torch.zeros_like(x), force_u, force_u + force_v])
-        offsets = x.new_tensor([-0.1, 0.1])[:, None, None]
-        return state_energies[None] + offsets, state_forces[None].repeat(2, 1, 1, 1)
-
-    def predict_states(self, atoms_list):
-        import torch
-
-        counts = [len(atoms) for atoms in atoms_list]
-        positions = torch.tensor(np.concatenate([atoms.positions for atoms in atoms_list]))
-        energies, forces = self.evaluate_states(None, positions, None, None, counts)
-        starts = np.cumsum([0, *counts])
-        return dict(
-            state_energies=energies.numpy(),
-            state_forces=[forces[:, :, lo:hi].numpy() for lo, hi in zip(starts[:-1], starts[1:])],
-        )
 
 
 class SelectedStateMember(Calculator):

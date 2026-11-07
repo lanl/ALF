@@ -29,6 +29,7 @@ from alframework.tools.batching import BatchedSubmitter, StartupSettings, batchi
 from alframework.tools.cohorts import CohortPool
 from alframework.tools.gap_seeking import gap_seeking_settings
 from alframework.tools.sampling_windows import validated_windows, window_number, windowed_config
+from alframework.tools.trajectory_summary import TrajectorySummary
 
 STRATEGIES = ("single", "batched")
 ENGINES = ("ase", "torchsim", "alchemi")
@@ -130,7 +131,8 @@ class SamplerCoordinator(BatchedSubmitter):
         sampler_task: The loaded ``sampler_task`` Parsl app.
         sampler_task_path (str): Its import string.
         sampler_config (dict): Sampler configuration.
-        master_config (dict): Used to check that ``full_only`` batches can fill.
+        master_config (dict): Used to check that ``full_only`` batches can fill, and for
+            ``trajectory_summary_path``, which is read once, here.
     """
 
     def __init__(self, sampler_task, sampler_task_path, sampler_config, master_config=None):
@@ -139,6 +141,8 @@ class SamplerCoordinator(BatchedSubmitter):
         self._admission_ordinal = 0
         self.multi_trajectory = "molecule_objects" in parameters
         self.pool = None
+        summary_path = (master_config or {}).get("trajectory_summary_path")
+        self._summary = None if summary_path is None else TrajectorySummary(summary_path)
         self._windows = validated_windows(sampler_config)
         self._window = None
         if not self.multi_trajectory:
@@ -210,6 +214,8 @@ class SamplerCoordinator(BatchedSubmitter):
         failed = list(getattr(self.queue, "failed_inputs", []))
         if failed:
             self.queue.failed_inputs.clear()
+        if self._summary is not None:
+            self._summary.append(sampler_results, failed)
         if self.pool is None:
             return [structure for structure in sampler_results if structure.get_atoms() is not None]
         for structure in sampler_results:

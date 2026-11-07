@@ -340,7 +340,7 @@ on one GPU. Each trains in a fresh `spawn` child, using `ProcessPoolExecutor`, b
 pattern rather than deleted, and each attempt leaves a placement record beside them, since trainers
 refuse a nonempty member directory.
 
-**Local results.** 821 passed, 2 skipped (`seqm` not installed), including the exit fixes below, and the new tests also pass without Torch.
+**Local results.** 827 passed, 2 skipped (`seqm` not installed), including the exit fixes below, and the new tests also pass without Torch.
 Each new branch was shown to fail its tests when broken.
 
 Real Parsl workers on one machine (`HighThroughputExecutor`, two local blocks with two workers each,
@@ -370,6 +370,14 @@ The review also fixed three problems in the first version of this work and one o
   falls back to the summary for existing models. The summary itself is unchanged (user decision).
 - The guide wrongly said that Parsl releases idle blocks as members finish.
 - The capacity check wrongly refused extra workers when `available_accelerators` gave each its own GPU.
+
+**Dead executors.** Parsl permanently stops an executor once every block started so far has failed, and
+ALF didn't notice. Locally, with a block whose `worker_init` failed, Parsl marked the ML executor dead
+within seconds, and ALF was still looping at 100 s. `stop_if_executor_failed` now stops ALF with Parsl's
+reason, after saving status, for every required executor (user decision: stop rather than keep sampling).
+Labels finished since the last store are lost, as at a budget stop. The guide also recommends
+`windowed_error_handler`. Locally, it survived 1 and 2 failed blocks and ran the task, and gave up after 3,
+while the default gave up after 1.
 
 ### Gap-seeking and sampling-window hardware qualification — passed (2026-11-06)
 

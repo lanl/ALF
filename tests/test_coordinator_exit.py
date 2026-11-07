@@ -15,9 +15,16 @@ import time
 from pathlib import Path
 from types import SimpleNamespace
 
+import numpy as np
+import parsl
 import pytest
+from parsl import python_app
 
-from alframework.tools.tools import release_allocations_at_exit
+from alframework.tools import tools as tool_module
+from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.tools import release_allocations_at_exit, stop_if_executor_failed
+from tests.helpers.driver import run_alf_driver
+from tests.helpers.molecules import WATER
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 CLEANED_UP = "Terminated executors"
@@ -232,3 +239,80 @@ def test_release_allocations_turns_sigterm_into_a_normal_exit(registered_handler
     with pytest.raises(SystemExit) as stopped:
         signal.raise_signal(signal.SIGTERM)
     assert stopped.value.code == 128 + signal.SIGTERM
+
+
+# A dead executor.
+
+
+def dead(reason="block failed"):
+    return SimpleNamespace(bad_state_is_set=True, executor_exception=RuntimeError(reason))
+
+
+def test_stop_if_executor_failed_names_the_executor_and_its_cause():
+    executors = {"alf_sampler_executor": SimpleNamespace(bad_state_is_set=False), "alf_ML_executor": dead("node failure")}
+    with pytest.raises(RuntimeError, match="alf_ML_executor.*node failure"):
+        stop_if_executor_failed(SimpleNamespace(executors=executors))
+
+
+@pytest.mark.parametrize(
+    "executors",
+    [
+        {"alf_ML_executor": SimpleNamespace(bad_state_is_set=False)},
+        {"_parsl_internal": SimpleNamespace()},
+        {"alf_QM_executor": SimpleNamespace(bad_state_is_set=False), "alf_QM_standby_executor": dead()},
+    ],
+    ids=["healthy", "thread_executor_has_no_state", "dead_standby"],
+)
+def test_stop_if_executor_failed_lets_a_working_run_continue(executors):
+    stop_if_executor_failed(SimpleNamespace(executors=executors))
+
+
+def coordinator_tasks():
+    @python_app(executors=["alf_builder_executor"])
+    def builder(moleculeid):
+        return MoleculesObject(WATER.copy(), moleculeid)
+
+    @python_app(executors=["alf_sampler_executor"])
+    def sampler(molecule_object):
+        return molecule_object
+
+    @python_app(executors=["alf_QM_executor"])
+    def qm(molecule_object):
+        molecule_object.store_results({"energy": -1.0, "forces": np.zeros((len(molecule_object), 3))})
+        molecule_object.set_converged_flag(True)
+        return molecule_object
+
+    @python_app(executors=["alf_ML_executor"])
+    def ml(current_training_id):
+        return [True, True], current_training_id
+
+    return dict(builder=builder, sampler=sampler, qm=qm, ml=ml, bootstrap_set=2, parallel_samplers=2,
+                target_queued_QM=2, save_h5_threshold=3, maximum_completed_QM=8)
+
+
+@pytest.mark.parametrize(
+    "ready,trained",
+    [(lambda status: True, False), (lambda status: status["current_model_id"] >= 0, True)],
+    ids=["bootstrap_loop", "active_learning_loop"],
+)
+def test_coordinator_stops_with_status_saved_when_an_executor_dies(tmp_path, monkeypatch, ready, trained):
+    real_check, saved = stop_if_executor_failed, []
+
+    def check_after_comparing_status(dfk):
+        status_on_disk = json.loads((tmp_path / "status.json").read_text())
+        saved.append(status_on_disk == sys._getframe(1).f_globals["status"])
+        real_check(dfk)
+
+    monkeypatch.setattr(tool_module, "stop_if_executor_failed", check_after_comparing_status)
+
+    def kill_ml_executor_when_ready(status):
+        if ready(status):
+            executor = parsl.dfk().executors["alf_ML_executor"]
+            executor.bad_state_is_set, executor.executor_exception = True, RuntimeError("all blocks failed")
+        return False
+
+    with pytest.raises(RuntimeError, match="alf_ML_executor.*all blocks failed"):
+        run_alf_driver(tmp_path, monkeypatch, **coordinator_tasks(), stop_when=kill_ml_executor_when_ready)
+    assert saved and all(saved), "status must be saved before stopping"
+    final = json.loads((tmp_path / "status.json").read_text())
+    assert (final["current_model_id"] >= 0) == trained, "the check must fire in the loop where the executor died"

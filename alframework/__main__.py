@@ -30,6 +30,7 @@ from alframework.tools.tools import system_checker
 from alframework.tools.tools import load_module_from_string
 from alframework.tools.tools import build_input_dict
 from alframework.tools.tools import release_allocations_at_exit
+from alframework.tools.tools import stop_if_executor_failed
 from alframework.tools.pyanitools import anidataloader
 from alframework.tools.molecules_class import MoleculesObject
 from alframework.tools.batching import bootstrap_molecule_ids
@@ -314,6 +315,7 @@ if status['current_h5_id'] == 0 and status['current_model_id'] < 0:
     
         with open(master_config['status_path'], "w") as outfile:
             json.dump(status, outfile, indent=2)
+        stop_if_executor_failed(parsl.dfk())
 
         time.sleep(labeling.poll_delay(60))
 
@@ -479,6 +481,7 @@ while True:
     
     with open(master_config['status_path'], "w") as outfile:
         json.dump(status, outfile, indent=2)
+    stop_if_executor_failed(parsl.dfk())
     
     if not admitting and ML_task_queue.get_number() == 0:
         print("Stopping: stored {} labels (maximum_stored_labels is {}). Dropped {} builder, {} sampler, and {} QM "

@@ -451,6 +451,22 @@ def release_allocations_at_exit(dfk):
     signal.signal(signal.SIGTERM, lambda signum, frame: sys.exit(128 + signum))
 
 
+def stop_if_executor_failed(dfk):
+    """Raise if Parsl has permanently stopped an executor that ALF needs.
+
+    Every task on such an executor fails from then on, so the run can't make progress, though nothing
+    else would stop it. Standby executors are skipped, because their primary can still do the work.
+
+    Args:
+        dfk (parsl.dataflow.dflow.DataFlowKernel): The running Parsl workflow.
+
+    """
+    for label, executor in dfk.executors.items():
+        if 'standby' not in label and getattr(executor, 'bad_state_is_set', False):
+            raise RuntimeError('Parsl permanently stopped {}, so ALF is stopping. Fix the cause and restart. '
+                               'Parsl reported: {}'.format(label, executor.executor_exception))
+
+
 def find_empty_directory(pattern):
     """Find an empty directory to restart.
 

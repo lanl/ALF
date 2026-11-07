@@ -257,10 +257,19 @@ Each block's walltime must cover a member's training, including any retry, and b
 different times. A member that takes longer than the walltime fails on every attempt.
 
 By default, Parsl permanently stops an executor once every block it has started so far has failed, for
-example when the only block hits a node failure. Tasks on that executor then fail immediately, retries
-can't help, and ALF keeps sampling without training. Cancelled and timed-out blocks don't count. Using
-several one-node blocks makes this less likely. ``block_error_handler=False`` on the executor turns it
-off, but then a bad ``worker_init`` keeps requesting new blocks instead of failing.
+example when the only block hits a node failure. ALF then stops; see :ref:`parsl-releasing-allocations`.
+To survive isolated failures, use ``windowed_error_handler``, which only gives up after the last three
+blocks have all failed. Cancelled and timed-out blocks don't count:
+
+.. code-block:: python
+
+   from parsl.jobs.error_handlers import windowed_error_handler
+
+   HighThroughputExecutor(
+       label="alf_ML_executor",
+       block_error_handler=windowed_error_handler,
+       ...
+   )
 
 A single multi-node block (``nodes_per_block=10``, ``max_blocks=1``) starts every node together, but
 may queue for longer. It needs ``SrunLauncher``, because ``SingleNodeLauncher`` starts workers on only
@@ -583,6 +592,12 @@ stage-test command such as ``--test_ml``, an error, Ctrl-C, and ``SIGTERM`` from
 time limit. ``SIGKILL`` can't be handled, and neither can a kill that arrives before cleanup finishes.
 After either one, the interchange can keep running and keep nodes allocated until walltime, so check
 ``squeue`` and cancel any leftover blocks yourself.
+
+ALF also stops with an error if Parsl permanently stops the builder, sampler, QM, or ML executor, because
+every task on it would fail from then on. The error includes Parsl's reason. Status is saved first, but
+labels that finished since the last store are lost. Restart ALF once the cause is fixed. A failed standby
+executor doesn't stop ALF. Blocks still running on the failed executor stop at its heartbeat limit, not
+immediately.
 
 Sizing Executors For Batching
 -----------------------------

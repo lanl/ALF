@@ -122,7 +122,8 @@ Tabled on November 6, before any code changed. An audit of ALF's disk writes rea
     6. After `--test_ml`, `squeue` empties shortly after ALF exits. Only a real allocation can confirm this.
     7. `scancel` of the coordinator during multi-node training releases the ML blocks.
     8. Excited-state sampler tasks load members without reading `training_summary.json`.
-  - **Known limits, for Darwin to watch:** a node failure as the only block can permanently stop the ML executor, which `scancel` doesn't exercise. Uncertainty cutoffs shift with ensemble size. GPU memory for 40 sampling members is untested. `strategy="htex_auto_scale"` could release nodes sooner, but hasn't been tried.
+    9. A deliberately bad `worker_init` on the ML executor makes ALF stop with a clear message and releases the other executors' blocks. Real node failures can't be triggered on demand, and `scancel` counts as cancelled, not failed.
+  - **Known limits, for Darwin to watch:** uncertainty cutoffs shift with ensemble size. GPU memory for 40 sampling members is untested. `strategy="htex_auto_scale"` could release nodes sooner, but hasn't been tried.
   - **Not included:** promoting a partial ensemble, a training deadline, and restart recovery of a partly trained ensemble after a coordinator crash.
 - **Data-parallel training of one member (separate decision).** For datasets or models too large for one GPU. HIPPYNN's Lightning trainer (`hippynn.experiment.lightning_trainer`) is marked experimental and lacks some features. Adopting it changes the checkpoint layout and the batched loader's `best_model.pt` assumption.
 

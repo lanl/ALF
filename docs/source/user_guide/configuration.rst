@@ -179,7 +179,9 @@ During a run, ALF writes a standard set of outputs:
    * - ``status.txt.lock``
      - Held by the running coordinator, so a second one can't start on the same run.
    * - ``h5store/data-*.h5``
-     - Labeled data batches written from converged QM results.
+     - Labeled data batches written from converged QM results. When any structure's metadata has
+       ``charge`` or ``mult``, the shard also stores ``total_charge`` and ``spin_multiplicity`` for every
+       structure, defaulting to 0 and 1; UMA fine-tuning reads them, and HIPPYNN training ignores them.
    * - ``h5store_held/held-*.pkl``
      - Finished labels waiting for the next store. They're removed once stored.
    * - ``models/model-*``

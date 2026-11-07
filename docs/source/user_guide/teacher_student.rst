@@ -250,7 +250,7 @@ directory. Keep this directory apart from ``h5_dir``, which the teacher's mixed-
 Next Steps
 ----------
 
-* If the student matches the teacher but the teacher doesn't match QM, fine-tune the teacher on QM
-  labels that ALF selects; see :doc:`fine_tuning`.
+* If the student matches the teacher but the teacher doesn't match QM, fine-tune the teacher, MACE or
+  UMA, on QM labels that ALF selects; see :doc:`fine_tuning`.
 * :doc:`batching` covers batch sizes for the teacher and for sampling.
 * :doc:`units` lists the units each part of ALF uses.

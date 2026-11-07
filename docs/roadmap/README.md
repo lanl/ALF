@@ -37,11 +37,12 @@ This folder is the shared plan for bringing the fork's intended capabilities int
   training, and the replay manifest cache, then the coordinator lock, a holding area for finished
   labels, and restart reconciliation. See the [first](#restart-fixes-without-darwin-2026-11-07) and
   [second](#restarts-that-keep-labels-2026-11-07) records. Not yet run on Darwin.
-- **Fine-tuning with ALF is built for MACE and HIPPYNN,** through one interface: ALF selects the samples,
-  and each round fine-tunes copies of the pretrained model. Checked on CPU only; see the
-  [MACE](#fine-tuning-with-alf-mace-2026-11-07) and [HIPPYNN](#fine-tuning-with-alf-hippynn-2026-11-07) records.
-- **Next:** a UMA fine-tuning adapter (see [Group D](future.md#group-d-model-families-and-labels)), then
-  new uncertainty and acquisition methods. Long runs and staged campaigns come last, and may be
+- **Fine-tuning with ALF is built for MACE, HIPPYNN, and UMA,** through one interface: ALF selects the
+  samples, and each round fine-tunes copies of the pretrained model. Checked on CPU only; see the
+  [MACE](#fine-tuning-with-alf-mace-2026-11-07), [HIPPYNN](#fine-tuning-with-alf-hippynn-2026-11-07), and
+  [UMA](#fine-tuning-with-alf-uma-2026-11-07) records.
+- **Next:** GPU qualification of fine-tuning and teacher labeling on Darwin, then new uncertainty and
+  acquisition methods (see [Order of work](future.md#order-of-work)). Long runs and staged campaigns come last, and may be
   removed; see [Order of work](future.md#order-of-work).
 - **No merge to `main` is planned** (user decision, November 6).
 - **Outside current acceptance:** legacy NeuroChem and MI350.
@@ -550,6 +551,60 @@ matching the shards.
 - Docs build with no warnings; 96 roadmap links checked, 0 broken.
 - Not run on Darwin. Rerunning section 3 of the [restart profile](exascale.md#darwin-profile-for-restart-work)
   at this commit would compare against the `ce711d8` baseline.
+
+### Fine-tuning with ALF: UMA (2026-11-07)
+
+The third adapter for the [fine-tuning interface](#fine-tuning-with-alf-mace-2026-11-07). User decisions: ALF
+writes fairchem's training configuration itself, rather than needing fairchem's git repository; every UMA
+task; charge and spin stored in shards; both reference-energy modes.
+
+- **A prototype came first** (fairchem-core 2.25.0, `uma-s-1p2p1`, CPU, `HF_HUB_OFFLINE=1`) and settled seven
+  questions: fine-tuning runs on CPU from a local checkpoint with no network
+  (`initialize_finetuning_model(checkpoint_location=...)` in place of the template's download by name); the
+  output is `<run_dir>/<timestamp_id>/checkpoints/final/inference_ckpt.pt`; it loads through `FairChemModel`;
+  `omol` reads charge and spin through `r_data_keys`; the checkpoint's `tasks_config` holds each task's
+  reference energies and normalizer, so keep mode is possible; `uma-s-1p2p1` fine-tunes as the template's
+  `uma-s-1p1` does; and about 5 s per step on CPU for water. It also found that
+  `python -m fairchem.core._cli` silently does nothing (the module has no `__main__` block, so ALF calls
+  `main()`), that the job wants `CPU` or `CUDA` rather than lower case, and that an inference-only stress task
+  breaks prediction from a model fine-tuned without stress.
+- **`ml_interfaces/uma_fine_tuning.py`:** `UmaFineTuner` runs each copy in a child process
+  (`python -m alframework.ml_interfaces.uma_fine_tuning`): it reads the shards, splits training and validation
+  with the copy's seed, writes ASE-LMDB, refits references by least squares (`average`) or reads the
+  checkpoint's (`foundation`), writes the configuration as JSON (valid YAML, so no PyYAML on the coordinator),
+  runs fairchem's `main()`, and keeps `inference_ckpt.pt` as `uma.pt`. Resume checkpoints are removed unless
+  `keep_training_checkpoints`.
+- **`load_uma_batched_ensemble`** serves the batched engines. ALF's engines pass no charge or spin per
+  structure, and fairchem would otherwise use spin 0, so `omol` sampling applies one `charge` and `spin`
+  (default a neutral singlet) to every structure.
+- **`ml_interfaces/torchsim_ensemble.py`:** one TorchSim evaluator for MACE and UMA, building a `SimState`
+  with optional charge and spin.
+- **Charge and spin in shards:** when any structure's metadata has `charge` or `mult`, `store_current_data`
+  writes `total_charge` and `spin_multiplicity` for the whole shard, defaulting to 0 and 1. The HIPPYNN reader
+  drops them unless a model names them, because mixing shards with and without them broke it ("Inconsistent
+  property keys across ALF structure groups", reproduced before the change).
+- **`examples/uma_fine_tuning`** (`omol`, ORCA labels, `E0s: "average"`), and a UMA section in the guide.
+
+**Checked locally, on CPU, with real UMA** (`uma-s-1p2p1`, fairchem-core 2.25.0, in a scratch environment
+layered on the ALF one):
+
+- Two-copy rounds, 8 steps each, about 90 s: `omol` with refit, `omol` with keep (energies stay on UMA's
+  scale, near −2080 eV for water), and `omat` with refit on periodic copper. All completed, recorded their
+  lineage, and loaded through `load_uma_batched_ensemble`.
+- OH⁻ (charge −1) and the OH radical (multiplicity 2) reached the training database with their charge and
+  spin.
+- Copies of one checkpoint disagreed clearly, unlike small HIPPYNN copies: 0.24 eV and 0.22 eV/Å for `omol`
+  with refit, 0.035 eV and 0.042 eV/Å with keep.
+- The real coordinator, with single water molecules, EMT labels through a teacher, UMA fine-tuning, and
+  TorchSim MD on the copies: round 0 was promoted, its copies selected 4 structures, and round 1 fine-tuned
+  from the original checkpoint on both shards and was promoted, in 14.5 minutes.
+
+**Results.** Full suite: 1063 passed. With the packages CI's HIPPYNN job lacks blocked: 952 passed, 111
+skipped. With Torch blocked: 832 passed, 196 skipped. The UMA tests run without fairchem. All 28 deliberate
+breaks were caught. Docs build with no warnings; 112 roadmap links, 0 broken.
+
+**Not shown yet.** GPU runs and GPU memory for several copies, fine-tuning on labels at UMA's own level of
+theory, larger UMA checkpoints, the multi-node form with real UMA, and any fairchem version other than 2.25.
 
 ### Fine-tuning with ALF: HIPPYNN (2026-11-07)
 

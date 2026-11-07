@@ -302,8 +302,66 @@ def store_current_data(h5path, system_data, properties):
     dpack = pyt.datapacker(h5path)
     for key in data_dict:
         dpack.store_data(key, **data_dict[key])
+    sources = label_sources(system for system in system_data if system.check_convergence())
+    if sources:
+        dpack.store.attrs[LABEL_PROVENANCE] = json.dumps(sources)
     dpack.cleanup()
     return saved_number
+
+
+LABEL_PROVENANCE = 'label_provenance'
+
+
+def label_sources(structures):
+    """Return the distinct ``label_provenance`` records of labeled structures, in first-seen order."""
+    sources, seen = [], set()
+    for structure in structures:
+        provenance = structure.get_metadata().get(LABEL_PROVENANCE)
+        if provenance is None:
+            continue
+        key = json.dumps(provenance, sort_keys=True, default=str)
+        if key not in seen:
+            seen.add(key)
+            sources.append(json.loads(key))
+    return sources
+
+
+def read_label_provenance(h5path):
+    """Return the label sources recorded on an HDF5 shard, or an empty list if none were recorded.
+
+    QM labelers record nothing; foundation-model teachers record themselves. Reads only the
+    shard's attributes, not its data.
+    """
+    import h5py
+    with h5py.File(h5path, 'r') as handle:
+        value = handle.attrs.get(LABEL_PROVENANCE)
+    if value is None:
+        return []
+    return json.loads(value.decode() if isinstance(value, bytes) else value)
+
+
+def write_label_sources(ensemble_dir, h5_dir):
+    """Record which label sources a trained ensemble learned from, as ``label_sources.json``.
+
+    A failure here is reported, never raised, so it can't cost a finished training.
+    """
+    try:
+        shards = sorted(glob.glob(os.path.join(str(h5_dir), '*.h5')))
+        teachers, seen, unrecorded = [], set(), []
+        for shard in shards:
+            sources = read_label_provenance(shard)
+            if not sources:
+                unrecorded.append(os.path.basename(shard))
+            for source in sources:
+                key = json.dumps(source, sort_keys=True)
+                if key not in seen:
+                    seen.add(key)
+                    teachers.append(source)
+        Path(ensemble_dir).mkdir(parents=True, exist_ok=True)
+        (Path(ensemble_dir) / 'label_sources.json').write_text(json.dumps(
+            {'teachers': teachers, 'shards_without_label_provenance': unrecorded, 'shards': len(shards)}, indent=2) + '\n')
+    except Exception as exc:
+        print('Could not record label sources in {}: {}: {}'.format(ensemble_dir, type(exc).__name__, exc), flush=True)
 
 
 def stored_label_budget(master_config):

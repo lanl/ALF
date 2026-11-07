@@ -121,7 +121,7 @@ def test_multinode_training_retries_only_the_failed_member(tmp_path, monkeypatch
     output = capfd.readouterr().out
     assert "member 1 attempt 1 failed: RuntimeError: lost worker" in output
     assert re.search(r"Training 0003: \d/3 members finished, 1 retrying, 0 failed", output)
-    assert output.rstrip().endswith("Training 0003: 3/3 members finished, 0 retrying, 0 failed")
+    assert "Training 0003: 3/3 members finished, 0 retrying, 0 failed" in output.splitlines()
 
 
 def test_multinode_training_gives_up_after_the_retry_limit(tmp_path, monkeypatch, multinode_task):
@@ -619,3 +619,13 @@ def test_multinode_excited_training_trains_members_that_reload(tmp_path):
     (ensemble / "failed-model-00-attempt-1").mkdir()
     evaluator = ml.load_hippynn_excited_state_ensemble(str(ensemble), "cpu", PROPERTIES)
     assert evaluator.n_models == 2
+
+
+def test_multinode_control_loop_records_label_sources_once_members_finish(tmp_path):
+    events = []
+    member = Future()
+    outcome = ensemble_training.train_ensemble_across_nodes(
+        lambda m, a: member, 1, tmp_path, 3, 0, "cpu", 0, None, finish=lambda: events.append("finish"))
+    assert not events, "label sources are written only after training"
+    member.set_result(True)
+    assert outcome.result(timeout=30) == ([True], 3) and events == ["finish"]

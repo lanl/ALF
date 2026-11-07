@@ -169,7 +169,7 @@ def train_members(submit, n_models, ensemble_dir, training_id, member_retries=1)
 
 
 def train_ensemble_across_nodes(submit, n_models, ensemble_dir, training_id, gpus_per_node, device_string,
-                                member_retries, executor):
+                                member_retries, executor, finish=None):
     """Start the body of a multi-node ML task, returning the future that a ``join_app`` waits on.
 
     The control loop runs on a daemon thread. Python waits for Parsl's internal threads before it runs
@@ -182,7 +182,10 @@ def train_ensemble_across_nodes(submit, n_models, ensemble_dir, training_id, gpu
 
     def control_loop():
         try:
-            outcome.set_result((train_members(submit, n_models, ensemble_dir, training_id, member_retries), training_id))
+            completed = train_members(submit, n_models, ensemble_dir, training_id, member_retries)
+            if finish is not None:
+                finish()
+            outcome.set_result((completed, training_id))
         except Exception as exc:
             outcome.set_exception(exc)
 

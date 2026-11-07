@@ -108,6 +108,10 @@ class LabelingCoordinator(BatchedSubmitter):
                                  "target_queued_QM >= batching.batch_size.")
             if mode == "sequential":
                 self._packed_task = python_app(executors=list(qm_task.executors))(label_sequentially)
+        # A labeler can check its own configuration, so that a mistake stops ALF at launch.
+        validate = getattr(getattr(qm_task, "func", None), "validate_config", None)
+        if validate is not None:
+            validate(QM_config, master_config)
         super().__init__(qm_task, settings)
         self._startup_settings = StartupSettings(QM_config, ("batching",), "QM")
         self.qm_task = qm_task

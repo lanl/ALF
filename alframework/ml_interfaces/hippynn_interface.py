@@ -777,6 +777,8 @@ def train_HIPPYNN_ensemble_task(ML_config,h5_dir,model_path,current_training_id,
     out = p.map(train_HIPNN_model_wrapper,params_list)
     p.close()
     completed = [_ground_state_member_complete(params['model_dir']) for params in params_list]
+    from alframework.tools.tools import write_label_sources
+    write_label_sources(model_path.format(current_training_id), h5_dir)
     return(completed, current_training_id)
 
 
@@ -2283,6 +2285,8 @@ def train_excited_state_ensemble(
         pool.join()
 
     completed = [_excited_state_member_complete(result) for result in raw_results]
+    from alframework.tools.tools import write_label_sources
+    write_label_sources(ensemble_dir, h5_dir)
 
     if all(completed):
         try:
@@ -2429,10 +2433,12 @@ def train_HIPPYNN_ensemble_multinode_task(ML_config, h5_dir, model_path, current
     """
     params_list = _ground_state_member_params(ML_config, h5_dir, model_path, current_training_id, gpus_per_node)
     shards = _h5_shards(h5_dir)
+    from alframework.tools.tools import write_label_sources
     return ensemble_training.train_ensemble_across_nodes(
         lambda member, attempt: _ground_state_member_task(params_list[member], shards, attempt),
         len(params_list), model_path.format(current_training_id), current_training_id, gpus_per_node,
-        ML_config.get('device_string', 'from_multiprocessing'), member_retries, _ml_executor())
+        ML_config.get('device_string', 'from_multiprocessing'), member_retries, _ml_executor(),
+        finish=lambda: write_label_sources(model_path.format(current_training_id), h5_dir))
 
 
 @join_app
@@ -2455,7 +2461,9 @@ def train_excited_state_HIPPYNN_ensemble_multinode_task(ML_config, h5_dir, model
         raise FileExistsError(f'Refusing to overwrite nonempty ensemble directory {root}')
     params_list = _excited_state_member_params(config, h5_dir, ensemble_dir, gpus_per_node, properties_list)
     shards = _h5_shards(h5_dir)
+    from alframework.tools.tools import write_label_sources
     return ensemble_training.train_ensemble_across_nodes(
         lambda member, attempt: _excited_state_member_task(params_list[member], shards, attempt),
         len(params_list), ensemble_dir, int(current_training_id), gpus_per_node,
-        config.get('device_string', 'from_multiprocessing'), member_retries, _ml_executor())
+        config.get('device_string', 'from_multiprocessing'), member_retries, _ml_executor(),
+        finish=lambda: write_label_sources(ensemble_dir, h5_dir))

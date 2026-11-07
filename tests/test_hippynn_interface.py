@@ -694,6 +694,7 @@ def test_one_failed_member_is_recorded(tmp_path, monkeypatch):
         properties_list=_properties(),
     )
     assert completed == [True, False] and identity == 3
+    assert (tmp_path / "ensemble-3/label_sources.json").is_file()
     assert pool.processes == 1
     assert pool.calls == ["close", "join"]
     assert json.loads((tmp_path / "ensemble-3/model-01/training_error.json").read_text())["error"] == "bad member"

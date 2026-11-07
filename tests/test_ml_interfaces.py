@@ -22,6 +22,7 @@ def test_hippynn_training_configures_each_member(tmp_path, monkeypatch):
 
     assert completed == [True, True]
     assert training_id == 3
+    assert (tmp_path / "models" / "model-0003" / "label_sources.json").is_file()
     assert pool.processes == 2
     assert "close" in pool.calls
     assert pool.func is hippynn_interface.train_HIPNN_model_wrapper

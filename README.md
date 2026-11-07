@@ -63,7 +63,7 @@ python -m alframework --master master_config.json --test_ml
 python -m alframework --master master_config.json --test_qm
 ```
 
-These commands pass errors back to the terminal to enable easier debugging. Errors encountered in the active learning phase are logged and counted in the status file rather than stopping the run.
+These commands pass errors back to the terminal to enable easier debugging. Errors encountered in the active learning phase are logged and counted in the status file rather than stopping the run. The exception is when Parsl permanently stops an executor: ALF then stops with Parsl's reason, because every task on that executor would fail.
 
 ## ▶️ Execution:
 

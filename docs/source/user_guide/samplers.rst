@@ -491,7 +491,8 @@ with no rank uses the first device.
 NeuroChem inference supports CUDA only, and its ``model_details['gpu']`` value is a
 local device number passed to its constructor. HIPPYNN training with
 ``"device_string": "from_multiprocessing"`` puts each ensemble member on its own
-visible device, also without changing those variables.
+visible device, also without changing those variables. To train across several nodes,
+see :ref:`ml-multinode-training`.
 
 What The Sampler Returns
 ------------------------

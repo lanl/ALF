@@ -121,6 +121,7 @@ It adds ``ALF_QM_MAX_BLOCKS``, ``ALF_ML_MAX_BLOCKS``, and ``ALF_SAMPLER_MAX_BLOC
 
 All three start with no nodes. Parsl requests nodes as work arrives, and releases them
 when they are idle, so a smaller run can lower the limits instead of reserving nodes.
+Training stays on one node here. For a larger ensemble, see :ref:`ml-multinode-training`.
 
 **GPU binding.** GPU4PySCF needs each QM worker to see one GPU as its local device 0;
 see :ref:`parsl-gpu4pyscf-workers`. ``parsl_configs.py`` handles this by launching QM

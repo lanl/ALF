@@ -79,7 +79,7 @@ ALF `1055d9c` source boundary; see the [evidence](README.md#gap-seeking-and-samp
 
 ## Safe restarts and disk races
 
-Tabled on November 6, before any code changed. An audit of ALF's disk writes read all of `alframework/` and traced real coordinator and training test runs on one machine. **Nothing was measured on a shared filesystem or at scale,** so the caching and scale risks below come from reading the code.
+Tabled on November 6, before any restart code changed. ALF has since gained exit handling that releases allocations, but none of the restart fixes below. An audit of ALF's disk writes read all of `alframework/` and traced real coordinator and training test runs on one machine. **Nothing was measured on a shared filesystem or at scale,** so the caching and scale risks below come from reading the code.
 
 **ALF has one writer for shared state.** The coordinator alone writes `status.json` and the HDF5 shards. Workers write only to paths unique to a structure, member, or task, stores can't overlap training because one `ML_task_queue` check gates both, and models are read only after promotion. So there's no worker-against-worker race in normal operation.
 
@@ -293,7 +293,7 @@ Readiness notes from a review of development at `24028da`, with the finished eli
 
 ### Foundation-model fine-tuning
 
-- **Fine-tuning with ALF, tier F3.** It needs teacher labeling and multi-node training, and one of the uncertainty options below.
+- **Fine-tuning with ALF, tier F3.** It needs teacher labeling and multi-node training, and one of the uncertainty options below. Multi-node training exists for HIPPYNN only; MACE and fairchem would still need theirs.
   - **F3, foundation-model fine-tuning under active learning.** ALF samples with the model being fine-tuned and labels with QM or a
     teacher. It needs:
     - **Uncertainty.** Foundation models are usually single networks.
@@ -440,7 +440,7 @@ these checks are part of the future plan.
 
 **Risk by planned step.**
 - **Low:** teacher labeling and the selector interface. They add new tasks or opt-in branches.
-- **Medium:** multi-node training. Every HIPPYNN example uses `train_HIPPYNN_ensemble_task`, so single-node placement stays the default with identical behavior.
+- **Multi-node training:** built and opt-in, so the risk is low. Every HIPPYNN example still uses a single-node task, whose behavior didn't change, except that ALF now releases allocations on exit.
 - **Selected-state UDD and wells:** low for the original examples, because they only lift a check in excited-state mode. Five examples set `well_params`: IL, molten salt, simple water, fine-tuning, and seeded active learning. Leave `MLMD_calculator` and `mlmd_sampling` unchanged, or prove formula parity if code must be shared.
 - **Staged campaigns and recovery:** keep ordinary runs as the default; do not
   port the fork's `run_control` changes to `__main__.py` wholesale.

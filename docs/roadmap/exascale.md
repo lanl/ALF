@@ -2,7 +2,7 @@
 
 An audit of where ALF's file operations could become a problem in campaigns of thousands of nodes, with a priority list for fixing them. It was done on November 6, 2026, by reading the file operations in `alframework/` and the CPP example, and the defaults in HIPPYNN, PySCF, and Parsl.
 
-**Where this stands:** nothing has been changed in the code. The wider restart plan is in [Safe restarts and disk races](future.md#safe-restarts-and-disk-races).
+**Where this stands:** the priority list below is still open, and the wider restart plan is in [Safe restarts and disk races](future.md#safe-restarts-and-disk-races). Three related changes have landed since the audit: ALF now releases allocations on exit, the excited-state loader no longer reads `training_summary.json` on each sampler task, and the multi-node training tasks wait for shards. None has been measured at scale.
 
 **What was and wasn't measured:** nothing was measured on a shared filesystem or at scale, so severities are estimates from reading the code. The only timings are in-memory ones on a Mac, using random floats. GPU4PySCF wasn't installed there, so whether it inherits PySCF's temp-file behavior is unconfirmed.
 
@@ -80,7 +80,7 @@ The last column gives the priority item. "Profile" means only if a profile shows
 | Replay builder reads and hashes every shard, then scans its groups | `geometry_manifest` in `external_geometry.py:32`; RDKit and CPP ring builders | Builder tasks × total HDF5 bytes | Each task holds each whole shard in memory while hashing it, builds one tuple per frame, and reopens the shard per molecule (`:117`). SHA-256 ran at about 3 GB/s, so the read probably dominates. | 3 |
 | Finished labels stay in memory while training runs | `__main__.py:435` | Labels finished during training | A crash loses every label since the last store, on every cycle. | 5 |
 | Bootstrap holds all labels until it finishes | `__main__.py:274-329` | `bootstrap_set` | A crash loses the whole bootstrap, which may be the most expensive single loss for large CPP runs. | 5 |
-| Trainer lists `h5_dir` right after a store | `hippynn_interface.py:574` (`os.listdir`, `allow_unfound=True`) and `:1234` (`glob`) | Each store | A stale view silently trains without the new shard. Replay is safer, because it looks up shards by name and raises (`rdkit_molecule.py:425`). | 2 |
+| Trainer lists `h5_dir` right after a store | `hippynn_interface.py:574` (`os.listdir`, `allow_unfound=True`) and `:1234` (`glob`) | Each store | A stale view silently trains without the new shard. Replay is safer, because it looks up shards by name and raises (`rdkit_molecule.py:425`). The multi-node tasks already wait for the shards the coordinator listed, so this remains for single-node training. | 2 |
 | One directory per label, under one parent | `QM_scratch_dir/<id>/`; ASE, ORCA, Q-Chem, and VASP only | Labels | Heavy metadata load, and ASE and ORCA never remove them by default. GPU4PySCF and PySeQM create none, so CPP and AcAc are unaffected. | 8 |
 | One metadata pickle per trajectory, in one flat directory | `batched_mlmd.py:437`, `mlmd_sampling.py:165` | Trajectories | Only when `meta_dir` is set. CPP and AcAc don't set it, but the ground-state examples checked do. | 10 |
 
@@ -90,7 +90,7 @@ The last column gives the priority item. "Profile" means only if a profile shows
 | --- | --- | --- | --- | --- |
 | Non-atomic status and shard writes | 6 status write sites in `__main__.py`; `datapacker` | Each store and loop | A crash can leave truncated status, which stops a restart, or a partial shard that `w-` mode then refuses to replace. | 1 |
 | Two coordinators in one directory | `__main__.py`; no lock anywhere | Operator error | Both write status and collide on shards. | 4 |
-| Loads every ensemble member per sampler task | `_load_member`, `hippynn_interface.py:836` | Sampler tasks × members × 2 or 3 | Happens on every task, not only after promotion. Excited-state ensembles also read `training_summary.json`, and the legacy ASE path loads per trajectory. | 9 |
+| Loads every ensemble member per sampler task | `_load_member`, `hippynn_interface.py:836` | Sampler tasks × members × 2 or 3 | Happens on every task, not only after promotion. Excited-state ensembles also read the small `member_composition.json`, and the legacy ASE path loads per trajectory. | 9 |
 | Opens `seed.h5` and rehashes inputs | `rdkit_molecule.py:415-435`, CPP `custom_modules.py:24-45` | Molecules, plus builder tasks × seed size | The seed opens twice per molecule during a bootstrap. The seed and reference are hashed on every builder task for the whole campaign, and the manifest is hashed per molecule. | 3 |
 | HDF5 file locking on reads | Every `h5py.File` read; nothing sets it | Concurrent readers | Can fail or contend on shared filesystems. Shards are never modified once closed, so reads don't need the lock. | 7 |
 | Parsl logs | `runinfo/`; `worker_N.log` per worker and `manager.log` per pool | Nodes × workers | The logs are unconditional, and no ALF config sets `worker_logdir_root`. | 7 |

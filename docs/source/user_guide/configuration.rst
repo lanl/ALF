@@ -49,10 +49,19 @@ add a new task implementation, parser, builder, sampler, or model backend.
 
 During the active-learning loop, ALF re-reads the master and stage configs on every
 iteration, so most edits apply to tasks submitted afterward without a restart. A
-config that fails to load is reported, and ALF keeps using the previous one. These
-are read once at startup, so changing them requires a restart: the Parsl
-configuration, the task import strings, and the sampler and QM ``batching``,
-``driver``, ``model_mode``, and ``acquisition.selection`` settings.
+config that fails to load is reported, and ALF keeps using the previous one.
+
+These are read once at startup, so changing them requires a restart:
+
+* The Parsl configuration, the task import strings, and ``maximum_stored_labels``.
+* ``batching`` in the sampler and QM configs.
+* In the sampler config: ``driver``, ``acquisition``, ``model_mode``, ``state_selection``,
+  ``gap_uncertainty``, ``gap_seeking``, and ``sampling_windows``.
+* With cohort selection, also ``Escut``, ``Fscut``, and ``gap_std_cut``.
+
+If you change one of the config settings during a run, ALF warns once and keeps the value it
+started with. To change sampling partway through a run on purpose, use
+:ref:`sampling windows <samplers-sampling-windows>`.
 
 Master Configuration
 --------------------
@@ -93,7 +102,8 @@ The master config controls the workflow wiring. Common fields include:
    * - ``parsl_debug_configuration``
      - Optional smaller Parsl configuration used by stage-test commands.
    * - ``gpus_per_node``
-     - Number of GPUs ALF assumes each ML or sampler worker can see.
+     - Number of GPUs on each ML or sampler node. The two share this value, and a GPU
+       mask on the worker takes precedence over it. See :doc:`parsl`.
    * - ``target_queued_QM``, ``parallel_samplers``, ``minimum_QM``,
        ``save_h5_threshold``, ``bootstrap_set``
      - Queue-depth and retraining controls for the active-learning loop. These
@@ -152,8 +162,9 @@ During a run, ALF writes a standard set of outputs:
    * - Path
      - Purpose
    * - ``status.txt``
-     - Restart and progress state, including current HDF5, model, and molecule
-       ids plus failed-task counters.
+     - Restart and progress state: the current HDF5, model, and molecule ids, the
+       number of labels stored (``lifetime_stored_labels``), and counts of failed tasks
+       and failed structures (for example, ``lifetime_failed_QM_structures``).
    * - ``h5store/data-*.h5``
      - Labeled data batches written from converged QM results.
    * - ``models/model-*``
@@ -184,7 +195,9 @@ A typical ALF run follows this lifecycle:
 5. Send selected high-uncertainty structures to QM.
 6. Store converged QM labels in a new HDF5 batch.
 7. Retrain or fine-tune the model ensemble and update the current model id.
-8. Repeat sampling, QM labeling, and retraining until the run is stopped.
+8. Repeat sampling, QM labeling, and retraining until the run is stopped, either by
+   ``maximum_stored_labels`` or by you. ALF releases its allocations when it stops;
+   see :ref:`parsl-releasing-allocations`.
 
 Stage Config Files
 ------------------

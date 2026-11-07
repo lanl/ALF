@@ -53,7 +53,8 @@ ALF uses ML code through two configuration hooks.
 Training task
    The ``ML_task`` field in ``master_config.json`` is an import string for a
    Python function that trains or updates a model ensemble. ALF submits this
-   task through Parsl on the ``alf_ML_executor`` executor.
+   task through Parsl on the ``alf_ML_executor`` executor. The multi-node tasks
+   instead run one app per ensemble member on it; see :ref:`ml-multinode-training`.
 
 Sampler calculator
    The ``ase_calculator`` field in sampler configuration files is an import
@@ -91,7 +92,8 @@ Master configuration
         - Output pattern for ALF HDF5 training data, commonly
           ``h5store/data-{:04d}.h5``.
       * - ``gpus_per_node``
-        - Number of GPUs ALF assumes each ML or sampler worker can see.
+        - Number of GPUs on each ML or sampler node. The two share this value, and a
+          GPU mask on the worker takes precedence over it.
       * - ``save_h5_threshold``
         - Number of newly labeled configurations needed before ALF writes a
           new HDF5 batch and starts another ML training cycle.

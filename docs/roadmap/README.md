@@ -1,6 +1,6 @@
 # ALF development roadmap
 
-Last updated: November 6, 2026.
+Last updated: November 7, 2026.
 
 This folder is the shared plan for bringing the fork's intended capabilities into
 `lanl/ALF:development`.
@@ -25,7 +25,8 @@ This folder is the shared plan for bringing the fork's intended capabilities int
 - **Gap-seeking mechanics passed on all three engines**, and the ordinary
   base-to-gap-seeking sampling-window loop passed;
   see the [bounded hardware record](#gap-seeking-and-sampling-window-hardware-qualification--passed-2026-11-06).
-- **Multi-node ensemble training is built;** its real run on Darwin is pending. See the
+- **Multi-node ensemble training is built;** its real run on Darwin is pending. So is confirmation of
+  the fixes for allocations held after `--test_ml` and for dead executors. See the
   [record](#multi-node-training-2026-11-06).
 - **Next:** safe restarts (tabled for now; see [`exascale.md`](exascale.md)), teacher labeling, then new
   uncertainty and acquisition methods. Long runs and staged campaigns come last, and may be
@@ -329,8 +330,8 @@ loop has passed; see the [hardware record](#gap-seeking-and-sampling-window-hard
 Two opt-in tasks train one ensemble member per GPU on any number of nodes, for example 8 members on
 2 nodes or 40 on 10: `train_HIPPYNN_ensemble_multinode_task` and
 `train_excited_state_HIPPYNN_ensemble_multinode_task`, with helpers in `tools/ensemble_training.py`.
-Single-node training stays the default, and `__main__.py` is unchanged (user decision on retries:
-failed members run again, up to `member_retries`).
+Single-node training stays the default, and the tasks need no change to `__main__.py`; the exit fixes
+below are what changed it (user decision on retries: failed members run again, up to `member_retries`).
 
 **How it works.** A `join_app` runs a control loop on the coordinator. It submits one app per member,
 waits for them, and returns the usual `(completed, training_id)`, so the coordinator sees one task.
@@ -341,6 +342,8 @@ pattern rather than deleted, and each attempt leaves a placement record beside t
 refuse a nonempty member directory.
 
 **Local results.** 827 passed, 2 skipped (`seqm` not installed), including the exit fixes below, and the new tests also pass without Torch.
+Actions results at `6e19e7a`: `engines` 829 passed; `hippynn` 728 passed, 101 skipped; `base` 625 passed,
+169 skipped.
 Each new branch was shown to fail its tests when broken.
 
 Real Parsl workers on one machine (`HighThroughputExecutor`, two local blocks with two workers each,

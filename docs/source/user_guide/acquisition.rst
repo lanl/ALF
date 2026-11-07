@@ -240,7 +240,9 @@ Limits
   structures until the cohort has ``cohort_size`` members.
 * **Cohorts are held in memory.** Unfinished cohorts are lost if the ALF process
   restarts.
-* **Settings are fixed at startup.** Restart ALF to change ``selection``.
+* **Settings are fixed at startup.** Restart ALF to change ``acquisition``, or
+  ``Escut``, ``Fscut``, or ``gap_std_cut``. If you edit them during a run, ALF warns
+  once and keeps the values it started with.
 
 Acquisition API Links
 ---------------------

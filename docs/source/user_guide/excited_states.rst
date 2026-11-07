@@ -23,7 +23,9 @@ stages fit together like this:
        ``alframework.qm_interfaces.pyseqm_interface.pyseqm_excited_state_task``, or
        ``alframework.qm_interfaces.pyseqm_interface.pyseqm_excited_state_batch_task``
    * - Training
-     - ``alframework.ml_interfaces.hippynn_interface.train_excited_state_HIPPYNN_ensemble_task``
+     - ``alframework.ml_interfaces.hippynn_interface.train_excited_state_HIPPYNN_ensemble_task``,
+       or ``train_excited_state_HIPPYNN_ensemble_multinode_task`` to train across several
+       nodes; see :ref:`ml-multinode-training`.
    * - Sampling
      - ``alframework.samplers.batched_mlmd.mlmd_trajectories_task``
 
@@ -311,6 +313,44 @@ differences:
 The trainer never deletes or overwrites model data, so it doesn't support
 ``remove_existing``. It also doesn't support ``h5_test_dir``; use ``valid_size`` and
 ``test_size`` to hold out data.
+
+What Training Writes
+^^^^^^^^^^^^^^^^^^^^
+
+Each training creates one directory per ensemble, set by ``model_path``, with a ``model-*``
+directory per member. Each member directory contains:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 66
+
+   * - File
+     - Contents
+   * - ``experiment_structure.pt``, ``best_model.pt``
+     - The model graph and best weights, which sampling loads.
+   * - ``best_checkpoint.pt``
+     - The best model with its training state, including the training database.
+   * - ``training_log.txt``
+     - The training log. ALF treats ``Training complete`` in it as a sign that the member
+       finished.
+   * - ``training_summary.json``
+     - The full record of the member: its seed, device, states, metrics, epochs, and split
+       counts, and its data, including every training frame's file, group, frame number, and ID.
+       Because it lists every frame, it grows with the dataset, reaching about 200 MB at
+       1 million labels.
+   * - ``training_input_manifest.json``
+     - What the member trained on: the HDF5 files and their hashes, every frame, the frames
+       filtered out, and the train, validation, and test splits.
+   * - ``member_composition.json``
+     - Only the member's atomic numbers. Sampling reads this on every task, so it doesn't have
+       to read the whole summary. Models without this file use the summary instead.
+   * - ``training_metrics.pt``, ``training_metrics.pkl``, ``plots/``
+     - The metric history and any training plots.
+   * - ``training_error.json``
+     - Why the member failed. It's only written after a failure.
+
+Keep ``training_summary.json`` and ``training_input_manifest.json`` with any results you
+publish or compare, because together they record how a model was made.
 
 Sampling On A Selected State
 ----------------------------

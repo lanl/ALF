@@ -292,6 +292,38 @@ for three of them; see [Quick wins](future.md#quick-wins). Two behavior changes 
 `alf_validation` on Darwin: editing a fixed setting mid-run now has no effect, and
 `from_multiprocessing` training no longer sets `CUDA_VISIBLE_DEVICES`.
 
+
+### Quick-win hardware qualification — launched (2026-11-06)
+
+The bounded follow-up is frozen at ALF `81a70cd` and external `alf_validation`
+`a1cfae6`, using accepted Increment 9 formaldehyde models and 32 closed labels.
+Evidence remains outside Git under `validation/quickwins_20261106/run-002/`;
+`run-001` was preparation only. No accepted E6 artifact was changed.
+
+The profile includes 24 selected-state baseline/UDD/well/combined cases across
+ASE, TorchSim CUDA and ALCHEMI at actual widths one/four; real ground-state
+training under reordered/restricted GPU masks; NEB/dimer device checks; the
+new GPU4PySCF guard/response-metadata checks; and one ordinary seeded ALF loop
+using FPS and `maximum_stored_labels=40`. The latter must retain eight new
+propagated labels and promote four genuinely retrained members before normal
+shutdown. It uses no external admission-stop override.
+
+Prelaunch CPU checks passed **591 library tests, 46 skipped** (unavailable
+backends), and **84 affected external tests**. No stale renamed test selectors
+were found in the external harness. Reusable PCM/calibration QM launchers now
+bind one scheduler-visible UUID before CUDA imports, preserving old frozen
+runs. The stop-budget timing guard remains without an additional independently
+branch-sensitive regression: control-flow review found immediate normal exit
+after the last promotion. Existing production-driver fast/slow completion and
+bootstrap-stop checks passed; the real loop will verify the observable gate.
+
+Persistent frontend tmux session `alf-quickwins` started the queue-inclusive
+window **18:12:19–22:12:19 Mountain on November 6**, reserving five minutes for
+cleanup. Standalone allocations are sequential, with 30-minute limits;
+ordinary-loop executor allocations are capped at one each. Results remain
+pending until every gate and owned-job termination passes. LCM and the other
+later capability groups remain outside this round.
+
 ## Development and test environments
 
 Policy, decided 2026-11-03: test development work against fresh installs with

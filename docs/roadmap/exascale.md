@@ -2,7 +2,7 @@
 
 An audit of where ALF's file operations could become a problem in campaigns of thousands of nodes, with a priority list for fixing them. It was done on November 6, 2026, by reading the file operations in `alframework/` and the CPP example, and the defaults in HIPPYNN, PySCF, and Parsl.
 
-**Where this stands:** items 1-3 of the priority list were built on November 7 (atomic writes, the shard check in single-node training, and the replay manifest cache), after the Darwin round had measured `ce711d8`. Item 4 onward is open, and the wider restart plan is in [Safe restarts and disk races](future.md#safe-restarts-and-disk-races). Three related changes landed earlier: ALF now releases allocations on exit, the excited-state loader no longer reads `training_summary.json` on each sampler task, and the multi-node training tasks wait for shards. Bounded measurements now cover two-node operation and 20 independent training members on five nodes; they do not establish exascale performance.
+**Where this stands:** items 1-6 of the priority list were built on November 7, after the Darwin round had measured `ce711d8`: atomic writes, the shard check in single-node training, and the replay manifest cache; then the coordinator lock, the label holding area, and restart reconciliation. Items 7 and 8 are open, and the wider restart plan is in [Safe restarts and disk races](future.md#safe-restarts-and-disk-races). Three related changes landed earlier: ALF now releases allocations on exit, the excited-state loader no longer reads `training_summary.json` on each sampler task, and the multi-node training tasks wait for shards. Bounded measurements now cover two-node operation and 20 independent training members on five nodes; they do not establish exascale performance.
 
 **What was and wasn't measured:** the original audit used code inspection and
 in-memory Mac timings. The [November 7 Darwin measurements](#darwin-measurements-2026-11-07)
@@ -89,14 +89,14 @@ Worth doing whatever a profile shows, except that item 4 needs a `flock` test fi
 | 1 | **Built November 7.** Write status and shards to a temporary file, then rename. `force_screen.py:89` already does this. | Small | Nothing |
 | 2 | **Built November 7.** Check for every expected shard by name in both trainers, with a bounded wait, then raise. Extra files stay allowed. | Small | Nothing. On Darwin the longest listing delay was 0.240 s, well inside the 120 s wait |
 | 3 | **Built November 7.** Cache each shard's manifest per worker, keyed by path, size, and modified time (the `_load_reference_cached` pattern in `molecular_topology.py`), and open the seed once per task. | Small to medium | Nothing |
-| 4 | Lock the coordinator on `<status_path>.lock`, and refuse to start if it's held. | Small | Whether `flock` works on `/vast` |
+| 4 | **Built November 7.** Lock the coordinator on `<status_path>.lock`, and refuse to start if it's held. | Small | Whether `flock` works on `/vast`: it does, across nodes |
 
 ### Tier 2: restarts that keep labels
 
 | # | Work | Size | Needs from Darwin |
 | --- | --- | --- | --- |
-| 5 | Save finished labels during a bootstrap and during training, to a holding area outside `h5_dir`, and move them in at the next training start. Store finished labels at a budget stop too. | Medium, needs design | A kill and restart test |
-| 6 | Reconcile status with disk on restart: shard and training IDs, a molecule-ID margin, the bootstrap reset, and pickup from the holding area. Add `tests/test_restarts.py`. | Medium | A kill and restart test |
+| 5 | **Built November 7.** Save finished labels during a bootstrap and during training, to a holding area outside `h5_dir`, and move them in at the next training start. Store finished labels at a budget stop too. | Medium, needs design | A kill and restart test |
+| 6 | **Built November 7.** Reconcile status with disk on restart: shard and training IDs, a molecule-ID margin, the bootstrap reset, and pickup from the holding area. Add `tests/test_restarts.py`. | Medium | A kill and restart test |
 | 7 | Add a "running at scale" guide section and Darwin settings for `HDF5_USE_FILE_LOCKING`, `worker_logdir_root`, `run_dir`, `MPLCONFIGDIR`, `TMPDIR`, and `PYSCF_TMPDIR`. | Small | The `/tmp` checks below |
 | 8 | Run QM in node-local scratch: remove each directory after its results return, and copy failed calculations to shared storage. | Small | The `/tmp` checks below |
 

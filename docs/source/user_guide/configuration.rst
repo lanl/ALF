@@ -117,9 +117,11 @@ The master config controls the workflow wiring. Common fields include:
    * - ``maximum_stored_labels``
      - Optional. ALF stops after storing at least this many converged labels. It
        starts no new work, lets any running training finish and be promoted, reports
-       what it dropped, releases its allocations, and exits. Sampler and QM work still
-       running isn't stored, and labels are counted when a batch is stored, so a run
-       can overshoot by up to ``save_h5_threshold``. ALF reads this once, at startup.
+       what it dropped, releases its allocations, and exits. Labels that finished
+       but weren't stored yet are stored in one last shard, which no model trained
+       on. Sampler and QM work still running isn't stored. Labels are counted when a
+       batch is stored, so a run can overshoot by up to ``save_h5_threshold``, plus
+       that last shard. ALF reads this once, at startup.
        The count is kept in ``status_path``. By default, a run continues until you
        stop it.
    * - ``member_retries``
@@ -129,9 +131,13 @@ The master config controls the workflow wiring. Common fields include:
      - Optional number of structures one builder task returns. The default is
        ``1``. See :doc:`builders`.
    * - ``maximum_completed_QM``
-     - Optional limit on structures held in the QM queue. ALF stops starting
-       builders at this limit until results are stored. By default, there is no
-       limit.
+     - Optional limit on structures in the QM queue plus finished labels waiting to
+       be stored. ALF stops starting builders at this limit until results are
+       stored. By default, there is no limit.
+   * - ``held_labels_dir``
+     - Optional. Where finished labels wait until they're stored; see
+       :ref:`configuration-restarts`. The default is ``h5_dir`` with ``_held``
+       added, such as ``h5store_held/``. It must be outside ``h5_dir``.
    * - ``plotting_utility``, ``plot_dir``, ``update_plots_every``
      - Optional progress plots. ``plotting_utility`` is an import string such as
        ``alframework.tools.plotting.analysis_plot``, and ``plot_dir`` is where it
@@ -170,8 +176,12 @@ During a run, ALF writes a standard set of outputs:
      - Restart and progress state: the current HDF5, model, and molecule ids, the
        number of labels stored (``lifetime_stored_labels``), and counts of failed tasks
        and failed structures (for example, ``lifetime_failed_QM_structures``).
+   * - ``status.txt.lock``
+     - Held by the running coordinator, so a second one can't start on the same run.
    * - ``h5store/data-*.h5``
      - Labeled data batches written from converged QM results.
+   * - ``h5store_held/held-*.pkl``
+     - Finished labels waiting for the next store. They're removed once stored.
    * - ``models/model-*``
      - Model ensembles trained or fine-tuned during the ALF loop.
    * - ``sampling/metadata-*.p``
@@ -187,14 +197,41 @@ If ``status.txt`` exists, ALF restarts from it. If no status file exists, ALF
 checks existing model and HDF5 paths to decide whether to bootstrap, start from
 provided HDF5 data, or use an existing seed model.
 
-ALF writes the status file and each shard all at once. It writes a temporary
-file, ``status.txt.tmp`` or ``data-0003.h5.partial``, and renames it when it's
-complete. So a crash leaves either the old file or a temporary one. The next
-store overwrites a leftover ``.partial`` file, and readers ignore it. ALF never
-replaces a shard. If the shard that status points to already exists, ALF stops
-with an error, which happens when a run stopped between storing a shard and
-saving status. Check that shard, then move it aside or raise
-``current_h5_id`` before restarting.
+.. _configuration-restarts:
+
+Restarting After A Crash
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+To continue a run that stopped, run the same command again. No files need
+editing.
+
+* **Finished labels are kept.** ALF stores labels into ``h5_dir`` only between
+  trainings, so that every ensemble member trains on the same data. Until then,
+  each finished label is written to ``held_labels_dir``. A restart stores those
+  labels with the next shard, including labels that finished during a bootstrap
+  or during training.
+* **Status catches up with disk.** A shard stored just before the crash is
+  counted and kept, a model ID that started training is never reused, and
+  molecule IDs skip ahead past any used after status was last saved. ALF prints
+  each change it makes, starting with ``Restart:``.
+* **A finite bootstrap rebuilds only what it lacks.** It labels exactly the
+  bootstrap IDs it doesn't hold, so the bootstrap holds the same structures as a
+  run that never stopped. The ASE calculator task moves an old scratch directory
+  for such an ID to ``<directory>.previous-N`` instead of reusing it.
+* **Nothing is half-written.** ALF writes the status file, each shard, and each
+  held label to a temporary file, such as ``status.txt.tmp`` or
+  ``data-0003.h5.partial``, and renames it when it's complete. Readers ignore a
+  leftover ``.partial`` file, and the next store overwrites it.
+* **One coordinator per run.** The running coordinator holds a lock on
+  ``status.txt.lock``, in every mode, including the stage tests. A second one
+  stops at startup and names the holder. The lock is released when the
+  coordinator exits or is killed, so it never needs removing by hand.
+
+What a crash still costs: a training that was running is lost, and a later
+training replaces it. Work on builders and samplers, and QM calculations that
+hadn't finished, start again. After ``SIGKILL`` or a lost node, ALF can't release
+its allocations itself; the scheduler ends them, or cancel them with
+``scancel``. A ``SIGTERM`` lets ALF release them before it exits.
 
 Common Run Lifecycle
 --------------------

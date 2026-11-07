@@ -13,9 +13,9 @@ mechanics have passed; see the [E6 record](excited_states.md),
 [quick-win qualification](README.md#quick-win-hardware-qualification--passed-2026-11-06),
 and [gap/window qualification](README.md#gap-seeking-and-sampling-window-hardware-qualification--passed-2026-11-06).
 
-1. **Safe restarts and disk races** ([below](#safe-restarts-and-disk-races), with priorities in [`exascale.md`](exascale.md#priority-list)). The fixes that don't need Darwin were built on November 7. The Darwin profile also ran that day, so the lock, the label holding area and restart reconciliation can go next.
+1. **Safe restarts and disk races** ([below](#safe-restarts-and-disk-races), with priorities in [`exascale.md`](exascale.md#priority-list)). Items 1-6 were built on November 7, after the Darwin profile: atomic writes, the shard check, the manifest cache, the coordinator lock, the label holding area, and restart reconciliation. Items 7 and 8, settings and node-local QM scratch for running at scale, are open.
 2. **Placement and memory** ([Group C](#group-c-placement-and-memory)). Multi-node independent-member training passed its bounded Darwin gate on November 7; larger deployments remain unqualified. It buys throughput for larger ensembles, not new methods.
-3. **Teacher labeling, then F1 and F2 fine-tuning** ([Group D](#group-d-model-families-and-labels)). Teacher labeling is built, and awaits its Darwin gate.
+3. **Teacher labeling, then fine-tuning with ALF** ([Group D](#group-d-model-families-and-labels)). Teacher labeling is built, and awaits its Darwin gate. Fine-tuning is next: ALF selects the samples that fine-tune an existing model, MACE first (user decision, November 7).
 4. **New uncertainty and acquisition methods** ([Group G](#group-g-new-uncertainty-and-acquisition-methods)).
 5. **Long runs and staged campaigns** ([Group E](#group-e-long-runs)), last: very low priority, and may be removed (user decision, November 6).
 
@@ -79,26 +79,26 @@ ALF `1055d9c` source boundary; see the [evidence](README.md#gap-seeking-and-samp
 
 ## Safe restarts and disk races
 
-Tabled on November 6, before any restart code changed. ALF has since gained exit handling that releases allocations, and on November 7 atomic status and shard writes, the shard check in single-node training, and the replay manifest cache ([record](README.md#restart-fixes-without-darwin-2026-11-07)). The lock, the label holding area, and restart reconciliation are still open. An audit of ALF's disk writes read all of `alframework/` and traced real coordinator and training test runs on one machine. The November 7 bounded Darwin round, at `ce711d8` before those fixes, then measured cross-node locks, shard visibility, five-node member placement and interruption/restart behavior; see [the measurements](exascale.md#darwin-measurements-2026-11-07). It did not establish large-campaign performance, so the caching and scale risks below still come from reading the code.
+Tabled on November 6, before any restart code changed. ALF has since gained exit handling that releases allocations, and on November 7 atomic status and shard writes, the shard check in single-node training, and the replay manifest cache ([record](README.md#restart-fixes-without-darwin-2026-11-07)), then the lock, the label holding area, and restart reconciliation ([record](README.md#restarts-that-keep-labels-2026-11-07)). An audit of ALF's disk writes read all of `alframework/` and traced real coordinator and training test runs on one machine. The November 7 bounded Darwin round, at `ce711d8` before those fixes, then measured cross-node locks, shard visibility, five-node member placement and interruption/restart behavior; see [the measurements](exascale.md#darwin-measurements-2026-11-07). It did not establish large-campaign performance, so the caching and scale risks below still come from reading the code.
 
 **ALF has one writer for shared state.** The coordinator alone writes `status.json` and the HDF5 shards. Workers write only to paths unique to a structure, member, or task, stores can't overlap training because one `ML_task_queue` check gates both, and models are read only after promotion. So there's no worker-against-worker race in normal operation.
 
 **Race risks:**
 
 - **Stale directory views.** A trainer lists `h5_dir` right after a store. With attribute caching, another node might not see the new shard, so either trainer could silently train without it. Replay looks up each shard by name and raises `FileNotFoundError`. *Fixed November 7:* every HIPPYNN training task waits for the stored shards by name.
-- **Two coordinators in one directory.** There's no lock. The fork uses `fcntl.flock`.
-- **ID reuse after a crash.** `status.json` can lag one loop. `ase_calculator_task` then raises "Scratch directory exists", while ORCA, Q-Chem, VASP, and metadata pickles silently overwrite.
+- **Two coordinators in one directory.** There's no lock. The fork uses `fcntl.flock`. *Fixed November 7:* the coordinator locks `<status_path>.lock` in every mode.
+- **ID reuse after a crash.** `status.json` can lag one loop. `ase_calculator_task` then raises "Scratch directory exists", while ORCA, Q-Chem, VASP, and metadata pickles silently overwrite. *Fixed November 7:* a restart skips molecule IDs ahead, past any one loop can use, and `ase_calculator_task` moves an old scratch directory aside.
 
 **Crash risks:**
 
-- A crash after a store, before status is saved: the shard name is reused, and the next store fails. *Still open:* it now fails with a message saying what to check.
+- A crash after a store, before status is saved: the shard name is reused, and the next store fails. *Fixed November 7:* a restart counts that shard and moves past it.
 - A crash during a store leaves a partial `*.h5` where training reads it. *Fixed November 7:* stores write `.partial` files, which readers ignore.
 - A crash during a status write leaves a truncated `status.json`. *Fixed November 7.*
-- A crash after starting training can reuse a training ID, and the excited-state trainer refuses a nonempty directory.
-- A restart during a `finite_bootstrap` fails with "Finite bootstrap exhausted", because `current_molecule_id` has advanced with nothing stored.
-- An interrupted bootstrap loses all its labels, which are stored only at the end. This may be the most expensive risk for large CPP bootstraps.
-- A crash during training loses every label finished since the last store, because stores wait for training to finish.
-- `maximum_stored_labels` drops labels already finished but not yet stored.
+- A crash after starting training can reuse a training ID, and the excited-state trainer refuses a nonempty directory. *Fixed November 7:* a restart skips training IDs whose directories exist.
+- A restart during a `finite_bootstrap` fails with "Finite bootstrap exhausted", because `current_molecule_id` has advanced with nothing stored. *Fixed November 7:* it rebuilds exactly the bootstrap IDs it doesn't hold.
+- An interrupted bootstrap loses all its labels, which are stored only at the end. This may be the most expensive risk for large CPP bootstraps. *Fixed November 7:* finished labels are held on disk.
+- A crash during training loses every label finished since the last store, because stores wait for training to finish. *Fixed November 7:* the same holding area keeps them.
+- `maximum_stored_labels` drops labels already finished but not yet stored. *Fixed November 7:* they're stored in one last shard, marked `stored_at_budget_stop`.
 
 **File I/O at exascale, and what to fix first.** See [`exascale.md`](exascale.md) for every operation ranked by severity, the [priority list](exascale.md#priority-list), the measurements needed on Darwin, and where node-local storage fits.
 

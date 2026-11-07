@@ -33,11 +33,12 @@ This folder is the shared plan for bringing the fork's intended capabilities int
   Crash-safe restart remains unqualified.
 - **Foundation-model teacher labeling is built,** with real MACE checked locally. UMA and the Darwin
   gate are pending; see the [record](#teacher-labeling-2026-11-07).
-- **The restart fixes that don't need Darwin are built:** atomic status and shard writes, the shard
-  check in single-node training, and the replay manifest cache. See the
-  [record](#restart-fixes-without-darwin-2026-11-07).
-- **Next:** the rest of safe restarts, now that the Darwin profile has run (see [`exascale.md`](exascale.md)),
-  F1 and F2 fine-tuning, then new uncertainty and acquisition methods. Long runs and staged campaigns come last, and may be
+- **Restarts keep their labels:** atomic status and shard writes, the shard check in single-node
+  training, and the replay manifest cache, then the coordinator lock, a holding area for finished
+  labels, and restart reconciliation. See the [first](#restart-fixes-without-darwin-2026-11-07) and
+  [second](#restarts-that-keep-labels-2026-11-07) records. Not yet run on Darwin.
+- **Next:** fine-tuning with ALF, MACE first (see [Group D](future.md#group-d-model-families-and-labels)),
+  then teacher–student and fine-tuning user guides, then new uncertainty and acquisition methods. Long runs and staged campaigns come last, and may be
   removed; see [Order of work](future.md#order-of-work).
 - **No merge to `main` is planned** (user decision, November 6).
 - **Outside current acceptance:** legacy NeuroChem and MI350.
@@ -482,6 +483,52 @@ them, so the new tests re-raise them.
   renamed files appeared on another node with matching contents, and the longest listing delay was
   0.240 s, far inside the 120 s wait. It didn't test a crash during a rename. See the
   [measurements](exascale.md#darwin-measurements-2026-11-07).
+
+### Restarts that keep labels (2026-11-07)
+
+Items 4-6 of the [`exascale.md`](exascale.md) priority list, after the Darwin profile showed `flock`
+working across nodes, restarts during a finite bootstrap failing, and labels lost on any crash. To
+continue a run that stopped, run the same command; no files need editing. User guide:
+[Restarting after a crash](../source/user_guide/configuration.rst).
+
+- **Coordinator lock.** `files.hold_lock` takes `flock` on `<status_path>.lock` before Parsl starts,
+  in every mode, since even `--test_qm` rewrites status. A second coordinator stops and names the
+  holder. The lock ends with its process, so a killed coordinator leaves nothing to remove.
+- **Held labels.** Each loop moves finished QM work out of memory into `held_labels_dir` (default
+  `<h5_dir>_held`, refused inside `h5_dir`), one atomically written pickle per loop, in
+  `tools/restarts.py`. A store writes them as the next shard, recording the pieces in its
+  `held_pieces` attribute, then removes them, then saves status. Labels stay out of `h5_dir` during
+  training, so every member still trains on the same shards. Counts keep their old units: the
+  bootstrap target counts held and queued successes, and `save_h5_threshold` still counts failed work
+  since the last store, as the queue did.
+- **Reconciliation on restart** (`reconcile_status`), printed as `Restart:` lines:
+  - a shard stored before status was saved is counted, its pieces removed, and passed;
+  - training IDs whose directories exist are skipped;
+  - molecule IDs skip ahead by `parallel_samplers + maximum_builder_structures`, the most one unsaved
+    loop can use;
+  - a finite bootstrap rebuilds exactly the IDs it doesn't hold. Replay picks frames from the ID, so
+    the bootstrap holds the same structures as a run that never stopped. `ase_calculator_task` moves an
+    old scratch directory to `<dir>.previous-N` instead of raising.
+- **Budget stop.** Labels finished but not stored are stored in one last shard, marked
+  `stored_at_budget_stop`, which no model trained on.
+- **Not covered.** A training running at the crash is lost; a later one replaces it. Unfinished
+  builder, sampler, and QM work restarts. After `SIGKILL`, allocations stay until the scheduler ends
+  them.
+
+**Checked locally** with the real coordinator and stand-in tasks, crashing and restarting with the same
+command: during a bootstrap, a finite bootstrap after every ID was handed out, during training, between
+a store and saving status, between a store and removing its pieces, after an unsaved loop used new IDs,
+and at a budget stop. Each restart stores every finished label exactly once, with `lifetime_stored_labels`
+matching the shards.
+
+- Full suite: 982 passed. With HIPPYNN blocked: 872 passed, 110 skipped. With Torch blocked: 767 passed,
+  180 skipped. The restart tests passed eight runs in a row.
+- All 26 deliberate breaks, plus one for the margin's size, were caught after three test fixes: the ID-reuse
+  test crashed before its builders ran, and then within a loop too narrow to need the full margin, and no
+  test had failing QM, so counting only converged labels toward `save_h5_threshold` went unnoticed.
+- Docs build with no warnings; 96 roadmap links checked, 0 broken.
+- Not run on Darwin. Rerunning section 3 of the [restart profile](exascale.md#darwin-profile-for-restart-work)
+  at this commit would compare against the `ce711d8` baseline.
 
 ### Progress plots for batched and excited-state runs (2026-11-07)
 

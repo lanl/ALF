@@ -59,6 +59,16 @@ def check_capacity(n_models, gpus_per_node, device_string, executor):
               'wait for others to finish. Check max_workers_per_node and max_blocks.', flush=True)
 
 
+def expected_shards(h5_path, current_h5_id):
+    """Name every shard the coordinator has stored: ``h5_path.format(i)`` for ``i < current_h5_id``.
+
+    Returns an empty list when either is missing, so callers that don't pass them skip the check.
+    """
+    if h5_path is None or current_h5_id is None:
+        return []
+    return [str(h5_path).format(index) for index in range(int(current_h5_id))]
+
+
 def wait_for_shards(paths, timeout=SHARD_WAIT_SECONDS, poll=SHARD_POLL_SECONDS):
     """Wait until every shard appears in its directory listing, because that's what trainers read.
 

@@ -3,7 +3,14 @@
 Trainers are faked, so these check how ALF calls them. Tests for further ML models belong here.
 """
 
+import os
+
+import pytest
+from parsl.app.errors import RemoteExceptionWrapper
+
 from alframework.ml_interfaces import hippynn_interface
+from alframework.tools import ensemble_training
+from alframework.tools.tools import build_input_dict
 from tests.helpers.fakes import fake_training_pool, import_neurochem_with_fake_backend
 
 
@@ -60,6 +67,88 @@ def test_hippynn_training_reports_failed_members(tmp_path, monkeypatch):
 
     assert completed == [True, False]
     assert training_id == 4
+
+
+def single_node_trainer(kind, tmp_path, monkeypatch):
+    """Return a call to one single-node training task, with training replaced by a recorder."""
+    trained = []
+    if kind == "ground_state":
+        FakePool, _ = fake_training_pool()
+
+        class RecordingPool(FakePool):
+            def __init__(self, processes):
+                trained.append(processes)
+                super().__init__(processes)
+
+        monkeypatch.setattr(hippynn_interface.multiprocessing, "Pool", RecordingPool)
+        task, extra = hippynn_interface.train_HIPPYNN_ensemble_task.func, {}
+    else:
+        monkeypatch.setattr(hippynn_interface, "train_excited_state_ensemble",
+                            lambda **kwargs: trained.append(kwargs) or ([True], kwargs["current_training_id"]))
+        task, extra = hippynn_interface.train_excited_state_HIPPYNN_ensemble_task.func, {"properties_list": {}}
+
+    def train(**kwargs):
+        result = task(ML_config={"n_models": 1}, h5_dir=str(tmp_path / "h5"),
+                      model_path=str(tmp_path / "models" / "model-{:04d}"), current_training_id=2,
+                      gpus_per_node=1, **extra, **kwargs)
+        if isinstance(result, RemoteExceptionWrapper):  # Parsl's .func returns errors instead of raising.
+            result.reraise()
+        return result
+
+    return train, trained
+
+
+TRAINERS = pytest.mark.parametrize("kind", ["ground_state", "excited_state"])
+
+
+@TRAINERS
+def test_single_node_training_waits_for_every_stored_shard(kind, tmp_path, monkeypatch):
+    h5 = tmp_path / "h5"
+    h5.mkdir()
+    for name in ("data-0000.h5", "data-0001.h5", "seed.h5"):  # Extra files are allowed.
+        (h5 / name).touch()
+    real_listdir, listings = os.listdir, []
+
+    def stale_listdir(path):
+        listings.append(path)
+        names = real_listdir(path)
+        return [name for name in names if name != "data-0001.h5"] if len(listings) < 3 else names
+
+    monkeypatch.setattr(ensemble_training.os, "listdir", stale_listdir)
+    monkeypatch.setattr(ensemble_training.wait_for_shards, "__defaults__", (30, 0.001))
+    train, trained = single_node_trainer(kind, tmp_path, monkeypatch)
+    train(h5_path=str(h5 / "data-{:04d}.h5"), current_h5_id=2)
+    assert len(listings) >= 3 and len(trained) == 1
+
+
+@TRAINERS
+def test_single_node_training_stops_when_a_stored_shard_never_appears(kind, tmp_path, monkeypatch):
+    (tmp_path / "h5").mkdir()
+    (tmp_path / "h5" / "data-0000.h5").touch()
+    monkeypatch.setattr(ensemble_training.wait_for_shards, "__defaults__", (0, 0.001))
+    train, trained = single_node_trainer(kind, tmp_path, monkeypatch)
+    with pytest.raises(FileNotFoundError, match="data-0001.h5"):
+        train(h5_path=str(tmp_path / "h5" / "data-{:04d}.h5"), current_h5_id=2)
+    assert trained == []
+
+
+@TRAINERS
+def test_single_node_training_without_h5_path_skips_the_check(kind, tmp_path, monkeypatch):
+    monkeypatch.setattr(ensemble_training.wait_for_shards, "__defaults__", (0, 0.001))
+    train, trained = single_node_trainer(kind, tmp_path, monkeypatch)
+    train(current_h5_id=2)
+    assert len(trained) == 1
+
+
+@pytest.mark.parametrize("task", [hippynn_interface.train_HIPPYNN_ensemble_task,
+                                  hippynn_interface.train_excited_state_HIPPYNN_ensemble_task],
+                         ids=["ground_state", "excited_state"])
+def test_coordinator_passes_single_node_training_its_shards(task):
+    master = {"h5_dir": "h5", "h5_path": "h5/data-{:04d}.h5", "model_path": "models/model-{:04d}",
+              "gpus_per_node": 1, "properties_list": {}}
+    status = {"current_training_id": 4, "current_h5_id": 3}
+    inputs = build_input_dict(task.func, [{"ML_config": {}}, master, status], raise_on_fail=True)
+    assert inputs["h5_path"] == "h5/data-{:04d}.h5" and inputs["current_h5_id"] == 3
 
 
 def test_hippynn_ensemble_members_load_in_name_order(monkeypatch):

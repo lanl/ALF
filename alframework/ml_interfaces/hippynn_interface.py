@@ -771,7 +771,14 @@ def _ground_state_member_complete(model_dir):
 
 
 @python_app(executors=['alf_ML_executor'])
-def train_HIPPYNN_ensemble_task(ML_config,h5_dir,model_path,current_training_id,gpus_per_node,remove_existing=False,h5_test_dir=None):
+def train_HIPPYNN_ensemble_task(ML_config,h5_dir,model_path,current_training_id,gpus_per_node,remove_existing=False,h5_test_dir=None,
+                                h5_path=None,current_h5_id=None):
+    """Train a ground-state ensemble on one node, one member per GPU.
+
+    The coordinator passes ``h5_path`` and ``current_h5_id``, and training waits until every shard it
+    stored is visible on this node, so a stale directory listing can't silently leave one out.
+    """
+    ensemble_training.wait_for_shards(ensemble_training.expected_shards(h5_path, current_h5_id))
     p = multiprocessing.Pool(gpus_per_node)
     params_list = _ground_state_member_params(ML_config, h5_dir, model_path, current_training_id, gpus_per_node)
     out = p.map(train_HIPNN_model_wrapper,params_list)
@@ -2345,13 +2352,20 @@ def train_excited_state_HIPPYNN_ensemble_task(
     properties_list,
     remove_existing=False,
     h5_test_dir=None,
+    h5_path=None,
+    current_h5_id=None,
 ):
-    """Parsl entry point for isolated multi-state HIPPYNN ensembles."""
+    """Parsl entry point for isolated multi-state HIPPYNN ensembles.
+
+    The coordinator passes ``h5_path`` and ``current_h5_id``, and training waits until every shard it
+    stored is visible on this node, so a stale directory listing can't silently leave one out.
+    """
 
     validate_excited_state_task_options(
         remove_existing=remove_existing,
         h5_test_dir=h5_test_dir,
     )
+    ensemble_training.wait_for_shards(ensemble_training.expected_shards(h5_path, current_h5_id))
     return train_excited_state_ensemble(
         ML_config=dict(ML_config or {}),
         h5_dir=str(h5_dir),

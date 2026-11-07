@@ -317,6 +317,33 @@ windows have no fresh ensembles, exact dataset checkpoints, or task journal, and
 only change `gap_seeking` and `MLMD_calculator_options`. Tested with fakes only, so a real run
 is still needed; see [Quick wins](future.md#quick-wins).
 
+### Gap-seeking and sampling-window hardware qualification — running (2026-11-06)
+
+The separate external harness is frozen at ALF `1055d9c` / `alf_validation`
+`f64a70c` (assembled `2bcfafe`). Evidence is outside Git under
+`validation/gap_windows_20261106/run-001/`. It reuses isolated copies of the
+accepted Increment 9 formaldehyde ensemble and 32 labels, with the qualified
+environments unchanged. Earlier E6 and quick-win passes retain their source boundaries.
+
+By user choice this is a **mechanics qualification**, with a frozen **20 eV**
+switch threshold, `sigma=3.5` and `alpha_eV=0.05`; it makes no near-crossing accuracy
+claim. The suite runs gap-seeking with/without wells at widths one/four on ASE,
+TorchSim CUDA and ALCHEMI, plus a no-switch control on each engine. Common-frame
+checks use an independent LCM derivative and verify unbiased screening; trained-model
+surface-force finite-difference errors were at most **1.67e-6 eV/Å** in preparation.
+
+An ordinary ALCHEMI ALF loop starts at 32 stored labels, switches from base
+sampling to gap-seeking at 40, and stops at 48 using the production budget rule.
+Acceptance requires eight new propagated, converged/stored labels from each
+window, native width-four labeling, retention by every final member, actual
+training-split contributions from both windows, retraining/promotion and cleanup.
+
+CPU checks passed **662 library tests, 78 unavailable-engine skips**, and
+**96 affected external tests**. Persistent Darwin tmux supervision started the
+four-hour queue-inclusive window at **19:25:44 Mountain**, ending **23:25:44**;
+five minutes are reserved for cleanup and allocations are capped at 30 minutes.
+Real GPU and ordinary-loop gates remain pending until recorded as passed.
+
 ### Quick-win hardware qualification — passed (2026-11-06)
 
 All planned gates passed. Evidence is outside Git under

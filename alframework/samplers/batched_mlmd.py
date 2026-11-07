@@ -53,7 +53,7 @@ from parsl import python_app
 from alframework.ml_interfaces.ensemble_inference import ensemble_statistics, SelectedStateEvaluator
 from alframework.samplers.acquisition import acquisition_settings, assess_frame, frame_id, top_k, worker_retention_limit
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator
-from alframework.tools.gap_seeking import adjacent_pairs, gap_seeking_settings, lcm_energy_forces, select_trigger
+from alframework.tools.gap_seeking import adjacent_pairs, gap_seeking_settings, gap_seeking_energy_forces, select_trigger
 from alframework.samplers.geometry import minimum_distance
 from alframework.tools.molecules_class import MoleculesObject
 from alframework.tools.gpu import sampling_device
@@ -108,8 +108,8 @@ class _StateMeanCalculator(Calculator):
     """ASE propagation view retaining unbiased member/state observations.
 
     Wells and UDD go through ``MLMD_calculator``, so that the formulas stay in one place.
-    ``prediction`` stays unbiased either way, for screening and uncertainty. After ``set_lcm``,
-    the LCM surface replaces the selected state's mean, and any well still adds on top.
+    ``prediction`` stays unbiased either way, for screening and uncertainty. After ``set_gap_seeking``,
+    the gap-seeking surface replaces the selected state's mean, and any well still adds on top.
     """
     implemented_properties = ['energy', 'forces']
 
@@ -118,13 +118,13 @@ class _StateMeanCalculator(Calculator):
         self.evaluator = evaluator
         options = copy.deepcopy(calculator_options or {})
         self.bias = None
-        self.lcm = None
+        self.gap_seeking = None
         if options.get('well_params') is not None or options.get('udd_bias_weight') is not None:
             members = [_PredictedMember(self, member) for member in range(evaluator.n_models)]
             self.bias = MLMD_calculator(members, **options)
 
-    def set_lcm(self, pair, sigma, alpha_eV):
-        self.lcm = {'pair': tuple(pair), 'sigma': float(sigma), 'alpha_eV': float(alpha_eV)}
+    def set_gap_seeking(self, pair, sigma, alpha_eV):
+        self.gap_seeking = {'pair': tuple(pair), 'sigma': float(sigma), 'alpha_eV': float(alpha_eV)}
         self.reset()
 
     def calculate(self, atoms=None, properties=None, system_changes=all_changes):
@@ -137,14 +137,14 @@ class _StateMeanCalculator(Calculator):
         else:
             self.bias.calculate(atoms, ['energy', 'forces'])
             energy, forces = float(self.bias.results['energy']), self.bias.results['forces']
-        if self.lcm is not None:
-            lower, upper = self.lcm['pair']
+        if self.gap_seeking is not None:
+            lower, upper = self.gap_seeking['pair']
             state_energies = self.prediction['state_energies'][:, :, 0].mean(0)
             state_forces = self.prediction['state_forces'][0].mean(0)
-            lcm_energy, lcm_forces = lcm_energy_forces(
+            surface_energy, surface_forces = gap_seeking_energy_forces(
                 float(state_energies[lower]), float(state_energies[upper]), state_forces[lower], state_forces[upper],
-                self.lcm['sigma'], self.lcm['alpha_eV'])
-            energy, forces = energy + lcm_energy - mean_energy, forces + lcm_forces - mean_forces
+                self.gap_seeking['sigma'], self.gap_seeking['alpha_eV'])
+            energy, forces = energy + surface_energy - mean_energy, forces + surface_forces - mean_forces
         self.results = dict(energy=float(energy), forces=forces)
 
 
@@ -173,8 +173,8 @@ class ASEEngine:
             self._dynamics.append(Langevin(atoms, dt * units.fs, friction=friction,
                                            temperature_K=temperature, rng=rng))
 
-    def set_lcm(self, index, pair, sigma, alpha_eV):
-        self._atoms[index].calc.set_lcm(pair, sigma, alpha_eV)
+    def set_gap_seeking(self, index, pair, sigma, alpha_eV):
+        self._atoms[index].calc.set_gap_seeking(pair, sigma, alpha_eV)
 
     def attach_trajectory(self, index, path, interval):
         writer = Trajectory(path, mode='w', atoms=self._atoms[index])
@@ -266,7 +266,7 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
                                           gap_seeking_switched=False))
 
     def seek_gap(index, prediction, time_ps):
-        """Switch a running trajectory to the LCM surface once its gap is small enough."""
+        """Switch a running trajectory to the gap-seeking surface once its gap is small enough."""
         molecule = molecule_objects[index]
         if molecule.get_metadata()['gap_seeking_switched']:
             return
@@ -275,8 +275,8 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
         trigger = select_trigger(state_energies[:, :, 0].mean(0), pairs, seeking['trigger_gap_threshold_eV'])
         if trigger is None:
             return
-        engine.set_lcm(index, trigger['pair'], seeking['sigma'], seeking['alpha_eV'])
-        molecule.update_metadata(dict(gap_seeking_current_mode='lcm', gap_seeking_switched=True,
+        engine.set_gap_seeking(index, trigger['pair'], seeking['sigma'], seeking['alpha_eV'])
+        molecule.update_metadata(dict(gap_seeking_current_mode='gap_seeking', gap_seeking_switched=True,
                                       gap_seeking_pair=list(trigger['pair']), gap_seeking_trigger_gap_eV=trigger['gap_eV'],
                                       gap_seeking_trigger_step=int(engine.steps[index]),
                                       gap_seeking_trigger_time_ps=float(time_ps)))

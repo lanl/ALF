@@ -8,7 +8,7 @@ Everything here is unfinished. Delivered work is recorded in [`batching.md`](bat
 
 Updated November 6, 2026, after E6 passed. The user set the sequence on November 3, and revised the bias work on November 6.
 
-1. **Biased dynamics on excited states** ([Group B](#group-b-biased-dynamics-on-excited-states)): real runs for selected-state UDD, wells, and LCM. The other real runs under [Quick wins](#quick-wins) can go alongside.
+1. **Biased dynamics on excited states** ([Group B](#group-b-biased-dynamics-on-excited-states)): real runs for selected-state UDD, wells, and gap-seeking. The other real runs under [Quick wins](#quick-wins) can go alongside.
 2. **Long runs and staged campaigns** ([Group E](#group-e-long-runs)). This is the largest item.
 3. **Placement and memory** ([Group C](#group-c-placement-and-memory)), including multi-node training. It buys throughput for larger ensembles, not new methods.
 4. **Teacher labeling, then F1 and F2 fine-tuning** ([Group D](#group-d-model-families-and-labels)).
@@ -20,9 +20,9 @@ E6 passed on November 6, within its bounded scope. CPP scale-up ([Group F](#grou
 
 **No merge to `main` is planned (user decision, November 6).** `main` and the public documentation site, which deploys from it, stay as they are.
 
-**Why the bias work changed (user decision, November 6).** The November 3 plan built a general bias/control interface first, then moved UDD, wells, and LCM onto it. But the packed engines already apply UDD and wells, and `SelectedStateEvaluator.evaluate` already gives them the selected state's member arrays. So the direct path comes first, and a general interface waits until a further method needs one.
+**Why the bias work changed (user decision, November 6).** The November 3 plan built a general bias/control interface first, then moved UDD, wells, and gap-seeking onto it. But the packed engines already apply UDD and wells, and `SelectedStateEvaluator.evaluate` already gives them the selected state's member arrays. So the direct path comes first, and a general interface waits until a further method needs one.
 
-The fork remains source material; `production_excited_states` (`c364fa8`) holds the LCM implementation.
+The fork remains source material; `production_excited_states` (`c364fa8`) holds the gap-seeking implementation.
 
 ## Quick wins
 
@@ -31,7 +31,7 @@ All landed on November 6; see the [record](README.md#quick-wins-2026-11-06). The
 **Real runs still needed.** These were only tested with fake GPU libraries:
 
 - Selected-state UDD and wells: real width-one and width-four runs on ASE, TorchSim CUDA, and ALCHEMI.
-- LCM gap seeking: the same runs, and parity with the fork's ALCHEMI LCM behavior.
+- Gap-seeking: the same runs, and parity with the fork's ALCHEMI behavior.
 - Ground-state training device selection: a real training run, ideally on an allocation with a mask.
 - Reactive sampler device selection: a real reactive task.
 
@@ -49,11 +49,11 @@ All landed on November 6; see the [record](README.md#quick-wins-2026-11-06). The
 
 1. **Selected-state UDD and wells.** Landed November 6, and tested with fakes only: forces match the `MLMD_calculator` formulas on the selected state across ASE, TorchSim, and ALCHEMI, and screening still reads unbiased predictions.
    - Gate still open: real width-one and width-four runs.
-2. **LCM gap seeking.** Landed November 6 on all three engines, and tested with fakes only; see the [record](README.md#lcm-gap-seeking-2026-11-06).
-   - Gate still open: real width-one and width-four runs, and parity with the fork's ALCHEMI LCM behavior.
+2. **Gap-seeking.** Landed November 6 on all three engines, and tested with fakes only; see the [record](README.md#gap-seeking-2026-11-06).
+   - Gate still open: real width-one and width-four runs, and parity with the fork's ALCHEMI behavior.
 3. **General bias/control interface, only when a further method needs one.** Each control:
     - receives physical predictions and returns propagation forces;
-    - keeps replica-local state (for example, the permanent LCM switch);
+    - keeps replica-local state (for example, the permanent gap-seeking switch);
     - never changes the unbiased predictions used for screening and
       uncertainty;
     - applies in a fixed, documented switching order.

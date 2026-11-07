@@ -1,4 +1,4 @@
-"""LCM gap seeking: settings, pair choice, and the switch of a replica's forces.
+"""Gap-seeking: settings, pair choice, and the switch of a replica's forces.
 
 Uses analytic multi-state fakes, so nothing here needs QM or a trained model. Tests that step the
 packed engines run once per installed engine, and ASE always runs. Tests that need torch skip without it.
@@ -15,7 +15,7 @@ from alframework.ml_interfaces.ensemble_inference import SelectedStateEvaluator,
 from alframework.samplers import batched_mlmd
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator
 from alframework.samplers.batched_mlmd import ASEEngine, sample_trajectories
-from alframework.tools.gap_seeking import adjacent_pairs, gap_seeking_settings, lcm_energy_forces, select_trigger
+from alframework.tools.gap_seeking import adjacent_pairs, gap_seeking_settings, gap_seeking_energy_forces, select_trigger
 from alframework.tools.molecules_class import MoleculesObject
 from alframework.tools.sampler_coordinator import SamplerCoordinator, state_settings
 from tests.helpers.engines import DEVICE, engine_class, require_engine
@@ -27,12 +27,12 @@ def excited(**settings):
     return {"model_mode": "excited_state", "gap_seeking": {**BLOCK, **settings}}
 
 
-def test_lcm_settings_are_off_unless_enabled():
+def test_gap_seeking_settings_are_off_unless_enabled():
     assert gap_seeking_settings({}) is None
     assert gap_seeking_settings({"gap_seeking": {"enabled": False, "anything": 1}}) is None
 
 
-def test_lcm_settings_accept_the_fork_block():
+def test_gap_seeking_settings_accept_the_fork_block():
     block = {
         **BLOCK,
         "mode": "levine_coe_martinez_switch",
@@ -77,12 +77,12 @@ def test_lcm_settings_accept_the_fork_block():
         "missing_threshold",
     ],
 )
-def test_lcm_settings_reject_invalid_values(config, message):
+def test_gap_seeking_settings_reject_invalid_values(config, message):
     with pytest.raises(ValueError, match=message):
         gap_seeking_settings(config)
 
 
-def test_lcm_settings_are_checked_with_the_other_state_settings():
+def test_gap_seeking_settings_are_checked_with_the_other_state_settings():
     assert state_settings(excited())["gap_seeking"]["sigma"] == 3.5
     with pytest.raises(ValueError, match="excited_state"):
         state_settings({"gap_seeking": BLOCK})
@@ -93,59 +93,59 @@ def test_lcm_settings_are_checked_with_the_other_state_settings():
     [(0, 4, [(0, 1)]), (1, 4, [(0, 1), (1, 2)]), (3, 4, [(2, 3)])],
     ids=["lowest", "middle", "highest"],
 )
-def test_lcm_candidates_are_adjacent_pairs_with_the_selected_state(selected, n_states, expected):
+def test_gap_seeking_candidates_are_adjacent_pairs_with_the_selected_state(selected, n_states, expected):
     assert adjacent_pairs(selected, n_states) == expected
 
 
-def test_lcm_needs_an_adjacent_state():
+def test_gap_seeking_needs_an_adjacent_state():
     with pytest.raises(ValueError, match="adjacent"):
         adjacent_pairs(0, 1)
 
 
-def test_lcm_trigger_takes_the_smallest_absolute_gap():
+def test_gap_seeking_trigger_takes_the_smallest_absolute_gap():
     assert select_trigger([0.0, 0.03, 0.04], [(0, 1), (1, 2)], 0.05) == {"pair": (1, 2), "gap_eV": pytest.approx(0.01)}
 
 
-def test_lcm_trigger_measures_an_inverted_gap_by_its_size():
+def test_gap_seeking_trigger_measures_an_inverted_gap_by_its_size():
     assert select_trigger([0.04, 0.0, 1.0], [(0, 1), (1, 2)], 0.05) == {"pair": (0, 1), "gap_eV": pytest.approx(-0.04)}
 
 
-def test_lcm_trigger_breaks_ties_by_lowest_pair():
+def test_gap_seeking_trigger_breaks_ties_by_lowest_pair():
     assert select_trigger([0.0, 0.03, 0.06], [(1, 2), (0, 1)], 0.05)["pair"] == (0, 1)
 
 
-def test_lcm_trigger_stays_off_above_the_threshold():
+def test_gap_seeking_trigger_stays_off_above_the_threshold():
     assert select_trigger([0.0, 0.06], [(0, 1)], 0.05) is None
 
 
-def test_lcm_trigger_rejects_a_nonfinite_gap():
+def test_gap_seeking_trigger_rejects_a_nonfinite_gap():
     with pytest.raises(ValueError, match="nonfinite"):
         select_trigger([0.0, float("inf")], [(0, 1)], 0.05)
 
 
-def test_lcm_formula_matches_the_fork_on_hand_computed_values():
+def test_gap_seeking_formula_matches_the_fork_on_hand_computed_values():
     # Same inputs as the fork's formula test: E = 2.0 and 2.02, forces 2.0 and 5.0, sigma 3.5, alpha 0.05.
     gap = 0.02
     root = np.sqrt(gap * gap + 1e-12)
     denominator = root + 0.05
     expected_energy = 2.01 + 3.5 * gap * gap / denominator
     derivative = 3.5 * (2.0 * gap * denominator - gap**3 / root) / denominator**2
-    energy, forces = lcm_energy_forces(2.0, 2.02, np.full((2, 3), 2.0), np.full((2, 3), 5.0), 3.5, 0.05)
+    energy, forces = gap_seeking_energy_forces(2.0, 2.02, np.full((2, 3), 2.0), np.full((2, 3), 5.0), 3.5, 0.05)
     assert energy == pytest.approx(expected_energy)
     np.testing.assert_allclose(forces, 3.5 + derivative * 3.0)
 
 
-def test_lcm_force_is_the_gradient_of_its_energy():
+def test_gap_seeking_force_is_the_gradient_of_its_energy():
     # Two states with analytic energies E = k x^2 + c, so F = -2 k x.
     x0 = np.array([[0.3, -0.2, 0.1], [0.5, 0.4, -0.6]])
     k_lower, k_upper, c_lower, c_upper = 0.7, 1.1, 0.0, 0.02
 
     def energy_at(x):
-        return lcm_energy_forces(
+        return gap_seeking_energy_forces(
             k_lower * (x * x).sum() + c_lower, k_upper * (x * x).sum() + c_upper, -2 * k_lower * x, -2 * k_upper * x, 3.5, 0.05
         )[0]
 
-    _, forces = lcm_energy_forces(
+    _, forces = gap_seeking_energy_forces(
         k_lower * (x0 * x0).sum() + c_lower, k_upper * (x0 * x0).sum() + c_upper, -2 * k_lower * x0, -2 * k_upper * x0, 3.5, 0.05
     )
     step = 1e-5
@@ -156,17 +156,17 @@ def test_lcm_force_is_the_gradient_of_its_energy():
         assert forces[index] == pytest.approx(-(energy_at(plus) - energy_at(minus)) / (2 * step), rel=1e-6, abs=1e-7)
 
 
-def test_lcm_formula_works_on_tensors():
+def test_gap_seeking_formula_works_on_tensors():
     torch = pytest.importorskip("torch")
-    energy, forces = lcm_energy_forces(
+    energy, forces = gap_seeking_energy_forces(
         torch.tensor(2.0), torch.tensor(2.02), torch.full((2, 3), 2.0), torch.full((2, 3), 5.0), 3.5, 0.05
     )
-    expected_energy, expected_forces = lcm_energy_forces(2.0, 2.02, np.full((2, 3), 2.0), np.full((2, 3), 5.0), 3.5, 0.05)
+    expected_energy, expected_forces = gap_seeking_energy_forces(2.0, 2.02, np.full((2, 3), 2.0), np.full((2, 3), 5.0), 3.5, 0.05)
     assert float(energy) == pytest.approx(expected_energy, rel=1e-5)
     np.testing.assert_allclose(forces.numpy(), expected_forces, rtol=1e-4)
 
 
-def test_lcm_setting_is_fixed_on_reload():
+def test_gap_seeking_setting_is_fixed_on_reload():
     config = dict(excited(), Escut=1.0, Fscut=1.0)
     coordinator = SamplerCoordinator(batched_mlmd.mlmd_trajectories_task, "batched", config)
     restored = coordinator.keep_startup_settings(dict(config, gap_seeking={**BLOCK, "sigma": 9.0}))
@@ -301,37 +301,37 @@ def propagation_forces(engine, index):
     return engine.state.forces[engine._slices[index]].cpu().numpy()
 
 
-def expected_lcm(positions, pair):
+def expected_surface(positions, pair):
     states = CrossingStates().predict_states([water_like(positions)])
     energies = states["state_energies"][:, :, 0].mean(0)
     forces = states["state_forces"][0].mean(0)
     lower, upper = pair
-    return lcm_energy_forces(float(energies[lower]), float(energies[upper]), forces[lower], forces[upper], 3.5, 0.05)
+    return gap_seeking_energy_forces(float(energies[lower]), float(energies[upper]), forces[lower], forces[upper], 3.5, 0.05)
 
 
-def test_lcm_forces_match_the_formula_after_a_switch(engine_kind):
+def test_gap_seeking_forces_match_the_formula_after_a_switch(engine_kind):
     engine, _ = build_engine(engine_kind, [NEAR_FIRST_PAIR])
     propagation_forces(engine, 0)  # Forces already computed on the selected state must not be reused.
-    engine.set_lcm(0, (0, 1), 3.5, 0.05)
-    np.testing.assert_allclose(propagation_forces(engine, 0), expected_lcm(NEAR_FIRST_PAIR, (0, 1))[1], atol=1e-10)
+    engine.set_gap_seeking(0, (0, 1), 3.5, 0.05)
+    np.testing.assert_allclose(propagation_forces(engine, 0), expected_surface(NEAR_FIRST_PAIR, (0, 1))[1], atol=1e-10)
 
 
-def test_lcm_well_adds_on_top_of_the_surface(engine_kind):
+def test_gap_seeking_well_adds_on_top_of_the_surface(engine_kind):
     options = {"well_params": {"r_start": 0.5, "force": 0.1}}
     positions = FAR_FROM_BOTH
     engine, _ = build_engine(engine_kind, [positions], options)
-    engine.set_lcm(0, (0, 1), 3.5, 0.05)
+    engine.set_gap_seeking(0, (0, 1), 3.5, 0.05)
     reference = MLMD_calculator([SelectedStateMember(member, 1) for member in range(2)], **copy.deepcopy(options))
     atoms = water_like(positions)
     reference.calculate(atoms, properties=["energy", "forces"])
     selected_mean = CrossingStates().predict_states([atoms])["state_forces"][0].mean(0)[1]
-    expected = reference.results["forces"] - selected_mean + expected_lcm(positions, (0, 1))[1]
+    expected = reference.results["forces"] - selected_mean + expected_surface(positions, (0, 1))[1]
     np.testing.assert_allclose(propagation_forces(engine, 0), expected, atol=1e-10)
 
 
-def test_lcm_leaves_observations_unbiased(engine_kind):
+def test_gap_seeking_leaves_observations_unbiased(engine_kind):
     engine, models = build_engine(engine_kind, [NEAR_FIRST_PAIR])
-    engine.set_lcm(0, (0, 1), 3.5, 0.05)
+    engine.set_gap_seeking(0, (0, 1), 3.5, 0.05)
     unbiased = models.predict([water_like(NEAR_FIRST_PAIR)])
     assert not np.allclose(propagation_forces(engine, 0), unbiased["forces"][0].mean(0))
     observed = engine.observe(0)["prediction"]
@@ -339,37 +339,37 @@ def test_lcm_leaves_observations_unbiased(engine_kind):
     assert ensemble_statistics(observed)[0] == pytest.approx(ensemble_statistics(unbiased)[0])
 
 
-def test_lcm_applies_only_to_the_switched_replica(engine_kind):
+def test_gap_seeking_applies_only_to_the_switched_replica(engine_kind):
     engine, models = build_engine(engine_kind, [FAR_FROM_BOTH, NEAR_FIRST_PAIR])
-    engine.set_lcm(1, (0, 1), 3.5, 0.05)
+    engine.set_gap_seeking(1, (0, 1), 3.5, 0.05)
     unswitched = models.predict([water_like(FAR_FROM_BOTH)])["forces"][0].mean(0)
     np.testing.assert_allclose(propagation_forces(engine, 0), unswitched, atol=1e-10)
-    np.testing.assert_allclose(propagation_forces(engine, 1), expected_lcm(NEAR_FIRST_PAIR, (0, 1))[1], atol=1e-10)
+    np.testing.assert_allclose(propagation_forces(engine, 1), expected_surface(NEAR_FIRST_PAIR, (0, 1))[1], atol=1e-10)
 
 
-def test_lcm_survives_another_replica_leaving_the_packed_state(engine_name):
+def test_gap_seeking_survives_another_replica_leaving_the_packed_state(engine_name):
     engine, _ = build_engine(engine_name, [FAR_FROM_BOTH, NEAR_FIRST_PAIR])
-    engine.set_lcm(1, (0, 1), 3.5, 0.05)
+    engine.set_gap_seeking(1, (0, 1), 3.5, 0.05)
     engine.finish(0)
     assert not engine.step([1], 2)
     positions = engine.atoms(1).get_positions()
     forces = engine.state.forces.cpu().numpy()
-    np.testing.assert_allclose(forces, expected_lcm(positions, (0, 1))[1], atol=1e-10)
+    np.testing.assert_allclose(forces, expected_surface(positions, (0, 1))[1], atol=1e-10)
 
 
-def test_lcm_replica_can_leave_the_packed_state(engine_name):
+def test_gap_seeking_replica_can_leave_the_packed_state(engine_name):
     engine, models = build_engine(engine_name, [NEAR_FIRST_PAIR, FAR_FROM_BOTH])
-    engine.set_lcm(0, (0, 1), 3.5, 0.05)
+    engine.set_gap_seeking(0, (0, 1), 3.5, 0.05)
     engine.finish(0)
     assert not engine.step([1], 2)
     unswitched = models.predict([engine.atoms(1)])["forces"][0].mean(0)
     np.testing.assert_allclose(engine.state.forces.cpu().numpy(), unswitched, atol=1e-10)
 
 
-def test_lcm_switch_records_the_pair_and_trigger(engine_kind):
+def test_gap_seeking_switch_records_the_pair_and_trigger(engine_kind):
     near, far = sample(engine_kind, [NEAR_FIRST_PAIR, FAR_FROM_BOTH])
     switched = near.get_metadata()
-    assert switched["gap_seeking_current_mode"] == "lcm" and switched["gap_seeking_switched"] is True
+    assert switched["gap_seeking_current_mode"] == "gap_seeking" and switched["gap_seeking_switched"] is True
     assert switched["gap_seeking_pair"] == [0, 1]
     assert abs(switched["gap_seeking_trigger_gap_eV"]) <= BLOCK["trigger_gap_threshold_eV"]
     assert switched["gap_seeking_trigger_step"] >= 1
@@ -379,26 +379,26 @@ def test_lcm_switch_records_the_pair_and_trigger(engine_kind):
     assert "gap_seeking_pair" not in untouched
 
 
-def test_lcm_each_replica_picks_its_own_pair(engine_kind):
+def test_gap_seeking_each_replica_picks_its_own_pair(engine_kind):
     first, second = sample(engine_kind, [NEAR_FIRST_PAIR, NEAR_SECOND_PAIR])
     assert first.get_metadata()["gap_seeking_pair"] == [0, 1]
     assert second.get_metadata()["gap_seeking_pair"] == [1, 2]
 
 
-def test_lcm_switch_changes_the_trajectory(engine_kind):
+def test_gap_seeking_switch_changes_the_trajectory(engine_kind):
     plain = sample(engine_kind, [NEAR_FIRST_PAIR], gap_seeking=None)[0]
     switched = sample(engine_kind, [NEAR_FIRST_PAIR])[0]
     assert not np.allclose(plain.get_metadata()["positions"], switched.get_metadata()["positions"])
 
 
-def test_lcm_disabled_block_leaves_the_trajectory_unchanged(engine_kind):
+def test_gap_seeking_disabled_block_leaves_the_trajectory_unchanged(engine_kind):
     absent = sample(engine_kind, [NEAR_FIRST_PAIR], gap_seeking=None)[0]
     disabled = sample(engine_kind, [NEAR_FIRST_PAIR], gap_seeking={"enabled": False})[0]
     np.testing.assert_array_equal(absent.get_metadata()["positions"], disabled.get_metadata()["positions"])
     assert "gap_seeking_switched" not in disabled.get_metadata()
 
 
-def test_lcm_gives_the_same_trajectories_alone_or_batched(engine_kind):
+def test_gap_seeking_gives_the_same_trajectories_alone_or_batched(engine_kind):
     positions = [NEAR_FIRST_PAIR, NEAR_SECOND_PAIR, FAR_FROM_BOTH]
     batched = {molecule.get_moleculeid(): molecule for molecule in sample(engine_kind, positions)}
     for index, p in enumerate(positions):
@@ -409,13 +409,13 @@ def test_lcm_gives_the_same_trajectories_alone_or_batched(engine_kind):
         np.testing.assert_allclose(alone.get_metadata()["positions"], expected["positions"], atol=1e-8)
 
 
-def test_lcm_switches_a_replica_only_once():
+def test_gap_seeking_switches_a_replica_only_once():
     calls = []
 
     class CountingEngine(ASEEngine):
-        def set_lcm(self, index, pair, sigma, alpha_eV):
+        def set_gap_seeking(self, index, pair, sigma, alpha_eV):
             calls.append(index)
-            super().set_lcm(index, pair, sigma, alpha_eV)
+            super().set_gap_seeking(index, pair, sigma, alpha_eV)
 
     pytest.importorskip("torch")
     molecule = MoleculesObject(water_like(NEAR_FIRST_PAIR), "mol-0")
@@ -423,19 +423,19 @@ def test_lcm_switches_a_replica_only_once():
     assert calls == [0]
 
 
-def test_lcm_never_switches_a_replica_that_was_rejected(engine_kind):
+def test_gap_seeking_never_switches_a_replica_that_was_rejected(engine_kind):
     result = sample(engine_kind, [NEAR_FIRST_PAIR], max_force_cutoff=1e-6)[0]
     assert result.get_metadata()["trajectory_outcome"] == "rejected"
     assert result.get_metadata()["gap_seeking_switched"] is False
 
 
-def test_lcm_never_switches_a_replica_that_stopped_on_uncertainty(engine_kind):
+def test_gap_seeking_never_switches_a_replica_that_stopped_on_uncertainty(engine_kind):
     result = sample(engine_kind, [NEAR_FIRST_PAIR], Escut=1e-6)[0]
     assert result.get_metadata()["trajectory_outcome"] == "eligible"
     assert result.get_metadata()["gap_seeking_switched"] is False
 
 
-def test_lcm_forces_do_not_reach_the_force_screen(engine_kind):
+def test_gap_seeking_forces_do_not_reach_the_force_screen(engine_kind):
     # A huge sigma makes the surface forces far larger than the cutoff, which only sees physical forces.
     block = {**BLOCK, "sigma": 1.0e6}
     result = sample(engine_kind, [NEAR_FIRST_PAIR], gap_seeking=block, max_force_cutoff=100.0, maxt=0.0004)[0]
@@ -447,14 +447,14 @@ def test_lcm_forces_do_not_reach_the_force_screen(engine_kind):
     assert metadata["screen_audit"]["initial"]["diagnostics"]["Fmeanmax"] == pytest.approx(unbiased)
 
 
-def test_lcm_candidates_taken_after_a_switch_carry_its_mode(engine_kind):
+def test_gap_seeking_candidates_taken_after_a_switch_carry_its_mode(engine_kind):
     acquisition = {"trajectory_policy": "continue", "selection": {"mode": "cohort_top_k", "cohort_size": 1, "k": 50}}
     result = sample(engine_kind, [NEAR_FIRST_PAIR], acquisition=acquisition, Escut=1e-6, maxt=0.002)[0]
     modes = [candidate["metadata"]["gap_seeking_current_mode"] for candidate in result.get_metadata()["acquisition_candidates"]]
-    assert "lcm" in modes
+    assert "gap_seeking" in modes
 
 
-def test_lcm_needs_an_adjacent_state_in_the_ensemble():
+def test_gap_seeking_needs_an_adjacent_state_in_the_ensemble():
     pytest.importorskip("torch")
 
     class OneState(CrossingStates):

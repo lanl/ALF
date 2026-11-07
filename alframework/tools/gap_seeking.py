@@ -1,6 +1,6 @@
-"""Levine-Coe-Martinez (LCM) gap seeking for excited-state sampling.
+"""Gap-seeking for excited-state sampling, using the Levine-Coe-Martinez penalty surface.
 
-A replica running on its selected state switches permanently to a penalty surface
+A replica running on its selected state switches permanently to that surface
 for one adjacent state pair, once that pair's ensemble-mean gap falls below a
 threshold. The surface drives the replica toward the crossing. It only changes
 propagation forces: screening and uncertainty still read unbiased predictions.
@@ -40,7 +40,7 @@ def gap_seeking_settings(config):
     if config.get("model_mode", "ground_state") != "excited_state":
         raise ValueError("gap_seeking requires model_mode excited_state.")
     if (config.get("MLMD_calculator_options") or {}).get("udd_bias_weight") is not None:
-        # UDD's bias comes from the selected state's spread, which doesn't describe an LCM replica.
+        # UDD's bias comes from the selected state's spread, which doesn't describe a gap-seeking replica.
         raise ValueError("gap_seeking can't be combined with udd_bias_weight.")
     settings = {}
     for name in PARAMETERS:
@@ -82,8 +82,8 @@ def select_trigger(mean_state_energies, pairs, threshold):
     return None if best[0] > threshold else {"pair": (best[1], best[2]), "gap_eV": best[3]}
 
 
-def lcm_energy_forces(lower_energy, upper_energy, lower_forces, upper_forces, sigma, alpha_eV):
-    """Return the LCM energy and its analytic force, from two states' ensemble means."""
+def gap_seeking_energy_forces(lower_energy, upper_energy, lower_forces, upper_forces, sigma, alpha_eV):
+    """Return the gap-seeking energy and its analytic force, from two states' ensemble means."""
     gap = upper_energy - lower_energy
     smooth_abs_gap = (gap * gap + _SMOOTHING) ** 0.5
     denominator = smooth_abs_gap + alpha_eV

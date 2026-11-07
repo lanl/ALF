@@ -379,13 +379,13 @@ Cohorts can also be kept separate for each state, with
 break a bond or develop unphysical forces on any state, see
 :ref:`samplers-runtime-screens`.
 
-Gap Seeking
+Gap-Seeking
 -----------
 
-Gap seeking samples geometries near a state crossing. Once a trajectory's gap to an
+Gap-seeking samples geometries near a state crossing. Once a trajectory's gap to an
 adjacent state is small enough, it permanently leaves its selected state and moves on a
-Levine-Coe-Martinez (LCM) penalty surface for that pair, which pushes it toward the
-crossing.
+penalty surface for that pair, which pushes it toward the crossing. The surface is the
+one from Levine, Coe, and Martinez.
 
 .. code-block:: json
 
@@ -403,7 +403,7 @@ For states :math:`i` and :math:`j`, with ensemble-mean energies :math:`E_i` and
 
 .. math::
 
-   E_\mathrm{LCM} = \frac{E_i + E_j}{2}
+   E_\mathrm{gap} = \frac{E_i + E_j}{2}
    + \sigma \frac{\Delta E^2}{\sqrt{\Delta E^2 + 10^{-12}} + \alpha}
 
 .. list-table::

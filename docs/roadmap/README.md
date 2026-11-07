@@ -16,9 +16,12 @@ This folder is the shared plan for bringing the fork's intended capabilities int
 
 - **Increments 0-10 and 11A are complete and merged.** Increment 7 was closed by user
   acceptance on November 5. The fixed-keto AcAc ALF loop passed Increment 11A.
-- **Increment 11B is in progress.** CPP9 calibration and DCM C-PCM labeling are
-  qualified. The CPP9 E6 pilot's ordinary active-learning loop hasn't passed yet; see
-  [Increment 11B](excited_states.md#increment-11b--calibration-and-dcm-labeling-qualified-cpp-ring-alf-e6-planned).
+- **Increment 11B / E6 is complete within the bounded CPP9 pilot scope.** The
+  ordinary DCM active-learning loop passed with 32 fresh bootstrap frames and eight
+  propagated, stored samples covering S0–S3 in a promoted four-member ensemble;
+  see [Increment 11B](excited_states.md#increment-11b--completed-cpp9-active-learning-qualification-e6).
+  The close-out is committed locally, awaiting the user's push. Ten-node scaling,
+  predictive accuracy and long-time stability remain unqualified.
 - **Next after E6:** real runs for selected-state UDD and wells, then LCM gap seeking,
   then staged campaigns, multi-node training, and teacher labeling. New uncertainty and
   acquisition methods come last; see [Order of work](future.md#order-of-work).
@@ -261,7 +264,7 @@ Actions results at `5449542`: `engines` 582 passed; `hippynn` 517 passed, 65 ski
 `base` 451 passed, 100 skipped.
 
 The review also led to two GPU4PySCF library fixes; see
-[Increment 11B](excited_states.md#increment-11b--calibration-and-dcm-labeling-qualified-cpp-ring-alf-e6-planned).
+[Increment 11B](excited_states.md#increment-11b--completed-cpp9-active-learning-qualification-e6).
 
 ### Quick wins (2026-11-06)
 
@@ -485,9 +488,10 @@ local `development`, not yet pushed), and **merged** (in official
 When an increment finishes, move its row to [`batching.md`](batching.md#delivered-increments) or
 [`excited_states.md`](excited_states.md#delivered-increments), which hold the delivered ones.
 
-| Increment | Status | Deliverable | Acceptance gate |
-| --- | --- | --- | --- |
-| 11B. cpp-ring active learning (E6) | in progress; calibration and DCM labeling qualified, E6 pilot pending | Run the ordinary ring ALF loop. | Newly sampled ring IDs enter a promoted, loadable four-member ensemble. |
+The completed Increment 11B / E6 row is now in
+[delivered excited-state increments](excited_states.md#delivered-increments),
+with status **done locally** until the user pushes its close-out. Remaining work
+follows [Order of work](future.md#order-of-work).
 
 ## Compatibility and acceptance
 

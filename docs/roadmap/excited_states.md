@@ -4,7 +4,7 @@ The E1-E6 plan and Increments 8-11B: excited-state contracts, labeling, training
 
 ## Delivered increments
 
-Moved from [`README.md`](README.md) on November 6, 2026. **Merged** means in official `lanl/ALF:development`. Increment 11B is still in progress; see [Increment status](README.md#increment-status).
+Moved from [`README.md`](README.md) on November 6, 2026. **Merged** means in official `lanl/ALF:development`. Increment 11B's bounded E6 qualification passed; its close-out is **done locally**, awaiting the user's push. See [Increment status](README.md#increment-status).
 
 | Increment | Status | Deliverable | Acceptance gate |
 | --- | --- | --- | --- |
@@ -12,6 +12,7 @@ Moved from [`README.md`](README.md) on November 6, 2026. **Merged** means in off
 | 9. Multi-state training and external geometries (E3–E4) | merged (`7c24cb2`, live remote verified 2026-11-05) | Shared-trunk state heads and force gradients in the existing HIPPYNN interface; unlabeled XYZ/HDF5 geometry builder. | 402 library tests pass; real 32-frame import/label/store/four-member GPU training and reload passed. |
 | 10. Selected-state sampling and acquisition (E5) | merged (`a5090e0`, `6c2751d`, `1c367ba`) | Multi-state inference, state selection and grouping, and named gap uncertainty across ASE, TorchSim CUDA, and ALCHEMI. | Focused compatibility/parity tests; real widths one/four on each engine; one shared small acquisition/label/store/retraining qualification. |
 | 11A. Chemical topology screening and fixed-keto AcAc ALF | merged (`4a1caba`) | Opt-in reference-based chemical topology screening across ASE, TorchSim, and ALCHEMI; an ordinary AcAc ALF loop. | Screens passed on all three engines; newly sampled labels entered a promoted four-member ensemble. |
+| 11B. cpp-ring active learning (E6) | done locally; bounded CPP9 DCM pilot passed 2026-11-06 | Run the ordinary ring ALF loop. | All 32 fresh bootstrap frames and eight propagated S0–S3 samples were stored; all four promoted members retained the new IDs, trained and reloaded; owned-job cleanup verified. |
 
 ## Delivered capabilities
 
@@ -34,7 +35,7 @@ Also delivered from the later plan:
 Each step is a separate local change with its own CPU tests. Existing
 configurations, task signatures, and ground-state results stay unchanged.
 E1–E5 are complete, and Increment 11A qualified topology/RDKit and keto AcAc ALF.
-Increment 11B is working on E6.
+Increment 11B completed E6 with the bounded CPP9 DCM active-learning pilot on November 6, 2026.
 
 | Step | Deliverable | Acceptance gate |
 | --- | --- | --- |
@@ -43,7 +44,7 @@ Increment 11B is working on E6.
 | E3. Multi-state training — complete in Increment 9 | Separate excited-state `ML_task` in the existing `hippynn_interface.py`, sharing its opt-in `ALFPyAniDirectoryDB`; derived gap losses and fixed-composition nonperiodic data. | Four GPU-trained members reload with exact input/split manifests; ground-state trainer unchanged. |
 | E4. External initial geometries — complete in Increment 9 | `external_geometry_builder_task` imports unlabeled XYZ/extxyz or geometry-only HDF5 with sequential or deterministic-hash selection. The random ring generator stays outside ALF. | Identities, atom order, and provenance survived real labeling inputs; source labels/calculators are stripped. |
 | E5. Sampling on a chosen state — complete in Increment 10 | Multi-state evaluator output (per-state member arrays; existing ground-state shapes remain the default). A `selected_state` from metadata or `fixed`/`batch_cycle`, with a selected-state batch key. Per-state diagnostics and a named gap signal with its own cutoff as a `SCORE_TERMS` entry. Eligibility reads configured signal/cutoff pairs; `Es`/`Fs`/`Fsmax` keep their meaning. | CPU parity with fakes across ASE, TorchSim, and ALCHEMI; a bounded molecular excited-state loop through the real coordinator. |
-| E6. cpp ring full ALF example | After the chemical topology prerequisite passes, run an ordinary master configuration through `alframework.__main__`: external ring bootstrap, GPU4PySCF labels with stored NACs, multi-state training, selected-state MLMD/acquisition, and iteration. Reuse the fork's scientific settings rather than its standalone driver. | Opt-in chemical topology screening is enabled and qualified; a bounded real campaign selects new ring structures, labels/stores them, and promotes a retrained, loadable four-member ensemble. |
+| E6. cpp ring full ALF example — complete in Increment 11B | After the chemical topology prerequisite passes, run an ordinary master configuration through `alframework.__main__`: external ring bootstrap, GPU4PySCF labels with stored NACs, multi-state training, selected-state MLMD/acquisition, and iteration. Reuse the fork's scientific settings rather than its standalone driver. | Opt-in chemical topology screening is enabled and qualified; a bounded real campaign selects new ring structures, labels/stores them, and promotes a retrained, loadable four-member ensemble. |
 
 E6 is the first point where dev can do the cpp ring work, so it follows
 sampling (E5) rather than preceding it. Open decisions:
@@ -605,7 +606,7 @@ Documentation follow-up, done November 6: the guide now covers the held-back fea
 with `examples/AcAc_excited_pyseqm` as the worked excited-state example; see
 [User documentation pass](README.md#user-documentation-pass-2026-11-06).
 
-## Increment 11B — calibration and DCM labeling qualified; cpp-ring ALF (E6) planned
+## Increment 11B — completed CPP9 active-learning qualification (E6)
 
 Calibration scope approved November 6: brief A100 40 GB measurements before sizing the
 full CPP9 ALF loop. The fork production trial accepted 1,000/1,000 CPP9 labels
@@ -933,13 +934,81 @@ labels. It runs under persistent frontend `alf-cpp9-e6` tmux; initial owned
 jobs are `17381894` (sampling) and `17381895` (QM). Its queue-inclusive window
 is **15:19:44–19:19:44 Mountain on November 6**, reserving five minutes for
 cleanup. The normal retry path still preserves deadlines; budget renewal is
-an explicit preparation option recorded in the frozen manifest. Native
-convergence, training, acquisition and promotion acceptance remain pending.
+an explicit preparation option recorded in the frozen manifest. At launch,
+native convergence, training, acquisition and promotion acceptance were pending.
+The passing result below closes this gate after verified owned-job termination.
+Ten-node scaling, predictive accuracy, long-time stability, production-scale
+qualification and post-QM filtering remain unclaimed. CPP6 remains an additional
+transferable example. This result update leaves user guides unchanged.
 
-**E6 remains incomplete until the pilot passes and owned-job termination is
-verified.** Ten-node scaling, predictive accuracy, long-time stability,
-production-scale qualification and post-QM filtering remain unclaimed.
-CPP6 remains an additional transferable example. User guides remain untouched.
+### CPP9 E6 pilot — passed (2026-11-06)
+
+**Increment 11B / E6 is complete within the agreed bounded workflow scope.**
+The ordinary `alframework.__main__` loop completed preparation → fresh labeling
+and storage → four-member HIP-HOP100 training → selected-state ALCHEMI sampling
+and acquisition → labeling/storage → training and promotion of model `0001`.
+
+Evidence is outside Git under
+`validation/cpp9_e6_20261106/run-004/`: `result.json`, `launch-health.json`,
+`pilot/accepted.json`, `pilot/verification.json`, `closeout-audit.json`, task
+events, closed HDF5 shards, and each member's training/input manifests.
+The frozen library revision is **`6f69486`**, external harness **`941f202`**.
+The frozen environments include GPU4PySCF 1.9.1 / PySCF 2.15.0 / native
+cuTENSOR 2.8.1, the qualified CUDA HIPPYNN trainer, and the ALCHEMI environment;
+exact interpreters and package versions remain in `manifest.json`. Source,
+scientific inputs, environment versions, dataset and checkpoint fingerprints
+were reverified at close-out. The later upstream guard/metadata changes noted
+below were not part of this frozen run and retain their separate follow-up.
+
+| Gate | Actual evidence |
+| --- | --- |
+| Fresh bootstrap | All 32 seed-42 CPP9 rotation/rattle geometries converged and were stored; no historical labels reused. |
+| Initial training | Four HIP-HOP100 members each performed 50 epochs and changed parameters; each used 26/3/3 train/validation/test frames and all four reloaded with finite predictions. |
+| QM isolation/concurrency | Four successful overlapping calculations on four distinct A100 PCI buses/UUIDs; every worker saw its assigned GPU as local CUDA device zero. Launch-health gate passed. |
+| Sampling | 48 propagated trajectories in 16 tasks: eight actual width-four tasks, four width-three and four width-one timeout partial tasks; 12 state-specific four-member cohorts selected 24 valid frames. |
+| New-label acquisition | Eight distinct stored sampled frame IDs, two per state S0–S3, propagated for 5–7 fs. Each frame passed its own topology/physical-force checks; bootstrap IDs did not count. |
+| Promotion | Every promoted member retained all eight new IDs among 40 frames, trained for 50 epochs, changed parameters and reloaded. Each member used 32/4/4 train/validation/test frames. |
+| Actual sampled training splits | Members 00/01/02/03 trained on 6/6/6/8 of the sampled frames; their union includes all eight IDs and all four states. Member 01's training split omitted S0; the ensemble-wide gate is satisfied. |
+| Force validation | Representative model-force finite-difference maximum error **2.56e-7 eV/Å**, below 1e-3 eV/Å; finite state predictions and gap consistency passed. |
+| Label/storage integrity | All 42 completed native GPU4PySCF calculations converged, including SCF, TDA and NAC outputs. All requested energies/forces, gaps, NACs and equilibrium/vertical optics were finite in HDF5; oscillator strengths were nonnegative. |
+
+The independent close-out audit also compared every stored property against
+its successful labeling event, with identity-aware canonical atom sorting and
+NAC pair/atom axes. Pair order was `(1,2), (1,3), (2,3)` and NAC arrays had
+shape `[frames, 3, 90, 3]`. Absolute/state energies verified that the configured
+offset was applied once; adjacent gaps remained upper minus lower state.
+
+Counts are deliberately separate: **46 QM starts, 42 completed/converged,
+40 stored (32 bootstrap + eight sampled), two converged labels left unstored,
+and four in-flight calculations cancelled at shutdown**. Of 24 selected
+sampled frames, 14 started QM; ten selected frames never started before
+cleanup. New sampling admissions stopped once eight stored sampled IDs covered
+all states. Overshoot was retained in the event journal rather than counted
+as stored/trained data.
+
+All **48 trajectories eventually hit `topology_bond_window`**. Previously valid
+candidates remained eligible under the agreed continue/cohort policy; rejected
+frames were excluded. The user accepted this attrition as expected for a small,
+undertrained model. It does not invalidate the acquisition gate and does not
+establish predictive accuracy or long-time stability. No GPU OOM was reported.
+Median full QM runtime was **226.30 seconds** (range 203.59–243.88); peak sampled
+whole-device QM usage was **33.34 GiB**. These are bounded-pilot measurements,
+not production throughput or ten-node scaling evidence.
+
+The complete window, including queues, verification and cleanup, was
+**15:19:44–16:09:36 Mountain on November 6 (49.86 minutes)**, within the explicitly
+renewed four-hour deadline. Parsl released idle allocations and reacquired
+workers on demand. All eight owned jobs (`17381894`, `17381895`, `17381908`,
+`17381961`, `17381969`, `17381976`, `17381982`, `17381992`) have terminal Slurm
+accounting and verified termination; the persistent supervisor/session exited.
+Earlier incomplete/interrupted attempts remain preserved separately.
+
+Prelaunch checks on the frozen implementation were **510 passed, 42 skipped**
+for the library, 126 affected combined tests, and 15 final harness/budget tests.
+Those counts are historical validation evidence, not a claim that the newer
+upstream test layout or guard/metadata changes ran in this campaign. Upstream
+`bd8aca0` and its roadmap/test reorganization were fast-forwarded before this
+close-out; this update changes only the roadmap status/evidence files.
 
 User decision, November 6: the guide's page for `examples/CPP_excited_gpu4pyscf`
 documents the whole example now, ahead of this result, and says nothing about E6. This

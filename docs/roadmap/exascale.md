@@ -58,16 +58,117 @@ Items 5 and 6 ship together, because holding-area labels are only useful if a re
 - A background store writer.
 - Limiting the plot scan.
 
-### Darwin profile
+### Darwin profile for restart work
 
-This can run alongside tier 1. It should cover:
+Measure these on Darwin, at ALF `6e19e7a`, alongside the multi-node round. Nothing here is pass or fail, and no library code should change. Keep evidence outside Git under `validation/`, and record results in `exascale.md`.
 
-- Write and metadata counts per process, using Darshan or `strace`.
-- Import time at worker startup.
-- Shard visibility across nodes on `/vast`.
-- `flock` on `/vast`.
-- A kill and restart of a small real loop.
-- For `/tmp` on each partition: size, whether it's disk or RAM-backed, whether nodes are shared with other jobs, and whether it's purged when a job ends.
+If a tool or permission isn't available, record that and move on. Don't substitute an estimate.
+
+#### 1. `flock` on `/vast` (decides how the coordinator lock works)
+
+Use a file on `/vast`, with two allocated nodes, A and B.
+
+```python
+import fcntl, sys, time
+handle = open(sys.argv[1], "w")
+fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)  # Raises BlockingIOError if it's held.
+print("locked", flush=True)
+time.sleep(float(sys.argv[2]))
+```
+
+| Check | Record |
+| --- | --- |
+| Hold on A, try on A | Refused? This is the control. |
+| Hold on A, try on B | Refused? This is the question that matters. |
+| Release on A, then try on B | Acquired, and how quickly? |
+| `kill -9` the holder on A, then try on B | Acquired, and how quickly? A lock that outlives its holder would block restarts. |
+| Hold on A, lose or cancel node A's job, then try on B | Acquired, and how quickly? |
+
+Report `findmnt -T <path>` for the mount type and options.
+
+#### 2. Shard visibility across nodes (decides the trainers' shard check, and whether the 120 s wait is right)
+
+Node A writes HDF5 files into one directory, using `store_current_data` or a same-sized file. Node B polls that directory, so that its view is cached. Repeat at least 50 times, with a few seconds between writes.
+
+Record the delay on node B until the new file:
+
+- appears in `os.listdir`, which the trainers use
+- is found by name with `os.path.exists` and without a prior listing, which replay uses
+- opens with `h5py` and reads the same hash as on node A
+
+Then repeat, with node A writing to a temporary name in that directory and renaming when complete. Record whether node B ever sees the final name with incomplete contents.
+
+Report the median, the maximum, and any failures. Run it on an otherwise idle directory, and again during a real training or sampling load if that's practical.
+
+#### 3. Kill and restart a small real loop (sets the baseline that restart fixes are measured against)
+
+Use a small real ALF loop with the current code. For each row, kill the coordinator, restart it with the same command, and record what happens. Run each at least twice, because the timing varies.
+
+| When to kill | Signal | Record |
+| --- | --- | --- |
+| During a bootstrap | `SIGTERM` | Does it restart? How many finished labels were lost? |
+| During a bootstrap | `SIGKILL` | The same, plus how long blocks and the interchange survive. |
+| Between stores, with training idle | `SIGKILL` | Does it restart? How many finished labels were lost? |
+| During training | `SIGTERM` | Are all blocks released? Does the next training start cleanly? |
+| During training | `SIGKILL` | How long do blocks survive? Does a training ID get reused, and does that fail? |
+| During a store, if the timing can be hit | `SIGKILL` | Is a partial shard left? Does the next store fail? Does training read the partial file? |
+
+Expected failures are listed under "Crash and race notes" in `exascale.md`. Report which ones actually happen, and anything that isn't listed.
+
+Do not edit status or shards by hand between kill and restart, and record any cleanup that was needed to continue. Verify with `squeue` that every owned job ended.
+
+#### 4. Who touches the filesystem (checks the severity rankings)
+
+Run one small real loop, ideally the CPP or AcAc configuration, and one ground-state example if ORCA is available. Capture each of these separately: the coordinator, one sampler worker, one QM worker, and one training task.
+
+Use Darshan if it's available, or otherwise `strace -f -c -e trace=%file`. Record for each:
+
+- opens, creates, stats, and renames
+- bytes read and written, if the tool gives them
+- the paths with the most operations
+- operations per trajectory or per label, so results can be scaled
+
+Compare these to the tables in `exascale.md`, and list any row that looks wrong, plus any heavy operation that's missing.
+
+#### 5. Replay manifest cost (decides how urgent the manifest cache is)
+
+Time `geometry_manifest` on a real set of shards, recording the total HDF5 size. Run it once alone, then from several workers at once, if that's practical. Also record whether most of the time goes to reading, hashing, or scanning groups.
+
+#### 6. Worker startup and imports
+
+In a fresh process on a compute node, run `python -X importtime -c "import torch, hippynn, alframework"` with the environment where it's normally installed. Record the total time on a cold start and a repeat. If it's practical, also run from a node-local copy of the environment, and with several nodes starting at once.
+
+#### 7. `/tmp` on each partition (decides whether QM scratch can move to node-local storage)
+
+For each partition ALF uses, from inside a job:
+
+- `df -h /tmp` and `findmnt -T /tmp`: size, and whether it's disk or RAM-backed
+- the value of `$TMPDIR`
+- whether nodes are shared with other jobs
+- whether files in `/tmp` survive after the job ends
+
+#### Report back
+
+For each section, give a short result, and the evidence path. In addition, answer these directly:
+
+1. Does `flock` work across nodes on `/vast`?
+2. What's the longest delay before a new shard appears in another node's listing?
+3. Is a rename ever visible before its contents are?
+4. Which restart failures happened, and how many labels did each lose?
+5. How long does `SIGKILL` leave blocks allocated?
+6. Which `exascale.md` rows should change severity?
+
+#### What the results decide
+
+| Result | Effect on the restart plan |
+| --- | --- |
+| `flock` refused across nodes | The lock is as simple as planned. Otherwise it needs a lock file holding host and process ID, plus stale-lock detection. |
+| Longest listing delay | Sets the shard wait, and how much item 2 matters. |
+| Rename visibility | Confirms that atomic shard writes are safe on `/vast`. |
+| Kill and restart failures | The acceptance tests for items 5 and 6. |
+| File operation counts | Reorders tier 3 in `exascale.md`. |
+| Manifest timing | Whether the manifest cache goes before the label work. |
+| `/tmp` details | Whether item 8 can go ahead on each partition. |
 
 ## All operations, by severity
 

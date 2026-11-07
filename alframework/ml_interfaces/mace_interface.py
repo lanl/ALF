@@ -133,7 +133,7 @@ class MaceFineTuner:
                 command.append(f'--{key}={value}')
         return command
 
-    def train_member(self, data, member_dir, seed, device, environment):
+    def train_member(self, data, member_dir, member, seed, device, environment):
         log = Path(member_dir) / 'train.log'
         with open(log, 'w') as handle:
             finished = subprocess.run(self.command(data, str(member_dir), seed, device), cwd=member_dir,

@@ -19,7 +19,7 @@ class FakeFineTuner:
         path.write_text(json.dumps([Path(shard).name for shard in shards]))
         return str(path)
 
-    def train_member(self, data, member_dir, seed, device, environment):
+    def train_member(self, data, member_dir, member, seed, device, environment):
         import time
 
         if seed in self.settings.get("failing_seeds", []):
@@ -27,7 +27,7 @@ class FakeFineTuner:
         started = time.monotonic()
         time.sleep(self.settings.get("train_seconds", 0))
         (Path(member_dir) / "trained.json").write_text(json.dumps(dict(
-            source=self.settings["foundation_model"], seed=seed, device=device,
+            source=self.settings["foundation_model"], member=member, seed=seed, device=device,
             visible=environment.get("CUDA_VISIBLE_DEVICES"), data=json.loads(Path(data).read_text()),
             started=started, finished=time.monotonic())))
 

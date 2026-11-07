@@ -10,11 +10,14 @@ constructed with the validated settings and provides:
 
 - ``validate(master_config)``: check the run's configuration at startup;
 - ``prepare_data(shards, member_dir)``: turn ALF's HDF5 shards into the family's training input;
-- ``train_member(data, member_dir, seed, device, environment)``: fine-tune one copy;
+- ``train_member(data, member_dir, member, seed, device, environment)``: fine-tune copy ``member``;
 - ``member_complete(member_dir)``: whether that copy finished;
 - ``identity()``: package name and version, recorded with each round.
 
-``mace_interface.MaceFineTuner`` is the first adapter.
+An adapter whose source is several files, such as a model directory, also provides
+``fingerprint()``, returning each file's SHA-256 for the lineage.
+
+``mace_interface.MaceFineTuner`` and ``hippynn_fine_tuning.HippynnFineTuner`` are the adapters.
 """
 import concurrent.futures
 import os
@@ -47,7 +50,7 @@ def fine_tune_settings(ML_config, master_directory=None):
     settings = dict(block)
     for key in ('adapter', 'foundation_model'):
         if not isinstance(settings.get(key), str) or not settings[key]:
-            raise ValueError(f"fine_tune.{key} must name {'an adapter class' if key == 'adapter' else 'a local file'}.")
+            raise ValueError(f"fine_tune.{key} must name {'an adapter class' if key == 'adapter' else 'a local model'}.")
     settings['foundation_model'] = str(_resolve(settings['foundation_model'], master_directory))
     # Other local files an adapter reads, such as a replay set, are resolved the same way.
     for key, value in list(settings.items()):
@@ -74,7 +77,7 @@ def validate_fine_tune_config(ML_config, master_config=None):
     """Check a fine-tuning configuration when ALF starts, rather than after the bootstrap is labeled."""
     master_config = master_config or {}
     settings = fine_tune_settings(ML_config, master_config.get('master_directory'))
-    if not Path(settings['foundation_model']).is_file():
+    if not Path(settings['foundation_model']).exists():
         raise ValueError(f"Foundation model not found: {settings['foundation_model']}")
     load_adapter(settings).validate(master_config)
 
@@ -121,16 +124,18 @@ def fine_tune_member(settings, shards, member_dir, member, device):
     adapter = load_adapter(settings)
     name, environment = child_environment(device)
     data = adapter.prepare_data(shards, member_dir)
-    adapter.train_member(data, member_dir, member_seed(settings, member), name, environment)
+    adapter.train_member(data, member_dir, member, member_seed(settings, member), name, environment)
     return bool(adapter.member_complete(member_dir))
 
 
 def write_lineage(ensemble_dir, settings, shards, completed=None):
     """Record what a round started from and learned from, beside its members."""
     adapter = load_adapter(settings)
+    fingerprint = getattr(adapter, 'fingerprint', None)
+    source = (dict(foundation_model_files=fingerprint()) if fingerprint is not None
+              else dict(foundation_model_sha256=cached_sha256(settings['foundation_model'])))
     record = dict(
-        foundation_model=settings['foundation_model'],
-        foundation_model_sha256=cached_sha256(settings['foundation_model']),
+        foundation_model=settings['foundation_model'], **source,
         adapter=settings['adapter'], **adapter.identity(),
         # The adapter's settings include its defaults, so the record says exactly what ran.
         settings={key: value for key, value in getattr(adapter, 'settings', settings).items()

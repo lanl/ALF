@@ -5,6 +5,7 @@ failed trajectory leaves the others alone. Some tests skip without torch, HIPPYN
 """
 
 import copy
+import time
 
 import numpy as np
 import pytest
@@ -13,6 +14,7 @@ from ase.io import write
 
 from alframework.ml_interfaces.ensemble_inference import SelectedStateEvaluator, ensemble_statistics
 from alframework.ml_interfaces.hippynn_interface import HIPNN_ASE_load_ensemble
+from alframework.samplers import batched_mlmd
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator
 from alframework.samplers.batched_mlmd import (
     ASEEngine,
@@ -481,3 +483,109 @@ def test_earlier_candidate_survives_later_topology_rejection(tmp_path):
     assert selected.get_metadata()["step"] == 1
     audit = result.get_metadata()["screen_audit"]
     assert all(audit[k] is not None for k in ("initial", "last_valid", "rejected"))
+
+
+# Metadata for progress plots.
+
+
+class StretchingEngine(ASEEngine):
+    """Pulls a chosen trajectory's atoms apart from a chosen step, so the force screen rejects it."""
+
+    stretch_from = {}
+
+    def step(self, indices, n):
+        failures = super().step(indices, n)
+        for index in indices:
+            if self.steps[index] >= self.stretch_from.get(index, np.inf):
+                self._atoms[index].positions[1] *= 20.0
+        return failures
+
+
+def screened_config(**settings):
+    return dict(BASE, dt=0.5, maxt=0.05, Ncheck=5, Escut=100.0, Fscut=100.0, distcut=0.01, max_force_cutoff=100.0, **settings)
+
+
+def run_screened(stretch_from, count=1, config=None, engine_class=StretchingEngine, observed=None):
+    config = config or screened_config()
+    schedule = dict(SCHEDULE, Tamp=0.0, Tsrt=300.0, Tend=300.0)
+
+    class Engine(engine_class):
+        pass
+
+    Engine.stretch_from = stretch_from
+    engine = Engine([SPRING_WATER.copy() for _ in range(count)], fake_ensemble(), config["dt"], [300.0] * count,
+                    [np.random.RandomState(index) for index in range(count)])
+    if observed is not None:
+        real_observe = engine.observe
+
+        def observe(index):
+            observation = real_observe(index)
+            observed.append(ensemble_statistics(observation["prediction"])[0])
+            return observation
+
+        engine.observe = observe
+    molecules = [MoleculesObject(engine.atoms(index), f"mol-0000-{index:010d}") for index in range(count)]
+    return run_mlmd_trajectories(molecules, engine, [schedule] * count, config)
+
+
+def test_rejected_trajectory_keeps_its_last_valid_uncertainty():
+    observed = []
+    metadata = run_screened({0: 11}, observed=observed)[0].get_metadata()
+    assert metadata["trajectory_outcome"] == "rejected"
+    # The first observation is the screen before dynamics, and the last is the rejected frame.
+    valid = observed[1:-1]
+    assert len(valid) >= 2
+    assert metadata["Es"] == pytest.approx(valid[-1]["Es"])
+    assert metadata["Fs"] == pytest.approx(valid[-1]["Fs"])
+    assert metadata["Fsmax"] == pytest.approx(valid[-1]["Fsmax"])
+    assert metadata["Es"] != pytest.approx(observed[-1]["Es"]), "the rejected frame is physically suspect"
+    assert metadata["Fmeanmax"] > 100.0, "the screen's own values must stay"
+
+
+def test_trajectory_rejected_on_its_first_check_has_no_uncertainty():
+    metadata = run_screened({0: 1})[0].get_metadata()
+    assert metadata["trajectory_outcome"] == "rejected"
+    assert metadata["Es"] is None and metadata["peak_Es"] is None
+    assert metadata["Fmeanmax"] > 100.0
+
+
+def test_trajectory_rejected_before_dynamics_has_no_uncertainty():
+    metadata = run_screened({}, config=screened_config() | {"max_force_cutoff": 1e-9})[0].get_metadata()
+    assert metadata["trajectory_outcome"] == "rejected"
+    assert metadata["Es"] is None and metadata["peak_Fsmax"] is None
+
+
+def test_peak_uncertainty_is_the_highest_value_and_not_the_last(monkeypatch):
+    values = iter([0.1, 0.9, 0.3, 0.2] + [0.2] * 100)
+
+    def statistics(prediction):
+        value = next(values)
+        return [dict(Es=value, Fs=value / 2, Fsmax=value * 2, Fsrms=value, energy=0.0)]
+
+    monkeypatch.setattr(batched_mlmd, "ensemble_statistics", statistics)
+    metadata = run_screened({}, config=dict(BASE, Escut=100.0, Fscut=100.0))[0].get_metadata()
+    assert metadata["Es"] == pytest.approx(0.2)
+    assert metadata["peak_Es"] == pytest.approx(0.9)
+    assert metadata["peak_Fs"] == pytest.approx(0.45)
+    assert metadata["peak_Fsmax"] == pytest.approx(1.8)
+
+
+def test_peak_uncertainty_ignores_the_rejected_frame():
+    observed = []
+    metadata = run_screened({0: 11}, observed=observed)[0].get_metadata()
+    assert metadata["peak_Es"] == pytest.approx(max(row["Es"] for row in observed[1:-1]))
+    assert metadata["peak_Es"] < max(row["Es"] for row in observed)
+
+
+def test_trajectories_in_one_task_record_their_own_wall_time():
+    class SlowEngine(StretchingEngine):
+        def step(self, indices, n):
+            time.sleep(0.01)
+            return super().step(indices, n)
+
+    early, late = run_screened({0: 6}, count=2, engine_class=SlowEngine)
+    assert early.get_metadata()["trajectory_outcome"] == "rejected"
+    assert late.get_metadata()["trajectory_outcome"] == "completed"
+    early_time, late_time = early.get_metadata()["realtime_simulation"], late.get_metadata()["realtime_simulation"]
+    # Records are written one after another at the end, so a small gap wouldn't show per-trajectory timing.
+    assert early_time > 0 and late_time - early_time > 0.05

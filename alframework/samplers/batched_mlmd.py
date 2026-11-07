@@ -250,12 +250,13 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
             (1.66054e-24 / 1.0e-24) * (np.sum(atoms.get_masses()) / atoms.get_volume())
         state.append({'temps': [], 'denss': [], 'rho0': rho0, 'decision': None, 'signals': None,
                       'min_distance': None, 'check': 0, 'outcome': None, 'error': None,
-                      'candidates': []})
+                      'candidates': [], 'peaks': {}, 'finished_at': None})
 
     def finish(index, outcome, error=None):
         state[index]['outcome'] = outcome
         state[index]['error'] = error
         state[index]['finished_atoms'] = engine.atoms(index)
+        state[index]['finished_at'] = time.time()
         engine.finish(index)
         active.remove(index)
 
@@ -339,8 +340,10 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
                 if screening:
                     report, reason = inspect_frame(index, observation, time_ps)
                     if reason:
+                        # Keep the last valid uncertainty, since this frame's is physically suspect.
                         entry.update(decision=dict(outcome='rejected'), check=check,
-                                     signals={k:v for k,v in report.items() if k == 'Fmeanmax' or k.startswith('physical_F')})
+                                     signals={**(entry['signals'] or {}),
+                                              **{k:v for k,v in report.items() if k == 'Fmeanmax' or k.startswith('physical_F')}})
                         finish(index, 'rejected')
                         continue
                 signals = ensemble_statistics(observation['prediction'])[0]
@@ -349,6 +352,8 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
                 decision = assess_frame(signals, observation['min_distance'], time_ps, sampler_config, settings)
                 entry.update(signals=signals, decision=decision, min_distance=observation['min_distance'],
                              check=check)
+                for key in PEAK_SIGNALS:
+                    entry['peaks'][key] = max(signals[key], entry['peaks'].get(key, signals[key]))
                 if cohort and decision['outcome'] == 'eligible':
                     entry['candidates'].append(_candidate(molecule_objects[index], engine, index, signals,
                                                           decision, time_ps))
@@ -393,15 +398,19 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
     return list(molecule_objects)
 
 
+PEAK_SIGNALS = ('Es', 'Fs', 'Fsmax')
+
+
 def _record(molecule, entry, schedule, sampler_config, settings, engine, index, started, seed, meta_dir):
     atoms = entry['finished_atoms']
     signals = entry['signals'] or {}
     decision = entry['decision'] or {}
     dt, Ncheck = sampler_config['dt'], sampler_config['Ncheck']
     step = engine.steps[index]
-    meta_dict = {"realtime_simulation": time.time() - started,
+    meta_dict = {"realtime_simulation": entry['finished_at'] - started,
                  "Es": signals.get('Es'), "Fs": signals.get('Fs'), "Fsmax": signals.get('Fsmax'),
                  "Fsrms": signals.get('Fsrms'),
+                 **{f"peak_{key}": entry['peaks'].get(key) for key in PEAK_SIGNALS},
                  "distmin": entry['min_distance'],
                  "simulationtime": (entry['check'] * Ncheck * dt) / 1000,
                  "temps": entry['temps'], "denss": entry['denss'],

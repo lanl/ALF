@@ -626,22 +626,8 @@ def train_HIPNN_model(model_dir,
                         
             database.make_random_split("valid",valid_size)
             if not(h5_test_dir == None):
-                database_test = ALFPyAniDirectoryDB(directory=h5_test_dir,allow_unfound=True,quiet=False,seed=np.random.randint(1e9),**db_info,**database_schema)
-                #Ensure that species array is int64 for indexing
-                arrays_test = database.arr_dict
-                arrays_test[species_key] = arrays_test[species_key].astype('int64')
-            
-                #Ensure that float arrays are float32
-                for k, v in arrays_test.items():
-                    if v.dtype == np.dtype('float64'):
-                        arrays[k] = v.astype(np.float32)
-                database_test.split_the_rest("test")
-                database.split_the_rest("train")
-                database.splits['test'] = database_test.splits['test']
-                                
-                # Reshape Quadrupole data. 
-                if not(quadrupole_key == None) and electrostatics_flag:
-                    arrays[quadrupole_key] = arrays[quadrupole_key].reshape(-1,9)
+                use_separate_test_set(database, h5_test_dir, db_info, database_schema, species_key, energy_key,
+                                      quadrupole_key if electrostatics_flag else None)
             else:
                 database.make_random_split("test",test_size)
                 database.split_the_rest("train")
@@ -748,6 +734,36 @@ def _ensemble_member_device(device_string, n_gpus):
         return device_string
     os.environ["CUDA_VISIBLE_DEVICES"] = device_string
     return 'cuda:0'
+
+
+def use_separate_test_set(database, h5_test_dir, db_info, database_schema, species_key, energy_key,
+                          quadrupole_key=None):
+    """Train on all of ``database`` after its validation split, and test on the shards in ``h5_test_dir``.
+
+    The test arrays get the same form as the cleaned training arrays: int64 species, per-atom
+    energy, float32 values, flattened quadrupoles, and only the model's inputs and targets. They
+    aren't filtered, so the test set is measured as it is.
+    """
+    import torch
+    database_test = ALFPyAniDirectoryDB(directory=h5_test_dir, allow_unfound=True, quiet=False,
+                                        seed=np.random.randint(1e9), **db_info, **database_schema)
+    arrays = database_test.arr_dict
+    arrays[species_key] = torch.as_tensor(arrays[species_key]).to(torch.int64)
+    if energy_key + 'peratom' not in arrays:
+        n_atoms = arrays[species_key].to(torch.bool).to(torch.int32).sum(dim=1)
+        arrays[energy_key + 'peratom'] = torch.as_tensor(arrays[energy_key]) / n_atoms
+    for key, value in list(arrays.items()):
+        value = torch.as_tensor(value)
+        arrays[key] = value.to(torch.float32) if value.dtype == torch.float64 else value
+    if quadrupole_key is not None:
+        arrays[quadrupole_key] = arrays[quadrupole_key].reshape(-1, 9)
+    for key in list(arrays):
+        if key not in db_info['inputs'] and key not in db_info['targets'] and key != 'indices':
+            del arrays[key]
+    database_test.split_the_rest("test")
+    database.split_the_rest("train")
+    database.splits['test'] = database_test.splits['test']
+    return database_test
 
 
 def train_HIPNN_model_wrapper(arg_dict):

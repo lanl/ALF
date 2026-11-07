@@ -1403,3 +1403,50 @@ def test_uniform_multistate_data_is_kept():
     for key, value in data.items():
         np.testing.assert_array_equal(filtered[key], value)
     assert summary["final_structures"] == len(data["indices"])
+
+
+def test_separate_test_set_matches_the_training_arrays_and_leaves_them_alone(tmp_path):
+    """``h5_test_dir`` once changed the training arrays and called numpy methods on tensors."""
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("hippynn")
+    from alframework.tools.molecules_class import MoleculesObject
+    from alframework.tools.tools import store_current_data
+
+    properties = {"energy": ["energy", "system", 1.0], "forces": ["forces", "atomic", 1.0]}
+
+    def shard(path, energies):
+        molecules = []
+        for index, energy in enumerate(energies):
+            molecule = MoleculesObject(WATER.copy(), f"{path.parent.name}-{index}")
+            molecule.store_results({"energy": energy, "forces": np.full((3, 3), energy / 10)})
+            molecule.set_converged_flag(True)
+            molecules.append(molecule)
+        path.parent.mkdir()
+        store_current_data(str(path), molecules, properties)
+
+    shard(tmp_path / "train" / "data-0000.h5", [-1.0, -2.0, -3.0, -4.0])
+    shard(tmp_path / "test" / "data-0000.h5", [-30.0, -60.0])
+    schema = dict(species_key="species", coordinates_key="coordinates", atom_keys=("coordinates", "forces", None))
+    db_info = {"inputs": ["species", "coordinates"], "targets": ["energyperatom", "energy", "forces"]}
+    database = ml.ALFPyAniDirectoryDB(directory=str(tmp_path / "train"), allow_unfound=True, quiet=True, seed=0,
+                                      inputs=None, targets=None, **schema)
+    arrays = database.arr_dict
+    arrays["energyperatom"] = arrays["energy"] / 3
+    database.inputs, database.targets = db_info["inputs"], db_info["targets"]
+    for key in [key for key in arrays if key not in db_info["inputs"] + db_info["targets"] + ["indices"]]:
+        del arrays[key]
+    before = {key: value.clone() for key, value in arrays.items()}
+    database.make_random_split("valid", 0.25)
+
+    ml.use_separate_test_set(database, str(tmp_path / "test"), db_info, schema, "species", "energy")
+
+    test, train = database.splits["test"], database.splits["train"]
+    rows = train["indices"]
+    for key, value in before.items():
+        torch.testing.assert_close(train[key], value[rows], msg=f"training {key} changed")
+    used = db_info["inputs"] + db_info["targets"]  # What training reads from each split.
+    assert set(used) <= set(test) and set(used) <= set(train)
+    assert all(test[key].dtype == train[key].dtype for key in used), "test arrays must match training dtypes"
+    assert sorted(test["energy"].tolist()) == [-60.0, -30.0]
+    torch.testing.assert_close(test["energyperatom"], test["energy"] / 3)
+    assert len(train["energy"]) + len(database.splits["valid"]["energy"]) == 4

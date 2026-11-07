@@ -21,7 +21,7 @@ This folder is the shared plan for bringing the fork's intended capabilities int
   propagated, stored samples covering S0–S3 in a promoted four-member ensemble;
   see [Increment 11B](excited_states.md#increment-11b--completed-cpp9-active-learning-qualification-e6).
   Ten-node scaling, predictive accuracy and long-time stability remain unqualified.
-- **Next:** real runs for selected-state UDD, wells, and gap-seeking, then staged campaigns, multi-node training, and teacher labeling. New uncertainty and
+- **Next:** real runs for gap-seeking and sampling windows, then staged campaigns, multi-node training, and teacher labeling. New uncertainty and
   acquisition methods come last; see [Order of work](future.md#order-of-work).
 - **No merge to `main` is planned** (user decision, November 6).
 - **Outside current acceptance:** legacy NeuroChem and MI350.
@@ -285,8 +285,8 @@ no stable test reaches it.
 | `selection.selector`, with `fps` diversity selection | `678cc43` |
 | `maximum_stored_labels` stop rule | `c01076a` |
 
-Local result: 635 passed, 2 skipped (`seqm` not installed). Real GPU runs are still needed
-for three of them; see [Quick wins](future.md#quick-wins). Two behavior changes could affect
+Local result: 635 passed, 2 skipped (`seqm` not installed). The real GPU runs for three of them
+have since passed; see [the hardware record](#quick-win-hardware-qualification--passed-2026-11-06). Two behavior changes could affect
 `alf_validation` on Darwin: editing a fixed setting mid-run now has no effect, and
 `from_multiprocessing` training no longer sets `CUDA_VISIBLE_DEVICES`.
 
@@ -316,6 +316,76 @@ ensemble. That runner stays in [Group E](future.md#group-e-long-runs). Compared 
 windows have no fresh ensembles, exact dataset checkpoints, or task journal, and a window can
 only change `gap_seeking` and `MLMD_calculator_options`. Tested with fakes only, so a real run
 is still needed; see [Quick wins](future.md#quick-wins).
+
+### Quick-win hardware qualification — passed (2026-11-06)
+
+All planned gates passed. Evidence is outside Git under
+`validation/quickwins_20261106/run-006/`: `result.json`, `evidence_summary.json`,
+frozen manifests, worker observations and closed datasets/checkpoints. The final
+snapshot combines ALF `b7f38b5` and external `alf_validation` `e9d88f1` as
+`3653590`. Its library is identical to `81a70cd`; the intervening ALF commits
+only record qualification. Accepted Increment 9 formaldehyde models and 32
+closed bootstrap labels were copied and verified. Accepted E6 inputs, results
+and source boundaries were unchanged; no CPP9 campaign was repeated.
+
+The QM and 24-case sampling passes were fingerprint-verified and reused from
+`run-004/`, frozen at ALF `158bf71` / harness `569ab28` (`d8ee14c`). Ground-state
+and ordinary-loop gates passed in `run-006/`. No library/API change or dependency
+upgrade was needed. User guides were unchanged.
+
+| Gate | Observed result |
+| --- | --- |
+| Selected-state propagation | All **24 cases** passed: ASE, TorchSim CUDA and ALCHEMI; widths one/four; baseline, UDD, well and combined. Each case propagated four molecules, preserved identities and recorded actual task widths. Common-frame physical/bias forces matched legacy formulas, including active 3 Å and 10 Å translated wells; maximum force discrepancy was **4.10e-8 eV/Å**. Physical screening and uncertainty remained unbiased. |
+| Ground-state device selection | Both four-member, five-epoch cases passed: reordered four-GPU UUID visibility, then two visible GPUs with `gpus_per_node=4`. Inherited masks stayed unchanged; actual tensor devices and physical UUIDs covered four/two GPUs respectively. Every member changed parameters and reloaded. |
+| Reactive execution | Real NEB and dimer tasks passed under reordered/restricted visibility, with **24/36 member-calculator evaluations** and correct physical GPU selection. No transition-state accuracy claim is made. |
+| GPU4PySCF | Unbound four-GPU worker rejected before solving. Bound gas/DCM full and energy/force-only evaluations passed native cuTENSOR, convergence, finiteness, requested-response metadata and four production HDF5 stores. Full/reduced energy/force discrepancies were at most **2.73e-12 eV / 2.39e-7 eV/Å**. Formaldehyde uses zero offset. |
+| Ordinary FPS/budget loop | Four actual width-four sampling cohorts supplied **eight new propagated labels**; all eight converged in **two native width-four solves**, were stored alongside the 32 bootstrap frames, and were retained by every promoted member. All eight occurred across actual training splits. Every member trained five epochs, changed parameters and reloaded with finite predictions and consistent gap diagnostics. Representative force finite-difference error: **2.79e-7 eV/Å**. |
+
+All four FPS selections were independently reproduced from their recorded
+16-frame candidate pools. The selected frames had propagated **5–16.25 fs**.
+All 16 trajectories later reached a topology bond-window rejection; earlier
+valid candidates survived under the configured continue policy. This validates
+screening and workflow execution, not potential accuracy or long-time stability.
+
+The production `maximum_stored_labels=40` rule stopped new admissions, allowed
+training to finish and promote model 1, and exited normally without the old
+harness admission-stop override. Counts: **8 attempts, 8 completed/converged,
+40 total stored, zero overshoot, zero converged unstored labels, zero cancelled
+QM calculations**. Four already-built geometries remained unused (one builder
+result in the coordinator queue). Stored IDs, retention and split evidence are
+in the final result and training-input manifests.
+
+The available full CPU suite passed **591 tests, 46 skipped**: 22 TorchSim and
+24 ALCHEMI cases unavailable in that CPU environment. The affected external
+suite passed **88 tests** (delivery tests at harness `ad5addd`). Existing pruning/history/failure/exhaustion/reload/FPS
+and shutdown checks passed; stale renamed test selectors were not found.
+An additional event-controlled coordinator regression holds active training at
+the budget for two polls, verifies that no apps are admitted, then releases the
+result and requires promotion and normal cleanup. Task sleeps do not determine
+completion order. Existing fast/slow and bootstrap-stop tests also passed, and
+both real loops demonstrated normal budget shutdown. The controlled test covers
+observable admission/exit behavior; no independent mutation-sensitive coverage
+of the training-admission guard is claimed, because immediate exit after the
+last promotion makes that branch redundant in this scenario.
+
+Earlier attempts remain explicitly incomplete in their own snapshots. Harness
+corrections addressed strict login-shell startup, single-driver batching blocks,
+CuPy-free Torch UUID enumeration/normalization, observation imports before a
+fork, and a builder signature incompatible with argument resolution. The first
+ordinary loop trained/promoted successfully but executed only width-two QM
+calls. Before the final loop, its partial-batch wait was frozen at **60 seconds**
+instead of the inherited one second so two FPS cohorts fill width four; no
+scientific setting or acquisition cutoff changed. Reusable PCM/calibration
+launchers also bind one scheduler-visible UUID before CUDA imports.
+
+Persistent frontend tmux supervision preserved the original queue-inclusive
+window **18:12:19–22:12:19 Mountain on November 6**, including retries. The round
+finished after **47.2 minutes**, with 30-minute allocation caps and one allocation
+per ordinary-loop executor. All **nine jobs** referenced by accepted evidence
+terminated; termination of **all 25 unique owned jobs** across attempts was also
+verified. The final independent queue check was empty. LCM, large campaigns,
+long-time stability, multi-node training, teacher labeling, NeuroChem and MI350
+remain outside this round.
 
 ## Development and test environments
 

@@ -256,7 +256,8 @@ All stage-test commands create or update ``status.txt`` because they enter
 through the main ALF process. ``--test_ml`` can also create a real model
 directory and advance the current training/model ids when training succeeds.
 When ``parsl_debug_configuration`` is present in ``master_config.json``, these
-commands use it instead of the normal ``parsl_configuration``.
+commands use it instead of the normal ``parsl_configuration``. ALF releases its
+allocations when these commands finish; see :ref:`parsl-releasing-allocations`.
 
 Practical Tips
 --------------

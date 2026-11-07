@@ -247,10 +247,20 @@ all train, but take longer. One-node blocks have these benefits:
   member in it.
 - Members start on whichever nodes are ready, and the rest take free slots as they open. Training
   finishes even if some blocks never start, but more slowly.
-- Parsl can release idle blocks as members finish.
+
+All blocks stay allocated until the slowest member finishes, and then for ``max_idletime``, because
+Parsl's default ``simple`` strategy only scales in when no tasks remain. ``strategy="htex_auto_scale"``
+in the Parsl ``Config`` can release idle blocks sooner, but it applies to every executor, and it hasn't
+been qualified with ALF.
 
 Each block's walltime must cover a member's training, including any retry, and blocks may start at
-different times.
+different times. A member that takes longer than the walltime fails on every attempt.
+
+By default, Parsl permanently stops an executor once every block it has started so far has failed, for
+example when the only block hits a node failure. Tasks on that executor then fail immediately, retries
+can't help, and ALF keeps sampling without training. Cancelled and timed-out blocks don't count. Using
+several one-node blocks makes this less likely. ``block_error_handler=False`` on the executor turns it
+off, but then a bad ``worker_init`` keeps requesting new blocks instead of failing.
 
 A single multi-node block (``nodes_per_block=10``, ``max_blocks=1``) starts every node together, but
 may queue for longer. It needs ``SrunLauncher``, because ``SingleNodeLauncher`` starts workers on only
@@ -562,6 +572,17 @@ can run on each allocated node. ALF settings such as ``parallel_samplers`` and
 nodes. For unmasked sampler workers, ``gpus_per_node`` specifies the number of
 GPUs to distribute over, not the worker count. More workers than visible GPUs
 share devices by rank; scheduler/Parsl visibility takes precedence.
+
+.. _parsl-releasing-allocations:
+
+Releasing Allocations
+---------------------
+
+When ALF exits, it stops Parsl's interchange and cancels its blocks. This includes the end of a
+stage-test command such as ``--test_ml``, an error, Ctrl-C, and ``SIGTERM`` from ``scancel`` or a job's
+time limit. ``SIGKILL`` can't be handled, and neither can a kill that arrives before cleanup finishes.
+After either one, the interchange can keep running and keep nodes allocated until walltime, so check
+``squeue`` and cancel any leftover blocks yourself.
 
 Sizing Executors For Batching
 -----------------------------

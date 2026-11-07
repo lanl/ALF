@@ -224,12 +224,14 @@ Failed members are retried
    ``failed-model-03-attempt-1``, which ensemble loaders ignore. Nothing is deleted. If a member
    runs out of retries, the others still finish, but ALF doesn't promote that ensemble, and the
    next training starts from a new training ID. There's no time limit, so training waits for as
-   long as Slurm keeps a block queued.
+   long as Slurm keeps a block queued. Retries mainly help with lost nodes: a retried member keeps
+   its seed, so a numerical failure is likely to repeat.
 
 Each member uses one GPU
    Each member's GPU comes from its Parsl worker, within any mask set by the scheduler or
    ``available_accelerators``. So ``device_string`` must be ``from_multiprocessing``, ``cuda``, or
-   ``cpu``, and ALF stops with an error if a node has more workers than ``gpus_per_node``.
+   ``cpu``. Without ``available_accelerators``, ALF stops with an error if a node has more workers than
+   ``gpus_per_node``, since members would share a GPU.
 
 Each attempt writes ``placement-model-03-attempt-1.json`` in the ensemble directory, with its
 host, worker, device, and start and end times. The record stays even if the node is lost.
@@ -240,6 +242,10 @@ More members cost more than training time:
   member, so MLMD with 40 members takes about 5 times as long per step as with 8.
 - Every member reads all of the training data, so the load on shared storage grows with both the
   ensemble and the dataset.
+- All members stay on the GPU during sampling, so check GPU memory before using a large ensemble.
+- Uncertainty cutoffs may need adjusting. ALF uses the population standard deviation, so the same
+  underlying spread reads about 14% higher with 40 members than with 4, and about 6% higher than with
+  8. Cutoffs chosen for a smaller ensemble trigger earlier with a larger one.
 
 .. _ml-interface-new-architecture-template:
 

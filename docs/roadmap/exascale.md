@@ -78,9 +78,9 @@ The last column gives the priority item. "Profile" means only if a profile shows
 | Operation | Where | Scales with | Why it matters | Item |
 | --- | --- | --- | --- | --- |
 | Replay builder reads and hashes every shard, then scans its groups | `geometry_manifest` in `external_geometry.py:32`; RDKit and CPP ring builders | Builder tasks × total HDF5 bytes | Each task holds each whole shard in memory while hashing it, builds one tuple per frame, and reopens the shard per molecule (`:117`). SHA-256 ran at about 3 GB/s, so the read probably dominates. | 3 |
-| Finished labels stay in memory while training runs | `__main__.py:432` | Labels finished during training | A crash loses every label since the last store, on every cycle. | 5 |
-| Bootstrap holds all labels until it finishes | `__main__.py:272-326` | `bootstrap_set` | A crash loses the whole bootstrap, which may be the most expensive single loss for large CPP runs. | 5 |
-| Trainer lists `h5_dir` right after a store | `hippynn_interface.py:574` (`os.listdir`, `allow_unfound=True`) and `:1224` (`glob`) | Each store | A stale view silently trains without the new shard. Replay is safer, because it looks up shards by name and raises (`rdkit_molecule.py:425`). | 2 |
+| Finished labels stay in memory while training runs | `__main__.py:433` | Labels finished during training | A crash loses every label since the last store, on every cycle. | 5 |
+| Bootstrap holds all labels until it finishes | `__main__.py:273-327` | `bootstrap_set` | A crash loses the whole bootstrap, which may be the most expensive single loss for large CPP runs. | 5 |
+| Trainer lists `h5_dir` right after a store | `hippynn_interface.py:574` (`os.listdir`, `allow_unfound=True`) and `:1234` (`glob`) | Each store | A stale view silently trains without the new shard. Replay is safer, because it looks up shards by name and raises (`rdkit_molecule.py:425`). | 2 |
 | One directory per label, under one parent | `QM_scratch_dir/<id>/`; ASE, ORCA, Q-Chem, and VASP only | Labels | Heavy metadata load, and ASE and ORCA never remove them by default. GPU4PySCF and PySeQM create none, so CPP and AcAc are unaffected. | 8 |
 | One metadata pickle per trajectory, in one flat directory | `batched_mlmd.py:437`, `mlmd_sampling.py:165` | Trajectories | Only when `meta_dir` is set. CPP and AcAc don't set it, but the ground-state examples checked do. | 10 |
 
@@ -98,17 +98,18 @@ The last column gives the priority item. "Profile" means only if a profile shows
 | One screen-audit JSON per sampler task, in one flat directory | `force_screen.py:69`; enabled in CPP | Sampler tasks | Its writes are already atomic. | 10 |
 | Builder lists and reads its library per task | `builders.py:42`, `:63-70`, `:238` | Builder tasks × library files | `readMolFiles` reads every file twice. | 11 |
 | Python imports when workers start | All workers, and the `spawn` pool in the excited-state trainer | Workers | Unmeasured, and based on general HPC experience rather than ALF's code. It matters when the environment is on shared storage. | 12 |
-| Trainer reads every shard, and excited-state training also hashes them | `hippynn_interface.py:574`, `:1273` | Members × total HDF5 bytes | Only one training task runs at a time, so this is usually small next to hours of training. Multi-node ensembles raise it: 40 members would read about 320 GB per retrain at 1M CPP9 labels. | Profile |
+| Trainer reads every shard, and excited-state training also hashes them | `hippynn_interface.py:574`, `:1283` | Members × total HDF5 bytes | Only one training task runs at a time, so this is usually small next to hours of training. Multi-node ensembles raise it: 40 members would read about 320 GB per retrain at 1M CPP9 labels. | Profile |
 
 ### Low
 
 | Operation | Where | Scales with | Why it matters | Item |
 | --- | --- | --- | --- | --- |
+| Writes every training frame into each member's summary | `training_summary.json` and `training_input_manifest.json` in `hippynn_interface.py`; excited-state training only | Members × labels | About 200 MB per file at 1M labels, for every retrain. The loader no longer reads this file on each sampler task; it reads `member_composition.json` instead. The summary is kept whole because it's an important record, so the write remains. | None |
 | Reads and hashes the topology reference | `molecular_topology.py:340` | Sampler tasks | A small file, read before the cache lookup. | 9 |
 | Library temp files and config | `~/.matplotlib`, `$TMPDIR/torchinductor_*`, PySCF's per-SCF checkpoint (`pyscf/scf/hf.py:1814`) | Workers or SCF runs | Only an issue if those paths are shared. | 7 |
 | HDF5 store blocks the main loop | `store_current_data` | Labels per store | About 17 s per 100,000 CPP9 labels at the measured rate, before any network cost. | Profile |
 | Plot process scans all pickles | `plotting.py` | Total pickles | Off unless `plotting_utility` is set, and every 1000 loops by default. Partial pickles are caught and only lose a plot point. | Profile |
-| Reads five config files per loop | `__main__.py:356-370` | Loops | One process. Pending batch timeouts can shorten the 60 s sleep (`batching.py:318`). | None |
+| Reads five config files per loop | `__main__.py:357-371` | Loops | One process. Pending batch timeouts can shorten the 60 s sleep (`batching.py:318`). | None |
 | Best-model and checkpoint writes, plus plots every 50 epochs | HIPPYNN `routines.py:548-555` | Members × improved epochs | Not atomic, but a failed member isn't promoted. | None |
 
 ## Crash and race notes
@@ -119,6 +120,7 @@ The last column gives the priority item. "Profile" means only if a profile shows
 - **Training ID reuse:** the excited-state trainer refuses a nonempty directory.
 - **Restart during a `finite_bootstrap`:** it fails with "Finite bootstrap exhausted", because `current_molecule_id` has advanced with nothing stored.
 - **`maximum_stored_labels` stop:** it drops labels that are finished but not yet stored.
+- **Leaked allocations: fixed for most exits (November 6).** ALF used to call Parsl's `cleanup` only at a `maximum_stored_labels` stop. On any other exit, the interchange outlived the coordinator and kept answering worker heartbeats, so nodes stayed held until walltime. This was seen locally after `--test_ml`, and interchanges from one crash test were still running 21 minutes later. `SIGKILL` can still leak them.
 
 ## Node-local storage
 
@@ -133,7 +135,7 @@ The last column gives the priority item. "Profile" means only if a profile shows
 | Promoted models | As a read-only copy | Try the per-worker cache first. Workers sharing a node would need an atomic copy. |
 | Replay shards | Probably not | Copying the dataset to every node is the same volume problem. The manifest cache removes the full reads, leaving small frame reads. |
 | Training | Only if profiled | One node reads the shards per member, so a local copy helps, but the model must be back on shared storage before promotion. |
-| Metadata and trajectories | Needs code | Tasks don't create `meta_dir`; the coordinator creates it on its own node only (`__main__.py:91-95`), so a local path would raise `FileNotFoundError`. The plot process also couldn't see local files. |
+| Metadata and trajectories | Needs code | Tasks don't create `meta_dir`; the coordinator creates it on its own node only (`__main__.py:92-96`), so a local path would raise `FileNotFoundError`. The plot process also couldn't see local files. |
 
 **Limits to design around:**
 

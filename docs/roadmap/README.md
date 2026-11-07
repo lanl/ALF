@@ -340,7 +340,7 @@ on one GPU. Each trains in a fresh `spawn` child, using `ProcessPoolExecutor`, b
 pattern rather than deleted, and each attempt leaves a placement record beside them, since trainers
 refuse a nonempty member directory.
 
-**Local results.** 797 passed, 2 skipped (`seqm` not installed), and the new tests also pass without Torch.
+**Local results.** 821 passed, 2 skipped (`seqm` not installed), including the exit fixes below, and the new tests also pass without Torch.
 Each new branch was shown to fail its tests when broken.
 
 Real Parsl workers on one machine (`HighThroughputExecutor`, two local blocks with two workers each,
@@ -351,6 +351,25 @@ retried, a replacement block started, the failed directories stayed, and all fou
 **Not shown yet.** Real nodes, real GPUs, the ground-state trainer through this path (it has no CPU
 mode, so local tests fake it), and any scale. See the
 [Darwin gate](future.md#group-c-placement-and-memory).
+
+**Exit fixes found in review.** An older bug: when `--test_ml` finished, the node stayed held (user
+report, also on `main`, which is unchanged). ALF called Parsl's `cleanup` only at a
+`maximum_stored_labels` stop, and Parsl's own exit hook only logs a warning, so the interchange outlived
+ALF and kept answering worker heartbeats. Locally, the interchange and worker pool were still alive 46 s
+after `--test_ml`, past the 10 s heartbeat limit. `release_allocations_at_exit` now cleans up on
+`exit()`, errors, Ctrl-C, and `SIGTERM`, but not `SIGKILL`. This changes `__main__.py`, because it owns
+the Parsl lifetime. Nothing is left alive locally one second after `--test_ml`.
+
+The review also fixed three problems in the first version of this work and one older bug:
+
+- A crash during training kept the coordinator alive until training ended, because Python waits for
+  Parsl's internal threads before exit hooks. The control loop now runs on a daemon thread. A crash test
+  went from 123 s to 10 s.
+- The excited-state loader read every member's whole `training_summary.json` on each sampler task,
+  about 200 MB per file at 1M labels (older bug). It now reads a small `member_composition.json`, and
+  falls back to the summary for existing models. The summary itself is unchanged (user decision).
+- The guide wrongly said that Parsl releases idle blocks as members finish.
+- The capacity check wrongly refused extra workers when `available_accelerators` gave each its own GPU.
 
 ### Gap-seeking and sampling-window hardware qualification — passed (2026-11-06)
 

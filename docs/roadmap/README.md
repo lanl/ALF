@@ -19,8 +19,8 @@ This folder is the shared plan for bringing the fork's intended capabilities int
 - **Increment 11B is in progress.** CPP9 calibration and DCM C-PCM labeling are
   qualified. The CPP9 E6 pilot's ordinary active-learning loop hasn't passed yet; see
   [Increment 11B](excited_states.md#increment-11b--calibration-and-dcm-labeling-qualified-cpp-ring-alf-e6-planned).
-- **Next after E6:** selected-state UDD and wells, then LCM gap seeking, then staged
-  campaigns. Selectors, multi-node training, and teacher labeling are independent
+- **Next after E6:** real runs for selected-state UDD and wells, then LCM gap seeking,
+  then staged campaigns. Selectors, multi-node training, and teacher labeling are independent
   tracks; see [Order of work](future.md#order-of-work).
 - **No merge to `main` is planned** (user decision, November 6).
 - **Outside current acceptance:** legacy NeuroChem and MI350.
@@ -262,6 +262,32 @@ Actions results at `5449542`: `engines` 582 passed; `hippynn` 517 passed, 65 ski
 
 The review also led to two GPU4PySCF library fixes; see
 [Increment 11B](excited_states.md#increment-11b--calibration-and-dcm-labeling-qualified-cpp-ring-alf-e6-planned).
+
+### Quick wins (2026-11-06)
+
+Eleven small items from [`future.md`](future.md), each with its own commit and tests.
+Each new test was shown to fail when its branch is broken, except one: the guard against
+starting more training after the label budget only matters in a narrow timing window, and
+no stable test reaches it.
+
+| Item | Commit |
+| --- | --- |
+| ORCA regexes as raw strings | `98e5c7f` |
+| Prune cohort candidates as frames arrive | `33f50d8` |
+| `lifetime_failed_QM_structures` and `lifetime_failed_sampler_structures` in status | `964d0f5` |
+| Bounded cohort history | `08131b4` |
+| Reject sampler `full_only` batches that can never fill | `dfa6bb5` |
+| Keep settings fixed at startup on reload | `2010875` |
+| UDD and wells on the selected excited state | `d37e2dd` |
+| Ground-state training keeps the scheduler's GPU mask | `1530fc5` |
+| Reactive sampler device selection | `e02ac9d` |
+| `selection.selector`, with `fps` diversity selection | `678cc43` |
+| `maximum_stored_labels` stop rule | `c01076a` |
+
+Local result: 635 passed, 2 skipped (`seqm` not installed). Real GPU runs are still needed
+for three of them; see [Quick wins](future.md#quick-wins). Two behavior changes could affect
+`alf_validation` on Darwin: editing a fixed setting mid-run now has no effect, and
+`from_multiprocessing` training no longer sets `CUDA_VISIBLE_DEVICES`.
 
 ## Development and test environments
 

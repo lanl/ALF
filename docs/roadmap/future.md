@@ -9,7 +9,7 @@ Everything here is unfinished. Delivered work is recorded in [`batching.md`](bat
 Updated November 6, 2026. The user set the sequence on November 3, and revised the bias work on November 6.
 
 1. **Finish E6.** The CPP9 pilot is running on Darwin; see [`excited_states.md`](excited_states.md).
-2. **Biased dynamics on excited states** ([Group B](#group-b-biased-dynamics-on-excited-states)): selected-state UDD and wells, then LCM gap seeking.
+2. **Biased dynamics on excited states** ([Group B](#group-b-biased-dynamics-on-excited-states)): real runs for selected-state UDD and wells, then LCM gap seeking.
 3. **Long runs and staged campaigns** ([Group E](#group-e-long-runs)). This is the largest item.
 
 Available whenever there is capacity, independent of that sequence:
@@ -17,7 +17,8 @@ Available whenever there is capacity, independent of that sequence:
 - **Selection and retention** ([Group A](#group-a-selection-and-retention)).
 - **Multi-node training** ([Group C](#group-c-placement-and-memory)). It buys throughput for larger ensembles, not new methods.
 - **Teacher labeling and fine-tuning** ([Group D](#group-d-model-families-and-labels)).
-- **[Quick wins](#quick-wins)**, at any time.
+
+The real runs listed under [Quick wins](#quick-wins) still need doing on Darwin.
 
 CPP scale-up ([Group F](#group-f-cpp-scale-up)) depends on the E6 result and the science goals.
 
@@ -37,29 +38,13 @@ The fork remains source material; `production_excited_states` (`c364fa8`) holds 
 
 ## Quick wins
 
-Listed for picking. None has been started. Sizes come from reading the code on November 6, at `bd8aca0`.
+All landed on November 6; see the [record](README.md#quick-wins-2026-11-06). The guide publishes only from `main` for now (user decision), so publishing it from `development` was dropped.
 
-**Small fixes, where CPU tests are enough:**
+**Real runs still needed.** These were only tested with fake GPU libraries:
 
-| Item | Where | Size |
-| --- | --- | --- |
-| Make the ORCA regexes raw strings. They raise `SyntaxWarning` now and will become errors in a future Python. | `qm_interfaces/orca5_interface.py` | 8 lines |
-| Online top-K retention: prune a trajectory's candidates as they arrive, rather than only at the end. `ranking_key` is a total order, so the result can't change. Add a replay test. Closes the candidate-memory follow-up in Group A. | `samplers/batched_mlmd.py`, `run_mlmd_trajectories` | About 1 line plus a test |
-| Write `failed_structures` to status. The count already exists on the queue. Use `setdefault` so that restarted runs work. | `__main__.py`, `tools/batching.py` | A few lines |
-| Bound the cohort history, keeping running totals for `status()`. | `tools/cohorts.py`, `CohortPool.finished` | Small |
-| Check at startup that a sampler `full_only` batch can fill, like the existing QM check in `LabelingCoordinator`. | `tools/sampler_coordinator.py`, plus one line in `__main__.py` | Small |
-| On reload, warn and keep the startup `driver`, `batching`, and `acquisition` settings, so that a run can't mix meanings. Closes the reload follow-up in Group E. | Helper in `tools/`, called from the `__main__.py` reload block | About 20 lines |
-| Publish the guide from `development`. The site deploys only from `main`, so the current guide never appears otherwise. This one needs a user decision. | `.github/workflows/sphinx-docs.yml` | 1 line |
-
-**Small features, which still need a real GPU run:**
-
-| Item | Where | Note |
-| --- | --- | --- |
-| Selected-state UDD and wells | `state_settings` in `tools/sampler_coordinator.py`, and an ASE path | First step of Group B. |
-| Ground-state training uses local GPU numbering | Reuse `excited_training_device` in `train_HIPNN_model` | `train_HIPNN_model` overwrites `CUDA_VISIBLE_DEVICES` today, which ignores the scheduler's mask. Needed before multi-node training. |
-| Reactive sampler device selection | `samplers/reactive_sampler.py`, `sampling_device` in `tools/gpu.py` | It hard-codes `cuda:0` in two places. |
-| FPS diversity selection in cohorts | Reuse `pair_descriptor` and `farthest_point_order` from `builders/rdkit_molecule.py`, which need only NumPy | Needs the selector seam in Group A. Fixed composition only. |
-| Stop after N stored labels | The main loop in `__main__.py` | First slice of Group E. The loop has no exit today, and pilots stop admissions with an external supervisor. Decide which count applies; see the budget note in Group E. |
+- Selected-state UDD and wells: real width-one and width-four runs on ASE, TorchSim CUDA, and ALCHEMI.
+- Ground-state training device selection: a real training run, ideally on an allocation with a mask.
+- Reactive sampler device selection: a real reactive task.
 
 **Look easy, but aren't:**
 
@@ -73,44 +58,15 @@ Listed for picking. None has been started. Sizes come from reading the code on N
 | --- | --- | --- |
 | Additional acquisition strategies | Custom import-string strategies and geometry-based demonstrations, followed by production distance-based acquisition and diversity-aware batch selection within cohorts (and later against the existing training set). | Eligibility, ranking, trajectory policy, and selection remain separate; future selectors declare their retention needs. |
 
-| Area | Current behavior or gap | Follow-up and boundary |
-| --- | --- | --- |
-| Candidate memory and caps | `continue` appends candidate geometries throughout the trajectory; `_prune()` runs only at the end. `max_candidates_per_trajectory` bounds the returned payload, not peak worker memory. A cap below K can change the unrestricted global top-K. | Add online scalar top-K retention with a proof/test that selection is unchanged when no smaller explicit cap is requested. Future diversity/distance selectors must declare different retention needs. Bound completed-cohort summary history for long runs separately. |
+`selection.selector` now chooses between `top_k` and `fps`, and `worker_retention_limit` says what workers keep for each. What's left:
 
-- **Acquisition selector/retention interface.**
-  - The selector receives canonicalized candidates and declares what workers
-    must retain.
-  - Top-K is the default.
-  - Gate: identical selections in the existing `tests/test_cohorts.py`
-    width/completion-order replay; online scalar top-K retention closes the
-    candidate-memory follow-up.
-  - It replaces the hard-wired `top_k` in `CohortPool.ready()` and the score-only
-    `_prune` in `batched_mlmd.py`.
-- **FPS diversity selection.** A first selector can reuse the seed-preparation FPS code; see [Quick wins](#quick-wins).
+- Custom selectors and strategies through import strings. The `acquisition.selection` keys are validated against a fixed set, so these need an extension.
+- Selectors that use scores as well as geometry, such as score-weighted farthest-point or k-center. `fps` ignores scores among eligible frames, apart from which frames a worker keeps.
+- Keeping frames for `fps` by something other than score. A worker's cap still drops candidates by score before the pool sees them.
+- Diversity against the existing training set. It needs read access to the HDF5 store, and is a separate step from within-cohort diversity.
+- Model-latent descriptors, which would require evaluators to return features and candidates to carry them, which costs memory.
 
-Readiness notes from a review of development at `24028da`:
-
-- **Diversity-aware acquisition.** The cohort pool is the natural place
-  for it.
-  - Ready: `CohortPool.ready()` selects with `top_k(cohort.candidates, k)`, and
-    candidates already carry numbers, positions, cell, PBC, and signals. A
-    selector interface, such as score-weighted farthest-point or k-center
-    selection on geometric descriptors, can replace that call.
-  - Constraints:
-    - `_prune` and `max_candidates_per_trajectory` drop candidates by score
-      inside the worker before the pool sees them, so a diversity selector must
-      declare its own retention (as noted under Known implementation
-      follow-ups).
-    - First-trigger mode has no pool.
-    - Selection must stay invariant to grouping and completion order:
-      canonicalize candidates by `(trajectory_id, step)` first and break ties
-      deterministically.
-    - Model-latent descriptors would require evaluators to return features
-      and candidates to carry them, which costs memory.
-    - Diversity against the existing training set needs read access to the
-      HDF5 store; it is a separate step from within-cohort diversity.
-  - The `acquisition.selection` keys are validated against a fixed set, so new
-    selectors need a `mode` or import-string extension.
+Any new selector must stay invariant to grouping and completion order: canonicalize candidates by `(trajectory_id, step)` first and break ties deterministically. First-trigger mode has no pool. A `max_candidates_per_trajectory` below `k` can still change the unrestricted global top-K.
 
 ## Group B: Biased dynamics on excited states
 
@@ -118,11 +74,8 @@ Readiness notes from a review of development at `24028da`:
 | --- | --- | --- |
 | Composable sampling | Separate propagation from UDD, confinement, and other bias/force controls; support callable extensions and grouped non-MD evaluations. | Preserve physical predictions, formulas, switching order, and replica-local state. |
 
-1. **Selected-state UDD and wells.**
-   - `PackedMLMDEngine._evaluate` applies wells and UDD to the member arrays it receives, and `SelectedStateEvaluator.evaluate` supplies the selected state's arrays. `state_settings` is what rejects them today, and `tests/test_batched_mlmd.py` expects that rejection.
-   - ASE needs a path of its own, because `_StateMeanCalculator` has no bias. Leave `MLMD_calculator` and `mlmd_sampling` unchanged.
-   - Remove the matching limit from `docs/source/user_guide/excited_states.rst`.
-   - Gate: forces match the `MLMD_calculator` formulas on the selected state across ASE, TorchSim, and ALCHEMI, and screening still reads unbiased predictions, followed by real width-one and width-four runs.
+1. **Selected-state UDD and wells.** Landed November 6, and tested with fakes only: forces match the `MLMD_calculator` formulas on the selected state across ASE, TorchSim, and ALCHEMI, and screening still reads unbiased predictions.
+   - Gate still open: real width-one and width-four runs.
 2. **LCM gap seeking.** A per-replica permanent mode switch. Source material: the fork's `samplers/alchemi_sampling.py`.
    - `max_force_cutoff` must keep excluding bias and LCM forces.
    - Gate: parity with the fork's ALCHEMI LCM behavior, across ASE, TorchSim, and ALCHEMI.
@@ -143,9 +96,6 @@ Readiness notes from a review of development at `24028da`:
 | --- | --- | --- |
 | Packed inference memory | HIPPYNN pads to the largest system in a task. Capacity is specified in systems, without an atom/pair-memory budget or automatic OOM splitting. A failed batched evaluator call can fail the whole active group. | Profile heterogeneous sizes before increasing widths. Consider adapter-declared memory limits and explicit retry/splitting later, preserving atom order, model pinning, identities, and per-trajectory random streams. This is not a requirement to add every OOM recovery path now. |
 
-- **Ground-state training GPU handling.** `train_HIPNN_model` overwrites `CUDA_VISIBLE_DEVICES`, while the excited-state trainer uses local numbering through `excited_training_device`. Do this before multi-node training.
-- **Reactive sampler GPU handling.** It hard-codes `cuda:0`, and relies on the site to provide worker visibility.
-
 - **Multi-node training (parallel track).**
   - Today `train_HIPPYNN_ensemble_task` runs `multiprocessing.Pool` on one
     node. Fan members out across `alf_ML_executor` blocks that span nodes,
@@ -162,8 +112,7 @@ Readiness notes from a review of development at `24028da`:
 
 - **Multi-node training.** `train_HIPPYNN_ensemble_task` is one Parsl
   app on `alf_ML_executor` that runs `multiprocessing.Pool(gpus_per_node)` on
-  one node, one member per GPU. Each member sets `CUDA_VISIBLE_DEVICES` itself,
-  which is the "training pools" GPU-visibility follow-up in [`batching.md`](batching.md#known-implementation-follow-ups). The tracked
+  one node, one member per GPU, using local device numbers. The tracked
   Darwin/Chicoma configs give the ML executor one node per block. `__main__.py`
   waits for a single ML task (`ML_task_queue.get_number() < 1`) and promotes the
   model after it returns.
@@ -387,16 +336,15 @@ Readiness notes from a review of development at `24028da`, with the finished eli
 
 | Area | Current behavior or gap | Follow-up and boundary |
 | --- | --- | --- |
-| Configuration reload and pinning | The main loop reloads task configurations, but driver/buffer settings and cohort selection are constructed at startup. Cohorts pin a model generation, not an immutable sampling/acquisition configuration. | Add explicit reload safeguards or configuration snapshots at admission/submission. Changing engine, size/K, thresholds, weights, or stopping policy mid-cohort must not mix meanings between startup coordination and later task configs. Until then, keep these settings fixed for a run. |
 | Cohort admission | A cohort requires full membership and all terminal reports, with no admission timeout or partial selection. A permanently undersupplied builder leaves it unfinished. | Keep incremental admission for cohorts larger than worker capacity; do not introduce an automatic partial-cohort policy without a separate decision. |
-| Queue thresholds and strict batches | `full_only` can leave a PBC/model group waiting indefinitely when it cannot fill within available capacity. The inherited `minimum_QM` harvest gate can also hold a small number of finished sampler results. | Exercise small capacities and fragmented groups with the existing timeout policy. Check that configured completion thresholds are reachable. Add focused diagnostics/validation or drain behavior only as a separate compatibility change. The labeler already checks `target_queued_QM >= batch_size` for strict batches. |
+| Queue thresholds and strict batches | `full_only` can leave a PBC/model group waiting indefinitely when it cannot fill within available capacity. The inherited `minimum_QM` harvest gate can also hold a small number of finished sampler results. | Exercise small capacities and fragmented groups with the existing timeout policy. Check that configured completion thresholds are reachable. Add focused diagnostics/validation or drain behavior only as a separate compatibility change. Strict QM and sampler batches are already checked at startup against `target_queued_QM` and `parallel_samplers`. |
 | Restart and failed work | Buffers, cohorts, model admission sequence, and handoffs are in memory. No new retry journal or exactly-once QM handoff exists. Candidates survive a later isolated failure only if the task returns them; crashed-worker-only frames are lost. | Keep this limitation visible for ordinary screen/tmux runs as well as staged workflows. Add durable snapshots, logical IDs, replay, and handoff recovery in the later recovery increment, without requiring new pause controls now. |
-| Status and CI | Task-failure counters and failed-structure counts are different; `failed_structures` is not yet part of persisted status. | Improve count/latency reporting without changing existing budget units. Unit tests and the docs build run on `development`; real backend acceptance still relies on explicitly recorded runs outside CI. |
 
 - **Staged campaigns across engines:** durable cohort/handoff
   persistence, a run-control equivalent, staged configurations, and
   retained-label budgets. The fork's `run_control`, `workflow_io`,
   `staged_workflow`, and `dataset_screening` are source material.
+- **Budgets beyond a stop rule.** `maximum_stored_labels` ends a run after enough converged labels are stored. Retained-label budgets, draining running work, and the other counts below are still open.
 - **Filtering converged labels after QM.** Runtime force and topology screens run on sampled frames, and don't filter stored QM labels. Reuse `tools/molecular_topology.py` where possible, and keep it opt-in, because it changes which data is stored.
 
 Budgeted workflows must distinguish selected candidates, labeling attempts,

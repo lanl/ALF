@@ -19,7 +19,7 @@ stages fit together like this:
      - Any builder. ``alframework.builders.external_geometry.external_geometry_builder_task``
        imports existing geometries without their old labels; see :doc:`builders`.
    * - QM labels
-     - ``alframework.qm_interfaces.gpu4pyscf_interface.gpu4pyscf_excited_state_task``,
+     - ``alframework.qm_interfaces.pyscf.gpu4pyscf.gpu4pyscf_excited_state_task``,
        ``alframework.qm_interfaces.pyseqm_interface.pyseqm_excited_state_task``, or
        ``alframework.qm_interfaces.pyseqm_interface.pyseqm_excited_state_batch_task``
    * - Training
@@ -95,6 +95,10 @@ usually the same, but needn't be; see :ref:`configuration-property-names`.
 
 Labeling With GPU4PySCF
 -----------------------
+
+``pyscf_task`` also labels singlet excited states with TDA, on the CPU with PySCF or on a GPU, for
+molecules; see :ref:`qm-interfaces-pyscf`. It gives state energies, forces, and gaps. The task below adds
+nonadiabatic couplings, optical properties, and implicit solvent, on the GPU.
 
 ``gpu4pyscf_excited_state_task`` runs singlet TDDFT within the Tamm-Dancoff
 approximation (TDA) for one molecule per task, on a GPU. It needs a CuPy build
@@ -507,6 +511,6 @@ Excited-State API Links
 -----------------------
 
 * :doc:`Excited-state tools module <../api_documentation/alframework.tools.excited_state_tools>`
-* :doc:`GPU4PySCF interface module <../api_documentation/alframework.qm_interfaces.gpu4pyscf_interface>`
+* :doc:`GPU4PySCF interface module <../api_documentation/alframework.qm_interfaces.pyscf.gpu4pyscf>`
 * :doc:`PySEQM interface module <../api_documentation/alframework.qm_interfaces.pyseqm_interface>`
 * :doc:`HIPPYNN interface module <../api_documentation/alframework.ml_interfaces.hippynn_interface>`

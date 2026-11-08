@@ -1,0 +1,12 @@
+{
+  "backend": "cpu",
+  "xc": "wb97x",
+  "basis": "def2-tzvp",
+  "density_fit": true,
+  "num_threads": 8,
+  "batching": {
+    "mode": "sequential",
+    "batch_size": 4,
+    "max_wait_seconds": 30.0
+  }
+}

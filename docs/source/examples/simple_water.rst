@@ -99,6 +99,29 @@ After the individual stages work, start the active-learning loop:
 ALF writes ``status.txt`` and then continues running the active-learning loop,
 periodically printing queue status for builder, sampler, QM, and ML tasks.
 
+Labeling With PySCF Instead Of ORCA
+-----------------------------------
+
+``master_config_pyscf.json`` runs the same workflow with ``pyscf_task``, which needs no separate QM
+program: PySCF comes with ALF. ``qm_config_pyscf.json`` matches the ORCA configuration's ωB97X/def2-TZVP,
+on the CPU:
+
+.. code-block:: json
+
+   {"backend": "cpu", "xc": "wb97x", "basis": "def2-tzvp", "density_fit": true, "num_threads": 8,
+    "batching": {"mode": "sequential", "batch_size": 4, "max_wait_seconds": 30.0}}
+
+For bring-up, ``"basis": "def2-svp"`` is much quicker; a nine-water cluster took about 25 s on a laptop.
+With GPU4PySCF installed, ``"backend": "gpu"`` is quicker still. PySCF reports eV and eV/Å, so the
+properties have factors of 1.0, and the ground state is stored as ``energy`` and ``forces``:
+
+.. code-block:: json
+
+   "properties_list": {"E0": ["energy", "system", 1.0], "F0": ["forces", "atomic", 1.0]}
+
+The run writes to ``h5store_pyscf/``, ``models_pyscf/``, and ``status_pyscf.txt``, so it can share the
+directory with the ORCA run. See :ref:`qm-interfaces-pyscf`.
+
 Batched Builder Variant
 -----------------------
 

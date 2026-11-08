@@ -71,7 +71,7 @@ def ring_molecule_builder_task(moleculeid=None, moleculeids=None, builder_config
 def gpu4pyscf_label_task(molecule_object, QM_config, properties_list,
                        sampler_config=None, gpus_per_node=None):
     """Require native cuTENSOR after selecting this worker's inherited device."""
-    from alframework.qm_interfaces.gpu4pyscf_interface import (
+    from alframework.qm_interfaces.pyscf.gpu4pyscf import (
         select_gpu4pyscf_device, _single_device_backend, gpu4pyscf_excited_state_task)
     select_gpu4pyscf_device(gpus_per_node)
     import pyscf

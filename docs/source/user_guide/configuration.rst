@@ -160,7 +160,7 @@ fine-tuning read.
 * **Ground-state labelers,** such as ORCA, Q-Chem, VASP through ASE, the teacher, and
   ``pyseqm_task``, use ``energy`` and ``forces``, and ground-state trainers and fine-tuning read
   those dataset names.
-* **State-aware labelers,** ``gpu4pyscf_excited_state_task`` and PySEQM's excited-state tasks,
+* **State-aware labelers,** ``pyscf_task``, ``gpu4pyscf_excited_state_task``, and PySEQM's excited-state tasks,
   name states ``E0``, ``E1``, … and their forces ``F0``, ``F1``, …, with gaps ``dE01``, and so
   on. State 0 is the ground state. See :doc:`excited_states`.
 

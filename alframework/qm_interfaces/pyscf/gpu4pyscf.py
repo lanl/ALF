@@ -765,18 +765,99 @@ def _run_tda(mf, options, nroots, root_states, cupy):
     return td, excitation_energies
 
 
+def _run_states_on_cpu(atoms, options):
+    """The molecular RKS/TDA path of ``run_gpu4pyscf_states``, with PySCF on the CPU."""
+    unsupported = [key for key in ("compute_nacr", "solvent", "_compute_optical", "_compute_vertical")
+                   if options.get(key)]
+    if unsupported:
+        raise GPU4PySCFDependencyError(
+            f"{unsupported} need the GPU backend; the CPU backend gives state energies, forces, and gaps.")
+    pyscf = importlib.import_module("pyscf")
+    dft = importlib.import_module("pyscf.dft")
+    nist = importlib.import_module("pyscf.data.nist")
+    scf_start = time.time()
+    try:
+        pyscf.lib.num_threads(int(options["num_threads"]))
+        molecule_kwargs = {
+            "atom": [(chemical_symbols[int(number)], tuple(float(value) for value in position))
+                     for number, position in zip(atoms.get_atomic_numbers(), atoms.get_positions())],
+            "basis": options["basis"], "charge": int(options["charge"]), "spin": 0,
+            "unit": "Angstrom", "verbose": int(options["verbosity"]),
+        }
+        if options["max_memory_mb"] is not None:
+            molecule_kwargs["max_memory"] = float(options["max_memory_mb"])
+        mf = dft.RKS(pyscf.M(**molecule_kwargs), xc=options["xc"])
+        if options["density_fit"]:
+            mf = mf.density_fit() if options["auxbasis"] is None else mf.density_fit(auxbasis=options["auxbasis"])
+        mf.grids.level = int(options["grids_level"])
+        mf.conv_tol = float(options["scf_conv_tol"])
+        mf.max_cycle = int(options["scf_max_cycle"])
+        mf.kernel()
+    except GPU4PySCFError:
+        raise
+    except Exception as exc:
+        raise GPU4PySCFSCFError(f"PySCF RKS failed: {type(exc).__name__}: {exc}", failed_states=(0,)) from exc
+    _require_scf_convergence(mf)
+    scf_seconds = time.time() - scf_start
+
+    nroots = int(options["nroots"])
+    root_states = tuple(range(1, nroots + 1))
+    tda_start = time.time()
+    td, excitation = (None, np.empty(0)) if nroots == 0 else _run_tda(mf, options, nroots, root_states, None)
+    tda_seconds = time.time() - tda_start if nroots else 0.0
+    gradient_start = time.time()
+    gradients = np.empty((nroots + 1, len(atoms), 3))
+    try:
+        gradients[0] = np.asarray(mf.nuc_grad_method().kernel(), dtype=np.float64)
+    except Exception as exc:
+        raise GPU4PySCFGradientError(f"PySCF ground-state gradient failed: {type(exc).__name__}: {exc}",
+                                     failed_states=(0,)) from exc
+    if nroots:
+        try:
+            excited_gradient = td.nuc_grad_method()
+            excited_gradient.cphf_conv_tol = float(options["cphf_conv_tol"])
+        except Exception as exc:
+            raise GPU4PySCFGradientError(f"PySCF could not construct the TDA gradient method: "
+                                         f"{type(exc).__name__}: {exc}", failed_states=root_states) from exc
+        for state in root_states:
+            try:
+                gradients[state] = np.asarray(excited_gradient.kernel(state=state), dtype=np.float64)
+            except Exception as exc:
+                raise GPU4PySCFGradientError(f"PySCF gradient failed for state S{state}: {type(exc).__name__}: {exc}",
+                                             failed_states=(state,)) from exc
+    energies_hartree = float(mf.e_tot) + np.concatenate([[0.0], np.asarray(excitation, dtype=np.float64)])
+    energies_ev, forces = convert_gpu4pyscf_atomic_units(
+        energies_hartree, gradients, state_count=nroots + 1, atom_count=len(atoms),
+        hartree_to_ev=float(nist.HARTREE2EV), bohr_to_angstrom=float(nist.BOHR))
+    versions = {
+        "qm_solvent": None, "qm_state_response": "gas", "qm_optical_response": "none",
+        "qm_vertical_response": "none", "qm_vertical_root_order": "none", "qm_vertical_seconds": 0.0,
+        "qm_nac_solver": "none", "_transition_dipoles": np.empty((0, 3)), "_oscillator_strengths": np.empty((0,)),
+        "qm_scf_seconds": scf_seconds, "qm_tda_seconds": tda_seconds, "qm_optical_seconds": 0.0,
+        "qm_gradient_seconds": time.time() - gradient_start, "gpu4pyscf_num_devices": 0,
+        "pyscf_version": str(getattr(pyscf, "__version__", "unknown")), "gpu4pyscf_version": None,
+        "cupy_version": None, "s1_gradient_source": "tda_gradient" if nroots else "none",
+    }
+    return energies_ev, forces, np.empty((0, len(atoms), 3)), np.empty((0, 2), dtype=np.int64), versions
+
+
 def run_gpu4pyscf_states(
     atoms,
     options: dict[str, Any],
     *,
     device_index: int,
+    backend: str = "gpu",
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, Any]]:
     """Run one GPU4PySCF RKS/TDA energy-and-gradient calculation.
 
     Returns state energies (eV), forces (eV/Angstrom), NACR (Angstrom^-1, empty
     unless ``compute_nacr``), the NACR pair index, and backend metadata.
+    ``backend="cpu"`` runs the same calculation with PySCF on the CPU, for
+    ``pyscf_task``; it supports energies, forces and gaps only.
     """
 
+    if backend == "cpu":
+        return _run_states_on_cpu(atoms, options)
     if int(device_index) != 0:
         raise GPU4PySCFDeviceError(
             "GPU4PySCF single-device kernels require local CUDA device 0. "

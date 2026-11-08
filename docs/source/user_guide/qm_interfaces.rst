@@ -14,6 +14,10 @@ Supported QM Packages
 
    * - Package
      - Associated interface
+   * - `PySCF <https://pyscf.org>`__ and `GPU4PySCF <https://github.com/pyscf/gpu4pyscf>`__
+     - ``alframework.qm_interfaces.pyscf.pyscf_task``, on CPU or GPU, for molecules and periodic
+       cells. The default for new examples, since both are free and pip-installable. See
+       :ref:`qm-interfaces-pyscf`.
    * - `ORCA <https://www.faccts.de/orca/>`__
      - ``alframework.qm_interfaces.orca5_interface.orca_calculator_task``, or
        ``alframework.qm_interfaces.orca5_interface.orca_double_calculator_task``
@@ -26,7 +30,7 @@ Supported QM Packages
      - ``alframework.qm_interfaces.pyseqm_interface.pyseqm_task`` for ground states.
        For excited states, see :doc:`excited_states`.
    * - `GPU4PySCF <https://pyscf.org/user/gpu.html>`__
-     - ``alframework.qm_interfaces.gpu4pyscf_interface.gpu4pyscf_excited_state_task``
+     - ``alframework.qm_interfaces.pyscf.gpu4pyscf.gpu4pyscf_excited_state_task``
        for excited states, or for ground-state DFT with ``nroots: 0``. See :doc:`excited_states` and
        :ref:`configuration-property-names`.
    * - `ASE-supported calculators <https://docs.ase-lib.org/ase/calculators/calculators.html#supported-calculators>`__
@@ -223,6 +227,168 @@ Legacy VASP helper
    to ASE's ``kpts`` option and falls back to atomic-number magnetic moments
    unless ``magmom`` is provided.
 
+.. _qm-interfaces-pyscf:
+
+PySCF And GPU4PySCF
+-------------------
+
+``pyscf_task`` runs DFT with PySCF on the CPU or GPU4PySCF on a GPU, one structure per task. It labels
+molecules and periodic cells; ALF picks which from each structure's ``pbc``. The same calculation is
+available outside ALF as an ASE calculator; see `Outside ALF`_.
+
+PySCF comes with ALF. For the GPU, install GPU4PySCF and a CuPy build matching the QM workers' CUDA, for
+example ``pip install "alf[gpu4pyscf]"`` for CUDA 12. Each GPU QM worker must see exactly one GPU; see
+:ref:`parsl-gpu4pyscf-workers`.
+
+**Properties.** ``pyscf_task`` uses state names; see :ref:`configuration-property-names`:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 24 76
+
+   * - Key
+     - Meaning
+   * - ``E0``, ``F0``
+     - Ground-state energy (eV) and forces (eV/Å), for molecules and periodic cells. Store them as
+       ``energy`` and ``forces`` for ground-state training and fine-tuning.
+   * - ``E1``, ``F1``, ... and ``dE01``, ...
+     - TDA excited states and gaps, for singlet molecules, with ``nroots`` excited states. See
+       :doc:`excited_states`.
+   * - ``stress``
+     - Periodic stress in eV/Å³, in ASE's order and sign, ``(1/V) dE/dε``.
+
+For ground-state labels:
+
+.. code-block:: json
+
+   "properties_list": {"E0": ["energy", "system", 1.0], "F0": ["forces", "atomic", 1.0]}
+
+**Settings,** in the QM configuration:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 26 20 54
+
+   * - Setting
+     - Default
+     - Meaning
+   * - ``backend``
+     - ``cpu``
+     - ``cpu`` for PySCF, ``gpu`` for GPU4PySCF.
+   * - ``xc``, ``basis``
+     - ``pbe``, ``def2-svp``
+     - Functional and, for molecules, basis set.
+   * - ``charge``, ``multiplicity``
+     - ``0``, ``1``
+     - Used when a structure's metadata has no ``charge`` or ``mult``. Open shells use UKS. Periodic cells
+       must be neutral.
+   * - ``density_fit``, ``auxbasis``
+     - ``true``, ``null``
+     - Density fitting for molecules.
+   * - ``nroots``
+     - ``0``
+     - Number of TDA excited states, for molecules. ``0`` labels the ground state only.
+   * - ``scf_conv_tol``, ``scf_max_cycle``
+     - ``1e-10``, ``100``
+     - SCF convergence. ``1e-8`` is usually enough for periodic cells.
+   * - ``num_threads``, ``max_memory_mb``, ``verbosity``
+     - ``1``, ``null``, ``0``
+     - CPU threads, memory, and PySCF's output level.
+   * - ``periodic``
+     - see below
+     - Settings for periodic cells.
+
+The ``periodic`` block:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 22 22 56
+
+   * - Setting
+     - Default
+     - Meaning
+   * - ``basis``, ``pseudo``
+     - ``gth-dzvp``, ``gth-pbe``
+     - Basis and pseudopotentials for periodic cells.
+   * - ``kpts``
+     - ``[1, 1, 1]``
+     - k-point mesh. ``[1, 1, 1]`` is the Γ point.
+   * - ``df``
+     - ``multigrid``
+     - How the Coulomb and exchange-correlation terms are computed: ``multigrid`` (Γ point only, fast,
+       no stress on the CPU), ``fftdf`` (k-points and stress), or ``gdf`` (GPU only).
+   * - ``ke_cutoff``
+     - ``null``
+     - Kinetic-energy cutoff in Hartree, for ``fftdf``; PySCF chooses one if unset.
+   * - ``smearing_eV``
+     - ``null``
+     - Fermi smearing width. The energy is then the free energy ``E - σS``, whose gradient the forces
+       are. Useful for metals, or when the SCF won't converge.
+
+What each backend gives. The GPU column follows GPU4PySCF 1.9's release notes; ALF has so far checked
+the CPU column, against finite differences and PySCF itself:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 40 30 30
+
+   * - Calculation
+     - CPU (PySCF)
+     - GPU (GPU4PySCF)
+   * - Molecule, ground state, forces
+     - Yes
+     - Yes
+   * - Molecule, excited states, forces
+     - Yes, with ``density_fit: false``
+     - Yes
+   * - Periodic, forces at Γ
+     - ``multigrid`` or ``fftdf``
+     - ``multigrid``, ``fftdf``, or ``gdf``
+   * - Periodic, forces with k-points
+     - ``fftdf``
+     - ``fftdf`` or ``gdf``
+   * - Periodic, stress
+     - ``fftdf``
+     - Yes
+   * - Periodic, excited states
+     - No
+     - No
+
+For nonadiabatic couplings, optical properties, or implicit solvent, use ``gpu4pyscf_excited_state_task``;
+see :doc:`excited_states`.
+
+A structure whose SCF or gradient fails is marked unconverged, with ``qm_error`` and ``qm_failed_stage`` in
+its metadata, and isn't stored. Randomly packed structures can be hard for periodic DFT: a 5 Å box of five
+waters, built with ``min_dist: 1.25`` and ``shake: 0.05``, had a 0.2 eV gap and didn't converge, while
+boxes built with ``min_dist: 1.6`` and ``shake: 0.02`` converged at once. Prefer realistic builder
+settings to smearing.
+
+On a laptop CPU: a nine-water cluster at ωB97X/def2-SVP took about 25 s, and a periodic box of 15 waters
+(7.7 Å) at PBE/GTH-DZVP with ``multigrid`` about a minute.
+
+Outside ALF
+~~~~~~~~~~~
+
+``alframework.qm_interfaces.pyscf.calculator.PySCFCalculator`` takes the same settings as keyword
+arguments, and works anywhere ASE does:
+
+.. code-block:: python
+
+   from ase import units
+   from ase.io import read
+   from ase.md.verlet import VelocityVerlet
+   from alframework.qm_interfaces.pyscf.calculator import PySCFCalculator
+
+   atoms = read("water_box.xyz")  # A periodic cell
+   atoms.calc = PySCFCalculator(backend="gpu", xc="pbe", periodic={"df": "fftdf"})
+   atoms.get_stress()
+   VelocityVerlet(atoms, timestep=0.5 * units.fs).run(10)
+
+Besides ``energy``, ``forces``, and ``stress``, it gives ``state_energies`` and ``state_forces`` for
+excited states, through ``calc.get_property``. ``calc.metadata`` records the method, timings, and
+versions. PySCF's own ASE calculator, ``pyscf.pbc.tools.pyscf_ase.PySCF``, needs a ready-made PySCF
+method instead, and scales stress by one factor of the Bohr radius where three are needed.
+
 Foundation-Model Teachers
 -------------------------
 
@@ -319,7 +485,9 @@ You can link from this guide directly to API pages:
 * :doc:`ORCA interface module <../api_documentation/alframework.qm_interfaces.orca5_interface>`
 * :doc:`QChem interface module <../api_documentation/alframework.qm_interfaces.qchem_DFT_interface>`
 * :doc:`PySEQM interface module <../api_documentation/alframework.qm_interfaces.pyseqm_interface>`
-* :doc:`GPU4PySCF interface module <../api_documentation/alframework.qm_interfaces.gpu4pyscf_interface>`
+* :doc:`PySCF interface module <../api_documentation/alframework.qm_interfaces.pyscf>`
+* :doc:`PySCF ASE calculator <../api_documentation/alframework.qm_interfaces.pyscf.calculator>`
+* :doc:`GPU4PySCF interface module <../api_documentation/alframework.qm_interfaces.pyscf.gpu4pyscf>`
 * :doc:`Legacy VASP interface module <../api_documentation/alframework.qm_interfaces.vaspase_interface>`
 * :doc:`Parsl execution guide <parsl>`
 

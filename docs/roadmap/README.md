@@ -46,7 +46,8 @@ This folder is the shared plan for bringing the fork's intended capabilities int
   [UMA](#fine-tuning-with-alf-uma-2026-11-07) records.
 - **Next:** the [Darwin qualification round](qualification_round.md): GPU4PySCF ground-state DFT,
   restart acceptance, teacher labeling with a real student, fine-tuning in all three families on DFT
-  labels, multi-node fine-tuning, and `/tmp` checks. Then new uncertainty and acquisition methods (see
+  labels, multi-node fine-tuning, `/tmp` checks, and `pyscf_task` on the GPU with periodic water. Then new
+  uncertainty and acquisition methods (see
   [Order of work](future.md#order-of-work)). Long runs and staged campaigns come last, and may be
   removed; see [Order of work](future.md#order-of-work).
 - **No merge to `main` is planned** (user decision, November 6).
@@ -557,6 +558,71 @@ matching the shards.
 - Docs build with no warnings; 96 roadmap links checked, 0 broken.
 - Not run on Darwin. Rerunning section 3 of the [restart profile](exascale.md#darwin-profile-for-restart-work)
   at this commit would compare against the `ce711d8` baseline.
+
+### PySCF and GPU4PySCF labeling, molecules and periodic cells (2026-11-08)
+
+PySCF and GPU4PySCF are free and pip-installable, so they're the default QM for new examples (user
+decision). PySCF was already in ALF's `install_requires`.
+
+**Decisions (user):**
+- One labeler, `pyscf_task`, with `backend` `cpu` (PySCF) or `gpu` (GPU4PySCF), for molecules and periodic cells.
+- An ALF-owned ASE calculator that the labeler uses.
+- The qualified `gpu4pyscf_excited_state_task` keeps its code, but moves with the rest into one subpackage.
+- Examples: a PySCF option in `simple_water` and a new periodic-water example.
+
+**Built:**
+- **`qm_interfaces/pyscf/calculator.py`: `PySCFCalculator`.**
+  - It takes JSON-style settings, and picks a molecule or a periodic cell from `atoms.pbc`; mixed `pbc` is refused.
+  - It reports `energy`, `free_energy`, `forces`, and periodic `stress`, plus `state_energies` and `state_forces` for TDA excited states of molecules.
+  - Open shells use UKS, with charge and multiplicity taken from `atoms.info`.
+  - The `periodic` block covers GTH basis and pseudopotential, a k-mesh, `df` (`multigrid`, `fftdf`, or `gdf`), `ke_cutoff`, and Fermi `smearing_eV`, for which the reported energy is the free energy its forces belong to.
+  - The GPU path builds the same PySCF method and calls `to_gpu()`.
+- **`qm_interfaces/pyscf/__init__.py`: `pyscf_task`.**
+  - It labels state names (`E#`, `F#`, `dE##`) and `stress`, and is checked at startup.
+  - A failed SCF or gradient gives an unconverged structure, with `qm_failed_stage`.
+- **`run_gpu4pyscf_states(backend="cpu")`** runs the molecular TDA path with PySCF. Its GPU path is unchanged.
+- **Examples and packaging:**
+  - `examples/simple_water/master_config_pyscf.json` (ωB97X/def2-TZVP, as ORCA's);
+  - `examples/periodic_water`: PBE/GTH-DZVP at Γ, a periodic HIPPYNN student, and GPU and CPU QM configs;
+  - a `gpu4pyscf` extra in `setup.py`.
+- **Docs:**
+  - a PySCF/GPU4PySCF section in the QM guide, with settings, a CPU/GPU support table, and use outside ALF;
+  - a periodic-water example page;
+  - the PySCF option on the simple-water page;
+  - cross-links from the excited-state guide and "Property names".
+
+**Settled while prototyping on CPU, with PySCF 2.15:**
+- **Gamma-point RKS gradients need the multigrid integrator.** They're fast: about 4 s for one water in a 5 Å box.
+- **CPU stress needs k-point FFTDF.** At the Γ point it asserts FFTDF with plain `NumInt`, which can't give gradients there.
+- **GDF has no CPU gradients**, and density-fitted TDA has no CPU gradients either, so CPU excited states need `density_fit: false`.
+- **PySCF's stress is in Eh/Bohr³,** as `(1/V) dE/dε`, ASE's convention. PySCF's own ASE wrapper scales it by `HARTREE2EV/BOHR`, which is off by BOHR². Ours matches ASE's numerical stress to 1e-6 eV/Å³.
+- **Randomly packed water can be too strained for periodic DFT.** A 5 Å box built with `min_dist` 1.25 and `shake` 0.05 had a 0.23 eV PBE gap and never converged, whatever the guess, level shift, damping, or DIIS settings. Boxes built with `min_dist` 1.6 and `shake` 0.02 converged at once, so the example uses those. Smearing of 0.27 eV converged the strained box, but 0.1 eV didn't.
+
+**Checked locally, on CPU, with real PySCF:**
+- **Against PySCF itself:** molecular energies, periodic energies, and TDA state energies matched it directly.
+- **Finite differences:** ground-state, periodic, excited-state, and smeared forces matched finite differences; stress matched ASE's numerical stress.
+- **As an ASE calculator:** an ASE VelocityVerlet run went through the calculator.
+- **The task:** it stored `E0`/`F0` as `energy`/`forces`, plus `cell` and `stress` for periodic cells. HIPPYNN's reader and `shard_atoms` read the shards.
+- **`--test_qm`:** a 9-water cluster at ωB97X/def2-SVP took 27 s, and a 15-water periodic box (7.7 Å) at PBE/GTH-DZVP took 57 s.
+- **GPU routing** was checked with stand-ins only.
+
+**Tests:** 40 in `tests/test_pyscf.py`, plus example-config tests. All 33 deliberate breaks were caught, after adding a test for the energy offset, which the first round missed. PySCF tests skip where PySCF isn't installed, as in CI's minimal job.
+
+**Results.** Full suite, under coverage: 1147 passed in 2 min 40 s. With HIPPYNN blocked, as in CI: 1036 passed,
+111 skipped. With Torch and PySCF blocked: 898 passed, 214 skipped. The docs build has no warnings, and all 132
+roadmap links resolve.
+
+One full-suite run under coverage stalled at the first CPU excited-state test for 4.5 hours at full CPU, and was
+stopped. It didn't happen again: that test alone, with the 864 tests before it, and three further full runs all
+finished in their usual time. The cause is unknown; if it recurs, start with that test.
+
+**One subpackage (user decision).** The three PySCF modules are now `alframework/qm_interfaces/pyscf/`:
+`__init__.py` (`pyscf_task`), `calculator.py` (`PySCFCalculator`), and `gpu4pyscf.py`, which was
+`gpu4pyscf_interface.py`, moved with `git mv`. Its task's path is now
+`alframework.qm_interfaces.pyscf.gpu4pyscf.gpu4pyscf_excited_state_task`, with no alias, so Darwin's B1
+regenerates its configs with the new path. `ase_calculator_interface.py` is unchanged.
+
+**Not shown yet:** any GPU run, and a periodic HIPPYNN student trained on these labels, since the ground-state trainer has no CPU mode here. [B7 of the Darwin round](qualification_round.md#b7-pyscf_task-on-the-gpu-and-periodic-water) covers both.
 
 ### State names E#/F#, and GPU4PySCF ground-state DFT (2026-11-07)
 

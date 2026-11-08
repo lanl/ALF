@@ -10,6 +10,7 @@ Planned November 7, 2026. These are instructions for the Darwin round that quali
 | [B4](#b4-fine-tuning-three-families-on-dft-labels) | Fine-tuning HIPPYNN, MACE, and UMA on DFT labels | Pass/fail, plus measurements |
 | [B5](#b5-multi-node-fine-tuning) | Multi-node fine-tuning with real models | Pass/fail |
 | [B6](#b6-tmp-and-settings) | `/tmp` and settings, for running at scale (priority items 7–8) | Measurements only |
+| [B7](#b7-pyscf_task-on-the-gpu-and-periodic-water) | `pyscf_task` on the GPU, and the periodic-water example with a real periodic student | Pass/fail, plus measurements |
 
 ## B0. Setup and rules
 
@@ -37,6 +38,8 @@ Planned November 7, 2026. These are instructions for the Darwin round that quali
   Never read or print the token.
 - **Record** each checkpoint's SHA-256. UMA's should start `b2673b85` and end `d0d5ce`.
 - **Compute nodes** read local files only, with `HF_HUB_OFFLINE=1`.
+
+**Paths.** The GPU4PySCF task moved: use `alframework.qm_interfaces.pyscf.gpu4pyscf.gpu4pyscf_excited_state_task`, and `alframework.qm_interfaces.pyscf.pyscf_task` for B7. The old `gpu4pyscf_interface` path is gone.
 
 **Names.** State-aware code now names states `E0, E1, …` and forces `F0, F1, …`, and `sE#` is gone; see the configuration guide's "Property names". There is no converter, so any accepted inputs that use `sE#` are regenerated or relabeled. Ground-state configurations are unchanged.
 
@@ -182,9 +185,40 @@ These are measurements only, for priority items 7 and 8 in [`exascale.md`](exasc
 - `HDF5_USE_FILE_LOCKING`, `PYSCF_TMPDIR`, and `MPLCONFIGDIR`;
 - where Parsl's `run_dir` and `worker_logdir_root` land.
 
+## B7. `pyscf_task` on the GPU, and periodic water
+
+`pyscf_task` and `PySCFCalculator` were checked on the CPU only, against PySCF itself and finite differences. Their GPU path moves each PySCF method to GPU4PySCF with `to_gpu()`. Use the GPU4PySCF environment, and record its `gpu4pyscf` version, which should be 1.9 or later for periodic gradients and stress.
+
+**CPU against GPU,** with the same settings on the same structures:
+
+| Structures | Settings | Pass |
+| --- | --- | --- |
+| 4 water clusters from `simple_water` | `qm_config_pyscf.json`, at def2-SVP | Energies within 1e-5 eV and forces within 1e-4 eV/Å |
+| 2 periodic water boxes from `periodic_water` | `periodic.df` `multigrid`, then `fftdf` | The same, for each `df` that the GPU accepts |
+| One formaldehyde | `nroots: 2`, `density_fit: false` | State energies within 1e-5 eV and state forces within 1e-4 eV/Å |
+
+**GPU only:**
+- Periodic forces with `df: gdf` against a central finite difference of the energy, on one box: within 1e-3 eV/Å.
+- Periodic stress against ASE's `calculate_numerical_stress`: within 1e-4 eV/Å³.
+- A k-point mesh of `[2, 2, 2]` with `fftdf` or `gdf`, on one small box.
+
+Record each combination GPU4PySCF refuses, with its error. These are answers, not failures.
+
+**The `periodic_water` example,** with `qm_config.json` on GPUs:
+- `--test_builder` and `--test_qm`;
+- then a loop to two promotions, with a real 4-member periodic HIPPYNN student (`cell_key: "cell"`) and sampled labels in the second.
+
+**Pass when:**
+- the shards hold `energy`, `forces`, and `cell`;
+- every member reloads and predicts finite values on a periodic box;
+- fewer than 5 % of the labels fail; record each failure's `qm_failed_stage`.
+
+**Record:** wall time per label against box size, peak GPU memory, and how often the SCF failed.
+
 ## Report back
 
 For each section: a short result, pass or fail where it has one, and the evidence path. Also answer:
 - Did any section find an ALF defect? Give what, where, and the evidence.
 - Can QM scratch move to node-local `/tmp` on each partition? (B6)
 - Do copies fine-tuned from one pretrained model disagree enough on GPU to drive selection? (B4)
+- Which periodic `df` choices does GPU4PySCF accept for forces and stress? (B7)

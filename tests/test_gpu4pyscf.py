@@ -15,8 +15,8 @@ import numpy as np
 import pytest
 from ase import Atoms
 
-import alframework.qm_interfaces.gpu4pyscf_interface as gpu4pyscf_module
-from alframework.qm_interfaces.gpu4pyscf_interface import (
+import alframework.qm_interfaces.pyscf.gpu4pyscf as gpu4pyscf_module
+from alframework.qm_interfaces.pyscf.gpu4pyscf import (
     DEFAULT_GPU4PYSCF_CONFIG,
     NACR_PROPERTY_KEY,
     GPU4PySCFDependencyError,
@@ -655,7 +655,7 @@ def test_gpu4pyscf_pcm_sequential_batch_keeps_successful_members(fake_backend, t
     with loaded_parsl(tmp_path / "runinfo", "alf_QM_executor"):
         coordinator = LabelingCoordinator(
             gpu4pyscf_excited_state_task,
-            "alframework.qm_interfaces.gpu4pyscf_interface.gpu4pyscf_excited_state_task",
+            "alframework.qm_interfaces.pyscf.gpu4pyscf.gpu4pyscf_excited_state_task",
             config,
         )
         for index in range(4):

@@ -44,6 +44,10 @@ alchemi_requirements = ["nvalchemi-toolkit==0.3.0"]
 mace_teacher_requirements = ["torch-sim-atomistic>=0.6.2", "mace-torch"]
 uma_teacher_requirements = ["torch-sim-atomistic>=0.6.2", "fairchem-core"]
 
+# GPU DFT for pyscf_task (backend "gpu") and gpu4pyscf_excited_state_task. These builds are for CUDA 12;
+# install the gpu4pyscf and cupy builds matching the QM workers' CUDA instead if it differs.
+gpu4pyscf_requirements = ["gpu4pyscf-cuda12x", "cupy-cuda12x"]
+
 setuptools.setup(
     name="alf",
     version="0.1.0",
@@ -53,7 +57,8 @@ setuptools.setup(
     install_requires=install_requirements,
     extras_require={"docs": doc_requirements, "full": full_requirements, "tests": test_requirements,
                     "torchsim": torchsim_requirements, "alchemi": alchemi_requirements, "topology": ["rdkit"],
-                    "teacher-mace": mace_teacher_requirements, "teacher-uma": uma_teacher_requirements},
+                    "teacher-mace": mace_teacher_requirements, "teacher-uma": uma_teacher_requirements,
+                    "gpu4pyscf": gpu4pyscf_requirements},
     license="BSD 3-Clause License",
     classifiers=[
         "Development Status :: 3 - Alpha",

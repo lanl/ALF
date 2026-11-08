@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from alframework.qm_interfaces.gpu4pyscf_interface import validate_gpu4pyscf_config
+from alframework.qm_interfaces.pyscf.gpu4pyscf import validate_gpu4pyscf_config
 from alframework.samplers.acquisition import acquisition_settings
 from alframework.tools.batching import batching_settings
 from alframework.tools.labeling import labeling_batch_settings
@@ -27,6 +27,7 @@ FAMILIES = (
     "fine_tuning",
     "mace_fine_tuning",
     "uma_fine_tuning",
+    "periodic_water",
     "molten_salt",
     "reactive_sampling",
     "seeded_active_learning",
@@ -111,6 +112,25 @@ def test_cluster_examples_build_non_periodic_structures(master):
     path = ROOT / "examples" / master
     builder = read(path.parent / read(path)["builder_config_path"])
     assert builder["periodic"] is False
+
+
+@pytest.mark.parametrize("master", ["simple_water/master_config_pyscf.json", "periodic_water/master_config.json"])
+def test_pyscf_example_configs_are_valid(master):
+    from alframework.qm_interfaces.pyscf import validate_pyscf_config
+
+    path = ROOT / "examples" / master
+    config = read(path)
+    validate_pyscf_config(read(path.parent / config["QM_config_path"]), config)
+    labeling_batch_settings(read(path.parent / config["QM_config_path"]))
+
+
+def test_periodic_water_builds_periodic_boxes_for_a_periodic_student():
+    folder = ROOT / "examples" / "periodic_water"
+    from alframework.qm_interfaces.pyscf import validate_pyscf_config
+
+    assert read(folder / "builder_config.json")["periodic"] is True
+    assert read(folder / "hippynn_config.json")["cell_key"] == "cell"
+    validate_pyscf_config(read(folder / "qm_config_cpu.json"), read(folder / "master_config.json"))
 
 
 @pytest.mark.parametrize("name", ["QM_config.json", "QM_config_dcm.json"])

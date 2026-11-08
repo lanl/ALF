@@ -12,6 +12,7 @@ file, so use only files you trust.
 
 If you want to start from your own structures or labels, without model weights, see
 :doc:`seeded_active_learning`.
+For foundation models, see :doc:`mace_fine_tuning` and :doc:`uma_fine_tuning`.
 
 The checked-in configuration is deliberately small for bring-up: four copies, at most 200 epochs
 per round, and queues of 25 structures. Increase these only after the stage checks work on your

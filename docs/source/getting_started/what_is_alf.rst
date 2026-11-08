@@ -75,9 +75,9 @@ Execution model
 ALF is integrated with Parsl for task execution, so jobs can be launched on
 local resources or queued cluster resources depending on your Parsl config.
 The master configuration names the Parsl config to use. Each example includes a
-``parsl_configs.py`` template to edit for your system, and
-``alframework/parsl_resource_configs`` holds profiles for the Darwin and Chicoma
-clusters.
+``parsl_configs.py`` template to edit for your system; start from one of these.
+``alframework/parsl_resource_configs`` holds older Darwin and Chicoma profiles,
+kept for reference, whose accounts and executor layouts are out of date.
 
 By default each task handles one structure. When a dynamics engine or QM code
 can process many structures together, :doc:`../user_guide/batching` groups them

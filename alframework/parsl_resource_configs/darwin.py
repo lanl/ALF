@@ -1,3 +1,6 @@
+"""Older Darwin Parsl profiles, kept for reference. Their accounts and executor layouts are out
+of date; start a new run from an example's ``parsl_configs.py`` template instead.
+"""
 import parsl
 from parsl.config import Config
 from parsl.executors import HighThroughputExecutor

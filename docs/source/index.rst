@@ -56,6 +56,8 @@ pieces to a concrete run.
    examples/periodic_water
    examples/seeded_active_learning
    examples/fine_tuning
+   examples/mace_fine_tuning
+   examples/uma_fine_tuning
    examples/molten_salt
    examples/il
    examples/uo2

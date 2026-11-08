@@ -661,7 +661,8 @@ resources.
 
 The master configuration selects a Parsl configuration by import string, usually
 ``parsl_configs.config_1node`` from the ``parsl_configs.py`` file in the run
-directory. The existing files in ``alframework/parsl_resource_configs`` and
-``examples/*/parsl_configs.py`` show the expected structure, but cluster
+directory. The ``examples/*/parsl_configs.py`` templates show the expected structure,
+and the older profiles in ``alframework/parsl_resource_configs`` are kept for
+reference only, with out-of-date accounts and executor layouts. In either case, cluster
 partition names, accounts, modules, walltimes, and launcher choices must be
 adapted for the resources you plan to use.

@@ -559,6 +559,36 @@ matching the shards.
 - Not run on Darwin. Rerunning section 3 of the [restart profile](exascale.md#darwin-profile-for-restart-work)
   at this commit would compare against the `ce711d8` baseline.
 
+### Health check (2026-11-08)
+
+A read-only review of the repo, tests, docs, and examples, after the spare-seed change (`38a3250`).
+
+- **State.** 493 commits, 215 since November 1; 17k lines in `alframework/`, 6 TODOs. GPU evidence covers
+  the CPP9 E6 pilot and multi-node training. Everything built since November 7 is checked on CPU only:
+  restarts and spare seeds, teachers, fine-tuning, `pyscf_task` and periodic water, and the `E#`/`F#`
+  names. The Darwin round and the Chicoma CPP9 campaign are what qualify it.
+- **Tests.** 669 test functions in 37 files, each file with a docstring; three dependency tiers locally
+  and in Actions. GPU4PySCF and HIPPYNN tests rely on stand-ins, as they must without a GPU. Twelve
+  coordinator tests use `time.sleep`. The earlier full-suite stall was not reproduced.
+- **Docs fixed in this pass:**
+  - `exascale.md` no longer says ALF has no coordinator lock.
+  - The README, "What is ALF", and the Parsl guide call `alframework/parsl_resource_configs` older
+    profiles kept for reference (2023 accounts, an old executor layout), and point to the examples'
+    `parsl_configs.py`; each profile says so in its docstring.
+  - New example pages for `mace_fine_tuning` and `uma_fine_tuning`, from their READMEs.
+- **Examples.** All 13 load in `tests/test_examples.py` and now all have pages. `IL`, `UO2`,
+  `molten_salt`, and `reactive_sampling` keep site paths and are documented as templates; left as they
+  are. Two untracked `__pycache__`-only folders left by the example moves were removed locally.
+- **Not changed.** `hippynn_interface.py` (2,508 lines) and `pyscf/gpu4pyscf.py` (1,426) could be split,
+  but not before the GPU rounds qualify them. This index (now about 1,500 lines) could move its dated
+  records to an archive file.
+- **Next, in order:** push, then bring up the CPP9 campaign on Chicoma (`--test_qm`, `--test_ml`, a small
+  pilot with one restart, then 8 QM, 1 training, and 1 sampling node); the
+  [Darwin round](qualification_round.md); training-time growth (see
+  [Group C](future.md#group-c-placement-and-memory)); exascale items 7–8 after B6; then new uncertainty
+  and acquisition methods.
+- Docs build with no warnings (151 pages).
+
 ### Spare seeds for a finite bootstrap (2026-11-08)
 
 Before a full CPP9 campaign on Chicoma (1,000 seeds, 10 GPU nodes), a finite bootstrap stopped with

@@ -21,8 +21,9 @@ These are measurements, not implementation of the priority list below.
 **Locks:** the shared home filesystem was NFSv3. `flock` refused a second holder on the same
 node and across nodes. After normal release, the other node acquired in 0.00242 s;
 after killing the holder child, in 0.00275 s. Cancelled-node observations in the
-retry run also acquired the lock (0.00216–0.00363 s). This supports the proposed
-coordinator lock; ALF still has no coordinator lock.
+retry run also acquired the lock (0.00216–0.00363 s). This supported the proposed
+coordinator lock, which was built after this round; see
+[Restarts that keep labels](README.md#restarts-that-keep-labels-2026-11-07).
 
 **Visibility:** 50 direct and 50 temporary-file/rename publications were checked
 from another node, with all listing, named lookup and readable-content measurements

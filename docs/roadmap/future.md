@@ -136,6 +136,13 @@ Tabled on November 6, before any restart code changed. ALF has since gained exit
     9. A deliberately bad `worker_init` on the ML executor makes ALF stop with a clear message and releases the other executors' blocks. Real node failures can't be triggered on demand, and `scancel` counts as cancelled, not failed.
   - **Known limits, for Darwin to watch:** uncertainty cutoffs shift with ensemble size. GPU memory for 40 sampling members is untested. `strategy="htex_auto_scale"` could release nodes sooner, but hasn't been tried.
   - **Not included:** promoting a partial ensemble, a training deadline, and restart recovery of a partly trained ensemble after a coordinator crash.
+- **Training time grows with the data (found November 8, planning the Chicoma CPP9 campaign).** Every
+  retrain starts from scratch on all labels. At the Darwin batch-8 rate, a CPP9 epoch takes about 1.5
+  minutes per 1,000 labels, so a 300-epoch training passes Chicoma's 16-hour limit at a few thousand
+  labels, and a training killed at walltime is lost. Early stopping may end it sooner; unmeasured.
+  Options: cap `max_epochs`, or warm-start each retrain from the last ensemble, perhaps reusing the
+  HIPPYNN fine-tuning adapter (`ml_interfaces/fine_tuning/hippynn.py`). The Chicoma run decides how
+  urgent this is.
 - **Data-parallel training of one member (separate decision).** For datasets or models too large for one GPU. HIPPYNN's Lightning trainer (`hippynn.experiment.lightning_trainer`) is marked experimental and lacks some features. Adopting it changes the checkpoint layout and the batched loader's `best_model.pt` assumption.
 
 ## Group D: Model families and labels

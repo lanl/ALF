@@ -12,6 +12,7 @@ This folder is the shared plan for bringing the fork's intended capabilities int
 | [`excited_states.md`](excited_states.md) | The E1-E6 plan and Increments 8-11B | Excited-state results, including the E6 pilot |
 | [`future.md`](future.md) | What's left: order of work, quick wins, and grouped plans | New plans and priority decisions |
 | [`exascale.md`](exascale.md) | File I/O risks at scale, fix priorities, and node-local storage | I/O audit findings, Darwin profile results, and changes to the I/O priorities |
+| [`qualification_round.md`](qualification_round.md) | The planned Darwin round for teacher labeling, fine-tuning, and restarts | Nothing; its results go in this file and `exascale.md` |
 
 ## Current status
 
@@ -43,8 +44,10 @@ This folder is the shared plan for bringing the fork's intended capabilities int
   samples, and each round fine-tunes copies of the pretrained model. Checked on CPU only; see the
   [MACE](#fine-tuning-with-alf-mace-2026-11-07), [HIPPYNN](#fine-tuning-with-alf-hippynn-2026-11-07), and
   [UMA](#fine-tuning-with-alf-uma-2026-11-07) records.
-- **Next:** GPU qualification of fine-tuning and teacher labeling on Darwin, then new uncertainty and
-  acquisition methods (see [Order of work](future.md#order-of-work)). Long runs and staged campaigns come last, and may be
+- **Next:** the [Darwin qualification round](qualification_round.md): GPU4PySCF ground-state DFT,
+  restart acceptance, teacher labeling with a real student, fine-tuning in all three families on DFT
+  labels, multi-node fine-tuning, and `/tmp` checks. Then new uncertainty and acquisition methods (see
+  [Order of work](future.md#order-of-work)). Long runs and staged campaigns come last, and may be
   removed; see [Order of work](future.md#order-of-work).
 - **No merge to `main` is planned** (user decision, November 6).
 - **Outside current acceptance:** legacy NeuroChem and MI350.
@@ -586,7 +589,7 @@ while those readers expect `energy`/`forces`.
   and the QM table, and a pointer from the fine-tuning guide.
 
 **Checked locally,** with the existing fake PySCF/CuPy and PySEQM backends; neither backend is installed
-here, so the planned Darwin round's GPU4PySCF section is the
+here, so [B1 of the Darwin round](qualification_round.md#b1-gpu4pyscf-under-the-new-state-names) is the
 real check. Under the fakes:
 - an `nroots: 0` run equals an excited run's `E0`/`F0`, and ran no TDA;
 - its labels stored as `energy`/`forces` are read by the HIPPYNN ground-state reader and by `shard_atoms`;

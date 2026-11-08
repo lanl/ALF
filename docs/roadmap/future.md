@@ -16,6 +16,8 @@ and [gap/window qualification](README.md#gap-seeking-and-sampling-window-hardwar
 1. **Safe restarts and disk races** ([below](#safe-restarts-and-disk-races), with priorities in [`exascale.md`](exascale.md#priority-list)). Items 1-6 were built on November 7, after the Darwin profile: atomic writes, the shard check, the manifest cache, the coordinator lock, the label holding area, and restart reconciliation. Items 7 and 8, settings and node-local QM scratch for running at scale, are open.
 2. **Placement and memory** ([Group C](#group-c-placement-and-memory)). Multi-node independent-member training passed its bounded Darwin gate on November 7; larger deployments remain unqualified. It buys throughput for larger ensembles, not new methods.
 3. **Teacher labeling, then fine-tuning with ALF** ([Group D](#group-d-model-families-and-labels)). Teacher labeling is built, and awaits its Darwin gate. ALF-driven fine-tuning is built for MACE, HIPPYNN, and UMA (November 7).
+
+The next step for items 1–3 is one [Darwin qualification round](qualification_round.md), planned November 7: GPU4PySCF ground-state DFT, restart acceptance, teacher labeling with a real student, fine-tuning in all three families on DFT labels, multi-node fine-tuning, and the `/tmp` checks for items 7–8.
 4. **New uncertainty and acquisition methods** ([Group G](#group-g-new-uncertainty-and-acquisition-methods)).
 5. **Long runs and staged campaigns** ([Group E](#group-e-long-runs)), last: very low priority, and may be removed (user decision, November 6).
 

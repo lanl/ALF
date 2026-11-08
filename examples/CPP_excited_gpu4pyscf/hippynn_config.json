@@ -35,13 +35,13 @@
   "test_size": 0.1,
   "optimizer": "AdamW",
   "learning_rate": 0.000315,
-  "batch_size": 32,
-  "eval_batch_size": 32,
+  "batch_size": 64,
+  "eval_batch_size": 64,
   "max_epochs": 300,
   "termination_patience": 50,
   "plot_frequency": 100,
   "scheduler_options": {
-    "max_batch_size": 32,
+    "max_batch_size": 64,
     "patience": 16,
     "factor": 0.2
   },

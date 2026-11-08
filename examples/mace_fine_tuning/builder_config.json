@@ -8,5 +8,6 @@
 	"max_patience": 500,
 	"center_first_molecule":true,
 	"max_atoms": null,
-	"shake":0.05
+	"shake":0.05,
+	"periodic":false
 }

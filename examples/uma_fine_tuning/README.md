@@ -24,6 +24,8 @@ and publications using UMA must acknowledge it.
 
 ORCA's level of theory differs from UMA's `omol` (ωB97M-V), so `E0s` is `average`, which refits
 UMA's per-element reference energies to the labels. Sampling treats every structure as a neutral
-singlet (`charge` 0 and `spin` 1 in `mlmd_config.json`). `epochs` is 10, above fairchem's default
+singlet (`charge` 0 and `spin` 1 in `mlmd_config.json`). The builder makes water clusters
+(`"periodic": false`): ORCA labels each structure as a cluster, and `omol` was trained only on
+non-periodic structures. `epochs` is 10, above fairchem's default
 of 1, because ALF's early rounds have few labels. See the fine-tuning guide in the ALF documentation,
 and fairchem's own: https://facebookresearch.github.io/fairchem/fine-tuning

@@ -11,6 +11,10 @@ at a fraction of the teacher's cost to run.
 Storage, training, sampling, and promotion work exactly as with QM labels. Only the labeling task
 changes. Only ground-state energies and forces are supported.
 
+The teacher is a pretrained checkpoint as its authors publish it, such as MACE-MP-0 or
+uma-s-1p2p1. A model that ALF has fine-tuned isn't a supported teacher; use it directly instead,
+as :doc:`fine_tuning` describes.
+
 When To Use It
 --------------
 
@@ -68,6 +72,9 @@ evaluates each batch in one pass. ``teacher_task`` labels one structure per task
      - ``float64`` (the default) or ``float32``. Prefer ``float64`` for labels.
    * - ``device``
      - Optional. By default, each worker picks a GPU as the samplers do; see :doc:`parsl`.
+   * - ``allow_periodic``
+     - ``true`` lets a teacher whose task was trained only on non-periodic structures, such as UMA's
+       ``omol``, label periodic ones. By default ALF refuses them; see below.
    * - ``allow_mixed_labels``
      - ``true`` lets a run add teacher labels to an ``h5_dir`` that already holds QM labels or
        another teacher's. By default ALF refuses, because a student would train on mixed
@@ -86,8 +93,24 @@ How labels are judged
    keeping them stored. A structure with an element the teacher wasn't trained on is marked
    unconverged with a reason. So is a charged or open-shell structure, for a teacher that assumes
    neutral singlets, as MACE does. UMA's ``omol`` task receives charge and multiplicity from each
-   molecule's ``charge`` and ``mult`` metadata, which default to 0 and 1. If one structure breaks a
-   batch, ALF splits the batch and retries, so only that structure is lost.
+   molecule's ``charge`` and ``mult`` metadata, which default to 0 and 1. A periodic structure is
+   marked unconverged for ``omol``, which was trained only on non-periodic structures, unless
+   ``allow_periodic`` is ``true``. If one structure breaks a batch, ALF splits the batch and
+   retries, so only that structure is lost.
+
+Choosing a UMA task
+   ``task`` picks the level of theory, and fairchem's
+   `task notes <https://github.com/facebookresearch/fairchem/blob/main/docs/core/uma.md>`__ say what
+   each suits. ``omol`` is for molecules and clusters, with charge and spin multiplicity. Its
+   training data are all non-periodic, so fairchem advises caution with periodic systems, and ALF
+   refuses them unless you set ``allow_periodic``. ``omat`` is for inorganic materials, ``omc`` for
+   molecular crystals, ``odac`` for metal-organic frameworks, and ``oc20`` for catalysis. These
+   periodic tasks take no charge or spin, so ALF gives them neutral structures only.
+
+   The student must see the same structures as the teacher. A non-periodic student, with
+   ``cell_key`` set to ``null``, can't learn a periodic teacher's labels, and a periodic student
+   can't learn a cluster teacher's labels. Set the builder's ``periodic`` setting to match; see
+   :doc:`builders`.
 
 What's recorded
    Each label carries ``label_provenance``: the teacher's name, package and version, checkpoint path
@@ -155,8 +178,9 @@ the download does: compute nodes read the local file and never need a token.
    ``qm_config_teacher_uma.json`` looks for it. It is about 2.3 GB.
 
 Use ``qm_config_teacher_uma.json`` as ``QM_config_path`` in ``master_config_teacher.json`` to label
-with UMA. Its ``task`` is ``omol``, for molecules, and it reads each structure's ``charge`` and
-``mult`` metadata. Keep a UMA run's shards apart from a MACE run's, since ALF refuses to mix labels
+with UMA. Its ``task`` is ``omol``, for molecules and clusters, and it reads each structure's
+``charge`` and ``mult`` metadata. ``omol`` would refuse the structures if they were periodic, but
+the example builds clusters. Keep a UMA run's shards apart from a MACE run's, since ALF refuses to mix labels
 from two teachers.
 
 2. Check the teacher's labels
@@ -169,23 +193,25 @@ Build one structure and label it, without starting the loop:
    python -m alframework --master master_config_teacher.json --test_qm
 
 ALF prints the structure, the teacher's results, and the same values read back from ``qm_test.h5``.
-For a box of 12 water molecules, abridged:
+For a cluster of 12 water molecules, abridged:
 
 .. code-block:: text
 
    QM labeling: native batches of up to 32 structures (timeout, 30 s)
    Job Failed: 0
    Atomic Numbers: [8 1 1 8 1 1 8 1 1 ...]
-   PBCs: [ True  True  True]
-   energy: -156.1884731014367
+   PBCs: [False False False]
+   energy: -146.4834530769415
    ...
    Data written to qm_test.h5:
    Species: H H H H H H H H H H H H H H H H H H H H H H H H O O O O O O O O O O O O
    energy:
-   [-156.1885]
+   [-146.4835]
 
 The stored species are sorted by atomic number, and the energy is in eV, unchanged by the factor of
-1.0 in ``properties_list``.
+1.0 in ``properties_list``. The structure isn't periodic, because the example's builder sets
+``"periodic": false``: ORCA and the student both treat each structure as a cluster, so the teacher
+must too.
 
 3. See what was recorded
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -251,7 +277,8 @@ directory. Keep this directory apart from ``h5_dir``, which the teacher's mixed-
 Next Steps
 ----------
 
-* If the student matches the teacher but the teacher doesn't match QM, fine-tune the teacher, MACE or
-  UMA, on QM labels that ALF selects; see :doc:`fine_tuning`.
+* If the student matches the teacher but the teacher doesn't match QM, a student won't fix that.
+  Fine-tune MACE or UMA on QM labels that ALF selects instead, and use the fine-tuned model
+  directly; see :doc:`fine_tuning`.
 * :doc:`batching` covers batch sizes for the teacher and for sampling.
 * :doc:`units` lists the units each part of ALF uses.

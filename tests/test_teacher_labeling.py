@@ -178,6 +178,41 @@ def test_teacher_with_charge_and_spin_receives_them(checkpoint):
     assert all(m.check_convergence() for m in molecules)
 
 
+def test_non_periodic_teacher_refuses_periodic_structures(checkpoint):
+    molecules = structures(4, periodic={1, 2})
+    label(molecules, config(checkpoint, periodic=False))
+    assert [m.check_convergence() for m in molecules] == [True, False, False, True]
+    assert "allow_periodic" in molecules[1].get_metadata()["labeling_error"]
+    teacher = next(iter(ti._TEACHERS.values()))
+    assert sorted(len(call) for call in teacher.calls) == [2]  # Only the open pair was evaluated.
+
+
+def test_non_periodic_teacher_labels_periodic_structures_when_allowed(checkpoint):
+    qm_config = config(checkpoint, periodic=False)
+    qm_config["teacher"]["allow_periodic"] = True
+    molecules = label(structures(4, periodic={1, 2}), qm_config)
+    assert all(m.check_convergence() for m in molecules)
+    assert molecules[1].get_metadata()["label_provenance"]["allow_periodic"] is True
+
+
+def test_teacher_that_does_not_say_labels_periodic_structures(checkpoint):
+    molecules = label(structures(3, periodic={0, 2}), config(checkpoint))
+    assert not hasattr(next(iter(ti._TEACHERS.values())), "supports_periodic")
+    assert all(m.check_convergence() for m in molecules)
+
+
+@pytest.mark.parametrize("cls", [ti.TorchSimTeacher, ti.AseTeacher])
+def test_library_teachers_support_periodic_structures_by_default(cls):
+    assert cls(None, "package").supports_periodic is True
+    assert cls(None, "package", supports_periodic=False).supports_periodic is False
+
+
+@pytest.mark.parametrize("task,periodic", [("omol", False), ("omat", True), ("oc20", True), ("omc", True),
+                                           ("odac", True)])
+def test_uma_omol_is_the_only_non_periodic_task(task, periodic):
+    assert ti.uma_task_supports_periodic(task) is periodic
+
+
 # Provenance.
 
 
@@ -202,6 +237,7 @@ def test_teacher_labels_record_the_teacher(checkpoint):
     assert provenance["checkpoint_sha256"] == ti.file_sha256(checkpoint)
     assert provenance["units"] == {"energy": "eV", "forces": "eV/Å"}
     assert provenance["loader"] == LOADER.format("scripted")
+    assert provenance["allow_periodic"] is False
 
 
 def test_store_writes_teacher_provenance_onto_the_shard(checkpoint, tmp_path):
@@ -277,9 +313,11 @@ def master(tmp_path, **settings):
         (lambda c: c["teacher"].update(checkpoint="missing.model"), "checkpoint not found"),
         (lambda c: c["teacher"].update(dtype="float16"), "teacher.dtype"),
         (lambda c: c["teacher"].update(allow_mixed_labels="yes"), "allow_mixed_labels"),
+        (lambda c: c["teacher"].update(allow_periodic=1), "allow_periodic"),
         (lambda c: c.pop("teacher"), "'teacher' block"),
     ],
-    ids=["no_loader", "no_checkpoint", "missing_checkpoint", "bad_dtype", "bad_mixed_flag", "no_block"],
+    ids=["no_loader", "no_checkpoint", "missing_checkpoint", "bad_dtype", "bad_mixed_flag", "bad_periodic_flag",
+         "no_block"],
 )
 def test_teacher_config_mistakes_stop_alf_at_startup(checkpoint, tmp_path, change, message):
     qm_config = config(checkpoint)

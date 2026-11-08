@@ -285,6 +285,9 @@ Builder Configuration
      - Whether to center the first molecule, useful for solute-centered systems.
    * - ``shake``
      - Random coordinate perturbation applied to generated structures.
+   * - ``periodic``
+     - ``false``: each structure is a cluster, not a periodic box. ORCA and the HIPPYNN student
+       (``cell_key: null``) treat it as a cluster anyway, and this makes a teacher do the same.
 
 Sampler Configuration
 ---------------------

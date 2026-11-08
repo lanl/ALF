@@ -32,7 +32,9 @@ This folder is the shared plan for bringing the fork's intended capabilities int
   [November 7 hardware record](#current-development-hardware-qualification--passed-with-restart-limits-2026-11-07).
   Crash-safe restart remains unqualified.
 - **Foundation-model teacher labeling is built,** with real MACE and real UMA (uma-s-1p2p1) checked
-  locally. The Darwin gate is pending; see the [record](#teacher-labeling-2026-11-07).
+  locally. Teachers are off-the-shelf checkpoints only, and UMA's `omol` refuses periodic structures
+  unless opted in. The Darwin gate is pending; see the [record](#teacher-labeling-2026-11-07) and the
+  [periodic guard](#uma-teacher-off-the-shelf-only-and-a-periodic-guard-2026-11-07).
 - **Restarts keep their labels:** atomic status and shard writes, the shard check in single-node
   training, and the replay manifest cache, then the coordinator lock, a holding area for finished
   labels, and restart reconciliation. See the [first](#restart-fixes-without-darwin-2026-11-07) and
@@ -552,6 +554,57 @@ matching the shards.
 - Docs build with no warnings; 96 roadmap links checked, 0 broken.
 - Not run on Darwin. Rerunning section 3 of the [restart profile](exascale.md#darwin-profile-for-restart-work)
   at this commit would compare against the `ce711d8` baseline.
+
+### UMA teacher: off-the-shelf only, and a periodic guard (2026-11-07)
+
+**Scope (user decisions):**
+- Only off-the-shelf UMA is supported as a teacher. A model fine-tuned by ALF is used directly, not as a teacher. The docs say so; the code doesn't enforce it.
+- An `omol` teacher refuses periodic structures unless the user opts in.
+- The fine-tuning examples are fixed in the same pass.
+
+**What was wrong:**
+- **fairchem's own docs** say `omol` training data are all aperiodic, so "any periodic systems should be treated with some caution". Sources: `docs/core/uma.md` and `docs/faq.md` in the fairchem repository; the FAQ points periodic systems to `omat`, `omc`, `odac`, or a catalysis task. fairchem itself gives no warning for this.
+- **The examples gave different stages different geometries.**
+  - `simple_condensed_phase_builder_task` always set `pbc=True`.
+  - ORCA ignores the cell, and `simple_water`'s HIPPYNN student has `cell_key: null`, so both saw a cluster.
+  - A teacher honoured `pbc=True`, so the non-periodic student learned periodic labels. The old MACE walkthrough output showed `PBCs: [True True True]`.
+  - `examples/uma_fine_tuning` and `examples/mace_fine_tuning` likewise fine-tuned on periodic copies of ORCA's cluster labels.
+  - With real UMA `omol`, one random 9-water geometry gave labels 1.24 eV apart, periodic versus cluster.
+
+**Built:**
+- **Teachers declare periodic support.** `TorchSimTeacher` and `AseTeacher` take `supports_periodic` (default true); a custom teacher without the attribute counts as supporting it. `load_uma_teacher` sets it from `uma_task_supports_periodic(task)`, which is false only for `omol`.
+- **The refusal.** A periodic structure given to such a teacher is marked unconverged with a reason, unless `teacher.allow_periodic` is true, following the existing pattern for charged structures given to MACE. `allow_periodic` is validated at startup and recorded in `label_provenance`.
+- **A builder setting.** `periodic` (default true) on both simple condensed-phase builder tasks. `false` builds a cluster inside the cell. Storage then writes no `cell`, and `shard_atoms` reads the shard back as non-periodic.
+- **Examples.** `simple_water` (shared by the ORCA and teacher configurations), `uma_fine_tuning`, and `mace_fine_tuning` now set `"periodic": false`. `qm_config_teacher_uma.json` stays `omol`.
+- **Docs.** In the teacher guide:
+  - the off-the-shelf statement;
+  - `allow_periodic` in the settings table;
+  - a "Choosing a UMA task" note, and a note that student and teacher must see the same structures;
+  - the walkthrough output refreshed from a real MACE run on a cluster;
+  - Next Steps reworded.
+
+  Also: the builder setting in `builders.rst` and `examples/simple_water.rst`, the `omol` row and the example note in the fine-tuning guide, and both fine-tuning READMEs.
+
+**Checked locally, on CPU:**
+- **MACE teacher.** MACE-MP-0 small, `--test_qm` on `simple_water`: a 12-water cluster, `PBCs: [False False False]`, −146.483 eV. The shard has no `cell`.
+- **UMA teacher.** uma-s-1p2p1 `omol`, fairchem-core 2.25.0:
+  - `--test_qm` labeled a 13-water cluster at −2079.38 eV per water, against −2079.89 eV for an isolated water, as expected for random packing. Provenance records `allow_periodic` false.
+  - Directly: a periodic 9-water box was refused with the reason, labeled once `allow_periodic` was set, and the same geometry as a cluster was labeled.
+- **Fine-tuning on cluster shards.** Two-copy rounds of MACE and of UMA ran through the real coordinator, with the real builder at `"periodic": false`, EMT labels, and TorchSim MD on the copies. In each, both rounds completed and were promoted, and 4 of the 12 stored clusters were sampled by the fine-tuned copies. No shard had a `cell`, and every frame read back non-periodic. The clusters were 5 or 6 waters for MACE and 3 for UMA.
+
+**Tests:**
+- a refusal with the reason, with the open structures in the same batch still labeled;
+- labeling with `allow_periodic`;
+- a custom teacher without the attribute;
+- the library teachers' defaults;
+- the UMA task helper;
+- `allow_periodic` validation and provenance;
+- a builder test from configuration to shard to `shard_atoms`;
+- an examples test that the four cluster configurations are non-periodic.
+
+All 13 deliberate breaks of the new lines were caught. Full suite: 1085 passed. With HIPPYNN
+blocked, as in CI: 974 passed, 111 skipped. With Torch blocked: 854 passed, 196 skipped. The docs
+build has no warnings, and all 114 roadmap links resolve.
 
 ### Fine-tuning docs and defaults pass (2026-11-07)
 

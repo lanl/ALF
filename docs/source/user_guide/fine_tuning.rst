@@ -400,7 +400,8 @@ fine-tuned on.
    * - Task
      - What it was trained on
    * - ``omol``
-     - Molecules, at ωB97M-V/def2-TZVPD. Uses each structure's total charge and spin multiplicity.
+     - Non-periodic molecules and clusters, at ωB97M-V/def2-TZVPD. Uses each structure's total
+       charge and spin multiplicity.
    * - ``omat``
      - Inorganic materials, at a PBE-level of theory.
    * - ``oc20``, ``oc25``
@@ -628,7 +629,10 @@ ORCA.
       python -m alframework --master master_config.json
 
 ORCA's level of theory isn't ``omol``'s, so the example refits the reference energies with
-``E0s: "average"``.
+``E0s: "average"``. Its builder makes clusters (``"periodic": false``), because ORCA labels each
+structure as a cluster and ``omol`` was trained only on non-periodic structures. A fine-tuned
+model trained on periodic copies of ORCA's cluster labels would learn interactions with images that
+ORCA never saw. The MACE example builds clusters for the same reason.
 
 The same loop was run end to end on a CPU through ALF's coordinator, with ``uma-s-1p2p1``, single
 water molecules, and EMT standing in for ORCA. Two copies fine-tuned for 4 steps on the bootstrap

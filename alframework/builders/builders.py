@@ -201,7 +201,7 @@ def condensed_phase_builder(start_system, molecule_library, solute_molecules=[],
 
 @python_app(executors=['alf_sampler_executor'])
 def simple_condensed_phase_builder_task(moleculeid, builder_config, molecule_library_dir, cell_range,
-                                        solute_molecule_options, Rrange):
+                                        solute_molecule_options, Rrange, periodic=True):
     """Condensed phase builder task that will be fed to the sampler.
 
     Args:
@@ -211,6 +211,8 @@ def simple_condensed_phase_builder_task(moleculeid, builder_config, molecule_lib
         cell_range (list): A (3,2) list with the x, y, and z ranges for the cell size [min, max].
         solute_molecule_options (list): List of lists detailing sets of solutes.
         Rrange (list): Density range [density_min, density_max].
+        periodic (bool): If False, the molecules form a cluster inside the cell instead of a periodic box, for QM
+            codes, teachers, and models that treat structures as non-periodic.
 
     Returns:
         (MoleculesObject): A MoleculesObject representing the system.
@@ -233,7 +235,7 @@ def simple_condensed_phase_builder_task(moleculeid, builder_config, molecule_lib
 
     cell_shape = [np.random.uniform(dim[0], dim[1]) for dim in cell_range]
 
-    empty_system = MoleculesObject(Atoms(cell=cell_shape,pbc=True), moleculeid)
+    empty_system = MoleculesObject(Atoms(cell=cell_shape, pbc=bool(periodic)), moleculeid)
 
     molecule_library, mols = readMolFiles(molecule_library_dir)
 
@@ -255,7 +257,7 @@ def simple_condensed_phase_builder_task(moleculeid, builder_config, molecule_lib
 
 @python_app(executors=['alf_sampler_executor'])
 def simple_multi_condensed_phase_builder_task(moleculeids, builder_config, molecule_library_dir, cell_range,
-                                              solute_molecule_options, Rrange):
+                                              solute_molecule_options, Rrange, periodic=True):
     """Multi condensed phase builder task that will be fed to the sampler.
 
     Args:
@@ -265,6 +267,8 @@ def simple_multi_condensed_phase_builder_task(moleculeids, builder_config, molec
         cell_range (list): A (3,2) list with the x, y, and z ranges for the cell size [min, max].
         solute_molecule_options (list): List of lists detailing sets of solutes.
         Rrange (list): Density range [density_min, density_max].
+        periodic (bool): If False, the molecules form a cluster inside the cell instead of a periodic box, for QM
+            codes, teachers, and models that treat structures as non-periodic.
 
     Returns:
         (list): A list of objects from MoleculesObject.
@@ -291,7 +295,7 @@ def simple_multi_condensed_phase_builder_task(moleculeids, builder_config, molec
     for moleculeid in moleculeids:
         cell_shape = [np.random.uniform(dim[0], dim[1]) for dim in cell_range]
 
-        empty_system = MoleculesObject(Atoms(cell=cell_shape,pbc=True), moleculeid)
+        empty_system = MoleculesObject(Atoms(cell=cell_shape, pbc=bool(periodic)), moleculeid)
 
         feed_parameters = {'solute_molecules': random.choice(solute_molecule_options),
                            'density': np.random.uniform(Rrange[0], Rrange[1])}

@@ -144,6 +144,40 @@ def test_condensed_phase_builders_return_periodic_systems():
         assert system.get_atoms().pbc.all()
 
 
+def test_condensed_phase_builders_can_build_clusters(tmp_path):
+    """``"periodic": false`` in the builder configuration gives a cluster that is stored, and read back, as one."""
+    from alframework.ml_interfaces.fine_tuning import shard_atoms
+    from alframework.tools.tools import build_input_dict, store_current_data
+
+    library = str(Path(__file__).resolve().parents[1] / "examples" / "simple_water" / "fragment_library") + "/"
+    builder_config = {"molecule_library_dir": library, "cell_range": [[6.0, 6.0]] * 3,
+                      "solute_molecule_options": [["water.xyz"]], "Rrange": [0.9, 0.9],
+                      "solvent_molecules": {"water.xyz": 1.0}, "min_dist": 1.25, "max_patience": 50,
+                      "periodic": False}
+    random.seed(4)
+    np.random.seed(4)
+    systems = []
+    for task, ids in ((simple_condensed_phase_builder_task, {"moleculeid": "mol-0000-0000000000"}),
+                      (simple_multi_condensed_phase_builder_task, {"moleculeids": ["mol-0000-0000000001"]})):
+        built = task.func(**build_input_dict(task.func, [dict(ids, builder_config=builder_config), builder_config],
+                                             raise_on_fail=True))
+        systems.extend(built if isinstance(built, list) else [built])
+    for system in systems:
+        atoms = system.get_atoms()
+        assert not atoms.pbc.any() and np.allclose(atoms.cell.lengths(), 6.0) and len(atoms) > 3
+        distances = atoms.get_all_distances()
+        molecule = np.arange(len(atoms)) // 3  # Waters, three atoms each, in order.
+        assert distances[molecule[:, None] != molecule[None, :]].min() >= 1.25
+        system.store_results({"energy": -1.0, "forces": np.zeros((len(atoms), 3))})
+        system.set_converged_flag(True)
+
+    shard = tmp_path / "data-0000.h5"
+    store_current_data(str(shard), systems, {"energy": ["energy", "system", 1.0], "forces": ["forces", "atomic", 1.0]})
+    with h5py.File(shard) as h:
+        assert all("cell" not in h[name] for name in h)
+    assert [atoms.pbc.any() for atoms in shard_atoms([shard])] == [False, False]
+
+
 @pytest.fixture
 def geometry_sources(tmp_path):
     atoms = Atoms("OHH", positions=[[0, 0, 0], [0.95, 0, 0], [0, 0.95, 0]], cell=np.eye(3) * 8, pbc=[True, False, True])

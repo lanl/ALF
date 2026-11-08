@@ -35,6 +35,8 @@ class ScriptedTeacher:
         self.options, self.calls, self.infos = options, [], []
         self.supported_numbers = None if options.get("elements") is None else set(options["elements"])
         self.supports_charge_spin = options.get("charge_spin", False)
+        if "periodic" in options:  # Otherwise left out, as a custom teacher may leave it out.
+            self.supports_periodic = options["periodic"]
 
     def evaluate(self, atoms_list):
         self.calls.append([len(atoms) for atoms in atoms_list])

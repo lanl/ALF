@@ -176,6 +176,10 @@ Tabled on November 6, before any restart code changed. ALF has since gained exit
   - **Order:** ground-state teachers come first; excited-state teachers wait until a
     suitable model exists. UMA or MACE are the first candidates; see the notes in
     [Group G](#group-g-new-uncertainty-and-acquisition-methods).
+  - **Off-the-shelf teachers only (user decision, November 7).** A model fine-tuned by ALF is used
+    directly, not as a teacher. UMA's `omol` refuses periodic structures unless `allow_periodic` is
+    set, and the cluster examples now build non-periodic structures; see the
+    [record](README.md#uma-teacher-off-the-shelf-only-and-a-periodic-guard-2026-11-07).
 - **Fine-tuning with ALF: built for MACE, HIPPYNN, and UMA, November 7.** Redefined by user decision on
   November 7: ALF selects the samples that fine-tune an existing model, through one interface for every
   model family. See the [MACE record](README.md#fine-tuning-with-alf-mace-2026-11-07), the

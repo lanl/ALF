@@ -1,5 +1,9 @@
 """Label structures with a foundation model, such as MACE or UMA, in place of QM.
 
+A teacher is a pretrained checkpoint as its authors publish it; a model ALF has fine-tuned is used directly,
+not as a teacher. A teacher whose task was trained only on non-periodic structures (UMA's ``omol``) refuses
+periodic ones unless ``teacher.allow_periodic`` is true.
+
 Select ``teacher_batch_task`` (with ``"batching": {"mode": "native"}``) or ``teacher_task`` as the
 ``QM_task``, and describe the teacher in the QM configuration's ``teacher`` block::
 
@@ -10,7 +14,8 @@ Select ``teacher_batch_task`` (with ``"batching": {"mode": "native"}``) or ``tea
 
 A loader is called as ``loader(settings, device)`` and returns a teacher: an object with
 ``evaluate(atoms_list)`` returning energies in eV and forces in eV/Å, in input order, plus
-``package``, ``supported_numbers`` (or ``None``), and ``supports_charge_spin``. Labels count as
+``package``, ``supported_numbers`` (or ``None``), ``supports_charge_spin``, and optionally
+``supports_periodic`` (``True`` if absent). Labels count as
 converged when they are finite. Every labeled molecule records the teacher in
 ``label_provenance``, which storage writes onto the HDF5 shard.
 """
@@ -58,8 +63,9 @@ def teacher_settings(QM_config, master_directory=None):
     settings.setdefault("dtype", "float64")
     if settings["dtype"] not in DTYPES:
         raise ValueError(f"teacher.dtype must be one of {DTYPES}, not {settings['dtype']!r}.")
-    if not isinstance(settings.setdefault("allow_mixed_labels", False), bool):
-        raise ValueError("teacher.allow_mixed_labels must be true or false.")
+    for key in ("allow_mixed_labels", "allow_periodic"):
+        if not isinstance(settings.setdefault(key, False), bool):
+            raise ValueError(f"teacher.{key} must be true or false.")
     if not isinstance(settings.setdefault("options", {}), dict):
         raise ValueError("teacher.options must be a dictionary.")
     return settings
@@ -146,7 +152,7 @@ def load_teacher(settings, device):
             "checkpoint_sha256": file_sha256(settings["checkpoint"]), "task": settings.get("task"),
             "dtype": settings["dtype"], "adapter": type(teacher).__name__, "units": {"energy": "eV", "forces": "eV/Å"},
             "charge_spin": "from molecule metadata 'charge' and 'mult'; defaults 0 and 1",
-            "options": settings["options"],
+            "allow_periodic": settings["allow_periodic"], "options": settings["options"],
         }
         _TEACHERS[key] = teacher
     return _TEACHERS[key]
@@ -164,10 +170,10 @@ class TorchSimTeacher:
 
     adapter = "torchsim"
 
-    def __init__(self, model, package, supported_numbers=None, supports_charge_spin=False):
+    def __init__(self, model, package, supported_numbers=None, supports_charge_spin=False, supports_periodic=True):
         self.model, self.package = model, package
         self.supported_numbers = None if supported_numbers is None else {int(z) for z in supported_numbers}
-        self.supports_charge_spin = supports_charge_spin
+        self.supports_charge_spin, self.supports_periodic = supports_charge_spin, supports_periodic
 
     def evaluate(self, atoms_list):
         import torch_sim as ts
@@ -186,10 +192,10 @@ class AseTeacher:
 
     adapter = "ase"
 
-    def __init__(self, calculator, package, supported_numbers=None, supports_charge_spin=False):
+    def __init__(self, calculator, package, supported_numbers=None, supports_charge_spin=False, supports_periodic=True):
         self.calculator, self.package = calculator, package
         self.supported_numbers = None if supported_numbers is None else {int(z) for z in supported_numbers}
-        self.supports_charge_spin = supports_charge_spin
+        self.supports_charge_spin, self.supports_periodic = supports_charge_spin, supports_periodic
 
     def evaluate(self, atoms_list):
         energies, forces = [], []
@@ -225,7 +231,13 @@ def load_uma_teacher(settings, device):
     model = FairChemModel(settings["checkpoint"], device=torch.device(device), dtype=_torch_dtype(settings),
                           task_name=settings["task"], **settings["options"])
     # Only the molecular task takes total charge and spin multiplicity.
-    return TorchSimTeacher(model, "fairchem-core", supports_charge_spin=settings["task"] == "omol")
+    return TorchSimTeacher(model, "fairchem-core", supports_charge_spin=settings["task"] == "omol",
+                           supports_periodic=uma_task_supports_periodic(settings["task"]))
+
+
+def uma_task_supports_periodic(task):
+    """Whether a UMA task was trained on periodic structures. fairchem's ``omol`` data are all aperiodic."""
+    return task != "omol"
 
 
 def _require_task(settings):
@@ -242,8 +254,11 @@ def _fail(molecule, reason):
     molecule.update_metadata({"labeling_error": reason})
 
 
-def _unsupported(teacher, molecule):
+def _unsupported(teacher, molecule, settings):
     atoms = molecule.get_atoms()
+    if atoms.get_pbc().any() and not getattr(teacher, "supports_periodic", True) and not settings["allow_periodic"]:
+        return ("This teacher's task was trained on non-periodic structures, such as UMA's omol, but this structure "
+                "is periodic. Set teacher.allow_periodic to true to label periodic structures anyway")
     if teacher.supported_numbers is not None:
         missing = sorted(set(atoms.get_atomic_numbers().tolist()) - teacher.supported_numbers)
         if missing:
@@ -317,7 +332,7 @@ def label_with_teacher(molecule_objects, QM_config, properties_list=None, gpus_p
         groups = {}
         for molecule in molecule_objects:
             molecule.update_metadata({"label_provenance": teacher.provenance})
-            reason = _unsupported(teacher, molecule)
+            reason = _unsupported(teacher, molecule, settings)
             if reason is not None:
                 _fail(molecule, reason)
             else:

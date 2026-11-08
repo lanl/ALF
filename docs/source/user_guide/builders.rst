@@ -142,6 +142,11 @@ Fragment and condensed-phase builders
         - Optional atom-count cap for generated systems.
       * - ``shake``
         - Random coordinate perturbation applied during placement or loading.
+      * - ``periodic``
+        - ``true`` (the default) builds a periodic box. ``false`` builds a cluster inside the cell,
+          for labelers and models that treat structures as non-periodic. ORCA ignores the cell, so
+          use ``false`` whenever a teacher or a fine-tuned model must see the same structure that
+          ORCA labels. The two simple condensed-phase builder tasks take this setting.
 
 Atomic-system builders
    These fields are used by ``atomic_system_task`` and related atomic box

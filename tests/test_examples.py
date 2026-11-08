@@ -104,6 +104,15 @@ def test_teacher_water_configs_are_valid(name, tmp_path):
     labeling_batch_settings(qm_config)
 
 
+@pytest.mark.parametrize("master", ["simple_water/master_config.json", "simple_water/master_config_teacher.json",
+                                    "mace_fine_tuning/master_config.json", "uma_fine_tuning/master_config.json"])
+def test_cluster_examples_build_non_periodic_structures(master):
+    # ORCA ignores the cell, so a teacher or a fine-tuned model must see the same cluster, not a periodic box.
+    path = ROOT / "examples" / master
+    builder = read(path.parent / read(path)["builder_config_path"])
+    assert builder["periodic"] is False
+
+
 @pytest.mark.parametrize("name", ["QM_config.json", "QM_config_dcm.json"])
 def test_cpp_gpu4pyscf_configs_are_valid(name):
     validate_gpu4pyscf_config(read(ROOT / "examples/CPP_excited_gpu4pyscf" / name))

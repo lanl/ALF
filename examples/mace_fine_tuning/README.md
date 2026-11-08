@@ -15,7 +15,9 @@ python -m alframework --master master_config.json --test_qm
 python -m alframework --master master_config.json
 ```
 
-ORCA gives Hartree, so `properties_list` converts to eV and eV/Å, as MACE expects. `E0s` is
+ORCA gives Hartree, so `properties_list` converts to eV and eV/Å, as MACE expects. The builder
+makes water clusters (`"periodic": false`), because ORCA labels each structure as a cluster and
+the fine-tuned model must learn the same structure. `E0s` is
 `estimated`, as MACE's fine-tuning guidance recommends when isolated-atom energies aren't available;
 use `foundation` only when the labels share the foundation model's level of theory. The other
 defaults follow MACE's naive fine-tuning recipe:

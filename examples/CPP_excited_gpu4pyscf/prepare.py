@@ -3,7 +3,7 @@
 python prepare.py --ring-size 6 --output-dir /scratch/cpp6 --generate-seeds
 --count seeds make the bootstrap; --spares more (5% by default) replace seeds whose labels fail.
 For other CPP sizes provide --reference, --energy-offset-ev and --ring-size.
-Model choices: hiphop145 (default), hiphop100, hiphop64, hipnn64; all use four members.
+Model choices: hipnn64 (default), hiphop145, hiphop100, hiphop64; all use four members.
 Configure parsl_configs.py for your site, then run in the prepared directory:
 python -m alframework --master master_config.json
 GPU4PySCF workers require a compatible cuTENSOR installation/library path.
@@ -32,11 +32,15 @@ def apply_model_profile(config, model, n_atoms):
         config['network_choice'] = 0
         for key in ('l_max', 'n_max'):
             config['network_params'].pop(key, None)
+    else:
+        config['network_choice'] = 1
+        config['network_params'].setdefault('l_max', 3)
+        config['network_params'].setdefault('n_max', 4)
     return config
 
 
 def prepare(output_dir, *, ring_size=9, reference=None, energy_offset_ev=None,
-            count=1000, spares=None, model='hiphop145', generate_seeds=False, solvent='gas'):
+            count=1000, spares=None, model='hipnn64', generate_seeds=False, solvent='gas'):
     if solvent not in {'gas','dcm'}:
         raise ValueError('solvent must be gas or dcm')
     if isinstance(ring_size, bool) or not isinstance(ring_size, int) or ring_size < 3:
@@ -132,7 +136,7 @@ def main(argv=None):
     parser.add_argument('--energy-offset-ev', type=float)
     parser.add_argument('--count', type=int, default=1000)
     parser.add_argument('--spares', type=int, help='extra seeds for failed labels; default 5%% of --count')
-    parser.add_argument('--model', choices=sorted(MODELS), default='hiphop145')
+    parser.add_argument('--model', choices=sorted(MODELS), default='hipnn64')
     parser.add_argument('--generate-seeds', action='store_true')
     parser.add_argument('--solvent', choices=['gas','dcm'], default='gas')
     args = parser.parse_args(argv)

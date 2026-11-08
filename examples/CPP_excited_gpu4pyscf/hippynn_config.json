@@ -5,7 +5,7 @@
   "cell_key": null,
   "train_forces": true,
   "export_force_gradients": true,
-  "network_choice": 1,
+  "network_choice": 0,
   "n_atoms": 90,
   "network_params": {
     "possible_species": [
@@ -16,11 +16,9 @@
     "dist_hard_max": 11.833504244685173,
     "dist_soft_max": 5.67638290906325,
     "dist_soft_min": 0.7,
-    "l_max": 3,
     "n_atom_layers": 3,
-    "n_features": 145,
+    "n_features": 64,
     "n_interaction_layers": 2,
-    "n_max": 4,
     "n_sensitivities": 20
   },
   "energy_weight": 1.0,
@@ -37,13 +35,13 @@
   "test_size": 0.1,
   "optimizer": "AdamW",
   "learning_rate": 0.000315,
-  "batch_size": 8,
-  "eval_batch_size": 8,
+  "batch_size": 32,
+  "eval_batch_size": 32,
   "max_epochs": 300,
   "termination_patience": 50,
   "plot_frequency": 100,
   "scheduler_options": {
-    "max_batch_size": 8,
+    "max_batch_size": 32,
     "patience": 16,
     "factor": 0.2
   },

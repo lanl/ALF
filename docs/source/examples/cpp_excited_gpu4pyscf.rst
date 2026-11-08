@@ -77,7 +77,11 @@ unchanged. It runs on a CPU and submits nothing.
        ``vertical_*`` properties to ``properties_list``.
    * - ``--count``
      - ``1000``
-     - Number of seed geometries, which also sets ``bootstrap_set``.
+     - Number of seed geometries for the bootstrap. Sets ``bootstrap_set``.
+   * - ``--spares``
+     - 5% of ``--count``
+     - Extra seeds, each labeled only in place of one whose label failed. Sets
+       ``bootstrap_spares``.
    * - ``--generate-seeds``
      - Off
      - Prepare the seeds now. Otherwise, prepare them yourself with
@@ -101,6 +105,9 @@ Configure Parsl
 ``parsl_configs.py`` is a Slurm template that reads its settings from the environment,
 with the variables listed in :doc:`acac_excited_pyseqm`. Importing it submits no jobs.
 It adds ``ALF_QM_MAX_BLOCKS``, ``ALF_ML_MAX_BLOCKS``, and ``ALF_SAMPLER_MAX_BLOCKS``.
+Unlike that template, every role's allocation lasts 16 hours by default, because labels
+and trainings still running at the time limit are lost. If your partition's limit is
+shorter, set ``ALF_QM_WALLTIME``, ``ALF_ML_WALLTIME``, and ``ALF_SAMPLER_WALLTIME`` to it.
 
 .. list-table::
    :header-rows: 1
@@ -144,8 +151,15 @@ samples from each state, labels the selected frames, and retrains. New sampler s
 geometries come from the stored label files. Labels take minutes each at this size, so
 run the coordinator somewhere that survives disconnecting, such as ``tmux``.
 
-``finite_bootstrap`` is on, so ALF stops with an error if the seeds run out before the
-bootstrap finishes. If that happens, look for failed labels in the logs and metadata.
+The bootstrap goes on until ``--count`` labels have converged. A seed whose label fails,
+for example by running out of GPU memory or by losing its worker at the end of an
+allocation, is replaced by the next spare seed. If the spares run out too, the first
+ensemble trains on the labels that converged. Each bootstrap status report gives the
+converged and failed counts and the spares used; look for the failed labels in the logs
+and metadata.
+
+Labels still running when a QM allocation reaches its time limit are lost, so keep
+``ALF_QM_WALLTIME`` long; see `Configure Parsl`_.
 
 Solvent
 -------

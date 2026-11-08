@@ -406,7 +406,8 @@ def test_finite_bootstrap_stops_when_structures_run_out(tmp_path, monkeypatch, f
         gpus_per_node=0,
     )
     if failure:
-        with pytest.raises(RuntimeError, match="Finite bootstrap exhausted"):
+        # Every seed failed, so there is nothing to train on, even with spares.
+        with pytest.raises(RuntimeError, match="no seed gave a converged label"):
             run_alf_driver(tmp_path, monkeypatch, **settings)
     else:
         run_alf_driver(tmp_path, monkeypatch, **settings)

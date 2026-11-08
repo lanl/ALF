@@ -138,6 +138,30 @@ def test_cpp_gpu4pyscf_configs_are_valid(name):
     validate_gpu4pyscf_config(read(ROOT / "examples/CPP_excited_gpu4pyscf" / name))
 
 
+@pytest.mark.parametrize("spares, expected", [(None, 2), (0, 0), (7, 7)])
+def test_cpp_prepare_makes_spare_seeds(tmp_path, monkeypatch, spares, expected):
+    from alframework.tools.batching import bootstrap_spare_count
+
+    folder = ROOT / "examples" / "CPP_excited_gpu4pyscf"
+    monkeypatch.syspath_prepend(str(folder))
+    monkeypatch.delitem(sys.modules, "prepare", raising=False)
+    prepare = importlib.import_module("prepare").prepare
+    run = prepare(tmp_path / "cpp9", count=40, spares=spares)
+    master = read(run / "master_config.json")
+    assert (master["bootstrap_set"], master["bootstrap_spares"]) == (40, expected)
+    assert bootstrap_spare_count(master) == expected
+    assert read(run / "seed_config.json")["count"] == 40 + expected, "the seed pool holds the spares"
+    assert read(run / "preparation.json")["spares"] == expected
+    monkeypatch.delitem(sys.modules, "prepare", raising=False)
+
+
+def test_example_masters_have_valid_bootstrap_spares():
+    from alframework.tools.batching import bootstrap_spare_count
+
+    for path in MASTERS:
+        bootstrap_spare_count(read(path))
+
+
 def test_no_old_state_names_remain():
     """State-aware code names states E#/F#; the old sE# names were removed, with no compatibility."""
     import re

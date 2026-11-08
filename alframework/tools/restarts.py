@@ -45,6 +45,7 @@ class HeldLabels:
         self.directory.mkdir(parents=True, exist_ok=True)
         self.failed_since_store = 0
         self._successful = None
+        self._converged = None
         self._ids = None
 
     def pieces(self):
@@ -58,10 +59,11 @@ class HeldLabels:
         return piece
 
     def _scan(self):
-        self._successful, self._ids = 0, set()
+        self._successful, self._converged, self._ids = 0, 0, set()
         for name in self.pieces():
             piece = self._read(name)
             self._successful += piece['successful']
+            self._converged += sum(1 for result in piece['results'] if result.check_convergence())
             self._ids.update(result.get_moleculeid() for result in piece['results'])
 
     def hold(self, results, failed=0):
@@ -75,12 +77,20 @@ class HeldLabels:
         write_bytes_atomic(self.directory / f'held-{number:08d}.pkl', pickle.dumps(piece, pickle.HIGHEST_PROTOCOL))
         if self._successful is not None:
             self._successful += len(results)
+            self._converged += sum(1 for result in results if result.check_convergence())
             self._ids.update(result.get_moleculeid() for result in results)
 
     def successful(self):
+        """Held results, converged or not: the tasks that returned."""
         if self._successful is None:
             self._scan()
         return self._successful
+
+    def converged(self):
+        """Held results with a converged label, the ones a store keeps."""
+        if self._converged is None:
+            self._scan()
+        return self._converged
 
     def finished(self):
         return self.successful() + self.failed_since_store
@@ -105,7 +115,7 @@ class HeldLabels:
             if path.exists():
                 path.unlink()
         self.failed_since_store = 0
-        self._successful = self._ids = None
+        self._successful = self._converged = self._ids = None
 
 
 def shard_frames(h5path):
@@ -154,7 +164,8 @@ def reconcile_status(status, master_config, held):
                        f'the next training is {status["current_training_id"]}')
     if in_bootstrap(status) and master_config.get('finite_bootstrap', False):
         status['current_molecule_id'] = 0
-        changes.append(f'finite bootstrap: {held.successful()} labels are held; rebuilding the rest')
+        changes.append(f'finite bootstrap: {held.successful()} labels are held ({held.converged()} converged); '
+                       'rebuilding the rest')
     else:
         margin = master_config.get('parallel_samplers', 0) + master_config.get('maximum_builder_structures', 1)
         status['current_molecule_id'] += margin

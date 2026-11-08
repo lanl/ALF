@@ -1,6 +1,6 @@
 # ALF development roadmap
 
-Last updated: November 7, 2026.
+Last updated: November 8, 2026.
 
 This folder is the shared plan for bringing the fork's intended capabilities into
 `lanl/ALF:development`.
@@ -558,6 +558,48 @@ matching the shards.
 - Docs build with no warnings; 96 roadmap links checked, 0 broken.
 - Not run on Darwin. Rerunning section 3 of the [restart profile](exascale.md#darwin-profile-for-restart-work)
   at this commit would compare against the `ce711d8` baseline.
+
+### Spare seeds for a finite bootstrap (2026-11-08)
+
+Before a full CPP9 campaign on Chicoma (1,000 seeds, 10 GPU nodes), a finite bootstrap stopped with
+"Finite bootstrap exhausted" if one seed's task was lost, for example at an allocation's time limit:
+only returned tasks counted, and `prepare.py --count` made exactly `bootstrap_set` seeds. An
+unconverged label counted as if it had succeeded, so the bootstrap ended a label short instead.
+User decision: replace failed seeds from spares, and never stop while some labels converged.
+
+- **`bootstrap_spares`** (master config, default `0`, needs `finite_bootstrap`; validated at startup in
+  `batching.bootstrap_spare_count`). The seed list holds `bootstrap_set + bootstrap_spares` structures.
+- **The finite bootstrap counts only converged labels** (`HeldLabels.converged()`), and hands out seed
+  IDs up to `bootstrap_set + min(spares, failures)`. A failure is an unconverged held result or a task
+  lost in this process. A spare is handed out only after a failure, so a clean bootstrap labels none.
+- **Once the spares are used up,** ALF prints that it trains on fewer labels than `bootstrap_set`, and
+  goes on. It stops with an error only if no seed converged. Each status report, and the end of the
+  bootstrap, print converged, failed, and spare counts.
+- **Restarts.** Held unconverged labels still count as failures. A task lost before the crash isn't
+  held, so the restart rebuilds that seed and tries it again.
+- **CPP example.** `prepare.py --spares`, default 5% of `--count` (50 for 1,000), writes
+  `bootstrap_spares` and makes that many more seeds; the tracked `master_config.json` has 50. The AcAc
+  and RDKit docs say how to keep spares from `seed_size`.
+- **CPP Parsl template: 16-hour allocations for every role** (user decision, Chicoma's limit), in place
+  of 30 minutes for QM and sampling and 1 hour for training. Labels and trainings still running at the
+  limit are lost, and the bootstrap training alone is estimated at 1.3–7.5 hours on ~800 training frames
+  (50–300 epochs at the Darwin batch-8 rate). The bootstrap waits on that training's result, so a
+  training killed at walltime made the coordinator exit. The layout stays 8 QM nodes, 1 training node, and
+  1 sampling node. The `ALF_*_WALLTIME` variables still override it.
+- **Not covered.** A failed builder task's seeds aren't counted as failures; the bootstrap then trains on
+  fewer. Ordinary (not finite) bootstraps are unchanged.
+
+**Checked locally** with the real coordinator and stand-in tasks: a clean bootstrap labels no spares;
+one unconverged and one lost seed are replaced by exactly two spares; with one spare, the run trains on
+five of six and goes on; with nothing converged, it stops; a crash during a bootstrap with a failed seed
+restarts and uses one spare. All 4 deliberate breaks were caught: counting returned instead of converged
+labels, handing out spares before failures, no cap on spares, and stopping when they're used up.
+Darwin B2 now includes a finite-bootstrap row with a failing seed.
+
+- `test_finite_bootstrap_stops_when_structures_run_out`, where every builder or label fails, now expects
+  the "no seed gave a converged label" stop instead of "Finite bootstrap exhausted".
+- Full suite: 1,163 passed. With HIPPYNN blocked: 1,052 passed, 111 skipped. With Torch blocked: 910
+  passed, 218 skipped. Docs build with no warnings; 133 roadmap links checked, 0 broken.
 
 ### PySCF and GPU4PySCF labeling, molecules and periodic cells (2026-11-08)
 

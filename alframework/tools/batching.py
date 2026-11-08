@@ -96,6 +96,17 @@ def flatten_molecule_output(output):
                     f"MoleculesObject instances, or None; got {type(output).__name__}.")
 
 
+def bootstrap_spare_count(master_config):
+    """Return the validated ``bootstrap_spares``: extra seeds a finite bootstrap labels in place of failed ones."""
+    spares = master_config.get('bootstrap_spares', 0)
+    if isinstance(spares, bool) or not isinstance(spares, int) or spares < 0:
+        raise ValueError(f'bootstrap_spares must be a non-negative integer; received {spares!r}.')
+    if spares and not master_config.get('finite_bootstrap', False):
+        raise ValueError('bootstrap_spares needs finite_bootstrap: an ordinary bootstrap already keeps building '
+                         'until it has enough labels.')
+    return spares
+
+
 def bootstrap_molecule_ids(start, total, width, finite=False):
     """Bound an opt-in finite source without changing ordinary bootstrap admission."""
     return next_bootstrap_ids(start, total, width, finite)[0]

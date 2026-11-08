@@ -110,10 +110,16 @@ The master config controls the workflow wiring. Common fields include:
      - Queue-depth and retraining controls for the active-learning loop. These
        count structures, including when tasks are batched. See :doc:`batching`.
    * - ``finite_bootstrap``
-     - Optional. ``true`` builds exactly ``bootstrap_set`` structures, for a builder
-       reading a fixed list of seeds. ALF stops with an error if builders run out
-       before that many are labeled. The default is ``false``, which keeps building
-       until enough labeling tasks have finished.
+     - Optional. ``true`` is for a builder reading a fixed list of seeds: the bootstrap
+       labels seeds in order until ``bootstrap_set`` labels have converged. The default
+       is ``false``, which keeps building until enough labeling tasks have finished.
+   * - ``bootstrap_spares``
+     - Optional, with ``finite_bootstrap``. The number of extra seeds after the first
+       ``bootstrap_set``, default ``0``. Each failed label, unconverged or lost with its
+       worker, lets the bootstrap label one spare, so a clean bootstrap labels none. If
+       labels still fail once the spares are used, ALF trains on the labels that
+       converged, and stops with an error only if none did. The seed list needs
+       ``bootstrap_set + bootstrap_spares`` structures.
    * - ``maximum_stored_labels``
      - Optional. ALF stops after storing at least this many converged labels. It
        starts no new work, lets any running training finish and be promoted, reports

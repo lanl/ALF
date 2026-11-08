@@ -86,6 +86,7 @@
     ]
   },
   "bootstrap_set": 1000,
+  "bootstrap_spares": 50,
   "finite_bootstrap": true,
   "target_queued_QM": 64,
   "minimum_QM": 0,

@@ -101,6 +101,7 @@ Tabled on November 6, before any restart code changed. ALF has since gained exit
 - An interrupted bootstrap loses all its labels, which are stored only at the end. This may be the most expensive risk for large CPP bootstraps. *Fixed November 7:* finished labels are held on disk.
 - A crash during training loses every label finished since the last store, because stores wait for training to finish. *Fixed November 7:* the same holding area keeps them.
 - `maximum_stored_labels` drops labels already finished but not yet stored. *Fixed November 7:* they're stored in one last shard, marked `stored_at_budget_stop`.
+- One failed seed label stops a finite bootstrap with "Finite bootstrap exhausted": a lost task never counts, and with `--count` equal to `bootstrap_set` there's no other seed. For a 1,000-seed CPP9 bootstrap, at least one failure is likely. *Fixed November 8:* only converged labels count, `bootstrap_spares` seeds replace failed ones, and once they're used up ALF trains on what converged. See the [record](README.md#spare-seeds-for-a-finite-bootstrap-2026-11-08).
 
 **File I/O at exascale, and what to fix first.** See [`exascale.md`](exascale.md) for every operation ranked by severity, the [priority list](exascale.md#priority-list), the measurements needed on Darwin, and where node-local storage fits.
 

@@ -259,6 +259,30 @@ def test_held_labels_survive_a_new_process(tmp_path):
     assert again.pieces() == ["held-00000001.pkl", "held-00000002.pkl"], "numbering continues after a discard"
 
 
+def test_held_labels_count_converged_labels_apart_from_failed_ones(tmp_path):
+    from alframework.tools.restarts import HeldLabels
+
+    failed = MoleculesObject(WATER.copy(), "failed")
+    failed.set_converged_flag(False)
+    held = HeldLabels(tmp_path / "held")
+    held.hold([labeled("a"), failed])
+    held.hold([labeled("b")])
+    assert (held.successful(), held.converged()) == (3, 2)
+    assert HeldLabels(tmp_path / "held").converged() == 2, "a new process counts the same"
+
+
+def test_bootstrap_spares_need_a_finite_bootstrap_and_a_count():
+    from alframework.tools.batching import bootstrap_spare_count
+
+    assert bootstrap_spare_count({}) == 0
+    assert bootstrap_spare_count({"finite_bootstrap": True, "bootstrap_spares": 3}) == 3
+    for spares in (-1, 1.5, True, "3"):
+        with pytest.raises(ValueError, match="non-negative integer"):
+            bootstrap_spare_count({"finite_bootstrap": True, "bootstrap_spares": spares})
+    with pytest.raises(ValueError, match="needs finite_bootstrap"):
+        bootstrap_spare_count({"bootstrap_spares": 3})
+
+
 def test_held_labels_directory_defaults_beside_h5_dir_and_never_inside_it(tmp_path):
     from alframework.tools.restarts import held_labels_directory
 
@@ -383,6 +407,91 @@ def test_restarted_finite_bootstrap_rebuilds_exactly_what_it_lacks(tmp_path, mon
     assert bootstrap_ids == sorted(expected), "the bootstrap must hold exactly the IDs a run without a crash would"
     rebuilt = [name for name in built[first_run:] if name.startswith("mol-boot-")]
     assert set(rebuilt) == expected - kept
+
+
+def boot(*indices):
+    return {f"mol-boot-{index:010d}" for index in indices}
+
+
+def failing_seeds(tmp_path, built, unconverged=(), raises=(), qm_seconds=0.0):
+    """``restart_tasks`` whose QM gives an unconverged label for some seeds and loses the task for others."""
+    import time
+
+    from parsl import python_app
+
+    tasks = restart_tasks(tmp_path, built, qm_seconds=qm_seconds)
+    unconverged, raises = boot(*unconverged), boot(*raises)
+
+    @python_app(executors=["alf_QM_executor"])
+    def qm(molecule_object):
+        time.sleep(qm_seconds)
+        if molecule_object.get_moleculeid() in raises:
+            raise RuntimeError("worker lost at walltime")
+        if molecule_object.get_moleculeid() in unconverged:
+            molecule_object.set_converged_flag(False)
+            return molecule_object
+        molecule_object.store_results({"energy": -1.0, "forces": np.zeros((len(molecule_object), 3))})
+        molecule_object.set_converged_flag(True)
+        return molecule_object
+
+    return dict(tasks, qm=qm)
+
+
+def bootstrap_shard_ids(tmp_path):
+    with h5py.File(tmp_path / "h5" / "data-0000.h5") as bootstrap:
+        return {name for group in bootstrap.values() for name in group["_id"].asstr()[()]}
+
+
+def built_seeds(built):
+    return {name for name in built if name.startswith("mol-boot-")}
+
+
+def test_finite_bootstrap_without_failures_labels_no_spares(tmp_path, monkeypatch):
+    built = []
+    run_alf_driver(tmp_path, monkeypatch, **restart_tasks(tmp_path, built),
+                   **dict(LOOP, finite_bootstrap=True, bootstrap_spares=3))
+    assert built_seeds(built) == boot(*range(6))
+    assert bootstrap_shard_ids(tmp_path) == boot(*range(6))
+
+
+def test_failed_seeds_are_replaced_by_spares(tmp_path, monkeypatch, capsys):
+    built = []
+    run_alf_driver(tmp_path, monkeypatch, **failing_seeds(tmp_path, built, unconverged=[1], raises=[3]),
+                   **dict(LOOP, finite_bootstrap=True, bootstrap_spares=3))
+    assert bootstrap_shard_ids(tmp_path) == boot(0, 2, 4, 5, 6, 7), "six converged labels, two of them spares"
+    assert built_seeds(built) == boot(*range(8)), "a spare is handed out only for a failure"
+    assert "Finite bootstrap finished: 6 of 6 labels converged, 2 seeds failed, 2 spare seeds handed out" \
+        in capsys.readouterr().out
+
+
+def test_bootstrap_trains_on_what_it_has_once_the_spares_are_used(tmp_path, monkeypatch, capsys):
+    built = []
+    result = run_alf_driver(tmp_path, monkeypatch, **failing_seeds(tmp_path, built, unconverged=[1], raises=[3]),
+                            **dict(LOOP, finite_bootstrap=True, bootstrap_spares=1))
+    assert bootstrap_shard_ids(tmp_path) == boot(0, 2, 4, 5, 6)
+    assert built_seeds(built) == boot(*range(7))
+    output = capsys.readouterr().out
+    assert "all 1 spare seeds are used, so it trains on fewer labels" in output
+    assert "Finite bootstrap finished: 5 of 6 labels converged, 2 seeds failed, 1 spare seeds handed out" in output
+    assert result.status["current_model_id"] >= 0, "the run went on to train"
+
+
+def test_finite_bootstrap_without_a_converged_label_stops(tmp_path, monkeypatch):
+    with pytest.raises(RuntimeError, match="no seed gave a converged label"):
+        run_alf_driver(tmp_path, monkeypatch, **failing_seeds(tmp_path, [], unconverged=range(8)),
+                       **dict(LOOP, finite_bootstrap=True, bootstrap_spares=2), timeout=30)
+
+
+def test_restarted_bootstrap_keeps_counting_failed_seeds(tmp_path, monkeypatch):
+    built = []
+    finite = dict(LOOP, finite_bootstrap=True, bootstrap_spares=2)
+    run_alf_driver(tmp_path, monkeypatch, **failing_seeds(tmp_path, built, unconverged=[1], qm_seconds=0.05),
+                   **finite, stop_when=lambda status: 3 <= len(held_ids(tmp_path)) < 6)
+    assert not (tmp_path / "h5" / "data-0000.h5").exists(), "the crash came during the bootstrap"
+
+    run_alf_driver(tmp_path, monkeypatch, **failing_seeds(tmp_path, built, unconverged=[1]), **finite)
+    assert bootstrap_shard_ids(tmp_path) == boot(0, 2, 3, 4, 5, 6)
+    assert "mol-boot-0000000007" not in built, "one failure, so one spare"
 
 
 def test_labels_finished_during_training_survive_a_crash(tmp_path, monkeypatch):

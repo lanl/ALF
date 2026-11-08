@@ -97,6 +97,7 @@ This reruns [section 3 of the restart profile](exascale.md#3-kill-and-restart-a-
 | --- | --- |
 | During a bootstrap | SIGTERM, SIGKILL |
 | During a finite bootstrap | SIGTERM, SIGKILL |
+| During a finite bootstrap with `bootstrap_spares: 2`, with one seed forced to fail (`scf_max_cycle: 1` for its ID, or a cancelled QM block) | SIGKILL |
 | Between stores, with training idle | SIGKILL |
 | During training | SIGTERM, SIGKILL |
 | During a store (best effort) | SIGKILL |
@@ -106,7 +107,7 @@ This reruns [section 3 of the restart profile](exascale.md#3-kill-and-restart-a-
 - No finished label is lost: finished QM results equal stored labels plus those in `<h5_dir>_held/`. Stored IDs have no duplicates.
 - No training ID is reused, and training never reads a `.partial` shard.
 - After a store interruption, the next store succeeds.
-- A finite bootstrap ends with exactly its configured set: the right IDs, each once.
+- A finite bootstrap ends with `bootstrap_set` converged labels, each once: the seeds in order, plus one spare for each failed seed, and no spare when nothing failed.
 - With the first coordinator running, a second in the same directory is refused, with the lock's host and process.
 
 **Record only:** how long allocations survive a SIGKILL. Cleaning them up is the scheduler's job, not ALF's.

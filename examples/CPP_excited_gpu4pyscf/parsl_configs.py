@@ -6,6 +6,8 @@ an ALF checkout; otherwise use the installed package. Import submits no jobs.
 Default limits are eight QM nodes, one training node and one sampling node.
 All start empty; ordinary Parsl scaling queues nodes when work is available
 and releases idle nodes. Override ALF_{QM,ML,SAMPLER}_MAX_BLOCKS for smaller runs.
+Every role's allocation lasts 16 hours (ALF_{QM,ML,SAMPLER}_WALLTIME), because labels
+and trainings still running at the limit are lost; lower it to fit a shorter partition limit.
 One training task launches four ensemble members on four local GPUs.
 QM workers are bound by Parsl to one allocated GPU UUID each, making its
 local CUDA index zero. The manager retains scheduler visibility; training
@@ -46,7 +48,7 @@ def make_config():
             cores_per_node=max(4, workers*cores),
             scheduler_options=os.environ.get(prefix+'_RESOURCE_OPTIONS', '#SBATCH --gres=gpu:4'),
             launcher=SingleNodeLauncher(),
-            walltime=os.environ.get(prefix+'_WALLTIME', '01:00:00' if role=='ML' else '00:30:00'),
+            walltime=os.environ.get(prefix+'_WALLTIME', '16:00:00'),
             worker_init='\n'.join(init)+'\n', cmd_timeout=60)
         executors.append(HighThroughputExecutor(
             label=f'alf_{role}_executor', max_workers_per_node=workers, cores_per_worker=cores,

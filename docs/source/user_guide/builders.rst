@@ -338,7 +338,9 @@ Add them to your run:
      "finite_bootstrap": true
    }
 
-Set ``bootstrap_set`` to ``seed_size``. The builder config needs ``seed_manifest_path``,
+Set ``bootstrap_set`` to ``seed_size``. To replace seeds whose labels fail, set it lower
+and set ``bootstrap_spares`` to the rest of ``seed_size``; see
+:doc:`configuration`. The builder config needs ``seed_manifest_path``,
 pointing at ``provenance.json``, and can set ``selection_seed`` (default ``42``).
 
 The builder stops if the prepared files have changed. It labels ``seed.h5`` in order

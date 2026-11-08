@@ -119,9 +119,11 @@ From the prepared directory:
    python -m alframework --master master_config.json
 
 ALF labels all the seeds, then trains the first ensemble. After that, it samples from
-each state, labels the selected frames, and retrains. ``finite_bootstrap`` is on, so ALF
-stops with an error if the seeds run out before the bootstrap finishes. If that
-happens, look for failed labels in the logs and metadata.
+each state, labels the selected frames, and retrains. ``finite_bootstrap`` is on and
+there are no spare seeds, so if a seed's label fails, the first ensemble trains on the
+labels that converged. To replace failed labels instead, lower ``bootstrap_set`` below
+the seed size and set ``bootstrap_spares`` to the difference; see
+:doc:`../user_guide/configuration`. Look for failed labels in the logs and metadata.
 
 Settings To Know
 ----------------

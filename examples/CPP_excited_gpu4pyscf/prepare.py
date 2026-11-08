@@ -1,6 +1,7 @@
 """Copy a fresh gas-phase or DCM CPP ALF example with a minimized S0 reference.
 
 python prepare.py --ring-size 6 --output-dir /scratch/cpp6 --generate-seeds
+--count seeds make the bootstrap; --spares more (5% by default) replace seeds whose labels fail.
 For other CPP sizes provide --reference, --energy-offset-ev and --ring-size.
 Model choices: hiphop145 (default), hiphop100, hiphop64, hipnn64; all use four members.
 Configure parsl_configs.py for your site, then run in the prepared directory:
@@ -21,13 +22,17 @@ HERE = Path(__file__).resolve().parent
 
 
 def prepare(output_dir, *, ring_size=9, reference=None, energy_offset_ev=None,
-            count=1000, model='hiphop145', generate_seeds=False, solvent='gas'):
+            count=1000, spares=None, model='hiphop145', generate_seeds=False, solvent='gas'):
     if solvent not in {'gas','dcm'}:
         raise ValueError('solvent must be gas or dcm')
     if isinstance(ring_size, bool) or not isinstance(ring_size, int) or ring_size < 3:
         raise ValueError('ring_size must be an integer >= 3')
     if isinstance(count, bool) or not isinstance(count, int) or count < 1:
         raise ValueError('count must be a positive integer')
+    if spares is None:
+        spares = math.ceil(0.05*count)
+    if isinstance(spares, bool) or not isinstance(spares, int) or spares < 0:
+        raise ValueError('spares must be a non-negative integer')
     if model not in {'hiphop145', 'hiphop100', 'hiphop64', 'hipnn64'}:
         raise ValueError('Unknown model profile')
     if reference is None:
@@ -74,7 +79,7 @@ def prepare(output_dir, *, ring_size=9, reference=None, energy_offset_ev=None,
             config = json.loads(path.read_text())
             callback(config)
             path.write_text(json.dumps(config, indent=2)+'\n')
-        update('master_config.json', lambda c: c.update(bootstrap_set=count))
+        update('master_config.json', lambda c: c.update(bootstrap_set=count, bootstrap_spares=spares))
         if solvent == 'dcm':
             def vertical_schema(config):
                 for key in ('vertical_excitation_energies','vertical_transition_dipoles','vertical_oscillator_strengths'):
@@ -90,7 +95,7 @@ def prepare(output_dir, *, ring_size=9, reference=None, energy_offset_ev=None,
                 for key in ('l_max', 'n_max'):
                     config['network_params'].pop(key, None)
         update('hippynn_config.json', model_settings)
-        seed = dict(DEFAULT_SETTINGS, reference_geometry='reference.xyz', count=count)
+        seed = dict(DEFAULT_SETTINGS, reference_geometry='reference.xyz', count=count+spares)
         (temporary/'seed_config.json').write_text(json.dumps(seed, indent=2)+'\n')
         if generate_seeds:
             from initial_sampling import prepare_ring_pool
@@ -102,7 +107,7 @@ def prepare(output_dir, *, ring_size=9, reference=None, energy_offset_ev=None,
             manifest['artifacts_sha256']['builder_config.json'] = hashlib.sha256(builder.read_bytes()).hexdigest()
             manifest_path.write_text(json.dumps(manifest, indent=2)+'\n')
         record.update(ring_size=ring_size, energy_offset_eV=float(offset), model=model,
-                      seeds_prepared=generate_seeds, count=count, campaign_submitted=False,
+                      seeds_prepared=generate_seeds, count=count, spares=spares, campaign_submitted=False,
                       solvent=solvent, reference_environment='gas' if 'theory' in record else 'caller supplied',
                       response_convention='equilibrium energies/forces/NACs; separate vertical spectrum' if solvent=='dcm' else 'gas')
         (temporary/'preparation.json').write_text(json.dumps(record, indent=2)+'\n')
@@ -120,12 +125,13 @@ def main(argv=None):
     parser.add_argument('--reference', type=Path)
     parser.add_argument('--energy-offset-ev', type=float)
     parser.add_argument('--count', type=int, default=1000)
+    parser.add_argument('--spares', type=int, help='extra seeds for failed labels; default 5%% of --count')
     parser.add_argument('--model', choices=['hiphop145', 'hiphop100', 'hiphop64', 'hipnn64'], default='hiphop145')
     parser.add_argument('--generate-seeds', action='store_true')
     parser.add_argument('--solvent', choices=['gas','dcm'], default='gas')
     args = parser.parse_args(argv)
     print(prepare(args.output_dir, ring_size=args.ring_size, reference=args.reference,
-                  energy_offset_ev=args.energy_offset_ev, count=args.count,
+                  energy_offset_ev=args.energy_offset_ev, count=args.count, spares=args.spares,
                   model=args.model, generate_seeds=args.generate_seeds, solvent=args.solvent))
     return 0
 

@@ -35,7 +35,7 @@ from alframework.tools.tools import write_status
 from alframework.tools.files import hold_lock
 from alframework.tools.pyanitools import anidataloader
 from alframework.tools.molecules_class import MoleculesObject
-from alframework.tools.batching import next_bootstrap_ids
+from alframework.tools.batching import bootstrap_spare_count, next_bootstrap_ids
 from alframework.tools.restarts import HELD_PIECES, STORED_AT_BUDGET_STOP, HeldLabels, held_labels_directory, reconcile_status
 from alframework.tools.labeling import LabelingCoordinator
 from alframework.tools.sampler_coordinator import SamplerCoordinator
@@ -175,6 +175,7 @@ write_status(master_config['status_path'], status)
 
 # Read once, so that a mistaken edit can't stop or crash a long run.
 label_budget = stored_label_budget(master_config)
+spare_seeds = bootstrap_spare_count(master_config)
 
 
 def hold_finished_labels():
@@ -318,18 +319,36 @@ if status['current_h5_id'] == 0 and status['current_model_id'] < 0:
     finite_bootstrap = master_config.get('finite_bootstrap', False)
     # A restarted finite bootstrap rebuilds only the IDs it doesn't hold, which give the same structures.
     bootstrap_skip = held.molecule_ids() if finite_bootstrap else frozenset()
-    while held.successful() + QM_task_queue.get_exec_done_number() < master_config['bootstrap_set']:
-        if (master_config.get('finite_bootstrap', False)
-                and status['current_molecule_id'] >= master_config['bootstrap_set']
+
+    def bootstrap_unfinished():
+        if finite_bootstrap:
+            # Only converged labels count, so each failed seed can be replaced by a spare.
+            hold_finished_labels()
+            return held.converged() < master_config['bootstrap_set']
+        return held.successful() + QM_task_queue.get_exec_done_number() < master_config['bootstrap_set']
+
+    def bootstrap_failures():
+        """Seeds that didn't give a converged label: unconverged results, and tasks lost in this process."""
+        return held.successful() - held.converged() + held.failed_since_store
+
+    while bootstrap_unfinished():
+        # A spare seed is handed out only once a label has failed, so a clean bootstrap labels no spares.
+        bootstrap_limit = master_config['bootstrap_set'] + min(spare_seeds, bootstrap_failures())
+        if (finite_bootstrap
+                and status['current_molecule_id'] >= bootstrap_limit
                 and builder_task_queue.get_number() == 0
-                and QM_task_queue.get_queued_number() + QM_task_queue.get_running_number() == 0
-                and not (getattr(labeling, 'buffer', None) and len(labeling.buffer))
-                and held.successful() + QM_task_queue.get_exec_done_number() < master_config['bootstrap_set']):
-            raise RuntimeError('Finite bootstrap exhausted before all requested labeling tasks completed; inspect failed work')
+                and QM_task_queue.get_number() == 0
+                and not (getattr(labeling, 'buffer', None) and len(labeling.buffer))):
+            if held.converged() == 0:
+                raise RuntimeError('Finite bootstrap: no seed gave a converged label, so there is nothing to train on; '
+                                   'inspect failed work')
+            print('Finite bootstrap: all {} spare seeds are used, so it trains on fewer labels than bootstrap_set'
+                  .format(spare_seeds), flush=True)
+            break
         if QM_task_queue.get_queued_number() < master_config['target_queued_QM']:
             while builder_task_queue.get_number() * master_config.get('maximum_builder_structures', 1) < master_config['parallel_samplers']:
                 moleculeids, next_molecule_id = next_bootstrap_ids(
-                    status['current_molecule_id'], master_config['bootstrap_set'],
+                    status['current_molecule_id'], bootstrap_limit,
                     master_config.get('maximum_builder_structures', 1), finite_bootstrap, bootstrap_skip)
                 status['current_molecule_id'] = next_molecule_id
                 if not moleculeids:
@@ -357,6 +376,10 @@ if status['current_h5_id'] == 0 and status['current_model_id'] < 0:
         hold_finished_labels()
 
         print("### Bootstraping Learning Status at: " + time.ctime() + " ###")
+        if finite_bootstrap:
+            print("bootstrap: {} of {} labels converged, {} failed, {} of {} spare seeds handed out".format(
+                held.converged(), master_config['bootstrap_set'], bootstrap_failures(),
+                max(0, status['current_molecule_id'] - master_config['bootstrap_set']), spare_seeds))
         print("builder status:")
         builder_task_queue.print_status()
         print("QM status:")
@@ -367,6 +390,10 @@ if status['current_h5_id'] == 0 and status['current_model_id'] < 0:
 
         time.sleep(labeling.poll_delay(60))
 
+    if finite_bootstrap:
+        print("Finite bootstrap finished: {} of {} labels converged, {} seeds failed, {} spare seeds handed out".format(
+            held.converged(), master_config['bootstrap_set'], bootstrap_failures(),
+            max(0, status['current_molecule_id'] - master_config['bootstrap_set'])), flush=True)
     print("Saving Bootstrap and training model")
     store_held_labels()
     

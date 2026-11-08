@@ -44,6 +44,9 @@ DEFAULT_GPU4PYSCF_CONFIG = {
     "density_fit": True,
     "auxbasis": None,
     "grids_level": 3,
+    # Include motion/weight response of the DFT quadrature in S0 gradients.
+    # Opt-in to retain the force convention of existing excited-state datasets.
+    "ground_state_grid_response": False,
     "nroots": 5,
     "scf_conv_tol": 1.0e-10,
     "scf_max_cycle": 100,
@@ -248,6 +251,8 @@ def validate_gpu4pyscf_config(QM_config: dict[str, Any] | None) -> dict[str, Any
     options["grids_level"] = _integer(
         options.get("grids_level"), name="grids_level", minimum=0
     )
+    if not isinstance(options.get("ground_state_grid_response"), bool):
+        raise ValueError("ground_state_grid_response must be a Boolean.")
     # nroots 0 is a ground-state calculation: SCF energy and gradient, with no TDA.
     options["nroots"] = _integer(
         options.get("nroots"), name="nroots", minimum=0
@@ -808,7 +813,9 @@ def _run_states_on_cpu(atoms, options):
     gradient_start = time.time()
     gradients = np.empty((nroots + 1, len(atoms), 3))
     try:
-        gradients[0] = np.asarray(mf.nuc_grad_method().kernel(), dtype=np.float64)
+        ground_gradient = mf.nuc_grad_method()
+        ground_gradient.grid_response = options.get("ground_state_grid_response", False)
+        gradients[0] = np.asarray(ground_gradient.kernel(), dtype=np.float64)
     except Exception as exc:
         raise GPU4PySCFGradientError(f"PySCF ground-state gradient failed: {type(exc).__name__}: {exc}",
                                      failed_states=(0,)) from exc
@@ -830,6 +837,7 @@ def _run_states_on_cpu(atoms, options):
         energies_hartree, gradients, state_count=nroots + 1, atom_count=len(atoms),
         hartree_to_ev=float(nist.HARTREE2EV), bohr_to_angstrom=float(nist.BOHR))
     versions = {
+        "ground_state_grid_response": bool(options.get("ground_state_grid_response", False)),
         "qm_solvent": None, "qm_state_response": "gas", "qm_optical_response": "none",
         "qm_vertical_response": "none", "qm_vertical_root_order": "none", "qm_vertical_seconds": 0.0,
         "qm_nac_solver": "none", "_transition_dipoles": np.empty((0, 3)), "_oscillator_strengths": np.empty((0,)),
@@ -986,8 +994,10 @@ def run_gpu4pyscf_states(
     atom_count = len(atoms)
     gradients = np.empty((nroots + 1, atom_count, 3), dtype=np.float64)
     try:
+        ground_gradient = mf.nuc_grad_method()
+        ground_gradient.grid_response = options.get("ground_state_grid_response", False)
         gradients[0] = _to_numpy(
-            mf.nuc_grad_method().kernel(), cupy
+            ground_gradient.kernel(), cupy
         ).astype(np.float64, copy=False)
     except Exception as exc:
         raise GPU4PySCFGradientError(
@@ -1141,6 +1151,7 @@ def run_gpu4pyscf_states(
     computed_vertical = options.get('_compute_vertical', False)
     versions = {
         **vertical_results,
+        "ground_state_grid_response": bool(options.get("ground_state_grid_response", False)),
         "qm_solvent": solvent,
         "qm_state_response": 'equilibrium_lr_pcm' if solvent else 'gas',
         "qm_optical_response": ('equilibrium_lr_pcm' if solvent else 'gas') if computed_optical else 'none',

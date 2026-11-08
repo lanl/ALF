@@ -472,6 +472,7 @@ def fake_gpu_stack(monkeypatch):
         def kernel(self, state=None):
             if self.ground:
                 assert state is None
+                calls.setdefault("ground_grid_response", []).append(self.grid_response)
                 return np.full((3, 3), 0.25)
             calls["gradient_states"].append(state)
             return np.full((3, 3), float(state))
@@ -1379,6 +1380,42 @@ def test_ground_state_run_matches_the_ground_state_of_an_excited_run(fake_gpu_st
     excited = run_gpu4pyscf_states(atoms, validate_gpu4pyscf_config({"nroots": 2}), device_index=0)
     np.testing.assert_array_equal(ground[0], excited[0][:1])
     np.testing.assert_array_equal(ground[1], excited[1][:1])
+
+
+@pytest.mark.parametrize("response", [False, True])
+@pytest.mark.parametrize("nroots", [0, 2])
+def test_ground_grid_response_routes_to_s0_only(fake_gpu_stack, response, nroots):
+    options = validate_gpu4pyscf_config({"nroots": nroots, "ground_state_grid_response": response})
+    *_, versions = run_gpu4pyscf_states(_molecule().atoms, options, device_index=0)
+    assert fake_gpu_stack["ground_grid_response"] == [response]
+    assert versions["ground_state_grid_response"] is response
+    assert fake_gpu_stack["gradient_states"] == list(range(1, nroots + 1))
+
+
+def test_ground_grid_response_is_opt_in(fake_gpu_stack):
+    options = validate_gpu4pyscf_config({"nroots": 2})
+    *_, versions = run_gpu4pyscf_states(_molecule().atoms, options, device_index=0)
+    assert fake_gpu_stack["ground_grid_response"] == [False]
+    assert versions["ground_state_grid_response"] is False
+
+
+@pytest.mark.parametrize("response", [False, True])
+@pytest.mark.parametrize("nroots", [0, 2])
+def test_cpu_ground_grid_response_uses_the_same_option(fake_gpu_stack, monkeypatch, response, nroots):
+    original_import = gpu4pyscf_module.importlib.import_module
+    monkeypatch.setattr(gpu4pyscf_module.importlib, "import_module",
+                        lambda name: original_import("gpu4pyscf.dft" if name == "pyscf.dft" else name))
+    options = validate_gpu4pyscf_config({"nroots": nroots, "ground_state_grid_response": response})
+    *_, versions = run_gpu4pyscf_states(_molecule().atoms, options, device_index=0, backend="cpu")
+    assert fake_gpu_stack["ground_grid_response"] == [response]
+    assert versions["ground_state_grid_response"] is response
+    assert fake_gpu_stack["device"] == []
+
+
+@pytest.mark.parametrize("value", [None, 0, 1, "true", np.bool_(True)])
+def test_ground_grid_response_requires_a_boolean(value):
+    with pytest.raises(ValueError, match="ground_state_grid_response"):
+        validate_gpu4pyscf_config({"ground_state_grid_response": value})
 
 
 @pytest.mark.parametrize(

@@ -1,7 +1,8 @@
-"""Fine-tuning existing models in ALF's loop: the general task, the MACE adapter, and MACE sampling.
+"""Fine-tuning existing models in ALF's loop: the general task and its HIPPYNN, MACE, and UMA adapters.
 
-MACE isn't installed in the test environment, so MACE's own training is checked by the command
-ALF builds, and the general task runs with ``tests.helpers.fake_fine_tuner``.
+The general task runs with ``tests.helpers.fake_fine_tuner``. HIPPYNN fine-tuning runs for real, on CPU,
+from small models that ``tests.helpers.hippynn`` trains. MACE and fairchem aren't installed in the test
+environment, so their training is checked through the commands and configurations ALF builds.
 """
 
 import json
@@ -192,7 +193,7 @@ def test_coordinator_checks_the_fine_tuning_config_before_the_bootstrap(tmp_path
 # --- MACE -------------------------------------------------------------------------------------------
 
 def mace(tmp_path, **settings):
-    base = dict(adapter=MACE, foundation_model=str(tmp_path / "foundation.model"), E0s="average")
+    base = dict(adapter=MACE, foundation_model=str(tmp_path / "foundation.model"), E0s="estimated")
     base.update(settings)
     return MaceFineTuner(fine_tune_settings({"fine_tune": base}, str(tmp_path)))
 
@@ -210,9 +211,31 @@ def test_mace_command_fine_tunes_from_the_foundation_model_without_replay(tmp_pa
     assert args["foundation_model"] == str(tmp_path / "foundation.model")
     assert args["multiheads_finetuning"] == "False", "MACE would otherwise download replay data"
     assert "pt_train_file" not in args and "freeze" not in args
-    assert (args["seed"], args["device"], args["E0s"], args["train_file"]) == ("7", "cuda", "average", "train.xyz")
+    assert (args["seed"], args["device"], args["E0s"], args["train_file"]) == ("7", "cuda", "estimated", "train.xyz")
     assert (args["energy_key"], args["forces_key"]) == ("REF_energy", "REF_forces")
     assert args["work_dir"] == args["model_dir"] == "member"
+
+
+def test_mace_defaults_follow_maces_own_fine_tuning_advice(tmp_path):
+    """mace-docs' naive recipe, and its multihead replay recipe when a replay file is set."""
+    naive = arguments(mace(tmp_path).command("train.xyz", "member", 0, "cpu"))
+    assert (naive["lr"], naive["max_num_epochs"], naive["batch_size"]) == ("0.001", "6", "2")
+    assert naive["ema"] is True and naive["amsgrad"] is True and naive["ema_decay"] == "0.999"
+    assert (naive["clip_grad"], naive["weight_decay"]) == ("1.0", "0.0")
+    assert (naive["energy_weight"], naive["forces_weight"], naive["scaling"]) == ("10.0", "10.0", "rms_forces_scaling")
+    replay = arguments(mace(tmp_path, replay_file="replay.xyz").command("train.xyz", "member", 0, "cpu"))
+    assert (replay["lr"], replay["max_num_epochs"], replay["ema_decay"]) == ("0.0001", "20", "0.9999")
+    chosen = arguments(mace(tmp_path, learning_rate=5e-4, max_num_epochs=3, batch_size=8,
+                            mace_options={"ema_decay": 0.99, "weight_decay": 1e-6}).command("t.xyz", "m", 0, "cpu"))
+    assert (chosen["lr"], chosen["max_num_epochs"], chosen["batch_size"]) == ("0.0005", "3", "8")
+    assert (chosen["ema_decay"], chosen["weight_decay"]) == ("0.99", "1e-06"), "the user's choice wins"
+
+
+def test_mace_warns_against_average_E0s(tmp_path, capsys):
+    mace(tmp_path, E0s="estimated").validate({"properties_list": PROPERTIES})
+    assert "Warning" not in capsys.readouterr().out
+    mace(tmp_path, E0s="average").validate({"properties_list": PROPERTIES})
+    assert "advises against" in capsys.readouterr().out
 
 
 def test_mace_command_turns_on_replay_freezing_and_extra_options(tmp_path):
@@ -349,8 +372,8 @@ def test_lineage_records_the_adapters_defaults(run):
                                                      E0s="foundation")})
     write_lineage(run / "models", settings, [str(run / "h5" / "data-0000.h5")])
     recorded = json.loads((run / "models" / fine_tuning.LINEAGE).read_text())["settings"]
-    assert (recorded["E0s"], recorded["dtype"], recorded["max_num_epochs"]) == ("foundation", "float64", 50)
-    assert recorded["replay_file"] is None and recorded["mace_options"] == {}
+    assert (recorded["E0s"], recorded["dtype"], recorded["max_num_epochs"]) == ("foundation", "float64", 6)
+    assert recorded["replay_file"] is None and recorded["mace_options"]["ema_decay"] == 0.999
 
 
 # --- HIPPYNN ----------------------------------------------------------------------------------------
@@ -715,6 +738,12 @@ def test_uma_startup_check(tmp_path):
                                                     "forces": ["gradients", "atomic", 51.4]}})
     with pytest.raises(ValueError, match="checkpoint file"):
         uma(tmp_path, foundation_model=str(tmp_path)).validate({"properties_list": PROPERTIES})
+
+
+def test_uma_defaults_follow_fairchems_template(tmp_path):
+    settings = uma(tmp_path).settings
+    assert (settings["epochs"], settings["steps"], settings["batch_size"], settings["lr"]) == (1, None, 2, 4e-4)
+    assert (settings["weight_decay"], settings["max_neighbors"]) == (1e-3, 300)
 
 
 def test_uma_training_config_follows_fairchems_template(tmp_path):

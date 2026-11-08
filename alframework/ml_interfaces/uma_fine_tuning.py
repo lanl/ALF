@@ -21,7 +21,8 @@ MODEL_NAME = 'uma.pt'
 ARGUMENTS = 'fine_tune_args.json'
 CONFIG = 'fine_tune.yaml'
 LOG = 'train.log'
-DEFAULTS = dict(epochs=10, steps=None, batch_size=2, lr=4e-4, weight_decay=1e-3, max_neighbors=300,
+# As fairchem's template sets them; raise epochs for a small label set.
+DEFAULTS = dict(epochs=1, steps=None, batch_size=2, lr=4e-4, weight_decay=1e-3, max_neighbors=300,
                 valid_fraction=0.1, energy_dataset='energy', forces_dataset='forces',
                 keep_training_checkpoints=False)
 # fairchem's job config takes the enum's names.

@@ -16,5 +16,11 @@ python -m alframework --master master_config.json
 ```
 
 ORCA gives Hartree, so `properties_list` converts to eV and eV/Å, as MACE expects. `E0s` is
-`average`, which fits new atomic energies to the ORCA labels; use `foundation` when the labels share
-the foundation model's level of theory. See the fine-tuning guide in the ALF documentation.
+`estimated`, as MACE's fine-tuning guidance recommends when isolated-atom energies aren't available;
+use `foundation` only when the labels share the foundation model's level of theory. The other
+defaults follow MACE's naive fine-tuning recipe:
+https://mace-docs.readthedocs.io/en/latest/guide/finetuning.html
+
+ALF ships no model weights. You supply the checkpoint, and its license applies: MACE-MP-0 is MIT
+licensed, while several other MACE foundation models use the Academic Software License. See the
+fine-tuning guide in the ALF documentation.

@@ -25,6 +25,13 @@ MANAGED = {'name', 'seed', 'train_file', 'valid_file', 'valid_fraction', 'founda
            'energy_key', 'forces_key', 'lr', 'max_num_epochs', 'batch_size', 'valid_batch_size', 'device',
            'default_dtype', 'multiheads_finetuning', 'pt_train_file', 'freeze', 'model_dir', 'work_dir',
            'log_dir', 'checkpoints_dir', 'results_dir'}
+# Defaults from MACE's own fine-tuning guidance (mace-docs, "Fine-tuning foundation models"), which
+# mace_options can override: plain (naive) fine-tuning, and multihead fine-tuning with replay.
+GUIDE = 'https://mace-docs.readthedocs.io/en/latest/guide/finetuning.html'
+NAIVE = dict(learning_rate=1e-3, max_num_epochs=6, options=dict(
+    ema=True, ema_decay=0.999, amsgrad=True, clip_grad=1.0, weight_decay=0.0, energy_weight=10.0, forces_weight=10.0,
+    scaling='rms_forces_scaling'))
+REPLAY = dict(learning_rate=1e-4, max_num_epochs=20, options=dict(NAIVE['options'], ema_decay=0.9999))
 
 
 def _positive(settings, key, kind):
@@ -37,18 +44,20 @@ def _positive(settings, key, kind):
 class MaceFineTuner:
     """Fine-tune a MACE foundation model with MACE's own training. Settings come from ``fine_tune``.
 
-    ``E0s`` has no default, because it depends on the labels' level of theory: ``"foundation"``
-    keeps the foundation model's, ``"average"`` and ``"estimated"`` fit new ones, and a dictionary
-    from atomic number to energy, or a ``.json`` file, sets them. Without ``replay_file``, copies are
-    fine-tuned on ALF's labels alone; with it, MACE's multihead fine-tuning also trains on that local
-    sample of the foundation model's data, to limit forgetting.
+    ``E0s`` has no default, because it depends on the labels' level of theory. MACE recommends
+    isolated-atom energies (a dictionary from atomic number to energy, or a ``.json`` file), or else
+    ``"estimated"``; ``"foundation"`` only for labels at the foundation model's level of theory; and
+    not ``"average"``. Without ``replay_file``, copies are fine-tuned on ALF's labels alone; with it,
+    MACE's multihead fine-tuning also trains on that local sample of the foundation model's data, to
+    limit forgetting. The other defaults follow MACE's guidance for each of the two.
     """
 
     def __init__(self, settings):
         settings = dict(settings)
-        settings.setdefault('learning_rate', 1e-3)
-        settings.setdefault('max_num_epochs', 50)
-        settings.setdefault('batch_size', 4)
+        recipe = REPLAY if settings.get('replay_file') else NAIVE
+        settings.setdefault('learning_rate', recipe['learning_rate'])
+        settings.setdefault('max_num_epochs', recipe['max_num_epochs'])
+        settings.setdefault('batch_size', 2)
         settings.setdefault('valid_fraction', 0.1)
         settings.setdefault('dtype', 'float64')
         settings.setdefault('freeze', None)
@@ -80,6 +89,8 @@ class MaceFineTuner:
         clash = sorted(MANAGED & set(options))
         if clash:
             raise ValueError(f'fine_tune.mace_options may not set {clash}; ALF sets them from fine_tune settings.')
+        # MACE's recommended options, under any the user sets; recorded in full in the lineage.
+        settings['mace_options'] = {**recipe['options'], **options}
         self.settings = settings
 
     def validate(self, master_config):
@@ -92,6 +103,9 @@ class MaceFineTuner:
         replay = self.settings['replay_file']
         if replay is not None and not Path(replay).is_file():
             raise ValueError(f'fine_tune.replay_file not found: {replay}')
+        if str(self.settings['E0s']).lower() == 'average':
+            print("Warning: fine_tune.E0s is 'average', which MACE's fine-tuning guidance advises against. It "
+                  f"recommends isolated-atom energies, or 'estimated'; see {GUIDE}.", flush=True)
 
     def identity(self):
         from importlib.metadata import PackageNotFoundError, version

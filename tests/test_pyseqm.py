@@ -1,6 +1,7 @@
 """PySEQM labeling: native batching for ground states and CIS excited states.
 
-Most tests use a fake solver. Two run real PySEQM and skip without it.
+Most tests use a fake solver. One runs real PySEQM, to catch a release that changes what ALF calls, and skips
+without it.
 """
 
 import multiprocessing as mp
@@ -102,18 +103,6 @@ def test_batch_matches_individual_runs(seqm):
         assert batched.get_results()["energy"] == pytest.approx(single.get_results()["energy"], abs=1e-6)
         np.testing.assert_allclose(batched.get_results()["forces"], single.get_results()["forces"], atol=1e-5)
     assert batch[1].get_results()["forces"].shape == (3, 3)
-
-
-def test_forces_are_the_negative_energy_gradient(seqm):
-    step = 1e-4
-    base = pyseqm.label_pyseqm_batch(molecules(WATER), QM_CONFIG)[0].get_results()["forces"]
-    for atom in range(len(WATER)):
-        shifted = []
-        for sign in (1, -1):
-            atoms = WATER.copy()
-            atoms.positions[atom, 0] += sign * step
-            shifted.append(pyseqm.label_pyseqm_batch(molecules(atoms), QM_CONFIG)[0].get_results()["energy"])
-        assert base[atom, 0] == pytest.approx(-(shifted[0] - shifted[1]) / (2 * step), abs=1e-4)
 
 
 def test_ground_state_task_works_with_native_batching():

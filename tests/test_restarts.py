@@ -608,10 +608,44 @@ def test_restart_never_reuses_a_molecule_id(tmp_path, monkeypatch):
 def test_budget_stop_stores_the_labels_it_holds(tmp_path, monkeypatch, capsys):
     from alframework.tools.restarts import STORED_AT_BUDGET_STOP
 
-    built = []
-    # The last training runs while the labels it didn't include finish.
-    run_alf_driver(tmp_path, monkeypatch, **restart_tasks(tmp_path, built, qm_seconds=0.2, training_seconds=1.0),
-                   **dict(LOOP, maximum_stored_labels=8), stop_when=lambda status: False)
+    import threading
+    import time
+
+    from parsl import python_app
+
+    built, started = [], []
+    lock, training = threading.Lock(), threading.Event()
+
+    def wait_for(condition):
+        deadline = time.time() + 30
+        while not condition() and time.time() < deadline:
+            time.sleep(0.01)
+
+    @python_app(executors=["alf_QM_executor"])
+    def qm(molecule_object):
+        # A sampled label finishes only once the next one is running, or once the last training has
+        # started. So whichever store reaches the budget, a label is still running and finishes during
+        # that training. The QM executor has two threads, so the next label can always start.
+        if not molecule_object.get_moleculeid().startswith("mol-boot-"):
+            with lock:
+                started.append(molecule_object.get_moleculeid())
+                position = len(started)
+            wait_for(lambda: len(started) > position or training.is_set())
+        molecule_object.store_results({"energy": -1.0, "forces": np.zeros((len(molecule_object), 3))})
+        molecule_object.set_converged_flag(True)
+        return molecule_object
+
+    @python_app(executors=["alf_ML_executor"])
+    def ml(current_training_id):
+        (tmp_path / "models" / f"model-{current_training_id:04d}").mkdir(parents=True)
+        if current_training_id > 0:
+            training.set()
+            wait_for(lambda: held_ids(tmp_path))  # The labels it didn't include finish while it runs.
+        return [True, True], current_training_id
+
+    tasks = dict(restart_tasks(tmp_path, built), qm=qm, ml=ml)
+    run_alf_driver(tmp_path, monkeypatch, **tasks, **dict(LOOP, maximum_stored_labels=8),
+                   stop_when=lambda status: False)
     assert not held_ids(tmp_path)
     ids = assert_stored_once(tmp_path)
     shards = sorted((tmp_path / "h5").glob("data-*.h5"))

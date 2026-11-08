@@ -1,9 +1,10 @@
 """PySCF labeling on the CPU: the ASE calculator and ``pyscf_task``, for molecules and periodic cells.
 
-These run real PySCF, from ALF's ``pyscf`` or ``full`` extra, with minimal basis sets and tiny cells so they stay quick. Tests
-marked ``needs_pyscf`` skip where PySCF isn't installed, as in CI's minimal job.
-GPU4PySCF isn't installed here; one test checks that ``backend: gpu`` routes to it, and the Darwin
-qualification round checks it for real.
+These test ALF's wrapper, not PySCF's physics. Unit, sign, and stress conversions use a stand-in SCF with
+known numbers. Tests marked ``needs_pyscf`` run real PySCF, with a minimal basis or a tiny cell, once for
+each path ALF uses, so a PySCF release that changes what ALF calls is caught; they check that the path
+runs and returns finite results of the right shape, never accuracy. Accuracy is for ``--test_qm`` and the
+qualification rounds. They skip where PySCF isn't installed, as in CI's minimal job.
 """
 
 import types
@@ -25,6 +26,9 @@ MOLECULE = {"basis": "sto-3g", "xc": "pbe"}
 PERIODIC = {"periodic": {"basis": "gth-szv", "pseudo": "gth-pade"}}
 STRESS = {"periodic": {"basis": "gth-szv", "pseudo": "gth-pade", "df": "fftdf", "ke_cutoff": 40}}
 GROUND = {"E0": ["energy", "system", 1.0], "F0": ["forces", "atomic", 1.0]}
+# A doublet with no degenerate orbitals. OH's degenerate pi orbitals left its SCF oscillating near
+# 1e-10 Eh, and on CI it once failed to converge in 100 cycles.
+NH2 = [[0.0, 0.0, 0.0], [1.024, 0.0, 0.0], [-0.2303, 0.9978, 0.0]]
 
 try:
     import pyscf  # noqa: F401
@@ -47,35 +51,7 @@ def energy(atoms, **settings):
     return atoms.get_potential_energy()
 
 
-def central_difference(atoms, index, axis, settings, h=1e-3):
-    plus, minus = atoms.copy(), atoms.copy()
-    plus.positions[index, axis] += h
-    minus.positions[index, axis] -= h
-    return -(energy(plus, **settings) - energy(minus, **settings)) / (2 * h)
-
-
 # The calculator: molecules.
-
-
-@needs_pyscf
-def test_molecule_matches_pyscf_directly():
-    from pyscf import dft, gto
-    from pyscf.data.nist import HARTREE2EV
-
-    mol = gto.M(atom=[[s, p] for s, p in zip(WATER.get_chemical_symbols(), WATER.positions)], basis="sto-3g",
-                unit="Angstrom", verbose=0)
-    mf = dft.RKS(mol, xc="pbe").density_fit()
-    mf.conv_tol = 1e-10
-    assert energy(WATER, **MOLECULE) == pytest.approx(mf.kernel() * HARTREE2EV, abs=1e-7)
-
-
-@needs_pyscf
-def test_molecule_forces_are_the_negative_energy_gradient():
-    atoms = WATER.copy()
-    atoms.calc = PySCFCalculator(**MOLECULE)
-    forces = atoms.get_forces()
-    assert forces[1, 0] == pytest.approx(central_difference(WATER, 1, 0, MOLECULE), abs=2e-4)
-    assert np.abs(forces.sum(axis=0)).max() < 1e-3
 
 
 @needs_pyscf
@@ -85,21 +61,10 @@ def test_calculator_works_with_ase_dynamics():
 
     atoms = WATER.copy()
     atoms.calc = PySCFCalculator(**MOLECULE)
-    VelocityVerlet(atoms, timestep=0.25 * units.fs).run(3)
+    VelocityVerlet(atoms, timestep=0.25 * units.fs).run(2)
     assert np.isfinite(atoms.get_potential_energy()) and np.isfinite(atoms.get_forces()).all()
     assert atoms.calc.metadata["qm_backend"] == "pyscf" and atoms.calc.metadata["qm_system"] == "molecule"
-
-
-@needs_pyscf
-def test_open_shell_structure_uses_unrestricted_dft():
-    radical = Atoms("OH", positions=[[0.0, 0.0, 0.0], [0.97, 0.0, 0.0]])
-    radical.info["mult"] = 2
-    radical.calc = PySCFCalculator(**MOLECULE)
-    radical.get_potential_energy()
-    assert "UKS" in radical.calc.metadata["qm_method"] and radical.calc.metadata["mult"] == 2
-    anion = radical.copy()
-    anion.info.update(charge=-1, mult=1)
-    assert energy(anion, **MOLECULE) != pytest.approx(radical.get_potential_energy(), abs=1e-3)
+    assert "RKS" in atoms.calc.metadata["qm_method"]
 
 
 @needs_pyscf
@@ -109,73 +74,69 @@ def test_impossible_multiplicity_is_refused():
         energy(radical, **MOLECULE)
 
 
-@needs_pyscf
-def test_excited_states_match_pyscf_tda_and_their_forces_are_gradients():
-    from pyscf import dft, gto, tdscf
-    from pyscf.data.nist import HARTREE2EV
-
-    settings = dict(MOLECULE, nroots=1, density_fit=False)
-    atoms = WATER.copy()
-    atoms.calc = PySCFCalculator(**settings)
-    states = atoms.calc.get_property("state_energies", atoms)
-    mol = gto.M(atom=[[s, p] for s, p in zip(WATER.get_chemical_symbols(), WATER.positions)], basis="sto-3g",
-                unit="Angstrom", verbose=0)
-    mf = dft.RKS(mol, xc="pbe")
-    mf.conv_tol = 1e-10
-    mf.kernel()
-    td = tdscf.TDA(mf)
-    td.nstates = 1
-    td.kernel()
-    np.testing.assert_allclose(states, (mf.e_tot + np.r_[0.0, td.e]) * HARTREE2EV, atol=1e-6)
-    assert atoms.get_potential_energy() == pytest.approx(states[0])
-
-    def excited_energy(moved):
-        moved = moved.copy()
-        moved.calc = PySCFCalculator(**settings)
-        return moved.calc.get_property("state_energies", moved)[1]
-
-    plus, minus = WATER.copy(), WATER.copy()
-    plus.positions[1, 0] += 1e-3
-    minus.positions[1, 0] -= 1e-3
-    numerical = -(excited_energy(plus) - excited_energy(minus)) / 2e-3
-    # A large force (about 17 eV/Å), so the finite difference is checked relatively.
-    assert atoms.calc.get_property("state_forces", atoms)[1, 1, 0] == pytest.approx(numerical, rel=1e-4)
-
-
 # The calculator: periodic cells.
 
 
 @needs_pyscf
-def test_periodic_cell_matches_pyscf_directly():
-    from pyscf.data.nist import HARTREE2EV
-    from pyscf.pbc import dft, gto
-
-    atoms = hydrogen_cell()
-    cell = gto.Cell()
-    cell.atom = [[s, p] for s, p in zip(atoms.get_chemical_symbols(), atoms.positions)]
-    cell.a, cell.unit, cell.basis, cell.pseudo, cell.verbose = np.asarray(atoms.cell), "Angstrom", "gth-szv", \
-        "gth-pade", 0
-    cell.build()
-    mf = dft.RKS(cell, xc="pbe").multigrid_numint()
-    mf.conv_tol = 1e-10
-    assert energy(atoms, **PERIODIC) == pytest.approx(mf.kernel() * HARTREE2EV, abs=1e-6)
-
-
-@needs_pyscf
-def test_periodic_forces_are_the_negative_energy_gradient():
+def test_periodic_cell_runs_with_multigrid():
     atoms = hydrogen_cell()
     atoms.calc = PySCFCalculator(**PERIODIC)
-    assert atoms.get_forces()[1, 0] == pytest.approx(central_difference(hydrogen_cell(), 1, 0, PERIODIC), abs=5e-4)
+    assert atoms.get_forces().shape == (2, 3) and np.isfinite(atoms.get_forces()).all()
     assert atoms.calc.metadata["qm_system"] == "periodic"
     assert "multigrid" in atoms.calc.metadata["qm_numint"]
 
 
-@needs_pyscf
-def test_periodic_stress_matches_ase_numerical_stress():
-    """ASE's convention, (1/V) dE/dε in eV/Å³; PySCF's own ASE wrapper scales it by one Bohr where it needs three."""
+# The conversions ALF applies to PySCF's results, with a stand-in SCF. Round unit constants make each
+# conversion visible.
+
+NIST = types.SimpleNamespace(HARTREE2EV=27.0, BOHR=0.5)
+
+
+class FakeSCF:
+    converged, e_tot, e_free, entropy = True, -2.0, None, 0.0
+
+    def __init__(self, gradient=None, stress=None, **attributes):
+        self.gradient, self.stress = gradient, stress
+        self.__dict__.update(attributes)
+
+    def kernel(self):
+        return self.e_tot
+
+    def Gradients(self):
+        return types.SimpleNamespace(kernel=lambda: self.gradient, get_stress=lambda: self.stress)
+
+
+def with_fake_scf(monkeypatch, scf):
+    fake_pyscf = types.SimpleNamespace(lib=types.SimpleNamespace(num_threads=lambda n: None), __version__="fake")
+    monkeypatch.setattr(PySCFCalculator, "_modules", lambda self: (fake_pyscf, NIST, None))
+    monkeypatch.setattr(PySCFCalculator, "_build", lambda self, kind, charge, mult, pyscf: scf)
+
+
+def test_energy_and_forces_are_converted_to_ev_and_ev_per_angstrom(monkeypatch):
+    gradient = np.arange(9.0).reshape(3, 3) - 4.0
+    with_fake_scf(monkeypatch, FakeSCF(gradient=gradient))
+    atoms = WATER.copy()
+    atoms.calc = PySCFCalculator(**MOLECULE)
+    assert atoms.get_potential_energy() == pytest.approx(-2.0 * 27.0)
+    np.testing.assert_allclose(atoms.get_forces(), -gradient * 27.0 / 0.5)
+
+
+def test_stress_is_symmetrized_converted_and_in_voigt_order(monkeypatch):
+    sigma = np.arange(1.0, 10.0).reshape(3, 3)  # Not symmetric, so the average shows.
+    with_fake_scf(monkeypatch, FakeSCF(gradient=np.zeros((2, 3)), stress=sigma))
     atoms = hydrogen_cell()
     atoms.calc = PySCFCalculator(**STRESS)
-    np.testing.assert_allclose(atoms.get_stress(), atoms.calc.calculate_numerical_stress(atoms, d=1e-4), atol=1e-6)
+    symmetric = 0.5 * (sigma + sigma.T) * 27.0 / 0.5 ** 3
+    xx, yy, zz, yz, xz, xy = (symmetric[i, j] for i, j in [(0, 0), (1, 1), (2, 2), (1, 2), (0, 2), (0, 1)])
+    np.testing.assert_allclose(atoms.get_stress(), [xx, yy, zz, yz, xz, xy])
+
+
+def test_smeared_energy_reported_is_the_free_energy(monkeypatch):
+    with_fake_scf(monkeypatch, FakeSCF(gradient=np.zeros((2, 3)), e_free=-1.5, entropy=0.1))
+    atoms = hydrogen_cell()
+    atoms.calc = PySCFCalculator(periodic=dict(PERIODIC["periodic"], smearing_eV=2.0))
+    assert atoms.get_potential_energy() == pytest.approx(-1.5 * 27.0)
+    assert atoms.calc.metadata["smearing_entropy"] == 0.1 and "free energy" in atoms.calc.metadata["energy_is"]
 
 
 @pytest.mark.parametrize(
@@ -338,11 +299,12 @@ def test_failed_scf_marks_the_structure_unconverged():
 
 
 @needs_pyscf
-def test_structure_charge_and_multiplicity_reach_the_calculation():
-    radical = MoleculesObject(Atoms("OH", positions=[[0.0, 0.0, 0.0], [0.97, 0.0, 0.0]]), "mol-0000-0000000000")
+def test_open_shell_structure_runs_unrestricted_dft():
+    radical = MoleculesObject(Atoms("NH2", positions=NH2), "mol-0000-0000000000")
     radical.update_metadata({"mult": 2})
     labeled = pi.label_pyscf_molecule(radical, MOLECULE, GROUND)
-    assert labeled.check_convergence() and labeled.get_metadata()["mult"] == 2
+    assert labeled.check_convergence(), labeled.get_metadata().get("qm_error")
+    assert labeled.get_metadata()["mult"] == 2 and "UKS" in labeled.get_metadata()["qm_method"]
 
 
 @pytest.mark.parametrize(
@@ -377,13 +339,12 @@ def test_cpu_state_path_refuses_what_only_the_gpu_gives(extra):
 
 
 @needs_pyscf
-def test_smeared_energy_is_the_free_energy_its_forces_belong_to():
+def test_periodic_cell_runs_with_smearing():
     settings = {"periodic": {"basis": "gth-szv", "pseudo": "gth-pade", "smearing_eV": 2.0}}
     atoms = hydrogen_cell()
     atoms.calc = PySCFCalculator(**settings)
-    forces = atoms.get_forces()
+    assert np.isfinite(atoms.get_forces()).all()
     assert atoms.calc.metadata["smearing_eV"] == 2.0 and atoms.calc.metadata["smearing_entropy"] >= 0
-    assert forces[1, 0] == pytest.approx(central_difference(hydrogen_cell(), 1, 0, settings), abs=5e-4)
 
 
 @needs_pyscf

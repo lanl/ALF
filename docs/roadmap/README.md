@@ -560,6 +560,31 @@ matching the shards.
 - Not run on Darwin. Rerunning section 3 of the [restart profile](exascale.md#darwin-profile-for-restart-work)
   at this commit would compare against the `ce711d8` baseline.
 
+### Real QM in tests: dependency checks only, and two CI failures (2026-11-08)
+
+User decision: tests catch changes in dependencies and check ALF's wrappers. Physics accuracy, such as SCF
+convergence and agreement with finite differences, is for the user, `--test_qm`, and the qualification rounds.
+
+- **`tests/test_pyscf.py`.**
+  - **Removed** the physics comparisons: energies against PySCF directly, molecular, excited, periodic, and
+    smeared forces against finite differences, and stress against ASE's numerical stress.
+  - **Real PySCF now runs once per path ALF uses,** checking only that it runs and returns finite results of
+    the right shape: molecule, open shell, TDA, periodic multigrid, fftdf stress, smearing, storage, a forced
+    SCF failure, and the coordinator.
+  - **New stand-in tests** cover what only the physics tests did: the conversion to eV and eV/Å, the force
+    sign, stress symmetrization, units and Voigt order, and reporting the free energy when smearing. All 5
+    deliberate breaks were caught.
+- **`tests/test_pyseqm.py`** drops its finite-difference test, and keeps the batched-against-single run.
+- **CI failures, both intermittent:**
+  - **The open-shell PySCF tests used the OH radical,** whose degenerate π orbitals left its SCF oscillating
+    near 1e-10 Eh; on CI it failed to converge in 100 cycles. They now use NH₂.
+  - **`test_budget_stop_stores_the_labels_it_holds` relied on sleeps,** and on a slow runner no label was
+    running when the budget was reached. Its stand-in QM now finishes a sampled label only once the next one
+    is running, and the last training waits for the held labels. It's deterministic, and takes 0.5 s
+    instead of several.
+- Full suite: 1,160 passed. With HIPPYNN blocked: 1,050 passed, 110 skipped. With Torch blocked: 913
+  passed, 212 skipped.
+
 ### CPP9 network sizing for Darwin, and restarting the CPP example (2026-11-08)
 
 At 40,000 training structures, `hiphop145` is projected at about 66 minutes per epoch, about 14 epochs

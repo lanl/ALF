@@ -57,6 +57,21 @@ def qm(molecule_object): raise RuntimeError('unused')
 @python_app(executors=['alf_ML_executor'])
 def trains(current_training_id): return [True, True], current_training_id
 
+@python_app(executors=['alf_builder_executor'])
+def water(moleculeid):
+    from ase import Atoms
+    from alframework.tools.molecules_class import MoleculesObject
+    return MoleculesObject(Atoms('OH2', positions=[[0, 0, 0], [0.96, 0, 0], [-0.24, 0.93, 0]]), moleculeid)
+
+@python_app(executors=['alf_sampler_executor'])
+def unchanged(molecule_object): return molecule_object
+
+@python_app(executors=['alf_QM_executor'])
+def scf_fails(molecule_object):
+    molecule_object.set_converged_flag(False)
+    molecule_object.update_metadata({'qm_error': 'SCF did not converge in 1 cycles.', 'qm_failed_stage': 'scf'})
+    return molecule_object
+
 @python_app(executors=['alf_ML_executor'])
 def fails_to_train(current_training_id): return [True, False], current_training_id
 
@@ -77,14 +92,15 @@ def slow_multinode(current_training_id):
 """
 
 
-def start_coordinator(tmp_path, ml_task, parsl_config="local", arguments=(), trained_labels=True):
+def start_coordinator(tmp_path, ml_task, parsl_config="local", arguments=(), trained_labels=True,
+                      builder="builder", sampler="sampler", qm="qm"):
     """Start a coordinator. ``trained_labels`` skips the bootstrap by pretending data is already stored."""
     (tmp_path / "exit_harness.py").write_text(HARNESS)
     master = {
         "master_directory": str(tmp_path),
-        "builder_task": "exit_harness.builder",
-        "sampler_task": "exit_harness.sampler",
-        "QM_task": "exit_harness.qm",
+        "builder_task": f"exit_harness.{builder}",
+        "sampler_task": f"exit_harness.{sampler}",
+        "QM_task": f"exit_harness.{qm}",
         "ML_task": f"exit_harness.{ml_task}",
         "parsl_configuration": f"exit_harness.{parsl_config}",
         "builder_config_path": "builder.json",
@@ -110,6 +126,17 @@ def start_coordinator(tmp_path, ml_task, parsl_config="local", arguments=(), tra
     return subprocess.Popen(
         [sys.executable, "-m", "alframework", "--master", str(tmp_path / "master.json"), *arguments],
         cwd=tmp_path, env=environment, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+
+
+def test_test_qm_reports_why_a_label_failed(tmp_path):
+    """A failed label has no results to print; --test_qm says why it failed and exits with an error."""
+    coordinator = start_coordinator(tmp_path, "trains", arguments=["--test_qm"], builder="water", sampler="unchanged",
+                                    qm="scf_fails")
+    output, _ = coordinator.communicate(timeout=120)
+    assert coordinator.returncode == 1, output
+    assert "Labeling failed at stage 'scf': SCF did not converge in 1 cycles." in output
+    assert "KeyError" not in output and not (tmp_path / "qm_test.h5").exists()
+    assert_cleaned_up(tmp_path)
 
 
 def parsl_log(tmp_path):

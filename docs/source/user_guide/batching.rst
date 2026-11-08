@@ -107,7 +107,7 @@ is labeled:
        This is job packing: it reduces the number of scheduler jobs, but members
        still run one after another.
      - Tasks that accept ``molecule_object``: ORCA, Q-Chem, VASP, ASE calculators,
-       GPU4PySCF, ``pyseqm_excited_state_task``, and ``teacher_task``.
+       GPU4PySCF, ``pyscf_task``, ``pyseqm_excited_state_task``, and ``teacher_task``.
 
 ALF stops at startup if the mode doesn't match the QM task. With ``sequential``,
 make sure ``batch_size`` times the runtime of one calculation fits in your

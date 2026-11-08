@@ -236,8 +236,9 @@ PySCF And GPU4PySCF
 molecules and periodic cells; ALF picks which from each structure's ``pbc``. The same calculation is
 available outside ALF as an ASE calculator; see `Outside ALF`_.
 
-PySCF comes with ALF. For the GPU, install GPU4PySCF and a CuPy build matching the QM workers' CUDA, for
-example ``pip install "alf[gpu4pyscf]"`` for CUDA 12. Each GPU QM worker must see exactly one GPU; see
+Install PySCF with ALF's ``pyscf`` extra, ``pip install "alf[pyscf]"``; the ``full`` extra includes it too.
+For the GPU, install GPU4PySCF and a CuPy build matching the QM workers' CUDA, for example
+``pip install "alf[gpu4pyscf]"`` for CUDA 12. Each GPU QM worker must see exactly one GPU; see
 :ref:`parsl-gpu4pyscf-workers`.
 
 **Properties.** ``pyscf_task`` uses state names; see :ref:`configuration-property-names`:
@@ -496,4 +497,5 @@ Related Examples
 
 See :doc:`../examples/simple_water` and :doc:`../examples/reactive_sampling`
 for ORCA-backed workflows, and :doc:`../examples/molten_salt` for a
-VASP-backed workflow.
+VASP-backed workflow. :doc:`../examples/periodic_water` labels periodic boxes with ``pyscf_task``, and
+``simple_water`` has a PySCF configuration beside its ORCA one.

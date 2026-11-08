@@ -281,7 +281,8 @@ GPU4PySCF Workers
 ^^^^^^^^^^^^^^^^^
 
 GPU4PySCF is different: each QM worker must see exactly one GPU, as its local device
-0, before CUDA starts. A worker that can see several GPUs marks every label as failed
+0, before CUDA starts. This applies to ``gpu4pyscf_excited_state_task`` and to ``pyscf_task`` with
+``"backend": "gpu"``. A worker that can see several GPUs marks every label as failed
 with a device error, whatever its rank, including when only one worker is running.
 
 When ALF has the whole node, use Parsl's ``available_accelerators``, which pins each

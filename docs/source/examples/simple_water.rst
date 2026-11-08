@@ -103,7 +103,7 @@ Labeling With PySCF Instead Of ORCA
 -----------------------------------
 
 ``master_config_pyscf.json`` runs the same workflow with ``pyscf_task``, which needs no separate QM
-program: PySCF comes with ALF. ``qm_config_pyscf.json`` matches the ORCA configuration's ωB97X/def2-TZVP,
+program, only PySCF, from ALF's ``pyscf`` extra: ``pip install "alf[pyscf]"``. ``qm_config_pyscf.json`` matches the ORCA configuration's ωB97X/def2-TZVP,
 on the CPU:
 
 .. code-block:: json

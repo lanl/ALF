@@ -562,7 +562,7 @@ matching the shards.
 ### PySCF and GPU4PySCF labeling, molecules and periodic cells (2026-11-08)
 
 PySCF and GPU4PySCF are free and pip-installable, so they're the default QM for new examples (user
-decision). PySCF was already in ALF's `install_requires`.
+decision). PySCF was in the `full` extra; a `pyscf` extra now installs it alone.
 
 **Decisions (user):**
 - One labeler, `pyscf_task`, with `backend` `cpu` (PySCF) or `gpu` (GPU4PySCF), for molecules and periodic cells.
@@ -621,6 +621,38 @@ finished in their usual time. The cause is unknown; if it recurs, start with tha
 `gpu4pyscf_interface.py`, moved with `git mv`. Its task's path is now
 `alframework.qm_interfaces.pyscf.gpu4pyscf.gpu4pyscf_excited_state_task`, with no alias, so Darwin's B1
 regenerates its configs with the new path. `ase_calculator_interface.py` is unchanged.
+
+**A review pass (user question) found and fixed:**
+- **`df: multigrid` on the GPU was wrong.** The calculator switched multigrid on in PySCF before `to_gpu()`. PySCF's
+  CPU multigrid integrator has no `to_gpu`, so it would have been carried over unconverted, a CPU integrator in a GPU
+  calculation. GPU4PySCF 1.9.1's RKS and UKS have their own `multigrid_numint()` (`multigrid_v3`), so it's now
+  switched on after the move; a test checks the order. Its smearing defines `from_cpu`, and its gradient base class
+  has `get_stress`, according to the GPU4PySCF source.
+- **Hybrid functionals with periodic `multigrid`,** which handles pure functionals only, are refused per structure
+  with the reason, instead of failing inside PySCF. This can't be a startup check, because one configuration also
+  labels molecules, where `wb97x` is fine.
+- **`--test_qm` crashed with `KeyError` when the label failed,** an older bug in `__main__.py`. It now prints the
+  labeler's `qm_error` and stage, and exits with code 1. Parsl is cleaned up, as before.
+- **PySCF isn't a core dependency.** It was in the `full` extra, so the docs saying it "comes with ALF" were wrong.
+  A `pyscf` extra installs it alone, and the `gpu4pyscf` extra includes it.
+- **Docs gaps, filled:**
+  - the extras table in the installation guide;
+  - the one-GPU-per-worker rule, which applies to `pyscf_task` on the GPU too;
+  - the batching guide's task list;
+  - the QM guide's related examples;
+  - the repository README's QM list;
+  - the teacher walkthrough's QM test set, which can come from the PySCF configuration.
+- **New tests:**
+  - `pyscf_task` through the real coordinator, with real PySCF labels, sequential and unbatched;
+  - the multigrid order on the GPU, using stand-ins;
+  - the hybrid refusal;
+  - `--test_qm`'s failure report.
+- **Checked and fine:** HIPPYNN's `PeriodicPairIndexer` counts the images it needs per direction, so the
+  example's 4.5 Å cutoff in 7–8 Å boxes is fine.
+
+After the pass: full suite under coverage, 1152 passed; with HIPPYNN blocked, 1041 passed and 111 skipped; with
+Torch and PySCF blocked, 899 passed and 218 skipped. All 5 deliberate breaks of the fixes were caught, and the
+docs build has no warnings.
 
 **Not shown yet:** any GPU run, and a periodic HIPPYNN student trained on these labels, since the ground-state trainer has no CPU mode here. [B7 of the Darwin round](qualification_round.md#b7-pyscf_task-on-the-gpu-and-periodic-water) covers both.
 

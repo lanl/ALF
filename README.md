@@ -25,7 +25,7 @@ ALF uses Parsl to manage task execution across HPC clusters and job schedulers (
 
 Installing ALF also installs its core Python dependencies, including [Parsl](https://parsl-project.org/), [NumPy](https://numpy.org/), and [ASE](https://wiki.fysik.dtu.dk/ase/). A complete workflow also needs:
 
-1) A QM software package with an ALF interface (ORCA, VASP, Q-Chem, PySEQM, GPU4PySCF, or another ASE calculator)
+1) A QM software package with an ALF interface (PySCF or GPU4PySCF, which install with pip; ORCA, VASP, Q-Chem, PySEQM, or another ASE calculator)
 2) An MLIP model - we provide an interface to the open-source and flexible [HIPPYNN](https://github.com/lanl/hippynn) architecture
 
 ## ✅ Installation

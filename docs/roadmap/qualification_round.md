@@ -202,6 +202,8 @@ These are measurements only, for priority items 7 and 8 in [`exascale.md`](exasc
 - Periodic stress against ASE's `calculate_numerical_stress`: within 1e-4 eV/Å³.
 - A k-point mesh of `[2, 2, 2]` with `fftdf` or `gdf`, on one small box.
 
+With `df: multigrid` on the GPU, confirm that the method's integrator is GPU4PySCF's own (`calc.metadata` and the PySCF log), since ALF switches it on after `to_gpu()`.
+
 Record each combination GPU4PySCF refuses, with its error. These are answers, not failures.
 
 **The `periodic_water` example,** with `qm_config.json` on GPUs:

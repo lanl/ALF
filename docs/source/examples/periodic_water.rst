@@ -2,8 +2,8 @@ Periodic Water With PySCF
 =========================
 
 This example learns liquid water in periodic boxes, labeled with periodic DFT from PySCF on the CPU or
-GPU4PySCF on a GPU, and trains a periodic HIPPYNN ensemble. Both QM packages are free; PySCF comes with
-ALF. The files are in ``examples/periodic_water``.
+GPU4PySCF on a GPU, and trains a periodic HIPPYNN ensemble. Both QM packages are free and
+pip-installable, with ALF's ``pyscf`` or ``gpu4pyscf`` extra. The files are in ``examples/periodic_water``.
 
 How It Runs
 -----------

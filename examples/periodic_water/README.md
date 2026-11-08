@@ -5,7 +5,7 @@ PySCF or GPU4PySCF, and trains a periodic HIPPYNN ensemble (`cell_key: "cell"`).
 
 - `qm_config.json` runs on a GPU (`"backend": "gpu"`), and needs GPU4PySCF: `pip install "alf[gpu4pyscf]"`
   for CUDA 12, or the builds matching your CUDA.
-- `qm_config_cpu.json` runs on the CPU with PySCF, which comes with ALF. Use it for bring-up by setting it
+- `qm_config_cpu.json` runs on the CPU with PySCF: `pip install "alf[pyscf]"`. Use it for bring-up by setting it
   as `QM_config_path` in `master_config.json`. A 15-water box took about a minute on a laptop.
 
 Set the machine in `parsl_configs.py`, then:

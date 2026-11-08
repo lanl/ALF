@@ -1,6 +1,6 @@
 """PySCF labeling on the CPU: the ASE calculator and ``pyscf_task``, for molecules and periodic cells.
 
-These run real PySCF, which ALF requires, with minimal basis sets and tiny cells so they stay quick. Tests
+These run real PySCF, from ALF's ``pyscf`` or ``full`` extra, with minimal basis sets and tiny cells so they stay quick. Tests
 marked ``needs_pyscf`` skip where PySCF isn't installed, as in CI's minimal job.
 GPU4PySCF isn't installed here; one test checks that ``backend: gpu`` routes to it, and the Darwin
 qualification round checks it for real.
@@ -167,6 +167,7 @@ def test_periodic_forces_are_the_negative_energy_gradient():
     atoms.calc = PySCFCalculator(**PERIODIC)
     assert atoms.get_forces()[1, 0] == pytest.approx(central_difference(hydrogen_cell(), 1, 0, PERIODIC), abs=5e-4)
     assert atoms.calc.metadata["qm_system"] == "periodic"
+    assert "multigrid" in atoms.calc.metadata["qm_numint"]
 
 
 @needs_pyscf
@@ -242,6 +243,33 @@ def test_gpu_backend_moves_the_method_to_gpu4pyscf(monkeypatch):
     atoms.get_forces()
     assert moved and "RKS" in moved[0]
     assert atoms.calc.metadata["qm_backend"] == "gpu4pyscf"
+
+
+@needs_pyscf
+def test_gpu_backend_switches_on_multigrid_after_the_move(monkeypatch):
+    """PySCF's CPU multigrid integrator has no GPU counterpart, so GPU4PySCF's own is switched on after to_gpu."""
+    from pyscf.pbc.dft import rks
+
+    events = []
+    monkeypatch.setattr(pc, "_single_device_backend", lambda pyscf: (None, None))
+    real_import = pc.importlib.import_module
+    fake_cupy = types.SimpleNamespace(ndarray=type("ndarray", (), {}), asnumpy=np.asarray)
+    monkeypatch.setattr(pc, "importlib", types.SimpleNamespace(
+        import_module=lambda name: fake_cupy if name == "cupy" else real_import(name)))
+    monkeypatch.setattr(pc, "_to_gpu", lambda mf: events.append("to_gpu") or mf)
+    original = rks.RKS.multigrid_numint
+    monkeypatch.setattr(rks.RKS, "multigrid_numint",
+                        lambda self, mesh=None: events.append("multigrid") or original(self, mesh))
+    atoms = hydrogen_cell()
+    atoms.calc = PySCFCalculator(backend="gpu", **PERIODIC)
+    atoms.get_potential_energy()
+    assert events == ["to_gpu", "multigrid"]
+
+
+@needs_pyscf
+def test_hybrid_functional_with_periodic_multigrid_is_refused():
+    with pytest.raises(ValueError, match="pure functionals only"):
+        energy(hydrogen_cell(), xc="b3lyp", **PERIODIC)
 
 
 # The labeling task.
@@ -356,3 +384,44 @@ def test_smeared_energy_is_the_free_energy_its_forces_belong_to():
     forces = atoms.get_forces()
     assert atoms.calc.metadata["smearing_eV"] == 2.0 and atoms.calc.metadata["smearing_entropy"] >= 0
     assert forces[1, 0] == pytest.approx(central_difference(hydrogen_cell(), 1, 0, settings), abs=5e-4)
+
+
+@needs_pyscf
+@pytest.mark.parametrize("batching", [{"mode": "sequential", "batch_size": 2, "max_wait_seconds": 0.05}, None],
+                         ids=["sequential", "unbatched"])
+def test_pyscf_task_labels_through_the_real_coordinator(tmp_path, monkeypatch, batching):
+    """Bootstrap and a retraining round, with real PySCF labels stored as energy and forces."""
+    from parsl import python_app
+
+    from tests.helpers import driver
+    from tests.helpers.driver import MODEL_PATTERN, run_alf_driver
+
+    monkeypatch.setattr(driver, "PROPERTIES", GROUND)
+
+    @python_app(executors=["alf_builder_executor"])
+    def builder(moleculeid):
+        import zlib
+        atoms = WATER.copy()
+        atoms.rattle(0.03, seed=zlib.crc32(moleculeid.encode()))
+        return MoleculesObject(atoms, moleculeid)
+
+    @python_app(executors=["alf_sampler_executor"])
+    def sampler(molecule_object):
+        return molecule_object
+
+    @python_app(executors=["alf_ML_executor"])
+    def ml(current_training_id):
+        (tmp_path / MODEL_PATTERN.format(current_training_id)).mkdir(parents=True)
+        return [True, True], current_training_id
+
+    qm_config = dict(MOLECULE, **({"batching": batching} if batching else {}))
+    run = run_alf_driver(tmp_path, monkeypatch, builder=builder, sampler=sampler, qm=pi.pyscf_task, ml=ml,
+                         qm_config=qm_config, bootstrap_set=3, parallel_samplers=2, target_queued_QM=2,
+                         save_h5_threshold=2, maximum_completed_QM=6, timeout=300)
+    assert run.status["current_model_id"] >= 1 and run.status["lifetime_failed_QM_tasks"] == 0
+    shards = sorted((tmp_path / "h5").glob("data-*.h5"))
+    assert len(shards) >= 2
+    for shard in shards:
+        with h5py.File(shard) as handle:
+            for group in handle.values():
+                assert {"energy", "forces"} <= set(group) and np.isfinite(group["energy"][()]).all()

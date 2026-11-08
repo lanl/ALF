@@ -203,7 +203,10 @@ class PySCFCalculator(Calculator):
                 cell.ke_cutoff = periodic["ke_cutoff"]
             cell.build()
             if periodic["df"] == "multigrid":
-                mf = (dft.RKS if mult == 1 else dft.UKS)(cell, xc=options["xc"]).multigrid_numint()
+                if importlib.import_module("pyscf.dft.libxc").is_hybrid_xc(options["xc"]):
+                    raise ValueError(f"periodic.df 'multigrid' handles pure functionals only, not the hybrid "
+                                     f"{options['xc']!r}; use 'fftdf' or 'gdf' for periodic cells.")
+                mf = (dft.RKS if mult == 1 else dft.UKS)(cell, xc=options["xc"])
             else:
                 kpts = cell.make_kpts(periodic["kpts"])
                 mf = (dft.KRKS if mult == 1 else dft.KUKS)(cell, kpts=kpts, xc=options["xc"])
@@ -219,6 +222,10 @@ class PySCFCalculator(Calculator):
             mf.grids.level = options["grids_level"]
         if self.options["backend"] == "gpu":
             mf = _to_gpu(mf)
+        # After the move to the GPU: PySCF's CPU multigrid integrator has no GPU counterpart to convert to, and
+        # GPU4PySCF's methods switch on their own.
+        if kind == "periodic" and periodic["df"] == "multigrid":
+            mf = mf.multigrid_numint()
         return mf
 
     def _ground_state(self, kind, want_forces, want_stress):
@@ -272,6 +279,7 @@ class PySCFCalculator(Calculator):
         self.metadata = {
             "qm_backend": "pyscf" if self.options["backend"] == "cpu" else "gpu4pyscf",
             "qm_system": kind, "qm_method": type(mf).__name__, "charge": charge, "mult": mult,
+            "qm_numint": f"{type(getattr(mf, '_numint', None)).__module__}.{type(getattr(mf, '_numint', None)).__name__}",
             "qm_scf_seconds": scf_seconds, "qm_gradient_seconds": time.time() - start,
             **({"smearing_eV": self.options["periodic"]["smearing_eV"], "smearing_entropy": float(mf.entropy),
                 "energy_is": "free energy, E - sigma*S"} if smeared else {}),

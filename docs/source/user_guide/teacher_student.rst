@@ -263,8 +263,9 @@ The run writes to its own paths, so it can share the directory with the ORCA con
 
 A student can only be as good as its teacher, and its training metrics compare it with the teacher.
 To measure it against QM, keep a few QM-labeled shards in their own directory, for example from a
-short run of the ORCA configuration, ``master_config.json``. They must be in eV and eV/Å, which the
-ORCA configuration's factors give. Then add to ``hippynn_config.json``:
+short run of the ORCA configuration, ``master_config.json``, or of the PySCF one,
+``master_config_pyscf.json``, which needs no separate QM program. They must be in eV and eV/Å, which both
+configurations' factors give. Then add to ``hippynn_config.json``:
 
 .. code-block:: json
 

@@ -255,6 +255,13 @@ if args.test_qm:
     sys.stdout.write('PBCs: ' + np.array_str(test_configuration[1].get_pbc()) + '\n')
     if any(test_configuration[1].get_pbc()):
         sys.stdout.write('Cell: \n' + np.array_str(test_configuration[1].get_cell(),precision=4) + '\n')
+    if not test_configuration.check_convergence():
+        # A failed label has no results to show; report why it failed, from the labeler's metadata.
+        failure = test_configuration.get_metadata()
+        reason = failure.get('qm_error') or failure.get('labeling_error') or 'the QM task recorded no reason'
+        stage = failure.get('qm_failed_stage')
+        sys.stdout.write('\nLabeling failed' + (f' at stage {stage!r}' if stage else '') + f': {reason}\n')
+        sys.exit(1)
     for property_key in list(master_config['properties_list']):
         if isinstance(test_configuration[2][property_key], np.ndarray):
             sys.stdout.write(property_key + ':\n' + np.array_str(test_configuration[2][property_key],precision=4) + '\n')

@@ -92,6 +92,17 @@ install the Python packages that ALF can pull in directly:
    * - ``alchemi``
      - ``nvalchemi-toolkit``
      - The ALCHEMI dynamics engine. Needs Python 3.11 or newer.
+   * - ``pyscf``
+     - ``pyscf``
+     - DFT labels on the CPU with ``pyscf_task``, for molecules and periodic cells. ``full`` includes it.
+   * - ``gpu4pyscf``
+     - ``pyscf``, ``gpu4pyscf-cuda12x``, and ``cupy-cuda12x``
+     - DFT labels on a GPU with ``pyscf_task`` and ``gpu4pyscf_excited_state_task``. These builds are for
+       CUDA 12; for another CUDA version, install the matching ``gpu4pyscf`` and ``cupy`` builds instead.
+   * - ``teacher-mace``, ``teacher-uma``
+     - ``torch-sim-atomistic`` with ``mace-torch`` or ``fairchem-core``
+     - Foundation-model teachers, MACE fine-tuning, and UMA fine-tuning. Install each in its own
+       environment; see :doc:`../user_guide/teacher_student`.
 
 For example:
 
@@ -118,7 +129,7 @@ Other backends are installed separately:
 * **PySEQM:** install from `its repository <https://github.com/lanl/PYSEQM>`__.
   ALF's automated tests run against commit ``52850b4``.
 * **GPU4PySCF:** needs ``gpu4pyscf``, ``pyscf``, and a CuPy build that matches the
-  worker's CUDA runtime. Large molecules also need native cuTENSOR, from a wheel
+  worker's CUDA runtime; the ``gpu4pyscf`` extra installs the CUDA 12 builds. Large molecules also need native cuTENSOR, from a wheel
   matching that runtime such as ``cutensor-cu13``, with the wheel's ``cutensor/lib``
   directory on the worker's ``LD_LIBRARY_PATH``. Without it, GPU4PySCF falls back to
   CuPy contractions, which use much more GPU memory.

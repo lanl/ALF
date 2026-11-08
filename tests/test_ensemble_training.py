@@ -28,9 +28,9 @@ from tests.helpers.driver import MODEL_PATTERN, loaded_parsl, run_alf_driver
 from tests.helpers.molecules import WATER
 
 PROPERTIES = {
-    "sE0": ["sE0", "system", 1.0],
+    "E0": ["E0", "system", 1.0],
     "F0": ["F0", "atomic", 1.0],
-    "sE1": ["sE1", "system", 1.0],
+    "E1": ["E1", "system", 1.0],
     "F1": ["F1", "atomic", 1.0],
 }
 EXCITED_CONFIG = {
@@ -597,7 +597,7 @@ def test_multinode_excited_training_trains_members_that_reload(tmp_path):
         group["_id"] = np.array([f"frame-{i}" for i in range(12)], dtype="S")
         group["topology_atom_ids"] = np.tile(np.arange(3), (12, 1))
         for state in range(2):
-            group[f"sE{state}"] = energies + 0.1 * state
+            group[f"E{state}"] = energies + 0.1 * state
             group[f"F{state}"] = -0.02 * coordinates
     config = {**EXCITED_CONFIG, "n_models": 2, "max_epochs": 2, "batch_size": 4, "eval_batch_size": 4,
               "termination_patience": 10, "torch_threads": 1, "fraction_train_eval": 1.0,

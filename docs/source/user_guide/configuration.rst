@@ -96,8 +96,8 @@ The master config controls the workflow wiring. Common fields include:
        files.
    * - ``properties_list``
      - Mapping from ALF property names to HDF5 dataset names, property scope,
-       and unit conversion factors. See :doc:`units` for the conversion
-       direction and common factors.
+       and unit conversion factors. See :ref:`configuration-property-names`, and
+       :doc:`units` for the conversion direction and common factors.
    * - ``parsl_configuration``
      - Parsl resource configuration used for normal runs.
    * - ``parsl_debug_configuration``
@@ -147,6 +147,33 @@ The master config controls the workflow wiring. Common fields include:
    * - ``trajectory_summary_path``
      - Optional file where ALF appends one row per trajectory, for progress plots.
        See :ref:`samplers-progress-plots`.
+
+.. _configuration-property-names:
+
+Property Names
+~~~~~~~~~~~~~~
+
+Each ``properties_list`` entry is ``"key": [dataset, scope, factor]``. The key is what the
+labeler computes, and ``dataset`` is the name it gets in the HDF5 shards, which trainers and
+fine-tuning read.
+
+* **Ground-state labelers,** such as ORCA, Q-Chem, VASP through ASE, the teacher, and
+  ``pyseqm_task``, use ``energy`` and ``forces``, and ground-state trainers and fine-tuning read
+  those dataset names.
+* **State-aware labelers,** ``gpu4pyscf_excited_state_task`` and PySEQM's excited-state tasks,
+  name states ``E0``, ``E1``, … and their forces ``F0``, ``F1``, …, with gaps ``dE01``, and so
+  on. State 0 is the ground state. See :doc:`excited_states`.
+
+A state-aware labeler can also run the ground state alone, for example GPU4PySCF with
+``nroots: 0``. To make its labels readable by ground-state trainers and fine-tuning, give the
+states those dataset names:
+
+.. code-block:: json
+
+   "properties_list": {
+     "E0": ["energy", "system", 1.0],
+     "F0": ["forces", "atomic", 1.0]
+   }
 
 Path Conventions
 ----------------

@@ -99,7 +99,7 @@ def ensemble_statistics(prediction):
             stats = ensemble_statistics(dict(energies=state_energies[:, state],
                                             forces=[np.asarray(f)[:, state] for f in state_forces]))
             for row, values in zip(rows, stats):
-                row.update({f'sE{state}_mean': values['energy'], f'sE{state}_stdev': values['Es'],
+                row.update({f'E{state}_mean': values['energy'], f'E{state}_stdev': values['Es'],
                             f'F{state}_stdev_mean': values['Fs'], f'F{state}_stdev_max': values['Fsmax'],
                             f'F{state}_stdev_rms': values['Fsrms']})
         for lower in range(state_energies.shape[1]):

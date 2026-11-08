@@ -1744,8 +1744,8 @@ def build_excited_state_training_graph(
         force_mae = loss.MAELoss.of_node(force_output)
         energy_error_terms.append((energy_rmse, energy_mae))
         force_error_terms.append((force_rmse, force_mae))
-        validation_losses[f"sE{state}_RMSE"] = energy_rmse
-        validation_losses[f"sE{state}_MAE"] = energy_mae
+        validation_losses[f"E{state}_RMSE"] = energy_rmse
+        validation_losses[f"E{state}_MAE"] = energy_mae
         validation_losses[f"F{state}_RMSE"] = force_rmse
         validation_losses[f"F{state}_MAE"] = force_mae
 

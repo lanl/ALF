@@ -12,23 +12,23 @@
   "batched_calculator": "alframework.ml_interfaces.hippynn_interface.load_hippynn_excited_state_ensemble",
   "batched_calculator_options": {
     "properties_list": {
-      "sE0": [
-        "sE0",
+      "E0": [
+        "E0",
         "system",
         1.0
       ],
-      "sE1": [
-        "sE1",
+      "E1": [
+        "E1",
         "system",
         1.0
       ],
-      "sE2": [
-        "sE2",
+      "E2": [
+        "E2",
         "system",
         1.0
       ],
-      "sE3": [
-        "sE3",
+      "E3": [
+        "E3",
         "system",
         1.0
       ],

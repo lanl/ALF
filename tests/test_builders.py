@@ -9,6 +9,7 @@ import itertools
 import json
 import os
 import random
+import re
 import shutil
 import subprocess
 import sys
@@ -610,7 +611,7 @@ def test_rdkit_seed_is_a_stratified_sample_of_the_pool(prepared_seed):
         np.testing.assert_array_equal(selected["coordinates"][()], pool["coordinates"][()][indices])
         np.testing.assert_array_equal(selected["strata"][()], pool["strata"][()][indices])
         np.testing.assert_array_equal(selected["fps_rank"][()], pool["fps_rank"][()][indices])
-        assert not any(key.startswith(("sE", "F", "dE")) for key in selected)
+        assert not any(re.fullmatch(r"E\d+|F\d+|dE\d.*", key) for key in selected)
 
 
 def test_rdkit_builder_replays_prepared_geometries(prepared_seed):

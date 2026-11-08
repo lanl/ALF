@@ -27,7 +27,8 @@ Supported QM Packages
        For excited states, see :doc:`excited_states`.
    * - `GPU4PySCF <https://pyscf.org/user/gpu.html>`__
      - ``alframework.qm_interfaces.gpu4pyscf_interface.gpu4pyscf_excited_state_task``
-       for excited states. See :doc:`excited_states`.
+       for excited states, or for ground-state DFT with ``nroots: 0``. See :doc:`excited_states` and
+       :ref:`configuration-property-names`.
    * - `ASE-supported calculators <https://docs.ase-lib.org/ase/calculators/calculators.html#supported-calculators>`__
      - ``alframework.qm_interfaces.ase_calculator_interface.ase_calculator_task``
    * - Foundation models, such as MACE and UMA

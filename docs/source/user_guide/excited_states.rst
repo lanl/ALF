@@ -43,8 +43,8 @@ Property Names
 
    {
      "properties_list": {
-       "sE0": ["sE0", "system", 1.0],
-       "sE1": ["sE1", "system", 1.0],
+       "E0": ["E0", "system", 1.0],
+       "E1": ["E1", "system", 1.0],
        "F0": ["F0", "atomic", 1.0],
        "F1": ["F1", "atomic", 1.0],
        "dE01": ["dE01", "system", 1.0]
@@ -58,7 +58,7 @@ Property Names
    * - Key
      - Scope
      - Meaning
-   * - ``sE0``, ``sE1``, ...
+   * - ``E0``, ``E1``, ...
      - ``system``
      - Total energy of each state. Numbering must start at 0 with no gaps, and all
        states must use the same conversion factor.
@@ -90,6 +90,9 @@ Property Names
 Both labelers report eV and eV/Angstrom, so the conversion factors above are
 ``1.0``. See :doc:`units` for how those factors work.
 
+The key names the state, and the first element is the name of the shard's dataset. They are
+usually the same, but needn't be; see :ref:`configuration-property-names`.
+
 Labeling With GPU4PySCF
 -----------------------
 
@@ -100,6 +103,19 @@ its local device 0; see :ref:`parsl-gpu4pyscf-workers`. To pack several molecule
 a job, use ``"mode": "sequential"``; see :doc:`batching`.
 
 The number of states in ``properties_list`` must equal ``nroots + 1``.
+
+``nroots: 0`` is a ground-state DFT calculation: the SCF energy and its gradient, with no TDA. It
+labels only ``E0`` and ``F0``, and refuses gaps, couplings, and optical properties. To train a
+ground-state model or fine-tune on these labels, store them under the names those readers use:
+
+.. code-block:: json
+
+   {
+     "properties_list": {
+       "E0": ["energy", "system", 1.0],
+       "F0": ["forces", "atomic", 1.0]
+     }
+   }
 
 .. list-table::
    :header-rows: 1
@@ -116,7 +132,7 @@ The number of states in ``properties_list`` must equal ``nroots + 1``.
      - Molecular charge. Multiplicity must be ``1``.
    * - ``nroots``
      - ``5``
-     - Number of excited states.
+     - Number of excited states. ``0`` gives a ground-state calculation.
    * - ``density_fit``, ``auxbasis``
      - ``true``, ``null``
      - Density fitting and its auxiliary basis.
@@ -259,8 +275,8 @@ neutral, closed-shell molecules only.
      - ``0.0``
      - Value subtracted from every state energy.
 
-PySEQM needs at least two states and only accepts ``sE#``, ``F#``, and ``dE#``
-properties. Within a batch, ALF only solves molecules with the same atoms together,
+PySEQM only accepts ``E#``, ``F#``, and ``dE#`` properties. With only ``E0`` and ``F0``,
+it runs a ground-state AM1 calculation instead of CIS. Within a batch, ALF only solves molecules with the same atoms together,
 so a mixed batch runs as several smaller solves. If a batch solve fails, ALF retries
 each member alone, and only converged members are stored.
 
@@ -369,8 +385,8 @@ its selected state, and ``Es`` and ``Fs`` uncertainty is measured on that state.
      "batched_calculator": "alframework.ml_interfaces.hippynn_interface.load_hippynn_excited_state_ensemble",
      "batched_calculator_options": {
        "properties_list": {
-         "sE0": ["sE0", "system", 1.0],
-         "sE1": ["sE1", "system", 1.0],
+         "E0": ["E0", "system", 1.0],
+         "E1": ["E1", "system", 1.0],
          "F0": ["F0", "atomic", 1.0],
          "F1": ["F1", "atomic", 1.0],
          "dE01": ["dE01", "system", 1.0]

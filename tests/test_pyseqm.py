@@ -121,7 +121,7 @@ def test_ground_state_task_works_with_native_batching():
 
 
 PROPS = {
-    **{f"sE{i}": [f"e{i}", "system", 1.0] for i in range(4)},
+    **{f"E{i}": [f"e{i}", "system", 1.0] for i in range(4)},
     **{f"F{i}": [f"f{i}", "atomic", 1.0] for i in range(4)},
     "dE01": ["gap01", "system", 1.0],
 }
@@ -155,7 +155,7 @@ def test_cis_labels_keep_atom_order():
     )
     for mol, atoms in zip(labeled, (METHANOL, permuted)):
         assert mol.check_convergence()
-        assert mol.get_results()["sE0"] == -sum(atoms.numbers) - 2
+        assert mol.get_results()["E0"] == -sum(atoms.numbers) - 2
         assert mol.get_results()["dE01"] == 1
         for state in range(4):
             np.testing.assert_array_equal(mol.get_results()[f"F{state}"][:, 0], atoms.numbers)
@@ -257,3 +257,42 @@ def test_mixed_cis_molecules_return_in_submission_order():
     assert out[0].get_metadata()["qm_solve_widths"] == [2, 2]
     assert out[0].get_metadata()["qm_retry_count"] == 0
     assert out[0].get_metadata()["qm_compatibility_groups"] == [["mol-0", "mol-2"], ["mol-1", "mol-3"]]
+
+
+GROUND_PROPS = {"E0": ["energy", "system", 1.0], "F0": ["forces", "atomic", 1.0]}
+
+
+def test_excited_task_with_only_the_ground_state_runs_a_ground_state_solve(monkeypatch):
+    """With only E0/F0 requested, the state-aware task runs PySEQM's ground-state solve, not CIS."""
+    calls = []
+
+    def ground(coordinates, species, parameters, device="cpu", charges=0, mult=1):
+        calls.append(parameters)
+        return -species.sum(axis=1).astype(float), np.ones(coordinates.shape), np.ones(len(species), bool)
+
+    monkeypatch.setattr(pyseqm, "run_pyseqm", ground)
+    monkeypatch.setattr(pyseqm, "run_pyseqm_cis_isolated", lambda *a, **k: pytest.fail("CIS must not run"))
+    out = pyseqm.label_pyseqm_excited_batch(molecules(METHANOL, METHANOL), {"energy_offset_eV": 1.0}, GROUND_PROPS)
+    assert all(m.check_convergence() for m in out)
+    assert "excited_states" not in calls[0] and calls[0]["method"] == "AM1"
+    for mol in out:
+        assert set(mol.get_results()) == {"E0", "F0"}
+        assert mol.get_results()["E0"] == -sum(METHANOL.numbers) - 1
+        assert mol.get_results()["F0"].shape == (len(METHANOL), 3)
+        assert mol.get_metadata()["qm_backend"] == "pyseqm" and mol.get_metadata()["qm_cis_converged"] is None
+
+
+def test_excited_task_still_needs_contiguous_states():
+    props = dict(GROUND_PROPS, E2=["e2", "system", 1.0], F2=["f2", "atomic", 1.0])
+    out = pyseqm.label_pyseqm_excited_batch(molecules(WATER), {}, props, runner=fake)
+    assert not out[0].check_convergence() and "contiguous" in out[0].get_metadata()["qm_error"]
+
+
+def test_ground_state_solve_that_does_not_converge_is_not_stored(monkeypatch):
+    def ground(coordinates, species, parameters, device="cpu", charges=0, mult=1):
+        return -species.sum(axis=1).astype(float), np.ones(coordinates.shape), np.array([True, False])
+
+    monkeypatch.setattr(pyseqm, "run_pyseqm", ground)
+    out = pyseqm.label_pyseqm_excited_batch(molecules(METHANOL, METHANOL), {}, GROUND_PROPS)
+    assert [m.check_convergence() for m in out] == [True, False]
+    assert out[1].get_results() == {}

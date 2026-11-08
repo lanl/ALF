@@ -31,9 +31,9 @@ from tests.helpers.molecules import WATER
 
 def _properties(with_gap=False):
     properties = {
-        "sE0": ["sE0", "system", 1.0],
+        "E0": ["E0", "system", 1.0],
         "F0": ["F0", "atomic", 1.0],
-        "sE1": ["sE1", "system", 1.0],
+        "E1": ["E1", "system", 1.0],
         "F1": ["F1", "atomic", 1.0],
     }
     if with_gap:
@@ -74,9 +74,9 @@ def _write_group(
                 count * len(species) * 3,
                 dtype=float,
             ).reshape(count, len(species), 3),
-            "sE0": np.linspace(-2.0, -1.0, count),
+            "E0": np.linspace(-2.0, -1.0, count),
             "F0": np.zeros((count, len(species), 3)),
-            "sE1": np.linspace(-1.5, -0.5, count),
+            "E1": np.linspace(-1.5, -0.5, count),
             "F1": np.ones((count, len(species), 3)),
             "dE01": np.full(count, 0.5),
         }
@@ -378,7 +378,7 @@ def two_state_ensemble(request, tmp_path_factory):
         g["_id"] = np.array([f"frame-{i}" for i in range(12)], dtype="S")
         g["topology_atom_ids"] = np.tile(np.arange(3), (12, 1))
         for state in range(2):
-            g[f"sE{state}"] = energies + 0.1 * state
+            g[f"E{state}"] = energies + 0.1 * state
             g[f"F{state}"] = -0.02 * coordinates
         g["dE01"] = np.full(12, 0.1)
         g["nacr"] = np.zeros((12, 1, 3, 3))
@@ -430,12 +430,12 @@ def _reload_checkpoint(ensemble):
 
 
 def _reloaded_predictor(ensemble):
-    """Reload one member, returning its sE0, sE1, F0 and dE01 outputs as a function of coordinates."""
+    """Reload one member, returning its E0, E1, F0 and dE01 outputs as a function of coordinates."""
     import torch
     from hippynn.graphs import GraphModule
 
     model = _reload_checkpoint(ensemble)["training_modules"].model.to(torch.float64)
-    graph = GraphModule(model.input_nodes, [ml._target(model, key) for key in ("sE0", "sE1", "F0", "dE01")])
+    graph = GraphModule(model.input_nodes, [ml._target(model, key) for key in ("E0", "E1", "F0", "dE01")])
     species = torch.tensor([[8, 1, 1]])
     return lambda xyz: graph(*[species if node.db_name == "species" else xyz for node in model.input_nodes])
 
@@ -729,25 +729,25 @@ def test_h5_loader_reads_two_states(tmp_path):
         configured_possible_species=[0, 1, 8],
     )
 
-    assert set(arrays) == {"coordinates", "species", "sE0", "F0", "sE1", "F1"}
+    assert set(arrays) == {"coordinates", "species", "E0", "F0", "E1", "F1"}
     assert arrays["coordinates"].shape == (4, 2, 3)
     assert arrays["species"].shape == (4, 2)
     assert arrays["species"].dtype == np.int64
-    assert arrays["sE0"].dtype == np.float32
+    assert arrays["E0"].dtype == np.float32
     assert arrays["F1"].shape == (4, 2, 3)
     assert summary["n_structures"] == 4
     assert summary["n_atoms"] == 2
     assert summary["atomic_numbers"] == [1, 8]
     assert [row["energy_db_name"] for row in summary["state_table"]] == [
-        "sE0",
-        "sE1",
+        "E0",
+        "E1",
     ]
 
 
 def test_h5_loader_uses_configured_names(tmp_path):
     pytest.importorskip("hippynn")
     properties = {
-        "sE0": ["state_zero_energy", "system", 1.0],
+        "E0": ["state_zero_energy", "system", 1.0],
         "F0": ["state_zero_force", "atomic", 1.0],
     }
     shard = tmp_path / "data.h5"
@@ -769,7 +769,7 @@ def test_h5_loader_uses_configured_names(tmp_path):
         "state_zero_energy",
         "state_zero_force",
     }
-    assert summary["state_table"][0]["energy_key"] == "sE0"
+    assert summary["state_table"][0]["energy_key"] == "E0"
     assert summary["state_table"][0]["energy_db_name"] == "state_zero_energy"
 
 
@@ -782,7 +782,7 @@ def test_h5_loader_reads_gap_targets(tmp_path):
         _properties(with_gap=True),
     )
 
-    np.testing.assert_allclose(arrays["dE01"], arrays["sE1"] - arrays["sE0"])
+    np.testing.assert_allclose(arrays["dE01"], arrays["E1"] - arrays["E0"])
     assert summary["gap_table"][0]["gap_key"] == "dE01"
 
 
@@ -807,7 +807,7 @@ def test_h5_loader_rejects_inconsistent_gaps(tmp_path):
         ({"nonfinite": "dE01"}, True, "nonfinite"),
         ({"missing": "F1"}, False, "F1"),
         ({"nonfinite": "coordinates"}, False, "nonfinite"),
-        ({"nonfinite": "sE0"}, False, "nonfinite"),
+        ({"nonfinite": "E0"}, False, "nonfinite"),
         ({"nonfinite": "F1"}, False, "nonfinite"),
     ],
     ids=[
@@ -914,7 +914,7 @@ def test_training_properties_must_be_well_formed():
         ml.validate_excited_state_training_properties(wrong_kind)
 
     duplicate_name = _properties()
-    duplicate_name["F0"] = ["sE0", "atomic", 1.0]
+    duplicate_name["F0"] = ["E0", "atomic", 1.0]
     with pytest.raises(ValueError, match="unique HDF5"):
         ml.validate_excited_state_training_properties(duplicate_name)
 
@@ -999,10 +999,10 @@ def test_all_states_share_one_network():
         validation,
     )
 
-    assert [output.db_name for _, output in energy_outputs] == ["sE0", "sE1"]
+    assert [output.db_name for _, output in energy_outputs] == ["E0", "E1"]
     assert [output.db_name for _, output in force_outputs] == ["F0", "F1"]
     assert set(db_info["inputs"]) == {"species", "coordinates"}
-    assert {"sE0", "F0", "sE1", "F1"}.issubset(db_info["targets"])
+    assert {"E0", "F0", "E1", "F1"}.issubset(db_info["targets"])
     assert all(network in output.parents[0].parents for _, output in energy_outputs)
 
 
@@ -1035,7 +1035,7 @@ def test_hippynn_four_state_network_predicts_finite_outputs(choice, monkeypatch)
     positions.requires_grad = True
     network = ml._build_shared_network(species, positions, network_choice=choice, network_params=params)
     properties = {
-        **{f"sE{i}": [f"sE{i}", "system", 1.0] for i in range(4)},
+        **{f"E{i}": [f"E{i}", "system", 1.0] for i in range(4)},
         **{f"F{i}": [f"F{i}", "atomic", 1.0] for i in range(4)},
     }
     table = ml.validate_excited_state_training_config(_config(), properties)
@@ -1131,7 +1131,7 @@ def test_nacr_is_never_loaded_for_training(tmp_path, monkeypatch):
 
     NACR is stored so a dataset need not be relabeled later, but the MLIP must
     still learn energies and forces only. That holds because the loader reads
-    only the names derived from the sE#/F#/dE# patterns, so the extra datasets
+    only the names derived from the E#/F#/dE# patterns, so the extra datasets
     are invisible rather than merely unused.
     """
     pytest.importorskip("hippynn")
@@ -1174,7 +1174,7 @@ def test_nacr_is_never_loaded_for_training(tmp_path, monkeypatch):
 # ---- Filtering training data, compared with upstream HIPPYNN ----
 
 
-PROPERTIES = {"sE0": ["sE0", "system", 1.0], "F0": ["F0", "atomic", 1.0]}
+PROPERTIES = {"E0": ["E0", "system", 1.0], "F0": ["F0", "atomic", 1.0]}
 TABLE = ml.validate_excited_state_training_properties(PROPERTIES)
 
 
@@ -1184,7 +1184,7 @@ def arrays(count=12):
     return {
         "coordinates": coordinates,
         "species": np.tile([1, 1], (count, 1)).astype(np.int64),
-        "sE0": np.full(count, -2.0),
+        "E0": np.full(count, -2.0),
         "F0": np.full((count, 2, 3), 10.0),
         "indices": np.arange(count),
         "frame_ids": 500 + np.arange(count),
@@ -1195,8 +1195,8 @@ def upstream_selection(data, options):
     torch = pytest.importorskip("torch")
     Database = pytest.importorskip("hippynn.databases.database").Database
     values = {key: torch.as_tensor(value.copy()) for key, value in data.items()}
-    values["sE0"] = values["sE0"].reshape(-1, 1)
-    database = Database(values, inputs=["species", "coordinates"], targets=["sE0", "F0"], seed=42, quiet=True)
+    values["E0"] = values["E0"].reshape(-1, 1)
+    database = Database(values, inputs=["species", "coordinates"], targets=["E0", "F0"], seed=42, quiet=True)
     database.remove_high_property(
         "F0",
         True,
@@ -1205,7 +1205,7 @@ def upstream_selection(data, options):
         std_factor=options.get("remove_high_forces_std"),
     )
     database.remove_high_property(
-        "sE0",
+        "E0",
         False,
         species_key="species",
         cut=options.get("remove_high_energy_cut"),
@@ -1246,7 +1246,7 @@ def test_filters_match_upstream_hippynn(options):
     data = arrays()
     data["F0"][-1] = 110.0
     data["F0"][-2] = 20.0
-    data["sE0"][-3] = 8.0
+    data["E0"][-3] = 8.0
     compare(data, options)
 
 
@@ -1296,7 +1296,7 @@ def test_filtering_leaves_the_data_file_untouched(tmp_path):
     data["F0"][-2] = 20.0
     with h5py.File(path, "w") as handle:
         group = handle.create_group("H02")
-        for key in ("coordinates", "sE0", "F0"):
+        for key in ("coordinates", "E0", "F0"):
             group[key] = data[key]
         group["species"] = np.array([b"H", b"H"])
     before = hashlib.sha256(path.read_bytes()).hexdigest()
@@ -1315,12 +1315,12 @@ def test_filtering_leaves_the_data_file_untouched(tmp_path):
 
 def multistate_arrays():
     data = arrays(20)
-    data["sE1"] = data["sE0"] + 0.5
+    data["E1"] = data["E0"] + 0.5
     data["F1"] = data["F0"].copy()
-    data["dE01"] = data["sE1"] - data["sE0"]
+    data["dE01"] = data["E1"] - data["E0"]
     properties = {
         **PROPERTIES,
-        "sE1": ["sE1", "system", 1.0],
+        "E1": ["E1", "system", 1.0],
         "F1": ["F1", "atomic", 1.0],
         "dE01": ["dE01", "system", 1.0],
     }
@@ -1344,10 +1344,10 @@ def multistate_arrays():
 )
 def test_frame_failing_any_state_is_dropped(options):
     data, table = multistate_arrays()
-    data["sE1"][16] = 20.0
+    data["E1"][16] = 20.0
     data["F0"][17] = 30.0
     data["F1"][18] = -10.0
-    data["dE01"] = data["sE1"] - data["sE0"]
+    data["dE01"] = data["E1"] - data["E0"]
     before = {key: value.copy() for key, value in data.items()}
     forward, summary = ml.filter_excited_state_training_arrays(
         data, table, coordinates_key="coordinates", dist_soft_min=0.5, **options
@@ -1365,7 +1365,7 @@ def test_frame_failing_any_state_is_dropped(options):
         np.testing.assert_array_equal(data[key], value)
         np.testing.assert_array_equal(forward[key], reverse[key])
         np.testing.assert_array_equal(forward[key], value[expected])
-    np.testing.assert_array_equal(forward["dE01"], forward["sE1"] - forward["sE0"])
+    np.testing.assert_array_equal(forward["dE01"], forward["E1"] - forward["E0"])
     if len(expected) < len(data["indices"]):
         stage = "static_cut" if options.get("remove_high_forces_cut") is not None else "standard_deviation"
         assert summary["per_state_failures"]["0"]["forces"][stage] == 1
@@ -1378,8 +1378,8 @@ def test_frame_failing_any_state_is_dropped(options):
 def test_close_contacts_are_removed_first():
     data, table = multistate_arrays()
     data["coordinates"][0, 1, 0] = 0.4
-    data["sE1"][0] = 1000.0
-    data["dE01"] = data["sE1"] - data["sE0"]
+    data["E1"][0] = 1000.0
+    data["dE01"] = data["E1"] - data["E0"]
     filtered, summary = ml.filter_excited_state_training_arrays(
         data, table, coordinates_key="coordinates", dist_soft_min=0.5, remove_high_energy_std=2.0
     )

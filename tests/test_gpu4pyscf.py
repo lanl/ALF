@@ -79,7 +79,7 @@ def test_gpu4pyscf_disabled_solvent_keeps_gas_defaults():
 def _properties(nroots=1, *, include_gap=False, include_nacr=False):
     properties = {}
     for state in range(nroots + 1):
-        properties[f"sE{state}"] = [
+        properties[f"E{state}"] = [
             f"state_{state}_energy",
             "system",
             1.0,
@@ -197,7 +197,7 @@ def test_defaults_are_five_root_cam_b3lyp():
             "requires density_fit",
         ),
         ({"grids_level": -1}, "grids_level"),
-        ({"nroots": 0}, "nroots"),
+        ({"nroots": -1}, "nroots"),
         ({"scf_conv_tol": np.nan}, "scf_conv_tol"),
         ({"tda_conv_tol": 0.0}, "tda_conv_tol"),
         ({"scf_max_cycle": 0}, "scf_max_cycle"),
@@ -215,7 +215,7 @@ def test_defaults_are_five_root_cam_b3lyp():
         "non_boolean_density_fit",
         "auxbasis_without_density_fit",
         "negative_grids_level",
-        "zero_roots",
+        "negative_roots",
         "nan_scf_tolerance",
         "zero_tda_tolerance",
         "zero_scf_cycles",
@@ -271,7 +271,7 @@ def test_properties_must_cover_every_state():
 
 def test_wrong_or_unknown_properties_are_rejected():
     wrong_energy = _properties(1)
-    wrong_energy["sE1"][1] = "atomic"
+    wrong_energy["E1"][1] = "atomic"
     with pytest.raises(ValueError, match="system property"):
         validate_gpu4pyscf_properties(wrong_energy, nroots=1)
 
@@ -591,7 +591,7 @@ def _vertical_properties(energy_scale):
     properties = _properties(2, include_gap=True)
     for key in gpu4pyscf_module.VERTICAL_PROPERTIES:
         properties[key] = [key, "system", energy_scale]
-    for key in ("sE0", "sE1", "sE2", "dE01"):
+    for key in ("E0", "E1", "E2", "dE01"):
         properties[key][2] = energy_scale
     return properties
 
@@ -747,7 +747,7 @@ def test_gpu4pyscf_energy_offset_skips_vertical_excitations(fake_backend):
         properties_list=_vertical_properties(1.0),
     )
     assert molecule.check_convergence()
-    assert molecule.get_results()["sE0"] == 10.0
+    assert molecule.get_results()["E0"] == 10.0
     np.testing.assert_allclose(molecule.get_results()["vertical_excitation_energies"], [0.3, 0.5])
 
 
@@ -931,9 +931,9 @@ def test_labeling_stores_every_state(fake_backend):
 
     assert seen_numbers == [[8, 1, 1]]
     assert labeled.check_convergence() is True
-    assert labeled.get_results()["sE0"] == pytest.approx(10.0)
-    assert labeled.get_results()["sE1"] == pytest.approx(11.0)
-    assert labeled.get_results()["sE2"] == pytest.approx(12.0)
+    assert labeled.get_results()["E0"] == pytest.approx(10.0)
+    assert labeled.get_results()["E1"] == pytest.approx(11.0)
+    assert labeled.get_results()["E2"] == pytest.approx(12.0)
     assert labeled.get_results()["dE01"] == pytest.approx(1.0)
     for state in range(3):
         np.testing.assert_allclose(labeled.get_results()[f"F{state}"], forces[state])
@@ -959,7 +959,7 @@ def test_sampler_energy_offset_is_the_fallback(fake_backend):
         sampler_config={"energy_offset_eV": -100.0},
     )
 
-    assert labeled.get_results()["sE0"] == pytest.approx(10.0)
+    assert labeled.get_results()["E0"] == pytest.approx(10.0)
     assert labeled.get_metadata()["energy_offset_source"] == "sampler_config"
 
 
@@ -1122,7 +1122,7 @@ def test_task_accepts_the_coordinator_inputs(fake_backend):
     labeled = gpu4pyscf_excited_state_task.func(**task_input)
 
     assert labeled.check_convergence() is True
-    assert set(labeled.get_results()) == {"sE0", "F0", "sE1", "F1"}
+    assert set(labeled.get_results()) == {"E0", "F0", "E1", "F1"}
     assert gpu4pyscf_excited_state_task.executors == ["alf_QM_executor"]
 
 
@@ -1290,7 +1290,7 @@ def test_optical_properties_are_stored(fake_backend, tmp_path):
         _molecule(), QM_config={"nroots": 1, "energy_offset_eV": -8.0}, properties_list=props
     )
     assert m.check_convergence()
-    assert m.get_results()["sE0"] == -2.0
+    assert m.get_results()["E0"] == -2.0
     assert m.get_results()["dE01"] == 1.0
     np.testing.assert_array_equal(m.get_results()["absolute_state_energies"], [-10, -9])
     store_current_data(str(tmp_path / "optics.h5"), [m], props)
@@ -1352,3 +1352,90 @@ def test_gpu4pyscf_rejects_nonzero_device_before_import(monkeypatch, device):
     monkeypatch.setattr(gpu4pyscf_module.importlib, "import_module", forbidden)
     with pytest.raises(GPU4PySCFDeviceError, match="local CUDA device 0"):
         run_gpu4pyscf_states(_molecule().get_atoms(), {}, device_index=device)
+
+
+# Ground-state calculations: nroots 0.
+
+GROUND_STATE_PROPERTIES = {"E0": ["energy", "system", 1.0], "F0": ["forces", "atomic", 1.0]}
+
+
+def test_ground_state_run_skips_tda(fake_gpu_stack):
+    calls = fake_gpu_stack
+    energies, forces, nacr, nac_pairs, versions = run_gpu4pyscf_states(
+        _molecule().get_atoms(), validate_gpu4pyscf_config({"nroots": 0}), device_index=0)
+
+    assert "tda" not in calls and "tda_kernel" not in calls
+    assert calls["gradient_states"] == []
+    np.testing.assert_allclose(energies, [-4.0])
+    assert forces.shape == (1, 3, 3)
+    np.testing.assert_allclose(forces[0], -np.ones((3, 3)))
+    assert versions["s1_gradient_source"] == "none" and versions["qm_tda_seconds"] == 0.0
+    assert nacr.shape == (0, 3, 3) and nac_pairs.shape == (0, 2)
+
+
+def test_ground_state_run_matches_the_ground_state_of_an_excited_run(fake_gpu_stack):
+    atoms = _molecule().get_atoms()
+    ground = run_gpu4pyscf_states(atoms, validate_gpu4pyscf_config({"nroots": 0}), device_index=0)
+    excited = run_gpu4pyscf_states(atoms, validate_gpu4pyscf_config({"nroots": 2}), device_index=0)
+    np.testing.assert_array_equal(ground[0], excited[0][:1])
+    np.testing.assert_array_equal(ground[1], excited[1][:1])
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [{"dE01": ["gap_01", "system", 1.0]}, {"transition_dipoles": ["tdm", "system", 1.0]},
+     {"oscillator_strengths": ["f", "system", 1.0]}, {"vertical_excitation_energies": ["vee", "system", 1.0]},
+     {NACR_PROPERTY_KEY: ["nacr", "pair_atomic", 1.0]}],
+    ids=["gap", "dipoles", "strengths", "vertical", "nacr"],
+)
+def test_ground_state_run_refuses_excited_state_properties(extra):
+    with pytest.raises(ValueError, match="ground-state calculation|state"):
+        validate_gpu4pyscf_properties(dict(GROUND_STATE_PROPERTIES, **extra), nroots=0)
+
+
+def test_ground_state_run_needs_exactly_one_state():
+    validate_gpu4pyscf_properties(GROUND_STATE_PROPERTIES, nroots=0)
+    with pytest.raises(ValueError, match="nroots \\+ 1"):
+        validate_gpu4pyscf_properties(_properties(1), nroots=0)
+
+
+def test_ground_state_labels_are_stored_as_energy_and_forces(fake_gpu_stack, monkeypatch, tmp_path):
+    """E0 and F0 can be stored under the names ground-state trainers and fine-tuning read."""
+    from alframework.ml_interfaces.fine_tuning import shard_atoms
+
+    monkeypatch.setattr(gpu4pyscf_module, "select_gpu4pyscf_device", lambda count: _device())
+    labeled = label_gpu4pyscf_excited_state_molecule(
+        _molecule("mol-0000-0000000000"), QM_config={"nroots": 0}, properties_list=GROUND_STATE_PROPERTIES)
+    assert labeled.check_convergence()
+    assert set(labeled.get_results()) == {"E0", "F0"}
+    metadata = labeled.get_metadata()
+    assert metadata["nroots"] == 0 and metadata["n_states"] == 1 and metadata["qm_tda_converged"] is None
+
+    path = tmp_path / "data-0000.h5"
+    store_current_data(str(path), [labeled], GROUND_STATE_PROPERTIES)
+    with h5py.File(path, "r") as handle:
+        group = handle["H02_O01"]
+        # The configured charge is recorded per structure, so the shard carries the state datasets too.
+        assert set(group) == {"_id", "coordinates", "energy", "forces", "species", "total_charge",
+                              "spin_multiplicity"}
+        assert group["energy"][0] == pytest.approx(-4.0)
+        assert (group["total_charge"][0], group["spin_multiplicity"][0]) == (0, 1)
+    (frame,) = shard_atoms([path])
+    assert frame.info["REF_energy"] == pytest.approx(-4.0)
+    np.testing.assert_allclose(frame.arrays["REF_forces"], -np.ones((3, 3)))
+    assert (frame.info["charge"], frame.info["spin"]) == (0, 1)
+
+
+def test_hippynn_ground_state_reader_reads_a_ground_state_shard(fake_backend, tmp_path):
+    pytest.importorskip("hippynn")
+    from alframework.ml_interfaces.hippynn_interface import ALFPyAniDirectoryDB
+
+    energies, forces = _predictions(0)
+    fake_backend(_returns(energies, forces))
+    labeled = [label_gpu4pyscf_excited_state_molecule(_molecule(f"mol-0000-000000000{i}"), QM_config={"nroots": 0},
+                                                      properties_list=GROUND_STATE_PROPERTIES) for i in range(3)]
+    store_current_data(str(tmp_path / "data-0000.h5"), labeled, GROUND_STATE_PROPERTIES)
+    database = ALFPyAniDirectoryDB(directory=str(tmp_path), inputs=["species", "coordinates"],
+                                   targets=["energy", "forces"], quiet=True, seed=0)
+    assert len(database.arr_dict["energy"]) == 3
+    assert "total_charge" not in database.arr_dict  # The ground-state reader drops what the model doesn't name.

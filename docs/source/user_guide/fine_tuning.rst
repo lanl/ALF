@@ -214,7 +214,9 @@ sections below add each family's own:
 ALF checks the ``fine_tune`` block at startup, before anything is labeled.
 
 **Units.** Labels must be in the units the pretrained model uses, which for ALF's samplers is eV and
-eV/Å. ``properties_list`` converts QM output to those units; see :doc:`units`.
+eV/Å. ``properties_list`` converts QM output to those units; see :doc:`units`. Fine-tuning reads the
+``energy`` and ``forces`` datasets. For ground-state DFT on a GPU, use GPU4PySCF with ``nroots: 0`` and
+store ``E0`` and ``F0`` under those names; see :ref:`configuration-property-names`.
 
 HIPPYNN
 -------

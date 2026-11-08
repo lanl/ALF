@@ -7,7 +7,7 @@ import re
 from typing import Any
 
 
-_ENERGY_KEY = re.compile(r"^sE(\d+)$")
+_ENERGY_KEY = re.compile(r"^E(\d+)$")
 _FORCE_KEY = re.compile(r"^F(\d+)$")
 _GAP_KEY = re.compile(r"^dE(?:(\d)(\d)|(\d+)_(\d+))$")
 
@@ -17,7 +17,11 @@ def derive_state_property_table(
     *,
     require_forces: bool = False,
 ) -> list[dict[str, Any]]:
-    """Validate flattened ``sE#``/``F#`` properties and describe each state."""
+    """Validate flattened ``E#``/``F#`` properties and describe each state.
+
+    The key names the state; its first schema element is the shard's dataset name, which may differ, so a
+    ground-state run can store ``E0``/``F0`` as ``energy``/``forces``.
+    """
 
     if not isinstance(properties_list, dict) or not properties_list:
         raise ValueError("properties_list must be a non-empty dictionary.")
@@ -45,7 +49,7 @@ def derive_state_property_table(
 
     if not energies:
         raise ValueError(
-            "properties_list must define excited-state energies named sE0, sE1, ..."
+            "properties_list must define state energies named E0, E1, ..."
         )
     states = sorted(energies)
     if states != list(range(states[-1] + 1)):
@@ -216,8 +220,8 @@ def derive_gap_property_table(
                 f"Gap property {gap_key!r} requires a nonempty database name."
             )
 
-        lower_key = f"sE{lower}"
-        upper_key = f"sE{upper}"
+        lower_key = f"E{lower}"
+        upper_key = f"E{upper}"
         lower_scale = _property_scale(properties_list, lower_key)
         upper_scale = _property_scale(properties_list, upper_key)
         gap_scale = _property_scale(properties_list, gap_key)

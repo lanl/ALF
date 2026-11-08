@@ -1,14 +1,17 @@
-"""GPU4PySCF labeling for flattened excited-state energies and forces.
+"""GPU4PySCF labeling for flattened state energies and forces (``E#``/``F#``).
+
+``nroots: 0`` is a ground-state calculation: the SCF energy and gradient, labeling ``E0``/``F0`` only.
+Store them as ``"E0": ["energy", ...], "F0": ["forces", ...]`` for ground-state trainers and fine-tuning.
 
 The public task in this module labels one nonperiodic ``MoleculesObject`` at a
 time on ALF's ordinary QM executor.  It intentionally calls PySCF/GPU4PySCF
 directly: the upstream ASE adapter exposes ordinary ground-state properties,
-but not ALF's flattened ``sE#``/``F#`` multi-state contract.
+but not ALF's flattened ``E#``/``F#`` multi-state contract.
 
 Optional ``compute_nacr`` additionally labels excited-excited nonadiabatic
 coupling vectors so a dataset need not be relabeled for later dynamics work.
 NACR is stored but never learned: its property key matches none of the
-``sE#``/``F#``/``dE#`` patterns that the excited-state trainer derives its heads
+``E#``/``F#``/``dE#`` patterns that the excited-state trainer derives its heads
 from, so the machine-learned potential still targets energies and forces only.
 """
 
@@ -57,7 +60,7 @@ DEFAULT_GPU4PYSCF_CONFIG = {
 }
 
 # ALF stores nonadiabatic coupling vectors under one flattened pair_atomic
-# property. The key deliberately matches none of the sE#/F#/dE# training
+# property. The key deliberately matches none of the E#/F#/dE# training
 # patterns, so the excited-state trainer never builds a head for it.
 NACR_PROPERTY_KEY = "nacr"
 NAC_SCOPE = "excited_excited"
@@ -245,8 +248,9 @@ def validate_gpu4pyscf_config(QM_config: dict[str, Any] | None) -> dict[str, Any
     options["grids_level"] = _integer(
         options.get("grids_level"), name="grids_level", minimum=0
     )
+    # nroots 0 is a ground-state calculation: SCF energy and gradient, with no TDA.
     options["nroots"] = _integer(
-        options.get("nroots"), name="nroots", minimum=1
+        options.get("nroots"), name="nroots", minimum=0
     )
     options["scf_conv_tol"] = _positive_float(
         options.get("scf_conv_tol"), name="scf_conv_tol"
@@ -307,6 +311,18 @@ def validate_gpu4pyscf_properties(
             f"nroots={nroots} requires states 0 through {nroots}, but "
             f"properties_list defines {len(state_table)} states."
         )
+
+    if int(nroots) == 0:
+        excited_only = sorted(
+            {str(row["gap_key"]) for row in gap_table}
+            | ({"transition_dipoles", "oscillator_strengths", NACR_PROPERTY_KEY} | VERTICAL_PROPERTIES)
+            .intersection(properties_list)
+        )
+        if excited_only:
+            raise ValueError(
+                "nroots=0 is a ground-state calculation, so it can't give "
+                f"excited-state properties: {excited_only}."
+            )
 
     supported_keys: set[str] = set()
     for row in state_table:
@@ -369,7 +385,7 @@ def validate_gpu4pyscf_properties(
     unsupported = sorted(set(properties_list) - supported_keys)
     if unsupported:
         raise ValueError(
-            "The GPU4PySCF interface supports only flattened sE#/F#/dE# "
+            "The GPU4PySCF interface supports only flattened E#/F#/dE# "
             f"properties and {NACR_PROPERTY_KEY!r}; unsupported keys: "
             f"{unsupported}."
         )
@@ -712,6 +728,43 @@ def _single_device_backend(pyscf):
                 config.num_devices = previous
 
 
+def _run_tda(mf, options, nroots, root_states, cupy):
+    """Run TDA for ``nroots`` excited states, returning the solver and its excitation energies (Hartree)."""
+    try:
+        td = mf.TDA(equilibrium_solvation=True) if options.get("solvent") else mf.TDA()
+        td.nstates = nroots
+        td.conv_tol = float(options["tda_conv_tol"])
+        td.max_cycle = int(options["tda_max_cycle"])
+        td.lindep = float(options["tda_lindep"])
+        td.kernel()
+    except GPU4PySCFError:
+        raise
+    except Exception as exc:
+        raise GPU4PySCFTDAError(
+            f"GPU4PySCF TDA failed: {type(exc).__name__}: {exc}",
+            failed_states=root_states,
+        ) from exc
+    _require_tda_convergence(td, nroots, cupy)
+    try:
+        excitation_energies = np.asarray(
+            _to_numpy(getattr(td, "e", None), cupy),
+            dtype=np.float64,
+        )
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise GPU4PySCFOutputError(
+            "GPU4PySCF returned TDA roots that could not be converted to "
+            "floating-point values.",
+            failed_states=root_states,
+        ) from exc
+    if excitation_energies.shape != (nroots,):
+        raise GPU4PySCFOutputError(
+            "GPU4PySCF returned malformed TDA roots: expected "
+            f"{(nroots,)}, received {excitation_energies.shape}.",
+            failed_states=root_states,
+        )
+    return td, excitation_energies
+
+
 def run_gpu4pyscf_states(
     atoms,
     options: dict[str, Any],
@@ -801,40 +854,12 @@ def run_gpu4pyscf_states(
 
     nroots = int(options["nroots"])
     root_states = tuple(range(1, nroots + 1))
-    try:
-        td = mf.TDA(equilibrium_solvation=True) if options.get("solvent") else mf.TDA()
-        td.nstates = nroots
-        td.conv_tol = float(options["tda_conv_tol"])
-        td.max_cycle = int(options["tda_max_cycle"])
-        td.lindep = float(options["tda_lindep"])
-        td.kernel()
-    except GPU4PySCFError:
-        raise
-    except Exception as exc:
-        raise GPU4PySCFTDAError(
-            f"GPU4PySCF TDA failed: {type(exc).__name__}: {exc}",
-            failed_states=root_states,
-        ) from exc
-    _require_tda_convergence(td, nroots, cupy)
-    tda_seconds = time.time() - tda_start
+    td = None
+    excitation_energies = np.empty(0, dtype=np.float64)
+    if nroots > 0:
+        td, excitation_energies = _run_tda(mf, options, nroots, root_states, cupy)
+    tda_seconds = time.time() - tda_start if nroots > 0 else 0.0
 
-    try:
-        excitation_energies = np.asarray(
-            _to_numpy(getattr(td, "e", None), cupy),
-            dtype=np.float64,
-        )
-    except (TypeError, ValueError, OverflowError) as exc:
-        raise GPU4PySCFOutputError(
-            "GPU4PySCF returned TDA roots that could not be converted to "
-            "floating-point values.",
-            failed_states=root_states,
-        ) from exc
-    if excitation_energies.shape != (nroots,):
-        raise GPU4PySCFOutputError(
-            "GPU4PySCF returned malformed TDA roots: expected "
-            f"{(nroots,)}, received {excitation_energies.shape}.",
-            failed_states=root_states,
-        )
     try:
         ground_energy = np.asarray(
             _to_numpy(getattr(mf, "e_tot", None), cupy),
@@ -968,8 +993,9 @@ def run_gpu4pyscf_states(
         nac_elapsed = time.time() - nac_start
 
     try:
-        excited_gradient = td.nuc_grad_method()
-        excited_gradient.cphf_conv_tol = float(options["cphf_conv_tol"])
+        excited_gradient = td.nuc_grad_method() if nroots > 0 else None
+        if excited_gradient is not None:
+            excited_gradient.cphf_conv_tol = float(options["cphf_conv_tol"])
     except Exception as exc:
         raise GPU4PySCFGradientError(
             "GPU4PySCF could not construct the TDA gradient method: "
@@ -1055,7 +1081,8 @@ def run_gpu4pyscf_states(
         ),
         "cupy_version": str(getattr(cupy, "__version__", "unknown")),
         "s1_gradient_source": (
-            "nac_solver" if compute_nacr and not options.get("solvent") else "tda_gradient"
+            "none" if nroots == 0
+            else "nac_solver" if compute_nacr and not options.get("solvent") else "tda_gradient"
         ),
     }
     if nac_elapsed is not None:
@@ -1272,7 +1299,8 @@ def label_gpu4pyscf_excited_state_molecule(
             "cuda_visible_devices": device["cuda_visible_devices"],
             "qm_elapsed_seconds": float(elapsed),
             "qm_scf_converged": True,
-            "qm_tda_converged": True,
+            # A ground-state calculation (nroots 0) runs no TDA.
+            "qm_tda_converged": True if int(options["nroots"]) > 0 else None,
             "xc": str(options["xc"]),
             "basis": str(options["basis"]),
             "charge": int(options["charge"]),

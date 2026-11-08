@@ -251,6 +251,12 @@ def run_pyseqm_cis_isolated(coordinates, species, parameters, device, timeout=30
             process.close()
 
 
+def run_pyseqm_ground_as_states(coordinates, species, parameters, device):
+    """A ground-state solve in the CIS runner's shapes: energies [molecules, 1], forces [molecules, 1, atoms, 3]."""
+    energies, forces, converged = run_pyseqm(coordinates, species, parameters, device=device)
+    return np.asarray(energies)[:, None], np.asarray(forces)[:, None], np.asarray(converged)
+
+
 def label_pyseqm_excited_batch(molecule_objects, QM_config, properties_list,
                                sampler_config=None, gpus_per_node=None, runner=None):
     """Native CIS labeling with per-member fallback, stable IDs and atom order.
@@ -258,6 +264,7 @@ def label_pyseqm_excited_batch(molecule_objects, QM_config, properties_list,
     Current support: neutral, restricted AM1/CIS molecules without PBC. Every
     requested state must have a force and converge for the frame to be stored.
     ``qm_backend_width`` is nonzero only for an actual successful native solve.
+    With only ``E0``/``F0`` requested, it runs a ground-state AM1 solve instead of CIS.
     """
     import time
     from alframework.tools.excited_state_tools import derive_state_property_table, derive_gap_property_table
@@ -274,16 +281,16 @@ def label_pyseqm_excited_batch(molecule_objects, QM_config, properties_list,
     batch_errors = []
     compatibility_groups = []
     retries = 0
+    ground = False
     offset = config.get('energy_offset_eV', (sampler_config or {}).get('energy_offset_eV', 0.))
     try:
         table = derive_state_property_table(properties_list, require_forces=True)
         gaps = derive_gap_property_table(properties_list)
-        if len(table) < 2:
-            raise ValueError('CIS requires at least S0 and S1')
+        ground = len(table) == 1  # Only E0/F0: a ground-state solve, with no CIS.
         supported = {row[k] for row in table for k in ('energy_key', 'force_key')}
         supported.update(g['gap_key'] for g in gaps)
         if set(properties_list) - supported:
-            raise ValueError('PySEQM CIS supports only sE#/F#/dE# properties')
+            raise ValueError('PySEQM CIS supports only E#/F#/dE# properties')
         for row in table:
             for key, scope in ((row['energy_key'], 'system'), (row['force_key'], 'atomic')):
                 schema = properties_list[key]
@@ -307,14 +314,17 @@ def label_pyseqm_excited_batch(molecule_objects, QM_config, properties_list,
         timeout = float(config.get('timeout_seconds', 300))
         if not all(np.isfinite(x) and x > 0 for x in (tolerance, scf_eps, timeout)):
             raise ValueError('CIS/SCF tolerances and timeout must be finite and positive')
-        parameters = {'method': 'AM1', 'scf_eps': min(scf_eps, .1*tolerance),
-                      'scf_converger': [2], 'analytical_gradient': [True],
-                      'do_all_forces': True,
-                      'excited_states': {'method': 'cis', 'n_states': len(table)-1,
-                                         'tolerance': tolerance},
-                      '_num_threads': int(config.get('num_threads', 1))}
-        if parameters['_num_threads'] < 1:
+        if int(config.get('num_threads', 1)) < 1:
             raise ValueError('num_threads must be positive')
+        if ground:
+            parameters = dict(DEFAULT_PARAMETERS, scf_eps=scf_eps)
+        else:
+            parameters = {'method': 'AM1', 'scf_eps': min(scf_eps, .1*tolerance),
+                          'scf_converger': [2], 'analytical_gradient': [True],
+                          'do_all_forces': True,
+                          'excited_states': {'method': 'cis', 'n_states': len(table)-1,
+                                             'tolerance': tolerance},
+                          '_num_threads': int(config.get('num_threads', 1))}
         # Injected runners permit dependency-free tests. Real GPU selection is
         # local to the inherited mask; this never edits visibility variables.
         device = sampling_device({'device': config.get('device', 'cpu')}, gpus_per_node)
@@ -325,7 +335,9 @@ def label_pyseqm_excited_batch(molecule_objects, QM_config, properties_list,
                 if not np.isfinite(xyz).all():
                     raise ValueError('PySEQM coordinates must be finite')
                 widths.append(len(group))
-                if runner is None:
+                if runner is None and ground:
+                    energy, force, ok = run_pyseqm_ground_as_states(xyz, numbers, dict(parameters), device)
+                elif runner is None:
                     energy, force, ok = run_pyseqm_cis_isolated(
                         xyz, numbers, dict(parameters), device, timeout)
                 else:
@@ -347,7 +359,7 @@ def label_pyseqm_excited_batch(molecule_objects, QM_config, properties_list,
                     m.store_results(results)
                     m.set_converged_flag(True)
                     m.update_metadata({'qm_backend_width': len(group), 'qm_scf_converged': True,
-                                       'qm_cis_converged': True, 'qm_device': device,
+                                       'qm_cis_converged': None if ground else True, 'qm_device': device,
                                        'energy_offset_eV': offset})
             except Exception as exc:
                 batch_errors.append({'width': len(group), 'error': f'{type(exc).__name__}: {exc}'})
@@ -380,7 +392,7 @@ def label_pyseqm_excited_batch(molecule_objects, QM_config, properties_list,
             m.set_converged_flag(False)
             m.update_metadata({'qm_error': f'{type(exc).__name__}: {exc}', 'qm_backend_width': 0})
     for m in molecules:
-        m.update_metadata({'qm_backend': 'pyseqm_cis', 'qm_submitted_width': len(molecules),
+        m.update_metadata({'qm_backend': 'pyseqm' if ground else 'pyseqm_cis', 'qm_submitted_width': len(molecules),
                            'qm_solve_widths': list(widths), 'qm_retry_count': retries,
                            'qm_batch_errors': batch_errors, 'qm_compatibility_groups': compatibility_groups,
                            'qm_failed_ids': [x.get_moleculeid() for x in molecules if not x.check_convergence()],

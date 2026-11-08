@@ -76,7 +76,8 @@ the increment sections and the E1–E6 table above.
 - **Self-contained excited-state core.** These depend on ordinary task
   entrypoints, `molecules_class`, `pyanitools`, and each other, not on the
   fork's staged workflow, run control, or sampling dialect:
-  - `tools/excited_state_tools.py`: the `sE#`/`F#`/`dE#` key contract;
+  - `tools/excited_state_tools.py`: the `sE#`/`F#`/`dE#` key contract (ALF renamed `sE#` to `E#`
+    on November 7);
     the state count is inferred from contiguous keys in `properties_list`.
   - `tools/atom_order.py`.
   - The `pair_atomic` storage scope and `nac_pairs` index in

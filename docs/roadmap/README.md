@@ -555,6 +555,52 @@ matching the shards.
 - Not run on Darwin. Rerunning section 3 of the [restart profile](exascale.md#darwin-profile-for-restart-work)
   at this commit would compare against the `ce711d8` baseline.
 
+### State names E#/F#, and GPU4PySCF ground-state DFT (2026-11-07)
+
+Planning the Darwin round found that GPU4PySCF, ALF's only GPU DFT labeler, couldn't feed ground-state
+training or fine-tuning. It needed at least one excited root and wrote the ground state as `sE0`/`F0`,
+while those readers expect `energy`/`forces`.
+
+**Decisions (user):**
+- **State-aware code renames `sE#` to `E#`,** a clean break with no converter, since nothing had been run
+  with this framework yet. Forces stay `F#` and gaps `dE01`.
+- **Ground-state labelers and readers keep `energy`/`forces`,** for compatibility with existing
+  ground-state codes. That covers ORCA, Q-Chem, VASP/ASE, the teacher, `pyseqm_task`, the ground-state
+  trainer, and fine-tuning.
+- **The two meet through `properties_list`:** the key names what a labeler computes, and the first element
+  is the shard's dataset name. A ground-state run of a state-aware labeler writes
+  `"E0": ["energy", ...], "F0": ["forces", ...]`. Before the decision, an ALF-wide rename of ground-state
+  names was planned and dropped.
+
+**Built:**
+- **The rename:** `excited_state_tools` matches `^E(\d+)$` and builds gaps from `E#`; the GPU4PySCF and PySEQM
+  interfaces, the excited trainer's loss names (`E{state}_RMSE`), sampler metadata rows
+  (`E{state}_mean`/`_stdev`), the excited examples, docs, and tests use `E#`. A test checks that no `sE#`
+  remains in code, examples, or user docs.
+- **GPU4PySCF `nroots: 0`:** a ground-state calculation, the SCF energy and gradient with no TDA. It refuses
+  gaps, couplings, and optical or vertical properties. TDA moved into `_run_tda`, so the excited path is
+  otherwise unchanged. `qm_tda_converged` is `null` and `s1_gradient_source` is `none` when no TDA ran.
+- **PySEQM's excited tasks with only `E0`/`F0`** run a ground-state AM1 solve instead of CIS, recording
+  `qm_backend` `pyseqm`.
+- **Docs:** a "Property names" section in the configuration guide, `nroots: 0` in the excited-state guide
+  and the QM table, and a pointer from the fine-tuning guide.
+
+**Checked locally,** with the existing fake PySCF/CuPy and PySEQM backends; neither backend is installed
+here, so the planned Darwin round's GPU4PySCF section is the
+real check. Under the fakes:
+- an `nroots: 0` run equals an excited run's `E0`/`F0`, and ran no TDA;
+- its labels stored as `energy`/`forces` are read by the HIPPYNN ground-state reader and by `shard_atoms`;
+- the refusals hold;
+- PySEQM's ground path uses no CIS and honours SCF convergence.
+
+Writing the tests found one bug in the new code, which is fixed: a property check that failed before
+`ground` was set raised `UnboundLocalError`. Of 18 deliberate breaks, 17 were caught after one test was
+added. The one left, `td is not None` in place of `nroots > 0`, is equivalent.
+
+**Results.** Full suite: 1100 passed. With HIPPYNN blocked, as in CI: 989 passed, 111 skipped,
+and with Torch blocked: 868 passed, 197 skipped, both run before the last PySEQM test was added; that
+test also passes with HIPPYNN blocked. The docs build has no warnings, and all 130 roadmap links resolve.
+
 ### UMA teacher: off-the-shelf only, and a periodic guard (2026-11-07)
 
 **Scope (user decisions):**

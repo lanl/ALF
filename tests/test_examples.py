@@ -116,3 +116,14 @@ def test_cluster_examples_build_non_periodic_structures(master):
 @pytest.mark.parametrize("name", ["QM_config.json", "QM_config_dcm.json"])
 def test_cpp_gpu4pyscf_configs_are_valid(name):
     validate_gpu4pyscf_config(read(ROOT / "examples/CPP_excited_gpu4pyscf" / name))
+
+
+def test_no_old_state_names_remain():
+    """State-aware code names states E#/F#; the old sE# names were removed, with no compatibility."""
+    import re
+
+    old = re.compile(r"(?<![A-Za-z_])sE[0-9#{]")
+    found = [str(path.relative_to(ROOT)) for folder in ("alframework", "examples", "docs/source")
+             for path in (ROOT / folder).rglob("*") if path.suffix in {".py", ".json", ".rst", ".md", ".txt"}
+             and old.search(path.read_text(errors="ignore"))]
+    assert found == []

@@ -1,4 +1,4 @@
-"""Excited-state labels: property names (sE#, F#, dE##), gap tables, and storing multi-state and NACR
+"""Excited-state labels: property names (E#, F#, dE##), gap tables, and storing multi-state and NACR
 labels in HDF5 with atom identity kept.
 """
 
@@ -21,26 +21,26 @@ from alframework.tools.tools import store_current_data
 def test_state_table_lists_each_state():
     table = derive_state_property_table(
         {
-            "sE0": ["singlet_0_energy", "system", 1.0],
+            "E0": ["singlet_0_energy", "system", 1.0],
             "F0": ["singlet_0_forces", "atomic", 1.0],
-            "sE1": ["singlet_1_energy", "system", 1.0],
+            "E1": ["singlet_1_energy", "system", 1.0],
             "F1": ["singlet_1_forces", "atomic", 1.0],
         },
         require_forces=True,
     )
 
     assert [row["state"] for row in table] == [0, 1]
-    assert table[1]["energy_key"] == "sE1"
+    assert table[1]["energy_key"] == "E1"
     assert table[1]["force_db_name"] == "singlet_1_forces"
 
 
 @pytest.mark.parametrize(
     ("properties", "require_forces", "message"),
     [
-        ({"sE0": ["e0"], "F0": ["f0"], "sE2": ["e2"], "F2": ["f2"]}, True, "contiguous"),
-        ({"sE0": ["e0"], "F0": ["f0"], "sE1": ["e1"]}, True, "F1"),
-        ({"sE0": ["e0", "system", 1.0], "sE1": ["e1", "system", 2.0]}, False, "identical"),
-        ({"sE0": ["e0", "system", 1.0], "F1": ["f1", "atomic", 1.0]}, False, "without energies"),
+        ({"E0": ["e0"], "F0": ["f0"], "E2": ["e2"], "F2": ["f2"]}, True, "contiguous"),
+        ({"E0": ["e0"], "F0": ["f0"], "E1": ["e1"]}, True, "F1"),
+        ({"E0": ["e0", "system", 1.0], "E1": ["e1", "system", 2.0]}, False, "identical"),
+        ({"E0": ["e0", "system", 1.0], "F1": ["f1", "atomic", 1.0]}, False, "without energies"),
     ],
     ids=["skipped_state", "missing_force", "different_energy_scales", "force_without_energy"],
 )
@@ -51,11 +51,11 @@ def test_state_table_rejects_inconsistent_properties(properties, require_forces,
 
 def _gap_properties():
     return {
-        "sE0": ["sE0", "system", 2.0],
+        "E0": ["E0", "system", 2.0],
         "F0": ["F0", "atomic", 1.0],
-        "sE1": ["sE1", "system", 2.0],
+        "E1": ["E1", "system", 2.0],
         "F1": ["F1", "atomic", 1.0],
-        "sE2": ["sE2", "system", 2.0],
+        "E2": ["E2", "system", 2.0],
         "F2": ["F2", "atomic", 1.0],
         "dE01": ["gap_01", "system", 2.0],
         "dE12": ["gap_12", "system", 2.0],
@@ -65,7 +65,7 @@ def _gap_properties():
 def test_gap_keys_handle_multi_digit_states():
     assert parse_gap_key("dE01") == (0, 1)
     assert parse_gap_key("dE0_10") == (0, 10)
-    assert parse_gap_key("sE1") is None
+    assert parse_gap_key("E1") is None
     assert gap_key_for_pair(1, 2) == "dE12"
     assert gap_key_for_pair(0, 10) == "dE0_10"
 
@@ -125,8 +125,8 @@ def test_gap_table_rejects_invalid_pairs(pairs, message):
 
 
 PROPERTIES = {
-    "sE0": ["e0", "system", 2.0],
-    "sE1": ["e1", "system", 2.0],
+    "E0": ["e0", "system", 2.0],
+    "E1": ["e1", "system", 2.0],
     "F1": ["f1", "atomic", 3.0],
     "nacr": ["nac", "pair_atomic", 4.0],
 }
@@ -139,7 +139,7 @@ def molecule(order=(0, 1, 2, 3), tagged=True):
     mol = MoleculesObject(atoms[list(order)], "frame-" + "".join(map(str, order)))
     forces = np.arange(12).reshape(4, 3).astype(float)
     mol.store_results(
-        {"sE0": -2.0, "sE1": 1.0, "F1": forces[list(order)], "nacr": np.stack([forces, forces + 100])[:, list(order)]}
+        {"E0": -2.0, "E1": 1.0, "F1": forces[list(order)], "nacr": np.stack([forces, forces + 100])[:, list(order)]}
     )
     mol.update_metadata({"nac_pairs": [[1, 2], [1, 3]]})
     mol.set_converged_flag(True)
@@ -189,3 +189,15 @@ def test_topology_ids_must_be_a_permutation():
     for ids in ([0, 0, 2], [0.0, 1.0, 2.0], [0, 1, 3]):
         with pytest.raises(ValueError, match="permutation"):
             validated_atom_ids(ids, 3)
+
+
+def test_state_names_are_E_and_F_with_free_dataset_names():
+    """States are E#/F#; each property's first element is the shard's dataset name, which may differ."""
+    table = derive_state_property_table({"E0": ["energy", "system", 1.0], "F0": ["forces", "atomic", 1.0]},
+                                        require_forces=True)
+    assert table == [{"state": 0, "energy_key": "E0", "energy_db_name": "energy",
+                      "force_key": "F0", "force_db_name": "forces"}]
+    with pytest.raises(ValueError, match="E0, E1"):
+        derive_state_property_table({"sE0": ["sE0", "system", 1.0], "sE1": ["sE1", "system", 1.0]})
+    with pytest.raises(ValueError, match="E0, E1"):
+        derive_state_property_table({"energy": ["energy", "system", 1.0]})

@@ -14,7 +14,7 @@
   "amp_dens":null,
   "per_dens":null,
   "meta_dir":"sampling/",
-  "batched_calculator":"alframework.ml_interfaces.mace_interface.load_mace_batched_ensemble",
+  "batched_calculator":"alframework.ml_interfaces.fine_tuning.mace.load_mace_batched_ensemble",
   "batched_calculator_options":{"dtype":"float32"},
   "driver":{"strategy":"batched","engine":"torchsim"},
   "batching":{"batch_size":16,"partial_policy":"timeout","max_wait_seconds":5.0},

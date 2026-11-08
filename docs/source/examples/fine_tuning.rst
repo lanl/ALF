@@ -44,7 +44,7 @@ names the same directory as the source:
 
    {
      "fine_tune": {
-       "adapter": "alframework.ml_interfaces.hippynn_fine_tuning.HippynnFineTuner",
+       "adapter": "alframework.ml_interfaces.fine_tuning.hippynn.HippynnFineTuner",
        "foundation_model": "models/model-0000",
        "n_models": 4,
        "E0s": "foundation",

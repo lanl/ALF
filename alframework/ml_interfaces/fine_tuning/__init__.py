@@ -17,7 +17,9 @@ constructed with the validated settings and provides:
 An adapter whose source is several files, such as a model directory, also provides
 ``fingerprint()``, returning each file's SHA-256 for the lineage.
 
-``mace_interface.MaceFineTuner`` and ``hippynn_fine_tuning.HippynnFineTuner`` are the adapters.
+The adapters are ``fine_tuning.hippynn.HippynnFineTuner``, ``fine_tuning.mace.MaceFineTuner``, and
+``fine_tuning.uma.UmaFineTuner``. ``shard_atoms`` reads ALF's shards for the families that train on
+``ase.Atoms``.
 """
 import concurrent.futures
 import os
@@ -32,6 +34,8 @@ from alframework.tools import ensemble_training
 from alframework.tools.files import cached_sha256, write_json_atomic
 
 DEVICES = ('cpu', 'cuda')
+# Where shard_atoms puts each frame's labels, as MACE's extended XYZ names them.
+ENERGY_KEY, FORCES_KEY = 'REF_energy', 'REF_forces'
 LINEAGE = 'fine_tune_lineage.json'
 
 
@@ -85,6 +89,44 @@ def validate_fine_tune_config(ML_config, master_config=None):
 def training_shards(h5_dir):
     """Every shard trainers read: each ``*.h5`` file in ``h5_dir``, in name order."""
     return sorted(str(path) for path in Path(h5_dir).glob('*.h5'))
+
+
+def shard_atoms(shards, energy_dataset='energy', forces_dataset='forces'):
+    """Read ALF shards as ``ase.Atoms`` carrying ``REF_energy`` and ``REF_forces``.
+
+    A shard's ``total_charge`` and ``spin_multiplicity``, if it has them, go to ``atoms.info`` as
+    ``charge`` and ``spin``.
+    """
+    import h5py
+    import numpy as np
+    from ase import Atoms
+
+    from alframework.tools.tools import STRUCTURE_STATE_DATASETS
+
+    frames = []
+    for shard in shards:
+        with h5py.File(shard, 'r') as handle:
+            for name in sorted(handle):
+                group = handle[name]
+                if not isinstance(group, h5py.Group) or energy_dataset not in group:
+                    continue
+                symbols = [value.decode() if isinstance(value, bytes) else str(value) for value in group['species'][()]]
+                coordinates = group['coordinates'][()]
+                energies = np.asarray(group[energy_dataset][()], dtype=float).reshape(-1)
+                forces = group[forces_dataset][()] if forces_dataset in group else None
+                if forces is None:
+                    raise ValueError(f'{shard}:{name} has no {forces_dataset!r} dataset to fine-tune forces on.')
+                cells = group['cell'][()] if 'cell' in group else None
+                for index in range(len(energies)):
+                    atoms = Atoms(symbols, positions=coordinates[index],
+                                  cell=None if cells is None else cells[index], pbc=cells is not None)
+                    atoms.info[ENERGY_KEY] = float(energies[index])
+                    atoms.arrays[FORCES_KEY] = np.asarray(forces[index], dtype=float)
+                    for key, dataset in zip(('charge', 'spin'), STRUCTURE_STATE_DATASETS):
+                        if dataset in group:
+                            atoms.info[key] = int(group[dataset][index])
+                    frames.append(atoms)
+    return frames
 
 
 def child_environment(device):

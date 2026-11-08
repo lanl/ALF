@@ -1,6 +1,6 @@
 """MACE in ALF: fine-tune a MACE foundation model on ALF's labels, and sample with the copies.
 
-``MaceFineTuner`` is the adapter for ``fine_tuning.fine_tune_ensemble_task``. It writes ALF's shards
+``MaceFineTuner`` is the MACE adapter for ``fine_tuning.fine_tune_ensemble_task``. It writes ALF's shards
 as extended XYZ and runs MACE's own training (``python -m mace.cli.run_train``) once per copy, in
 that copy's directory, so each copy keeps MACE's logs and checkpoints. ``load_mace_batched_ensemble``
 loads the copies for the TorchSim and ALCHEMI sampling engines.
@@ -12,12 +12,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-import numpy as np
-
+from alframework.ml_interfaces.fine_tuning import ENERGY_KEY, FORCES_KEY, shard_atoms
 from alframework.ml_interfaces.torchsim_ensemble import TorchSimBatchedEnsemble
 
 MODEL_NAME = 'mace'
-ENERGY_KEY, FORCES_KEY = 'REF_energy', 'REF_forces'
 DTYPES = ('float32', 'float64')
 E0_CHOICES = ('average', 'foundation', 'estimated')
 # Arguments ALF sets itself, from fine_tune settings or per copy.
@@ -118,7 +116,7 @@ class MaceFineTuner:
     def prepare_data(self, shards, member_dir):
         """Write every labeled frame in ``shards`` to ``member_dir/train.xyz``, in eV and eV/Å."""
         from ase.io import write
-        frames = shard_frames(shards, self.settings['energy_dataset'], self.settings['forces_dataset'])
+        frames = shard_atoms(shards, self.settings['energy_dataset'], self.settings['forces_dataset'])
         if not frames:
             raise ValueError('There are no labeled frames to fine-tune on.')
         path = Path(member_dir) / 'train.xyz'
@@ -160,43 +158,6 @@ class MaceFineTuner:
 
     def member_complete(self, member_dir):
         return (Path(member_dir) / f'{MODEL_NAME}.model').is_file()
-
-
-def shard_frames(shards, energy_dataset='energy', forces_dataset='forces'):
-    """Read ALF shards as ``ase.Atoms`` carrying ``REF_energy`` and ``REF_forces``.
-
-    A shard's ``total_charge`` and ``spin_multiplicity``, if it has them, go to ``atoms.info`` as
-    ``charge`` and ``spin``.
-    """
-    import h5py
-    from ase import Atoms
-
-    from alframework.tools.tools import STRUCTURE_STATE_DATASETS
-
-    frames = []
-    for shard in shards:
-        with h5py.File(shard, 'r') as handle:
-            for name in sorted(handle):
-                group = handle[name]
-                if not isinstance(group, h5py.Group) or energy_dataset not in group:
-                    continue
-                symbols = [value.decode() if isinstance(value, bytes) else str(value) for value in group['species'][()]]
-                coordinates = group['coordinates'][()]
-                energies = np.asarray(group[energy_dataset][()], dtype=float).reshape(-1)
-                forces = group[forces_dataset][()] if forces_dataset in group else None
-                if forces is None:
-                    raise ValueError(f'{shard}:{name} has no {forces_dataset!r} dataset to fine-tune forces on.')
-                cells = group['cell'][()] if 'cell' in group else None
-                for index in range(len(energies)):
-                    atoms = Atoms(symbols, positions=coordinates[index],
-                                  cell=None if cells is None else cells[index], pbc=cells is not None)
-                    atoms.info[ENERGY_KEY] = float(energies[index])
-                    atoms.arrays[FORCES_KEY] = np.asarray(forces[index], dtype=float)
-                    for key, dataset in zip(('charge', 'spin'), STRUCTURE_STATE_DATASETS):
-                        if dataset in group:
-                            atoms.info[key] = int(group[dataset][index])
-                    frames.append(atoms)
-    return frames
 
 
 class MaceBatchedEnsemble(TorchSimBatchedEnsemble):

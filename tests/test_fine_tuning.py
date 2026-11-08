@@ -16,7 +16,8 @@ from ase import Atoms
 from alframework.ml_interfaces import fine_tuning
 from alframework.ml_interfaces.fine_tuning import (child_environment, fine_tune_ensemble, fine_tune_settings,
                                                    validate_fine_tune_config)
-from alframework.ml_interfaces.mace_interface import MaceFineTuner, shard_frames
+from alframework.ml_interfaces.fine_tuning import shard_atoms
+from alframework.ml_interfaces.fine_tuning.mace import MaceFineTuner
 from alframework.tools.molecules_class import MoleculesObject
 from alframework.tools.tools import store_current_data
 from tests.helpers.fake_fine_tuner import trained
@@ -24,7 +25,7 @@ from tests.helpers.molecules import WATER
 
 PROPERTIES = {"energy": ["energy", "system", 1.0], "forces": ["forces", "atomic", 1.0]}
 FAKE = "tests.helpers.fake_fine_tuner.FakeFineTuner"
-MACE = "alframework.ml_interfaces.mace_interface.MaceFineTuner"
+MACE = "alframework.ml_interfaces.fine_tuning.mace.MaceFineTuner"
 
 
 def ml_config(foundation, **settings):
@@ -285,7 +286,7 @@ def test_mace_training_data_matches_the_shards(tmp_path):
     store_current_data(str(tmp_path / "data-0001.h5"), [labeled("box", box, energy=-5.0)], PROPERTIES)
     shards = [str(tmp_path / "data-0000.h5"), str(tmp_path / "data-0001.h5")]
 
-    frames = shard_frames(shards)
+    frames = shard_atoms(shards)
     assert [frame.info["REF_energy"] for frame in frames] == [-1.0, -3.0, -5.0]
     order = np.argsort(WATER.numbers, kind="stable")
     np.testing.assert_allclose(frames[0].positions, WATER.positions[order])
@@ -321,7 +322,7 @@ def test_mace_failure_reports_the_end_of_its_log(tmp_path, monkeypatch):
 def test_torchsim_ensemble_evaluates_every_copy_on_the_batch():
     torch = pytest.importorskip("torch")
     pytest.importorskip("torch_sim")
-    from alframework.ml_interfaces.mace_interface import MaceBatchedEnsemble
+    from alframework.ml_interfaces.fine_tuning.mace import MaceBatchedEnsemble
     from alframework.ml_interfaces.torchsim_ensemble import TorchSimBatchedEnsemble
 
     seen = []
@@ -361,7 +362,7 @@ def test_mace_example_configuration_is_valid():
     assert settings["adapter"] == MACE and settings["n_models"] >= 2
     MaceFineTuner(settings).validate(master)
     sampler = json.loads((example / "mlmd_config.json").read_text())
-    assert sampler["batched_calculator"] == "alframework.ml_interfaces.mace_interface.load_mace_batched_ensemble"
+    assert sampler["batched_calculator"] == "alframework.ml_interfaces.fine_tuning.mace.load_mace_batched_ensemble"
 
 
 def test_lineage_records_the_adapters_defaults(run):
@@ -379,7 +380,7 @@ def test_lineage_records_the_adapters_defaults(run):
 # --- HIPPYNN ----------------------------------------------------------------------------------------
 # Real fine-tuning on CPU, from tiny ensembles that tests.helpers.hippynn trains.
 
-HIPPYNN = "alframework.ml_interfaces.hippynn_fine_tuning.HippynnFineTuner"
+HIPPYNN = "alframework.ml_interfaces.fine_tuning.hippynn.HippynnFineTuner"
 QUICK = {"max_epochs": 2, "batch_size": 4, "eval_batch_size": 4, "termination_patience": 10}
 
 
@@ -412,7 +413,7 @@ def water_labels(directory, count=16, scale=1.5, seed=3):
 
 
 def hippynn_tuner(source, **settings):
-    from alframework.ml_interfaces.hippynn_fine_tuning import HippynnFineTuner
+    from alframework.ml_interfaces.fine_tuning.hippynn import HippynnFineTuner
 
     block = {**dict(adapter=HIPPYNN, foundation_model=str(source), E0s="foundation", device="cpu",
                     learning_rate=1e-3, controller_options=QUICK), **settings}
@@ -421,7 +422,7 @@ def hippynn_tuner(source, **settings):
 
 def fine_tune_in_process(tmp_path, tuner, member=0, seed=0, count=16):
     """Run one copy's training in this process, as the child process would."""
-    from alframework.ml_interfaces.hippynn_fine_tuning import fine_tune_hippynn_member
+    from alframework.ml_interfaces.fine_tuning.hippynn import fine_tune_hippynn_member
 
     labels = water_labels(tmp_path / "h5", count=count)
     member_dir = tmp_path / "copy"
@@ -481,7 +482,7 @@ def test_hippynn_frozen_nodes_keep_their_weights(tmp_path, pretrained):
     torch = pytest.importorskip("torch")
     from hippynn.experiment.serialization import load_checkpoint
 
-    from alframework.ml_interfaces.hippynn_fine_tuning import frozen_parameters
+    from alframework.ml_interfaces.fine_tuning.hippynn import frozen_parameters
 
     member_dir = fine_tune_in_process(tmp_path, hippynn_tuner(pretrained, freeze=["hipnn"]))
     source = load_checkpoint(str(pretrained / "model-00" / "experiment_structure.pt"),
@@ -538,7 +539,7 @@ def test_hippynn_refuses_an_unknown_stopping_key(tmp_path, pretrained):
     (dict(freeze="hipnn"), "freeze must be a list"),
 ], ids=["no_E0s", "mace_E0s", "learning_rate", "valid_size", "freeze_string"])
 def test_hippynn_refuses_mistakes(tmp_path, settings, message):
-    from alframework.ml_interfaces.hippynn_fine_tuning import HippynnFineTuner
+    from alframework.ml_interfaces.fine_tuning.hippynn import HippynnFineTuner
 
     block = {**dict(adapter=HIPPYNN, foundation_model=str(tmp_path), E0s="foundation"), **settings}
     if block["E0s"] is None:
@@ -548,7 +549,7 @@ def test_hippynn_refuses_mistakes(tmp_path, settings, message):
 
 
 def test_hippynn_startup_check_finds_the_model_files(tmp_path):
-    from alframework.ml_interfaces.hippynn_fine_tuning import HippynnFineTuner
+    from alframework.ml_interfaces.fine_tuning.hippynn import HippynnFineTuner
 
     def check(**settings):
         block = {**dict(adapter=HIPPYNN, foundation_model=str(tmp_path / "source"), E0s="foundation"), **settings}
@@ -569,7 +570,7 @@ def test_hippynn_startup_check_finds_the_model_files(tmp_path):
 
 
 def test_hippynn_reads_shards_in_place(tmp_path):
-    from alframework.ml_interfaces.hippynn_fine_tuning import HippynnFineTuner
+    from alframework.ml_interfaces.fine_tuning.hippynn import HippynnFineTuner
 
     tuner = HippynnFineTuner(fine_tune_settings({"fine_tune": dict(adapter=HIPPYNN, foundation_model="x",
                                                                     E0s="foundation")}))
@@ -585,7 +586,7 @@ def test_hippynn_reads_shards_in_place(tmp_path):
 def test_hippynn_failure_reports_the_end_of_its_training_log(tmp_path, monkeypatch):
     import subprocess
 
-    from alframework.ml_interfaces.hippynn_fine_tuning import HippynnFineTuner
+    from alframework.ml_interfaces.fine_tuning.hippynn import HippynnFineTuner
 
     (tmp_path / "source").mkdir()
     for name in ("experiment_structure.pt", "best_checkpoint.pt"):
@@ -606,23 +607,25 @@ def test_hippynn_failure_reports_the_end_of_its_training_log(tmp_path, monkeypat
     assert not tuner.member_complete(member_dir), "a log without 'Training complete' and no best_model.pt"
 
 
-def test_hippynn_fine_tuning_imports_without_torch():
+@pytest.mark.parametrize("module", ["fine_tuning", "fine_tuning.hippynn", "fine_tuning.mace", "fine_tuning.uma"])
+def test_fine_tuning_modules_import_without_their_model_packages(module):
+    """A coordinator imports these to check its configuration, and needs no model package for that."""
     import subprocess
     import sys
 
-    subprocess.run([sys.executable, "-c", """
+    subprocess.run([sys.executable, "-c", f"""
 import builtins
 original_import = builtins.__import__
 def guarded_import(name, *args, **kwargs):
-    assert name.split('.')[0] not in ('torch', 'hippynn'), name
+    assert name.split('.')[0] not in ('torch', 'hippynn', 'mace', 'fairchem', 'torch_sim'), name
     return original_import(name, *args, **kwargs)
 builtins.__import__ = guarded_import
-import alframework.ml_interfaces.hippynn_fine_tuning
+import alframework.ml_interfaces.{module}
 """], check=True, capture_output=True)
 
 
 def test_hippynn_example_configuration_is_valid(tmp_path):
-    from alframework.ml_interfaces.hippynn_fine_tuning import HippynnFineTuner
+    from alframework.ml_interfaces.fine_tuning.hippynn import HippynnFineTuner
 
     example = Path(__file__).resolve().parents[1] / "examples" / "fine_tuning"
     master = json.loads((example / "master_config.json").read_text())
@@ -655,7 +658,7 @@ def test_hippynn_refuses_too_few_labels(tmp_path, pretrained):
 
 
 def test_hippynn_copy_is_complete_only_with_its_model_and_a_finished_log(tmp_path):
-    from alframework.ml_interfaces.hippynn_fine_tuning import HippynnFineTuner
+    from alframework.ml_interfaces.fine_tuning.hippynn import HippynnFineTuner
 
     tuner = HippynnFineTuner(fine_tune_settings({"fine_tune": dict(adapter=HIPPYNN, foundation_model="x",
                                                                     E0s="foundation")}))
@@ -670,7 +673,7 @@ def test_hippynn_never_trains_or_freezes_integer_parameters(pretrained):
     pytest.importorskip("torch")
     from hippynn.experiment.serialization import load_checkpoint
 
-    from alframework.ml_interfaces.hippynn_fine_tuning import frozen_parameters, trainable_names
+    from alframework.ml_interfaces.fine_tuning.hippynn import frozen_parameters, trainable_names
 
     model = load_checkpoint(str(pretrained / "model-00" / "experiment_structure.pt"),
                             str(pretrained / "model-00" / "best_checkpoint.pt"), restart_db=False,
@@ -687,7 +690,7 @@ def test_hippynn_names_what_the_shards_lack(tmp_path, pretrained):
     labels = water_labels(tmp_path / "h5")
     with h5py.File(labels / "data-0000.h5", "a") as handle:
         del handle["water"]["forces"]
-    from alframework.ml_interfaces.hippynn_fine_tuning import fine_tune_hippynn_member
+    from alframework.ml_interfaces.fine_tuning.hippynn import fine_tune_hippynn_member
 
     tuner = hippynn_tuner(pretrained)
     with pytest.raises(ValueError, match=r"needs \['forces'\], which the shards lack"):
@@ -699,11 +702,11 @@ def test_hippynn_names_what_the_shards_lack(tmp_path, pretrained):
 # --- UMA --------------------------------------------------------------------------------------------
 # fairchem isn't installed here; real UMA rounds run in a separate environment.
 
-UMA = "alframework.ml_interfaces.uma_fine_tuning.UmaFineTuner"
+UMA = "alframework.ml_interfaces.fine_tuning.uma.UmaFineTuner"
 
 
 def uma(tmp_path, **settings):
-    from alframework.ml_interfaces.uma_fine_tuning import UmaFineTuner
+    from alframework.ml_interfaces.fine_tuning.uma import UmaFineTuner
 
     (tmp_path / "uma.pt").write_bytes(b"weights")
     block = {**dict(adapter=UMA, foundation_model=str(tmp_path / "uma.pt"), task="omol", E0s="average"), **settings}
@@ -722,7 +725,7 @@ def uma(tmp_path, **settings):
     (dict(valid_fraction=1.5), "valid_fraction"),
 ], ids=["no_task", "bad_task", "no_E0s", "mace_E0s", "neither", "both", "batch_size", "lr", "valid_fraction"])
 def test_uma_refuses_mistakes(tmp_path, settings, message):
-    from alframework.ml_interfaces.uma_fine_tuning import UmaFineTuner
+    from alframework.ml_interfaces.fine_tuning.uma import UmaFineTuner
 
     block = {**dict(adapter=UMA, foundation_model="x", task="omol", E0s="average"), **settings}
     for key in [key for key, value in block.items() if value is None and key in ("task", "E0s")]:
@@ -747,7 +750,7 @@ def test_uma_defaults_follow_fairchems_template(tmp_path):
 
 
 def test_uma_training_config_follows_fairchems_template(tmp_path):
-    from alframework.ml_interfaces.uma_fine_tuning import training_config
+    from alframework.ml_interfaces.fine_tuning.uma import training_config
 
     tuner = uma(tmp_path, task="omat", steps=8, epochs=None, lr=1e-4)
     config = training_config(tuner.settings, tmp_path / "train", tmp_path / "valid", [0.5] * 100, 1.3,
@@ -770,7 +773,7 @@ def test_uma_training_config_follows_fairchems_template(tmp_path):
 
 
 def test_uma_splits_differ_by_seed_and_keep_one_structure_aside(tmp_path):
-    from alframework.ml_interfaces.uma_fine_tuning import split
+    from alframework.ml_interfaces.fine_tuning.uma import split
 
     frames = list(range(10))
     train, valid = split(frames, 0.1, seed=0)
@@ -785,7 +788,7 @@ def test_uma_refit_references_are_least_squares_per_element():
     from ase.build import molecule
     from ase.calculators.singlepoint import SinglePointCalculator
 
-    from alframework.ml_interfaces.uma_fine_tuning import fitted_references
+    from alframework.ml_interfaces.fine_tuning.uma import fitted_references
 
     frames = []
     for name in ("H2O", "H2", "O2"):
@@ -802,7 +805,7 @@ def test_uma_keeps_the_checkpoints_own_references(tmp_path):
     torch = pytest.importorskip("torch")
     from types import SimpleNamespace
 
-    from alframework.ml_interfaces.uma_fine_tuning import checkpoint_references
+    from alframework.ml_interfaces.fine_tuning.uma import checkpoint_references
 
     references = [float(value) for value in range(100)]
     checkpoint = SimpleNamespace(tasks_config=[
@@ -824,7 +827,7 @@ def test_uma_reads_charge_and_spin_from_the_shards(tmp_path):
     anion.update_metadata({"charge": -1})
     store_current_data(str(tmp_path / "data-0000.h5"), [anion, plain], PROPERTIES)
     store_current_data(str(tmp_path / "data-0001.h5"), [labeled("water")], PROPERTIES)
-    frames = shard_frames([str(tmp_path / "data-0000.h5"), str(tmp_path / "data-0001.h5")])
+    frames = shard_atoms([str(tmp_path / "data-0000.h5"), str(tmp_path / "data-0001.h5")])
     assert [(frame.info.get("charge"), frame.info.get("spin")) for frame in frames] == [(-1, 1), (0, 1), (None, None)]
 
 
@@ -844,7 +847,7 @@ def test_uma_copy_runs_fairchem_in_a_child_and_reports_its_failure(tmp_path, mon
     monkeypatch.setattr(subprocess, "run", fails)
     with pytest.raises(RuntimeError, match="exited with 1: Fine-tuning UMA task omol | Traceback | RuntimeError: out of memory"):
         tuner.train_member(tuner.prepare_data(["a.h5"], member_dir), member_dir, 0, 5, "cpu", dict(os.environ))
-    assert calls[0][1:3] == ["-m", "alframework.ml_interfaces.uma_fine_tuning"]
+    assert calls[0][1:3] == ["-m", "alframework.ml_interfaces.fine_tuning.uma"]
     arguments = json.loads((member_dir / "fine_tune_args.json").read_text())
     assert (arguments["seed"], arguments["device"], arguments["shards"]) == (5, "cpu", ["a.h5"])
     assert not tuner.member_complete(member_dir)
@@ -855,14 +858,14 @@ def test_uma_copy_runs_fairchem_in_a_child_and_reports_its_failure(tmp_path, mon
 
 
 def test_uma_loader_needs_the_fine_tuning_task():
-    from alframework.ml_interfaces.uma_fine_tuning import load_uma_batched_ensemble
+    from alframework.ml_interfaces.fine_tuning.uma import load_uma_batched_ensemble
 
     with pytest.raises(ValueError, match="needs the task the copies were fine-tuned on"):
         load_uma_batched_ensemble("models/model-0000", task=None)
 
 
 def test_uma_example_configuration_is_valid(tmp_path):
-    from alframework.ml_interfaces.uma_fine_tuning import UmaFineTuner
+    from alframework.ml_interfaces.fine_tuning.uma import UmaFineTuner
 
     example = Path(__file__).resolve().parents[1] / "examples" / "uma_fine_tuning"
     master = json.loads((example / "master_config.json").read_text())
@@ -873,5 +876,5 @@ def test_uma_example_configuration_is_valid(tmp_path):
     tuner = UmaFineTuner(fine_tune_settings(config, str(tmp_path)))
     tuner.validate(master)
     sampler = json.loads((example / "mlmd_config.json").read_text())
-    assert sampler["batched_calculator"] == "alframework.ml_interfaces.uma_fine_tuning.load_uma_batched_ensemble"
+    assert sampler["batched_calculator"] == "alframework.ml_interfaces.fine_tuning.uma.load_uma_batched_ensemble"
     assert sampler["batched_calculator_options"]["task"] == tuner.settings["task"]

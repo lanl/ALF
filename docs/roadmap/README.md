@@ -576,6 +576,10 @@ A pass over the fine-tuning guide, examples, and tests (user request), against e
   root>/` and `<environment root>/`, and node and front-end names are gone (user decision). Job and
   allocation IDs and partition names stay. The IL and UO2 examples write QM scratch to `qm_scratch/`
   instead of another user's home.
+- **One package** (user question about the uneven names): the task and the shared shard reader are
+  `ml_interfaces/fine_tuning/__init__.py`, and the adapters are `fine_tuning/hippynn.py`, `mace.py`, and
+  `uma.py`, so adapter strings read `alframework.ml_interfaces.fine_tuning.mace.MaceFineTuner`. UMA no
+  longer imports MACE's module, and the reader is now `shard_atoms`, apart from `restarts.shard_frames`.
 - **Tests:** MACE's defaults, the replay defaults, a user override winning, the `average` warning, and
   UMA's default are covered; all 8 deliberate breaks of them were caught. No test references removed
   code or personal paths.
@@ -596,8 +600,8 @@ task; charge and spin stored in shards; both reference-energy modes.
   `python -m fairchem.core._cli` silently does nothing (the module has no `__main__` block, so ALF calls
   `main()`), that the job wants `CPU` or `CUDA` rather than lower case, and that an inference-only stress task
   breaks prediction from a model fine-tuned without stress.
-- **`ml_interfaces/uma_fine_tuning.py`:** `UmaFineTuner` runs each copy in a child process
-  (`python -m alframework.ml_interfaces.uma_fine_tuning`): it reads the shards, splits training and validation
+- **`ml_interfaces/fine_tuning/uma.py`:** `UmaFineTuner` runs each copy in a child process
+  (`python -m alframework.ml_interfaces.fine_tuning.uma`): it reads the shards, splits training and validation
   with the copy's seed, writes ASE-LMDB, refits references by least squares (`average`) or reads the
   checkpoint's (`foundation`), writes the configuration as JSON (valid YAML, so no PyYAML on the coordinator),
   runs fairchem's `main()`, and keeps `inference_ckpt.pt` as `uma.pt`. Resume checkpoints are removed unless
@@ -642,10 +646,10 @@ accept a single model or an ensemble as the source; start every round from the p
 does (asked which is better: this keeps rounds reproducible and stops errors building up from round to
 round; a "continue from the last round" setting can come later if round cost matters).
 
-- **`ml_interfaces/hippynn_fine_tuning.py`:** `HippynnFineTuner` loads each source with
+- **`ml_interfaces/fine_tuning/hippynn.py`:** `HippynnFineTuner` loads each source with
   `load_checkpoint(..., restart_db=False)`, keeps the graph and weights, and trains with a fresh Adam,
   `RaiseBatchSizeOnPlateau`, and `PatienceController`, as the old example did, in a child process per copy
-  (`python -m alframework.ml_interfaces.hippynn_fine_tuning`) so each sees only its GPU.
+  (`python -m alframework.ml_interfaces.fine_tuning.hippynn`) so each sees only its GPU.
   - Source: a model directory, or an ensemble of `model-*` members, where copy *i* starts from member *i*,
     cycling. A pretrained ensemble in `models/model-0000` is sampled with from the start, skipping the
     bootstrap, as in the old example.
@@ -703,12 +707,12 @@ and [teacher–student labeling](../source/user_guide/teacher_student.rst).
 - **The loop is unchanged.** The bootstrap is labeled, then each round's `ML_task` fine-tunes `n_models` copies
   of the original checkpoint on every stored label, each with seed `seed + i`. MD runs on the copies through
   the batched engines, and their disagreement selects frames as for any ensemble.
-- **`ml_interfaces/fine_tuning.py`:** `fine_tune_ensemble_task` (one GPU per copy at a time on one node, or
+- **`ml_interfaces/fine_tuning/`:** `fine_tune_ensemble_task` (one GPU per copy at a time on one node, or
   one after another on CPU) and `fine_tune_ensemble_multinode_task` (one app per copy, with retries and
   placement records). Both wait for stored shards, refuse a nonempty ensemble directory, and write
   `label_sources.json` and `fine_tune_lineage.json`: checkpoint path and SHA-256, adapter, package version,
   effective settings, shards, seeds. A model family plugs in with an adapter of five methods.
-- **`ml_interfaces/mace_interface.py`:** `MaceFineTuner` writes the shards as extended XYZ and runs
+- **`ml_interfaces/fine_tuning/mace.py`:** `MaceFineTuner` writes the shards as extended XYZ and runs
   `mace.cli.run_train` per copy, in its own directory, with `--multiheads_finetuning False` unless
   `replay_file` is set (MACE would otherwise download replay data). `E0s` is required. Settings ALF manages
   are refused in `mace_options`. `load_mace_batched_ensemble` evaluates every copy through MACE's TorchSim

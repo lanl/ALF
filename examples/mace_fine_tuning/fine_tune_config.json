@@ -1,6 +1,6 @@
 {
   "fine_tune": {
-    "adapter": "alframework.ml_interfaces.mace_interface.MaceFineTuner",
+    "adapter": "alframework.ml_interfaces.fine_tuning.mace.MaceFineTuner",
     "foundation_model": "foundation/mace-mp-0-small.model",
     "n_models": 4,
     "seed": 0,

@@ -186,16 +186,16 @@ Tabled on November 6, before any restart code changed. ALF has since gained exit
     ALF's existing measures and cutoffs apply; MD runs on the model being fine-tuned; every round starts
     from the original checkpoint on all labels so far; plain fine-tuning by default, with MACE's replay
     only from a configured local file.
-  - **Built:** `ml_interfaces/fine_tuning.py`, a model-family-neutral `ML_task` with single-node and
-    multi-node forms, an adapter interface, and `fine_tune_lineage.json`; `mace_interface.py`, with
+  - **Built:** `ml_interfaces/fine_tuning/`, a model-family-neutral `ML_task` with single-node and
+    multi-node forms, an adapter interface, and `fine_tune_lineage.json`; `fine_tuning/mace.py`, with
     `MaceFineTuner` and `load_mace_batched_ensemble`; `examples/mace_fine_tuning`. `__main__.py` gained
     only a startup hook for ML configuration checks.
-  - **HIPPYNN adapter built** (`hippynn_fine_tuning.py`), replacing the old "F1" plan. The old
+  - **HIPPYNN adapter built** (`fine_tuning/hippynn.py`), replacing the old "F1" plan. The old
     `examples/fine_tuning` now uses it, and its local `fine_tune_ml_task.py` is gone. Every round starts
     from the pretrained model, as for MACE (user decision). Shard cleaning repeats the ground-state
-    trainer's steps in `hippynn_fine_tuning.clean_arrays`, because that trainer can't run on CPU here, so
+    trainer's steps in `fine_tuning.hippynn.clean_arrays`, because that trainer can't run on CPU here, so
     a shared helper couldn't be checked; unify them when it can.
-  - **UMA adapter built** (`uma_fine_tuning.py`). ALF writes fairchem 2.25's training configuration
+  - **UMA adapter built** (`fine_tuning/uma.py`). ALF writes fairchem 2.25's training configuration
     itself, following its templates, which ship only in fairchem's git repository (user decision), and
     trains from the local checkpoint. Every UMA task; refit (`average`) or keep (`foundation`) reference
     energies; charge and spin stored in shards. The configuration is tied to fairchem 2.25's format, so a

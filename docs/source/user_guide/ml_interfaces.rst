@@ -363,9 +363,9 @@ You can link from this guide directly to API pages:
 * :doc:`HIPPYNN interface module <../api_documentation/alframework.ml_interfaces.hippynn_interface>`
 * :doc:`NeuroChem interface module <../api_documentation/alframework.ml_interfaces.neurochem_interface>`
 * :doc:`Fine-tuning module <../api_documentation/alframework.ml_interfaces.fine_tuning>`, with its
-  :doc:`HIPPYNN <../api_documentation/alframework.ml_interfaces.hippynn_fine_tuning>`,
-  :doc:`MACE <../api_documentation/alframework.ml_interfaces.mace_interface>`, and
-  :doc:`UMA <../api_documentation/alframework.ml_interfaces.uma_fine_tuning>` adapters
+  :doc:`HIPPYNN <../api_documentation/alframework.ml_interfaces.fine_tuning.hippynn>`,
+  :doc:`MACE <../api_documentation/alframework.ml_interfaces.fine_tuning.mace>`, and
+  :doc:`UMA <../api_documentation/alframework.ml_interfaces.fine_tuning.uma>` adapters
 * :doc:`MLMD sampler guide <samplers>`
 * :doc:`Parsl execution guide <parsl>`
 

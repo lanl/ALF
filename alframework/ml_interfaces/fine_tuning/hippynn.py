@@ -5,7 +5,7 @@ optimizer on every stored shard, and is written in HIPPYNN's usual layout, so ev
 HIPPYNN ensembles reads it unchanged. The source is one model directory, which every copy starts
 from, or an ensemble directory of ``model-*`` members, where copy ``i`` starts from member ``i``.
 
-Training runs in a child process (``python -m alframework.ml_interfaces.hippynn_fine_tuning``), so
+Training runs in a child process (``python -m alframework.ml_interfaces.fine_tuning.hippynn``), so
 each copy sees only its own GPU, as for MACE. Nothing here imports Torch until training starts.
 """
 import json
@@ -115,7 +115,7 @@ class HippynnFineTuner:
         path.write_text(json.dumps(arguments, indent=2, default=str) + '\n')
         log = Path(member_dir) / LOG
         with open(log, 'w') as handle:
-            finished = subprocess.run([sys.executable, '-m', 'alframework.ml_interfaces.hippynn_fine_tuning', str(path)],
+            finished = subprocess.run([sys.executable, '-m', 'alframework.ml_interfaces.fine_tuning.hippynn', str(path)],
                                       cwd=member_dir, env=environment, stdout=handle, stderr=subprocess.STDOUT)
         if finished.returncode != 0:
             # HIPPYNN writes its own output, including the traceback, to training_log.txt once training starts.

@@ -1,6 +1,6 @@
 {
   "fine_tune": {
-    "adapter": "alframework.ml_interfaces.uma_fine_tuning.UmaFineTuner",
+    "adapter": "alframework.ml_interfaces.fine_tuning.uma.UmaFineTuner",
     "foundation_model": "foundation/checkpoints/uma-s-1p2p1.pt",
     "task": "omol",
     "n_models": 4,

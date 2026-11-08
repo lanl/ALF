@@ -1,7 +1,7 @@
 """Fine-tune a UMA checkpoint on ALF's labels, through ``fine_tuning.fine_tune_ensemble_task``.
 
 Each copy runs fairchem's own training in a child process
-(``python -m alframework.ml_interfaces.uma_fine_tuning``), from the local checkpoint, so compute
+(``python -m alframework.ml_interfaces.fine_tuning.uma``), from the local checkpoint, so compute
 nodes need no network. ALF writes fairchem's training configuration itself. Its structure follows
 fairchem's UMA fine-tuning templates (``configs/uma/finetune`` in fairchem 2.25, Copyright (c) Meta
 Platforms, Inc. and affiliates, MIT license), which ship only in fairchem's git repository.
@@ -88,7 +88,7 @@ class UmaFineTuner:
                                         settings=self.settings), indent=2, default=str) + '\n')
         log = Path(member_dir) / LOG
         with open(log, 'w') as handle:
-            finished = subprocess.run([sys.executable, '-m', 'alframework.ml_interfaces.uma_fine_tuning', str(path)],
+            finished = subprocess.run([sys.executable, '-m', 'alframework.ml_interfaces.fine_tuning.uma', str(path)],
                                       cwd=member_dir, env=environment, stdout=handle, stderr=subprocess.STDOUT)
         if finished.returncode != 0:
             tail = log.read_text(errors='replace').strip().splitlines()[-3:]
@@ -214,7 +214,7 @@ def write_database(directory, frames):
     from ase.calculators.singlepoint import SinglePointCalculator
     from ase.db import connect
 
-    from alframework.ml_interfaces.mace_interface import ENERGY_KEY, FORCES_KEY
+    from alframework.ml_interfaces.fine_tuning import ENERGY_KEY, FORCES_KEY
     directory.mkdir(parents=True, exist_ok=True)
     with connect(str(directory / 'data.0000.aselmdb')) as database:
         for atoms in frames:
@@ -234,10 +234,10 @@ def fine_tune_uma_member(arguments):
     from ase.calculators.singlepoint import SinglePointCalculator
     from fairchem.core._cli import main
 
-    from alframework.ml_interfaces.mace_interface import ENERGY_KEY, FORCES_KEY, shard_frames
+    from alframework.ml_interfaces.fine_tuning import ENERGY_KEY, FORCES_KEY, shard_atoms
 
     settings, seed, member_dir = arguments['settings'], int(arguments['seed']), Path(arguments['member_dir'])
-    frames = shard_frames(arguments['shards'], settings['energy_dataset'], settings['forces_dataset'])
+    frames = shard_atoms(arguments['shards'], settings['energy_dataset'], settings['forces_dataset'])
     train, valid = split(frames, settings['valid_fraction'], seed)
     write_database(member_dir / 'data' / 'train', train)
     write_database(member_dir / 'data' / 'valid', valid)

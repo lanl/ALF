@@ -14,13 +14,13 @@ One task handles every model family, through a small adapter per family:
    * - Family
      - Adapter
    * - HIPPYNN
-     - ``alframework.ml_interfaces.hippynn_fine_tuning.HippynnFineTuner``, for a pretrained HIPPYNN
+     - ``alframework.ml_interfaces.fine_tuning.hippynn.HippynnFineTuner``, for a pretrained HIPPYNN
        model or ensemble.
    * - MACE
-     - ``alframework.ml_interfaces.mace_interface.MaceFineTuner``, for a MACE foundation model such
+     - ``alframework.ml_interfaces.fine_tuning.mace.MaceFineTuner``, for a MACE foundation model such
        as MACE-MP.
    * - UMA
-     - ``alframework.ml_interfaces.uma_fine_tuning.UmaFineTuner``, for one task of a UMA checkpoint,
+     - ``alframework.ml_interfaces.fine_tuning.uma.UmaFineTuner``, for one task of a UMA checkpoint,
        such as ``omol`` or ``omat``.
 
 What Fine-Tuning Means In ALF
@@ -230,7 +230,7 @@ and trains on the shards in place, without copying them. This recipe is ALF's ow
 
    {
      "fine_tune": {
-       "adapter": "alframework.ml_interfaces.hippynn_fine_tuning.HippynnFineTuner",
+       "adapter": "alframework.ml_interfaces.fine_tuning.hippynn.HippynnFineTuner",
        "foundation_model": "models/model-0000",
        "n_models": 4,
        "E0s": "foundation",
@@ -323,7 +323,7 @@ defaults from MACE's fine-tuning guidance, and any of them can be changed.
 
    {
      "fine_tune": {
-       "adapter": "alframework.ml_interfaces.mace_interface.MaceFineTuner",
+       "adapter": "alframework.ml_interfaces.fine_tuning.mace.MaceFineTuner",
        "foundation_model": "foundation/mace-mp-0-small.model",
        "n_models": 4,
        "E0s": "estimated"
@@ -335,7 +335,7 @@ The sampler loads the copies for batched MD, with ``mlmd_trajectories_task`` as 
 
 .. code-block:: json
 
-   "batched_calculator": "alframework.ml_interfaces.mace_interface.load_mace_batched_ensemble",
+   "batched_calculator": "alframework.ml_interfaces.fine_tuning.mace.load_mace_batched_ensemble",
    "batched_calculator_options": {"dtype": "float32"},
    "driver": {"strategy": "batched", "engine": "torchsim"},
    "batching": {"batch_size": 16, "partial_policy": "timeout", "max_wait_seconds": 5.0}
@@ -414,7 +414,7 @@ fine-tuned on.
 
    {
      "fine_tune": {
-       "adapter": "alframework.ml_interfaces.uma_fine_tuning.UmaFineTuner",
+       "adapter": "alframework.ml_interfaces.fine_tuning.uma.UmaFineTuner",
        "foundation_model": "foundation/checkpoints/uma-s-1p2p1.pt",
        "task": "omol",
        "n_models": 4,
@@ -428,7 +428,7 @@ The sampler loads the copies for batched MD, with ``mlmd_trajectories_task`` as 
 
 .. code-block:: json
 
-   "batched_calculator": "alframework.ml_interfaces.uma_fine_tuning.load_uma_batched_ensemble",
+   "batched_calculator": "alframework.ml_interfaces.fine_tuning.uma.load_uma_batched_ensemble",
    "batched_calculator_options": {"task": "omol", "dtype": "float32", "charge": 0, "spin": 1},
    "driver": {"strategy": "batched", "engine": "torchsim"}
 
@@ -524,7 +524,7 @@ learned from, and ``label_sources.json``, the label sources of its shards. For a
    {
      "foundation_model": ".../mace-mp-0-small.model",
      "foundation_model_sha256": "...",
-     "adapter": "alframework.ml_interfaces.mace_interface.MaceFineTuner",
+     "adapter": "alframework.ml_interfaces.fine_tuning.mace.MaceFineTuner",
      "package": "mace-torch",
      "package_version": "...",
      "settings": {"n_models": 2, "seed": 7, "device": "cpu", "E0s": "estimated", "learning_rate": 0.001,

@@ -56,6 +56,8 @@ def test_example_configs_are_valid(path):
         module, name = master[field].rsplit(".", 1)
         source = ROOT.joinpath(*module.split(".")).with_suffix(".py")
         if not source.is_file():
+            source = ROOT.joinpath(*module.split("."), "__init__.py")  # A package.
+        if not source.is_file():
             source = path.parent.joinpath(*module.split(".")).with_suffix(".py")
         assert source.is_file(), master[field]
         tree = ast.parse(source.read_text())

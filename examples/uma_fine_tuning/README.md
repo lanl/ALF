@@ -18,7 +18,12 @@ python -m alframework --master master_config.json --test_qm
 python -m alframework --master master_config.json
 ```
 
+ALF ships no model weights. UMA's weights are covered by the FAIR Chemistry License, which you
+accept on Hugging Face; fine-tuned copies are derivative works, so sharing them is subject to it,
+and publications using UMA must acknowledge it.
+
 ORCA's level of theory differs from UMA's `omol` (ωB97M-V), so `E0s` is `average`, which refits
 UMA's per-element reference energies to the labels. Sampling treats every structure as a neutral
-singlet (`charge` 0 and `spin` 1 in `mlmd_config.json`). See the fine-tuning guide in the ALF
-documentation.
+singlet (`charge` 0 and `spin` 1 in `mlmd_config.json`). `epochs` is 10, above fairchem's default
+of 1, because ALF's early rounds have few labels. See the fine-tuning guide in the ALF documentation,
+and fairchem's own: https://facebookresearch.github.io/fairchem/fine-tuning

@@ -21,6 +21,10 @@ python -m alframework --master master_config.json
 
 To fine-tune once on existing labels, without sampling, run `--test_ml` instead.
 
+You supply the pretrained ensemble; ALF ships no model weights. HIPPYNN has no official
+fine-tuning recipe, so this one is ALF's: the pretrained network and weights, a fresh optimizer,
+and the steps of ALF's HIPPYNN trainer.
+
 Labels must be in the units the pretrained model was trained on; ALF's samplers expect eV and
 eV/Å. HIPPYNN checkpoints are loaded with PyTorch, which can run code in the file, so only use
 checkpoints you trust. See the fine-tuning guide in the ALF documentation.

@@ -10,7 +10,7 @@
 	"builder_config_path":"builder_config.json",
 	"sampler_task":"alframework.samplers.mlmd_sampling.simple_mlmd_sampling_task",
 	"sampler_config_path":"mlmd_config.json",
-	"QM_scratch_dir":"/users/bnebgen/scratch4/ALrunning",
+	"QM_scratch_dir":"qm_scratch/",
 	"status_path":"status.txt",
 	"bootstrap_set":100,
 	"target_queued_QM": 50,

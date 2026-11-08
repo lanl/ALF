@@ -189,7 +189,7 @@ modified. Core implementation commits are `49f6c6e`, `fc7118e`, and `f89b722`;
 focused verification fixes are recorded in subsequent local commits.
 
 The consolidated accepted evidence is
-`/vast/home/pjlohr/ALF_LANL/validation/inc8_20261105/qualification-result.json`.
+`<validation root>/inc8_20261105/qualification-result.json`.
 It references the accepted PySEQM result in `run-001/`, GPU4PySCF result in
 `run-005/`, exact source/dependency fingerprints, numerical errors, HDF5 hashes,
 and all six verified owned-job cleanup reports. Qualification including retries
@@ -241,18 +241,18 @@ excited-state interface or database module.
   members on distinct local GPU ordinals, finite metrics/predictions, derived
   gaps, force finite differences <= 1e-3 eV/Angstrom, and exact ID traceability.
 - A new frozen training environment was installed at
-  `/vast/home/pjlohr/ALF_LANL/environments/20261105/inc9-training-cuda`:
+  `<environment root>/20261105/inc9-training-cuda`:
   HIPPYNN 0.1.3, Torch 2.15.0+cu132, NumPy 2.5.4, Parsl 2026.11.2;
   dependency compatibility passes. The accepted Increment 8 PySEQM environment
   and official revision `66021961` remain frozen and are reused.
-- Real qualification **passed** on ml4chem cn4072, with four NVIDIA RTX A6000
+- Real qualification **passed** on a GPU node with four NVIDIA RTX A6000
   GPUs, explicit interpreters and GCC 11. Two sequential stages, including a
   training-only retry, completed within the original two-hour queue-inclusive
   deadline. Each allocation retained its 30-minute limit. Generated evidence
   stays under `validation/inc9_20261105/`, outside Git.
 
 First real attempt: all 32 geometries converged and stored, with eight actual
-native width-four solves on ml4chem cn4072 (job 17378861). Training job 17378867
+native width-four solves on that node (job 17378861). Training job 17378867
 failed before the first optimizer step: HIPPYNN 0.1.3's Triton config pruner
 returns a generator, while Triton 3.9.0 expects a sized list. Both jobs are
 verified terminated. The new trainer now explicitly defaults to HIPPYNN's
@@ -290,7 +290,7 @@ Accepted results:
   preserved. All three owned jobs (**17378861**, **17378867**, **17378910**)
   are verified terminated; only those IDs were queried/cancelled by cleanup.
 - The consolidated report is
-  `/vast/home/pjlohr/ALF_LANL/validation/inc9_20261105/qualification-result.json`.
+  `<validation root>/inc9_20261105/qualification-result.json`.
   Qualification including the repair/retry took **16.4 minutes** from first
   submission, including queue waits, within the original two-hour deadline.
   `run-002` was an unsubmitted preparation and contributed no acceptance gate.
@@ -320,13 +320,13 @@ state metadata and topology IDs now survive cohort reconstruction.
 Accepted evidence, outside Git:
 
 - Consolidated report:
-  `/vast/home/pjlohr/ALF_LANL/validation/inc10_20261105/qualification-result.json`.
+  `<validation root>/inc10_20261105/qualification-result.json`.
   Real artifacts are under `run-002/`; source/library fingerprints match
   `1c367ba`. The accepted external harness is `a74754d`, with delivery at
   `fb57258` adding stricter retry-environment checks and tests; its scientific
   functions and the shared training qualifier match the accepted snapshot.
 - **Six sampling cases passed:** ASE, TorchSim CUDA, and ALCHEMI each executed
-  four width-one tasks and one width-four task on ml4chem cn4073 (four NVIDIA
+  four width-one tasks and one width-four task on a GPU node (four NVIDIA
   RTX A5000 GPUs). Each four-trajectory cohort selected two frames: **twelve
   new frames**, four per engine, acquired after step 21 (5.25 fs physical
   propagation; the acquisition check grid reports 0.005 ps). Gap uncertainty
@@ -355,7 +355,7 @@ Accepted evidence, outside Git:
 - Accepted sampling jobs **17379053**, **17379056**, **17379060**, labeling job
   **17379064**, and training job **17379065** all completed and are verified
   terminated. Sampling/labeling used local GPU zero; training used all four
-  local ordinals, preserving inherited masks. ml4chem declares these GPUs as
+  local ordinals, preserving inherited masks. That partition declares these GPUs as
   scheduler features rather than GRES, so each stage reserved one exclusive
   four-GPU node; allocation stages ran sequentially.
 - An initial harness source audit counted generated supervisor bytecode as
@@ -476,7 +476,7 @@ long-time stability, multi-node training, or user-guide requirement.
 
 ## Increment 11A — completed: keto AcAc ALF (qualified November 5; reviewed November 6)
 
-Accepted evidence: `/vast/home/pjlohr/ALF_LANL/validation/inc11a_20261105/run-003/`,
+Accepted evidence: `<validation root>/inc11a_20261105/run-003/`,
 particularly `result.json`, `pilot/verification.json`, `pilot/accepted.json`,
 and the model training/input manifests. The frozen pilot used library revision
 `e919472` and external harness `a244a15`; prerequisite engine/seed evidence was
@@ -547,7 +547,7 @@ are frozen under `environments/20261105/inc11a/`; existing environments remain
 unchanged. The external runner's five focused tests passed.
 
 Qualification launch, November 5 at 17:04 Mountain: persistent session
-`alf-inc11a-20261105` on `darwin-fe2` supervises
+`alf-inc11a-20261105` on a Darwin front end supervises
 `validation/inc11a_20261105/run-002/`. Frozen library revision `976d323` and
 external harness revision `d3f059d` are assembled in its source snapshot.
 The first corrected ASE allocation `17379283` entered Python/Parsl; later
@@ -801,8 +801,8 @@ through production `LabelingCoordinator` calls and passed HDF5 round trips:
 | CPP9 minimized S0 reference | DCM | 698.40 | 33.27 |
 
 These are per-fixture measurements, not a universal labeling rate. The earlier
-185.03-second CPP9 calibration used a perturbed smoke geometry on `cn0`;
-this minimized-reference check ran on `cn1`. The extra gas vertical-spectrum
+185.03-second CPP9 calibration used a perturbed smoke geometry on one node;
+this minimized-reference check ran on another. The extra gas vertical-spectrum
 handling took only 0.02 seconds. Geometry/node and cache differences prevent
 direct attribution of the slowdown without a matched profiling comparison.
 The approximately 39 GiB gas peak remains close to card capacity; this does
@@ -872,7 +872,7 @@ finite differences within 1e-3 eV/Å are required.
 
 Darwin uses three independent single-node allocations: four A100 40 GB QM
 workers on shared-redstone, four local A6000 GPUs for ensemble training, and
-four A6000 sampling workers on ml4chem. The queue-inclusive budget is four
+four A6000 sampling workers. The queue-inclusive budget is four
 hours, reserving five minutes for cleanup; allocation caps are 3.5 hours for
 QM and one hour for training/sampling. The external `alf_validation`
 CPP9 E6 supervisor instruments production tasks and ordinary
@@ -897,8 +897,8 @@ Launch evidence: ALF `30ba5ea`, external harness `ac4c0cb`; generated run
 `validation/cpp9_e6_20261106/run-001/`. The focused external suite passed
 **51 tests**; the full library suite passed **507 tests, 42 skipped**. The
 persistent `alf-cpp9-e6` tmux supervisor and ordinary coordinator are running
-on `darwin-fe2`; sampling allocation `17381481` and QM allocation `17381482`
-started on `cn4072` and `cn0`. Training is queued by Parsl when bootstrap
+on a Darwin front end; sampling allocation `17381481` and QM allocation `17381482`
+started on two nodes. Training is queued by Parsl when bootstrap
 labeling/storage finishes. The original queue-inclusive window is November 6,
 12:33–16:33 Mountain, with sampling/QM acceptance still pending. The user
 chose to disconnect after launch rather than wait for four bootstrap successes;

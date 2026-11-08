@@ -18,7 +18,7 @@ referenced original observations. Functional qualification is recorded in the
 [roadmap index](README.md#current-development-hardware-qualification--passed-with-restart-limits-2026-11-07).
 These are measurements, not implementation of the priority list below.
 
-**Locks:** `/vast/home` was NFSv3. `flock` refused a second holder on the same
+**Locks:** the shared home filesystem was NFSv3. `flock` refused a second holder on the same
 node and across nodes. After normal release, the other node acquired in 0.00242 s;
 after killing the holder child, in 0.00275 s. Cancelled-node observations in the
 retry run also acquired the lock (0.00216–0.00363 s). This supports the proposed
@@ -55,7 +55,7 @@ status/disk reconciliation remain open.
 **Small-fixture costs and local storage:** the replay manifest for a 61,260-byte,
 32-frame fixture took 0.0096–0.0102 s; this cannot establish large-dataset cost.
 Fresh-process imports took 9.62–10.29 s and repeats 8.30–8.70 s. On the two profiled
-ml4chem nodes, `/tmp` resolved to `/ram`, a roughly 63 GB tmpfs, with `TMPDIR=/tmp`.
+GPU nodes, `/tmp` resolved to `/ram`, a roughly 63 GB tmpfs, with `TMPDIR=/tmp`.
 It competes with host memory. Other partitions and post-job file survival were
 not qualified. Darshan was unavailable; no complete per-role file-operation or
 large-dataset contention profile was established.
@@ -89,7 +89,7 @@ Worth doing whatever a profile shows, except that item 4 needs a `flock` test fi
 | 1 | **Built November 7.** Write status and shards to a temporary file, then rename. `force_screen.py:89` already does this. | Small | Nothing |
 | 2 | **Built November 7.** Check for every expected shard by name in both trainers, with a bounded wait, then raise. Extra files stay allowed. | Small | Nothing. On Darwin the longest listing delay was 0.240 s, well inside the 120 s wait |
 | 3 | **Built November 7.** Cache each shard's manifest per worker, keyed by path, size, and modified time (the `_load_reference_cached` pattern in `molecular_topology.py`), and open the seed once per task. | Small to medium | Nothing |
-| 4 | **Built November 7.** Lock the coordinator on `<status_path>.lock`, and refuse to start if it's held. | Small | Whether `flock` works on `/vast`: it does, across nodes |
+| 4 | **Built November 7.** Lock the coordinator on `<status_path>.lock`, and refuse to start if it's held. | Small | Whether `flock` works on the shared filesystem: it does, across nodes |
 
 ### Tier 2: restarts that keep labels
 
@@ -126,9 +126,9 @@ If a tool or permission isn't available, record that and move on. Don't substitu
 
 **Since it ran,** priority items 1-3 were built on top of the measured baseline. One store-interruption restart failed at `ce711d8`, which is the case item 1 targets, and the record doesn't say why. Repeating the "during a store" row of section 3, and section 5, at the newer commit would show what changed.
 
-#### 1. `flock` on `/vast` (decides how the coordinator lock works)
+#### 1. `flock` on the shared filesystem (decides how the coordinator lock works)
 
-Use a file on `/vast`, with two allocated nodes, A and B.
+Use a file on the shared filesystem, with two allocated nodes, A and B.
 
 ```python
 import fcntl, sys, time
@@ -213,7 +213,7 @@ For each partition ALF uses, from inside a job:
 
 For each section, give a short result, and the evidence path. In addition, answer these directly:
 
-1. Does `flock` work across nodes on `/vast`?
+1. Does `flock` work across nodes on the shared filesystem?
 2. What's the longest delay before a new shard appears in another node's listing?
 3. Is a rename ever visible before its contents are?
 4. Which restart failures happened, and how many labels did each lose?
@@ -226,7 +226,7 @@ For each section, give a short result, and the evidence path. In addition, answe
 | --- | --- |
 | `flock` refused across nodes | The lock is as simple as planned. Otherwise it needs a lock file holding host and process ID, plus stale-lock detection. |
 | Longest listing delay | Whether the 120 s shard wait, now used by every HIPPYNN training task, is long enough. |
-| Rename visibility | Confirms that atomic shard writes are safe on `/vast`. |
+| Rename visibility | Confirms that atomic shard writes are safe on the shared filesystem. |
 | Kill and restart failures | The acceptance tests for items 5 and 6. |
 | File operation counts | Reorders tier 3 in `exascale.md`. |
 | Manifest timing | The cost the manifest cache removes, and, if repeated at the newer commit, what's left. |

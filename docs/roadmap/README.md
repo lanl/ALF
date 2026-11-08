@@ -66,7 +66,8 @@ Standing rules:
 - Do not modify untracked example directories, the user's personal conda
   environments, or the HIPPYNN/PySEQM checkouts.
 - Run live campaigns from a frozen source snapshot and a frozen environment.
-  Keep generated data outside Git, under `/vast/home/pjlohr/ALF_LANL/validation/`.
+  Keep generated data outside Git, in the validation evidence directory on Darwin, written
+  `<validation root>/` below.
   Never infer a gate from a startup check.
 - Record each result with its source revision, environment, and evidence path,
   and update the status table in this file and the relevant section. The table at the
@@ -137,7 +138,7 @@ Darwin validation harnesses and their tests were moved out of this repository
 - `examples/excited_state_labeling/`: the Increment 8 labeling qualification.
 - `examples/torchsim_benchmark/`: the engine benchmark.
 
-They now live in the local repository `/vast/home/pjlohr/ALF_LANL/alf_validation/`.
+They now live in the separate `alf_validation` repository.
 Its `assemble.sh` combines an ALF revision with the harnesses into one
 committed tree, which is the form the harnesses expect. Earlier entries in this
 roadmap still cite the old `examples/...` paths; they refer to those historical
@@ -173,7 +174,7 @@ The 65 harness tests pass in an assembled `alf_validation` tree.
 
 The untracked July 2026 Darwin runs `examples/simple_water_darwin_run_test/`
 and `examples/fine_tuning_darwin_test/` (464 MB) moved to
-`/vast/home/pjlohr/ALF_LANL/validation/darwin_runs_202607/`. Older entries cite
+`<validation root>/darwin_runs_202607/`. Older entries cite
 their former paths; their own `parsl_configs.py` still names the old location.
 
 Tests no longer read that run's trained 8-member checkpoint, because it cannot
@@ -552,6 +553,33 @@ matching the shards.
 - Not run on Darwin. Rerunning section 3 of the [restart profile](exascale.md#darwin-profile-for-restart-work)
   at this commit would compare against the `ce711d8` baseline.
 
+### Fine-tuning docs and defaults pass (2026-11-07)
+
+A pass over the fine-tuning guide, examples, and tests (user request), against each family's own advice:
+
+- **The guide now defines fine-tuning in ALF:** each copy starts from a pretrained model's weights, with
+  a fresh optimizer, on labels ALF selected, and every round starts again from the same pretrained model.
+  A table contrasts it with training from scratch, resuming a training, and distillation. A second table
+  says whose recipe ALF runs: MACE's and fairchem's own, and ALF's own for HIPPYNN, whose documentation
+  covers restarting but not fine-tuning.
+- **No model weights ship with ALF,** and the guide says so, with where MACE and UMA models come from and
+  their terms: MIT or the Academic Software License per MACE model; the FAIR Chemistry License for UMA,
+  with its acceptable-use policy, derivative copies, and acknowledgment in publications.
+- **MACE defaults follow MACE's guidance** (user decision): `max_num_epochs` 6, `batch_size` 2, EMA 0.999,
+  AMSGrad, gradient clipping 1.0, no weight decay, energy and force weights 10, and `rms_forces_scaling`;
+  with replay, `lr` 1e-4, EMA 0.9999, and 20 epochs. `mace_options` overrides any of them. ALF warns at
+  startup on `E0s: "average"`, which MACE advises against, and the example now uses `"estimated"`. Rerun
+  on CPU with these defaults: two copies cut the held-out energy error against EMT from 0.94 eV to 0.011
+  and 0.022 eV, better than the earlier 0.04 and 0.10 eV, in 23 s.
+- **UMA defaults to 1 epoch,** fairchem's template value (user decision); the UMA example sets 10.
+- **Internal details:** the roadmap's personal evidence and environment paths are now `<validation
+  root>/` and `<environment root>/`, and node and front-end names are gone (user decision). Job and
+  allocation IDs and partition names stay. The IL and UO2 examples write QM scratch to `qm_scratch/`
+  instead of another user's home.
+- **Tests:** MACE's defaults, the replay defaults, a user override winning, the `average` warning, and
+  UMA's default are covered; all 8 deliberate breaks of them were caught. No test references removed
+  code or personal paths.
+
 ### Fine-tuning with ALF: UMA (2026-11-07)
 
 The third adapter for the [fine-tuning interface](#fine-tuning-with-alf-mace-2026-11-07). User decisions: ALF
@@ -752,7 +780,7 @@ inputs were reused without dependency upgrades. No ALF library fix was needed.
   its GPU mask, loaded the same shards and reloaded. Only the four members on the
   cancelled block retried; failed directories were retained.
 - **Scale:** 20 excited-state members trained concurrently on 20 distinct GPUs on
-  five ml4chem nodes: cn4071–72 (A6000) and cn4073–75 (A5000). All members reloaded;
+  five GPU nodes, two with A6000s and three with A5000s. All members reloaded;
   maximum representative force finite-difference error was **1.65e-6 eV/Å**.
   This is independent-member placement, not distributed training of one member;
   ten-node/40-member scaling and larger-dataset throughput remain unqualified.
@@ -956,7 +984,7 @@ checkout. The November 4 qualification below supersedes that environment status.
 - **`setup.py`** has no lower bounds and `python_requires=">3.9"`, although the
   engines need Python 3.11/3.12. The versions used are recorded only in
   campaign manifests outside Git.
-- **Location risk.** All of these environments live under `/vast/home`, where a
+- **Location risk.** All of these environments live on the shared home filesystem, where a
   recurring cleanup job has deleted every `core.py` file and broken them before.
 
 As of the audit, PyPI offers HIPPYNN 0.1.3, Parsl 2026.11.2, and
@@ -1015,11 +1043,11 @@ PySEQM checkouts.
 ### Qualification progress (2026-11-04)
 
 The user authorized the remaining Increment 7 work and selected
-`/vast/home/pjlohr/ALF_LANL/environments/20261104/` for independent environments.
+`<environment root>/20261104/` for independent environments.
 All five builds exclude personal/system site-packages: base CPU, NVIDIA
 training, TorchSim CUDA, TorchSim ROCm, and ALCHEMI. Current-release resolution
 and package checks are recorded outside Git under
-`/vast/home/pjlohr/ALF_LANL/validation/inc7_closeout_20261104/`.
+`<validation root>/inc7_closeout_20261104/`.
 `pypi-audit.json`, `frozen-*.{txt,json}`, and `cpu-summary.json` retain versions,
 dependency consistency checks, exact resolutions, skip reasons, and XML hashes.
 
@@ -1059,7 +1087,7 @@ two unavailable-engine skips).
 The bounded runtime probe (`17376466`) passed tensor/autograd execution on an
 A100 with all three fresh NVIDIA environments, and its termination was verified.
 That probe is not engine or active-learning acceptance. The persistent supervisor
-`alf-inc7-fresh-20261104` on `darwin-fe2` waits for the trajectory-failure case,
+`alf-inc7-fresh-20261104` on a Darwin front end waits for the trajectory-failure case,
 then runs NVIDIA engine checks, the twelve-case fresh water matrix, native
 PySEQM, AMD engine checks, and the four MI250 cases sequentially. It uses frozen
 `source-fresh/` at `3a970c0`, explicit queue-inclusive deadlines, owned-job

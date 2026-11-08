@@ -130,11 +130,11 @@ retains the first attempt's budget origin rather than resetting its deadlines.
 
 The repaired `cd46b3f` attempt passed the real preflight: all four recorded
 boxes converged in both single and sequential-batched ORCA execution, with
-zero energy/force differences. The persistent supervisor on `darwin-fe2`
+zero energy/force differences. The persistent supervisor on a Darwin front end
 completed all twelve cases at 22:06 MST on November 2, within approximately
 2 hours 53 minutes of the original budget origin, including the MPI repair.
 The final reports were checked on November 3. Artifacts are outside Git under
-`/vast/home/pjlohr/ALF_LANL/validation/inc7_water_matrix_20261102/`:
+`<validation root>/inc7_water_matrix_20261102/`:
 `run-001/` retains the failed MPI attempt, `run-002/` is the completed attempt,
 `suite-002.log` records stage progress, and `validation-summary.json` records
 CPU test evidence and the actual imported environment versions. Final results
@@ -288,10 +288,10 @@ initialization in a fresh worker. It was stopped and all three owned Slurm
 jobs were verified terminated. The fix initializes the selected GPU before
 resetting its statistics; production sampling/training behavior is unchanged.
 
-The replacement supervisor ran on `darwin-fe2` in tmux session
+The replacement supervisor ran on a Darwin front end in tmux session
 `alf-inc7-remaining-20261103-03`, using frozen revision `0e1dbe5` from the detached
 `source-memory-fix/` worktree. All artifacts are outside Git under
-`/vast/home/pjlohr/ALF_LANL/validation/inc7_remaining_20261103/`.
+`<validation root>/inc7_remaining_20261103/`.
 `run-001/` contains preparation only; `run-002/` retains the failed observer
 attempt; `run-003/` has finished. The original cohort budget origin
 `1793730532.3461077` is retained. First-case, ASE-group, and overall deadlines
@@ -351,7 +351,7 @@ path.
 Harness-only repair `c7485d9` accounts for the deliberately lost label before
 retraining in the label-failure cases, and retries slow Slurm cancellation/query
 commands within its cleanup window. The frozen rerun is outside Git at
-`/vast/home/pjlohr/ALF_LANL/validation/inc7_failures_rerun_20261104/run-001/`.
+`<validation root>/inc7_failures_rerun_20261104/run-001/`.
 Both `label_exception` and `label_unconverged` passed, each with 11 new sampled
 IDs in a trained four-member ensemble. Bootstrap and all three case cleanup
 reports verified termination. Earlier Darwin/cleanup failures remain recorded;
@@ -388,7 +388,7 @@ fault placement; ranking, cutoffs, and selection remain unchanged. If there is
 no active winning trajectory, the harness does not force a failure or selection.
 The focused sampler/cohort suite passed all 35 checks. Its bounded real retry is
 `inc7_closeout_20261104/failure-run-001/`, supervised by the persistent
-`alf-inc7-closeout-failure-20261104` session on `darwin-fe2`, with frozen
+`alf-inc7-closeout-failure-20261104` session on a Darwin front end, with frozen
 `source-failure/` at `791dd05`. That attempt finished incomplete: eight new
 labels reached a promoted ensemble, but no failure was injected. Its winners
 were rejected before the final step, so the late-active-winner condition never
@@ -419,9 +419,9 @@ are verified terminated. Unverified cleanup still stops further allocations;
 a missing fresh seed blocks only its dependent MI250 campaign. The separate
 example checks have their own wB97X seed and do not require every PBE case to pass.
 
-The new persistent supervisor is `alf-inc7-relaunch-20261104` on `darwin-fe2`,
+The new persistent supervisor is `alf-inc7-relaunch-20261104` on a Darwin front end,
 using frozen `source/` at `acb4bb9`. Its root is
-`/vast/home/pjlohr/ALF_LANL/validation/inc7_relaunch_20261104/`;
+`<validation root>/inc7_relaunch_20261104/`;
 `relaunch-manifest.json`, `result.json`, and `supervisor.log` identify inputs,
 source, stage outcomes, and progress. It first retries only the remaining
 controlled-failure case, then runs the unexecuted current-release hardware,
@@ -533,7 +533,7 @@ official development at `24028da`. Full CPU regressions at `2a1708a`:
 | alf_alchemi_02 | 233 | 20 | 177.03 s |
 
 All skips are unavailable optional backends. Artifacts are outside Git at
-`/vast/home/pjlohr/ALF_LANL/validation/inc7_prerequisites_20261102/`:
+`<validation root>/inc7_prerequisites_20261102/`:
 `cpu-summary.json`, `results/cpu-*.{log,xml}`, the detached `source/` worktree,
 and hardware manifests containing source/package/checkpoint fingerprints.
 GPU acceptance passed against that frozen `2a1708a` source. The first
@@ -608,10 +608,10 @@ Record each increment's commits, evidence, and limitations here as it lands.
   bootstrap+training and fine-tuning with ORCA 5.0.4 and HIPPYNN. Re-running
   one of them through the real coordinator is the compatibility check for
   Increment 2, the first increment that changes `__main__.py`.
-- Unavailable dependencies on the test node (`cn211`, no GPU): PySEQM
+- Unavailable dependencies on the test node (a CPU node, no GPU): PySEQM
   (`seqm` is an empty namespace in `atomistic`, absent in `alf_env`),
   TorchSim, ALCHEMI, GPU4PySCF, CUDA devices. ORCA 5.0.4 is available at
-  `/usr/projects/ml4chem/Programs/orca_5.0.4/orca`; PySCF 2.14 is in
+  the cluster's shared installation; PySCF 2.14 is in
   `alf_env` only.
 
 ### Increment 1 — shared batching helpers (done locally, 2026-10-31)
@@ -692,7 +692,7 @@ Record each increment's commits, evidence, and limitations here as it lands.
   - Full suite: 72 passed in both envs; the coordinator test was stable over
     15 repeated runs per env.
   - Real backend: `--test_qm` with ORCA 5.0.4 (HF/def2-SVP, 1 core, local
-    thread executors on `cn211`) labeled a periodic 30-water box through
+    thread executors on a CPU node) labeled a periodic 30-water box through
     `sequential` mode (SCF converged, PBC retained, stored to `qm_test.h5`),
     and again without batching. These were different random builder
     structures, so this checks execution, not numerical agreement. Scratch:
@@ -739,8 +739,8 @@ Record each increment's commits, evidence, and limitations here as it lands.
   `MolecularDynamics.py`, so `import seqm.Molecule` fails unless
   `~/github/PYSEQM` is on `PYTHONPATH`. In `alf_env` it is not installed.
   Run the PySEQM tests with
-  `PYTHONPATH=/vast/home/pjlohr/github/PYSEQM`.
-- Evidence (CPU, `cn211`, float64):
+  `PYTHONPATH=<PYSEQM checkout>`.
+- Evidence (CPU node, float64):
   - `tests/test_pyseqm_interface.py` has 8 tests. Six run without PySEQM:
     sorting/padding/restoration, PBC and excited-state rejection,
     unconverged-member retention, and failed-batch fallback with a fake
@@ -889,7 +889,7 @@ by the well potential as a final extra entry.
     `mlmd_trajectories_task`, a fake ensemble loader, and mock builder/QM/ML. `single` and `batched`
     (width 3) both complete bootstrap → MLMD → labeling → HDF5 → retraining, with sampler structures
     within `parallel_samplers`. Stable over 10 repeats per env. Full suite: 121 passed in both envs.
-  - Trained model, real coordinator (CPU, `cn211`, scratch `/tmp/alf_inc4b`): active learning resumed
+  - Trained model, real coordinator (CPU node, scratch `/tmp/alf_inc4b`): active learning resumed
     from a copy of the Darwin `model-0000`/`data-0000.h5`.
     - Setup: real condensed-phase builder (30–45 atom water boxes), batched `mlmd_trajectories_task`
       (width 3, `device: cpu`), and mock QM.
@@ -1058,7 +1058,7 @@ Implementation:
 - Test environment: the fork's TorchSim 0.6.2 venvs (`ALF_fork/ALF/debug/portable_gpu_20261027_8795a40/envs/
   torchsim-{cuda,rocm}`, layered on `atomistic`; Torch 2.9.0+cu128 / +rocm6.4).
 
-CPU evidence (`cn213`):
+CPU evidence (a CPU node):
 
 - `tests/test_dynamics_engines.py` (10 tests; skipped where `torch_sim` is absent):
   - zero friction and temperature reproduce ASE velocity Verlet (6e-16 Å after 40 steps);
@@ -1079,11 +1079,11 @@ base `a74d97b` plus the Increment 5 working tree later committed as `a80c23e`; a
 
 - Environments: the fork's TorchSim 0.6.2 venvs; Torch `2.9.0+cu128` (CUDA 12.8) on NVIDIA and
   `2.9.0+rocm6.4` (HIP 6.4) on AMD; HIPPYNN portable kernels (`HIPPYNN_USE_CUSTOM_KERNELS=False`).
-- A100-SXM4-40GB, `shared-redstone` cn1, job 17372775: harness passed at all widths;
+- A100-SXM4-40GB, `shared-redstone`, job 17372775: harness passed at all widths;
   `tests/test_dynamics_engines.py` + `tests/test_sampler_coordinator.py` 19 passed (including the trained
   ensemble and real-coordinator TorchSim cases). (Job 17372745 on `shared-gpu-ampere` was cancelled
   unrun: per-user QOS limit.)
-- MI250X/MI250, `shared-gpu-amd-mi250` cn782: harness passed at all widths (job 17372746). Its test run
+- MI250X/MI250, `shared-gpu-amd-mi250`: harness passed at all widths (job 17372746). Its test run
   skipped the 3 trained-model tests because the untracked model was not in the frozen copy; rerun with it
   linked, job 17372771: 19 passed.
 - Harness (`examples/torchsim_benchmark/benchmark.py`): the trained 8-member Darwin water ensemble on
@@ -1160,7 +1160,7 @@ acquisition, cohorts, labeling, and the HIPPYNN loader are unchanged.
 - CPU checkpoint compatibility: all eight trained water members load; mixed
   3/6-atom predictions agree with individual ASE evaluations within
   `rtol=atol=1e-5` (max energy error 0, max force error 1.43e-6 eV/Angstrom).
-- Original-stack GPU compatibility probe: A100-SXM4-40GB, cn1, driver
+- Original-stack GPU compatibility probe: A100-SXM4-40GB, driver
   595.71.05, job 17372861. Both Torch and native ALCHEMI/Warp kernels passed.
   This was a compatibility probe, not final implementation acceptance.
 - Full CPU suites: 166 passed / 16 skipped in `alf_alchemi_02`, 164 / 18 in

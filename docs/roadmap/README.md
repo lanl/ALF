@@ -46,7 +46,8 @@ This folder is the shared plan for bringing the fork's intended capabilities int
   [UMA](#fine-tuning-with-alf-uma-2026-11-07) records.
 - **Next:** the [Darwin qualification round](qualification_round.md): GPU4PySCF ground-state DFT,
   restart acceptance, teacher labeling with a real student, fine-tuning in all three families on DFT
-  labels, multi-node fine-tuning, `/tmp` checks, and `pyscf_task` on the GPU with periodic water. Then new
+  labels, multi-node fine-tuning, `/tmp` checks, `pyscf_task` on the GPU with periodic water, and CPP9 network sizing at
+  40,000 training structures. Then new
   uncertainty and acquisition methods (see
   [Order of work](future.md#order-of-work)). Long runs and staged campaigns come last, and may be
   removed; see [Order of work](future.md#order-of-work).
@@ -558,6 +559,29 @@ matching the shards.
 - Docs build with no warnings; 96 roadmap links checked, 0 broken.
 - Not run on Darwin. Rerunning section 3 of the [restart profile](exascale.md#darwin-profile-for-restart-work)
   at this commit would compare against the `ce711d8` baseline.
+
+### CPP9 network sizing for Darwin, and restarting the CPP example (2026-11-08)
+
+At 40,000 training structures, `hiphop145` is projected at about 66 minutes per epoch, about 14 epochs
+per 16-hour Chicoma allocation. The user plans a smaller network (`hiphop64` or `hipnn64`), to be
+measured on Darwin with the rest of the round.
+
+- **`examples/CPP_excited_gpu4pyscf/benchmark_training.py`** times training and evaluation steps and
+  records peak GPU memory, for every profile and batch. It builds the production S0–S3 energy and force
+  graph through ALF's own builders, and runs each case in its own process, so out-of-memory results are
+  recorded instead of stopping the run. It prints epoch projections for 40,000 training and 9,000
+  evaluated structures. `prepare.py`'s network profiles moved into `apply_model_profile`, which both use.
+- **[B8](qualification_round.md#b8-smaller-networks-for-cpp9-at-40000-training-structures):**
+  - part 1, the script on one A100, checked against the November 6 `hiphop145` numbers;
+  - part 2, one real epoch through `--test_ml` on the 50,000-row calibration fixture;
+  - part 3, an accuracy comparison on the 1,000 historical labels.
+- **CPU estimate** (one step, batch 8, against `hiphop145`): `hiphop100` 0.69× time and 0.87× memory;
+  `hiphop64` 0.48× and 0.77×; `hipnn64` 0.05× and 0.23×. GPU ratios will differ, which is what B8 is for.
+- **The CPP page now covers a coordinator that dies:**
+  - cancel the run's `parsl.alf_*` Slurm jobs first, since a killed coordinator can't release them;
+  - restart with the same command;
+  - SIGTERM and Ctrl-C release the jobs themselves.
+- One test runs the script's smallest case on CPU and checks its projection.
 
 ### Health check (2026-11-08)
 

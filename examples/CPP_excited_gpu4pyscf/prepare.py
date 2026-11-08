@@ -19,6 +19,20 @@ import tempfile
 
 
 HERE = Path(__file__).resolve().parent
+MODELS = {'hiphop145': 145, 'hiphop100': 100, 'hiphop64': 64, 'hipnn64': 64}
+
+
+def apply_model_profile(config, model, n_atoms):
+    """Set a hippynn_config.json dictionary to one of the four network profiles, in place."""
+    if model not in MODELS:
+        raise ValueError('Unknown model profile')
+    config['n_atoms'] = n_atoms
+    config['network_params']['n_features'] = MODELS[model]
+    if model == 'hipnn64':
+        config['network_choice'] = 0
+        for key in ('l_max', 'n_max'):
+            config['network_params'].pop(key, None)
+    return config
 
 
 def prepare(output_dir, *, ring_size=9, reference=None, energy_offset_ev=None,
@@ -33,7 +47,7 @@ def prepare(output_dir, *, ring_size=9, reference=None, energy_offset_ev=None,
         spares = math.ceil(0.05*count)
     if isinstance(spares, bool) or not isinstance(spares, int) or spares < 0:
         raise ValueError('spares must be a non-negative integer')
-    if model not in {'hiphop145', 'hiphop100', 'hiphop64', 'hipnn64'}:
+    if model not in MODELS:
         raise ValueError('Unknown model profile')
     if reference is None:
         reference = HERE/f'references/cpp{ring_size}_s0.xyz'
@@ -86,15 +100,7 @@ def prepare(output_dir, *, ring_size=9, reference=None, energy_offset_ev=None,
                     config['properties_list'][key] = [key,'system',1.]
             update('master_config.json', vertical_schema)
         update('QM_config.json', lambda c: c.update(energy_offset_eV=float(offset)))
-        def model_settings(config):
-            config['n_atoms'] = len(atoms)
-            config['network_params']['n_features'] = {
-                'hiphop145':145, 'hiphop100':100, 'hiphop64':64, 'hipnn64':64}[model]
-            if model == 'hipnn64':
-                config['network_choice'] = 0
-                for key in ('l_max', 'n_max'):
-                    config['network_params'].pop(key, None)
-        update('hippynn_config.json', model_settings)
+        update('hippynn_config.json', lambda c: apply_model_profile(c, model, len(atoms)))
         seed = dict(DEFAULT_SETTINGS, reference_geometry='reference.xyz', count=count+spares)
         (temporary/'seed_config.json').write_text(json.dumps(seed, indent=2)+'\n')
         if generate_seeds:
@@ -126,7 +132,7 @@ def main(argv=None):
     parser.add_argument('--energy-offset-ev', type=float)
     parser.add_argument('--count', type=int, default=1000)
     parser.add_argument('--spares', type=int, help='extra seeds for failed labels; default 5%% of --count')
-    parser.add_argument('--model', choices=['hiphop145', 'hiphop100', 'hiphop64', 'hipnn64'], default='hiphop145')
+    parser.add_argument('--model', choices=sorted(MODELS), default='hiphop145')
     parser.add_argument('--generate-seeds', action='store_true')
     parser.add_argument('--solvent', choices=['gas','dcm'], default='gas')
     args = parser.parse_args(argv)

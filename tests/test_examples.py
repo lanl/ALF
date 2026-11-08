@@ -138,6 +138,24 @@ def test_cpp_gpu4pyscf_configs_are_valid(name):
     validate_gpu4pyscf_config(read(ROOT / "examples/CPP_excited_gpu4pyscf" / name))
 
 
+def test_cpp_training_benchmark_runs_and_projects_an_epoch(monkeypatch):
+    """The Darwin B8 capacity script, run on CPU for one step of the smallest network."""
+    pytest.importorskip("hippynn")
+    folder = ROOT / "examples" / "CPP_excited_gpu4pyscf"
+    monkeypatch.syspath_prepend(str(folder))
+    for name in ("benchmark_training", "prepare"):
+        monkeypatch.delitem(sys.modules, name, raising=False)
+    benchmark = importlib.import_module("benchmark_training")
+    records = [benchmark.run_case("hipnn64", 1, mode, "cpu", warmup=0, steps=1, states=4) for mode in ("train", "eval")]
+    assert [record["result"] for record in records] == ["passed", "passed"]
+    assert records[0]["parameters"] > 0 and records[0]["median_step_s"] > 0
+    [row] = benchmark.projections(records, train_rows=100, eval_rows=10, walltime_hours=16)
+    expected = (100 * records[0]["median_step_s"] + 10 * records[1]["median_step_s"]) / 60
+    assert row["includes_eval"] and row["epoch_minutes"] == pytest.approx(expected)
+    for name in ("benchmark_training", "prepare"):
+        monkeypatch.delitem(sys.modules, name, raising=False)
+
+
 @pytest.mark.parametrize("spares, expected", [(None, 2), (0, 0), (7, 7)])
 def test_cpp_prepare_makes_spare_seeds(tmp_path, monkeypatch, spares, expected):
     from alframework.tools.batching import bootstrap_spare_count

@@ -161,6 +161,39 @@ and metadata.
 Labels still running when a QM allocation reaches its time limit are lost, so keep
 ``ALF_QM_WALLTIME`` long; see `Configure Parsl`_.
 
+If ALF Stops
+~~~~~~~~~~~~
+
+If the coordinator dies, for example because the login node rebooted, ``tmux`` was closed, or the
+process was killed, restart it with the same command, from the same prepared directory:
+
+1. **Cancel the run's old Slurm jobs first.** A coordinator killed outright can't release its
+   allocations, and with 16-hour allocations they would sit idle for hours; the new coordinator can't
+   use them. Parsl names each job ``parsl.alf_<role>_executor.block-<n>.<time>``:
+
+   .. code-block:: bash
+
+      squeue --me --format="%.12i %.50j %.10M"
+      scancel JOBID [JOBID ...]   # this run's parsl.alf_ jobs
+
+   If several ALF runs share your account, take this run's job IDs from the
+   ``Launched block ... with job ID ...`` lines in its ``runinfo/*/parsl.log``. A coordinator stopped
+   with ``SIGTERM``, or with Ctrl-C, releases its jobs itself.
+
+2. **Start it again,** inside ``tmux``:
+
+   .. code-block:: bash
+
+      python -m alframework --master master_config.json
+
+   The new coordinator prints a ``Restart:`` line for each thing it reconciles. Finished labels are
+   kept, and a bootstrap labels only the seeds it doesn't hold yet. A seed whose label was running at
+   the crash is labeled again, and isn't counted as a failure. A training that was running starts over.
+   If the old coordinator is somehow still running, the new one refuses to start and names its host
+   and process.
+
+See :ref:`configuration-restarts` for what a restart keeps and what it costs.
+
 Solvent
 -------
 

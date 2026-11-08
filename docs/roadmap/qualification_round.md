@@ -11,6 +11,7 @@ Planned November 7, 2026. These are instructions for the Darwin round that quali
 | [B5](#b5-multi-node-fine-tuning) | Multi-node fine-tuning with real models | Pass/fail |
 | [B6](#b6-tmp-and-settings) | `/tmp` and settings, for running at scale (priority items 7–8) | Measurements only |
 | [B7](#b7-pyscf_task-on-the-gpu-and-periodic-water) | `pyscf_task` on the GPU, and the periodic-water example with a real periodic student | Pass/fail, plus measurements |
+| [B8](#b8-smaller-networks-for-cpp9-at-40000-training-structures) | Training time and memory of `hiphop64` and `hipnn64` for CPP9 at 40,000 training structures, and their accuracy on real labels | Measurements, plus one pass/fail check |
 
 ## B0. Setup and rules
 
@@ -62,7 +63,7 @@ Planned November 7, 2026. These are instructions for the Darwin round that quali
 - If a tool or permission is missing, record that and move on; don't substitute an estimate.
 
 **Order.**
-- Run B1 → B6.
+- Run B1 → B7. B8 needs only the HIPPYNN training environment and GPU nodes, so it can run at any point, or alongside the others.
 - B3 needs B1's test set, and B4's HIPPYNN model is B3's student.
 - Sections may span allocations. Record each section's queue-inclusive window.
 
@@ -218,6 +219,68 @@ Record each combination GPU4PySCF refuses, with its error. These are answers, no
 
 **Record:** wall time per label against box size, peak GPU memory, and how often the SCF failed.
 
+## B8. Smaller networks for CPP9 at 40,000 training structures
+
+**Why.** The Chicoma CPP9 campaign trains every round from scratch, with 16-hour allocations. The November 6 calibration measured `hiphop145` at 0.756 s per batch-8 update on an A100 40 GB, which is about 66 minutes per epoch at 40,000 training structures, or about 14 epochs per allocation; see [the calibration](excited_states.md#cpp9-a100-calibration-results-2026-11-06). A smaller network is the likely fix. A November 8 CPU estimate, from one training step of each profile, gave these costs relative to `hiphop145`:
+
+| Profile | Parameters | Time | Memory |
+| --- | ---: | ---: | ---: |
+| `hiphop100` | 0.62 M | 0.69 | 0.87 |
+| `hiphop64` | 0.26 M | 0.48 | 0.77 |
+| `hipnn64` | 0.15 M | 0.05 | 0.23 |
+
+GPU ratios will differ, especially for `hipnn64`, whose small tensors leave an A100 underused. B8 measures them.
+
+**Setup.**
+- One A100 40 GB node on the partition the calibration used (`shared-redstone`), in the qualified CUDA HIPPYNN training environment.
+- ALF importable by that interpreter: installed, or with `PYTHONPATH` set to the checkout.
+- `--test_ml` runs (parts 2 and 3) use the CPP Parsl template's training executor: one node, four members on four GPUs.
+- All four profiles come from `examples/CPP_excited_gpu4pyscf/prepare.py --model`, which `benchmark_training.py` also uses.
+
+**Part 1: step time and memory, all four profiles.** From `examples/CPP_excited_gpu4pyscf`:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python benchmark_training.py --output <evidence>/b8/training_benchmark.jsonl
+```
+
+- The defaults run every profile with training batches 1, 4, 8, 16, and 32, and evaluation batches 8, 16, and 32. Each case does 2 warm-up and 5 timed steps, with S0–S3 energies and forces, in its own process.
+- The script prints each case, then the projected epoch at 40,000 training and 9,000 evaluated structures. The 9,000 are 5,000 validation plus the trainer's 10% training subset.
+- Keep the JSON lines file and the printed table.
+- **Pass:** `hiphop145` at batch 8 is within 15% of the calibration: 0.756 s per step, and 27.25 GiB reserved. A larger gap means the script measures something different from the calibration harness. In that case, record the gap and use the other profiles only relative to it.
+- **Record for each profile:**
+  - the largest training and evaluation batch that fits;
+  - step time and peak allocated and reserved memory at each batch;
+  - minutes per epoch, and epochs per 16 hours, at its best batch.
+- Out-of-memory results are answers, not failures.
+
+**Part 2: one real epoch with ALF's trainer at 40,000 structures,** for `hiphop64` and `hipnn64`. `hiphop145` is optional, since its epoch is projected at about 66 minutes.
+1. **Prepare a run per profile:**
+   ```bash
+   python prepare.py --ring-size 9 --model hiphop64 --output-dir <evidence>/b8/hiphop64
+   ```
+2. **Data:** put a copy of the calibration's 50,000-row fixture (`validation/cpp9_calibration_20261106/`) in the run's `h5store/`. If its datasets still use the old `sE#`/`sF#` names, rename them to `E#`/`F#` in the copy, for example with `h5py`'s `move`. Never edit the original.
+3. **Settings:** in `hippynn_config.json`, set `max_epochs: 1`. Use batch 8, or the best batch from part 1 if it's larger, for `batch_size`, `eval_batch_size`, and `scheduler_options.max_batch_size`.
+4. **Run:** `python -m alframework --master master_config.json --test_ml`.
+- **Record:**
+  - wall time of the epoch, from each member's training log;
+  - time to load the data before the first update;
+  - peak GPU memory per member, sampled with `nvidia-smi`;
+  - peak host memory;
+  - whether the four members' wall times differ.
+- **Pass:** all four members finish the epoch and reload, with finite predictions, and none runs out of memory.
+- **Compare** the epoch time with part 1's projection.
+
+**Part 3: accuracy on real labels.** This is a comparison, not a gate.
+- **Data:** the 1,000 historical CPP9 labels the fixture was built from; the fixture's source provenance names the file. Rename `sE#`/`sF#` in a copy if needed.
+- **Runs:** train `hiphop145`, `hiphop64`, and `hipnn64` on that copy, each with `--test_ml` and the example's settings: 300 epochs at most, patience 50, and an 80/10/10 split. Use batch 8 for all three, so that only the network differs.
+- **Record for each:**
+  - test RMSE and MAE for E0–E3 and F0–F3, the mean over the four members and the spread between them;
+  - epochs to the best model;
+  - wall time.
+- If the allocation can't fit all three, run `hiphop64` and `hipnn64`, and compare them with the November 6 `hiphop145` members if their test errors were recorded.
+
+**Answer:** which profile the Chicoma campaign should use, its epoch time at 40,000 training structures, and how much accuracy it gives up against `hiphop145`.
+
 ## Report back
 
 For each section: a short result, pass or fail where it has one, and the evidence path. Also answer:
@@ -225,3 +288,4 @@ For each section: a short result, pass or fail where it has one, and the evidenc
 - Can QM scratch move to node-local `/tmp` on each partition? (B6)
 - Do copies fine-tuned from one pretrained model disagree enough on GPU to drive selection? (B4)
 - Which periodic `df` choices does GPU4PySCF accept for forces and stress? (B7)
+- Which network should the CPP9 campaign use at 40,000 training structures, and what does it cost in time per epoch and accuracy? (B8)

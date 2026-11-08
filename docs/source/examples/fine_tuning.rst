@@ -5,6 +5,11 @@ This example starts ALF from a HIPPYNN ensemble you have already trained, and fi
 structures that ALF selects and labels with ORCA. The files are in ``examples/fine_tuning``. The
 fine-tuning settings and how a round works are covered in :doc:`../user_guide/fine_tuning`.
 
+You supply the pretrained ensemble; ALF ships no model weights. HIPPYNN has no official
+fine-tuning recipe, so the one here is ALF's own; see :ref:`fine-tuning-licenses` and the guide's
+"Whose recipe ALF runs". HIPPYNN checkpoints load through PyTorch, which can run code stored in the
+file, so use only files you trust.
+
 If you want to start from your own structures or labels, without model weights, see
 :doc:`seeded_active_learning`.
 

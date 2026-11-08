@@ -116,7 +116,7 @@ take energies in eV and forces in eV/Å. A model trained on other units still
 trains without error. But the samplers then run dynamics with every energy and
 force scaled by the wrong factor.
 
-**Fine-tuning keeps the pretrained model's units.** MACE uses eV and eV/Å, and so do HIPPYNN models
+**Fine-tuning keeps the pretrained model's units.** MACE and UMA use eV and eV/Å, and so do HIPPYNN models
 trained for ALF's samplers. Shards must hold the same units as the pretrained model, whatever the QM
 engine; see :doc:`fine_tuning`.
 

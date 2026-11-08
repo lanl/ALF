@@ -103,7 +103,8 @@ Practical notes
      and MACE-OFF on organic molecules with a limited set of elements.
    * A student with a shorter cutoff than the teacher's reach can't reproduce it exactly.
    * Check each checkpoint's license. Some have restrictions, and data labeled with a teacher may be
-     subject to its terms.
+     subject to its terms. ALF ships no model weights; see
+     :ref:`fine-tuning-licenses` for where MACE and UMA models come from and their terms.
    * A worker uses its teacher from one thread at a time, because models such as MACE keep state
      between calls.
 

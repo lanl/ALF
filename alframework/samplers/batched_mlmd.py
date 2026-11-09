@@ -442,7 +442,8 @@ def _record(molecule, entry, schedule, sampler_config, settings, engine, index, 
         if key in decision:
             meta_dict[key] = decision[key]
     if sampler_config.get('gap_uncertainty') is not None:
-        meta_dict['gap_pair'] = sampler_config['gap_uncertainty']['pair']
+        gap = sampler_config['gap_uncertainty']
+        meta_dict['gap_pair'] = gap['pair'] if 'pair' in gap else gap['pairs']
     if meta_dir is not None:
         with open(meta_dir + "/metadata-" + molecule.get_moleculeid() + '.p', "wb") as handle:
             pkl.dump(meta_dict, handle)
@@ -543,7 +544,8 @@ def sample_trajectories(molecule_objects, models, sampler_config, engine_class=N
         for molecule in molecule_objects:
             atoms = molecule.get_atoms()
             if states['gap_pair'] is not None:
-                molecule.update_metadata(dict(gap_pair=list(states['gap_pair'])))
+                gap_pair = states['gap_pair']
+                molecule.update_metadata(dict(gap_pair=gap_pair if isinstance(gap_pair, str) else list(gap_pair)))
             if atoms.pbc.any():
                 raise ValueError('Excited-state sampling supports nonperiodic molecules only')
             if TOPOLOGY_ATOM_IDS in atoms.arrays:

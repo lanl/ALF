@@ -27,6 +27,7 @@ import inspect
 from alframework.samplers.acquisition import cohort_selection
 from alframework.tools.batching import BatchedSubmitter, StartupSettings, batching_settings, default_batch_key
 from alframework.tools.cohorts import CohortPool
+from alframework.ml_interfaces.ensemble_inference import ADJACENT_GAPS
 from alframework.tools.gap_seeking import gap_seeking_settings
 from alframework.tools.sampling_windows import validated_windows, window_number, windowed_config
 from alframework.tools.trajectory_summary import TrajectorySummary
@@ -72,6 +73,11 @@ def state_settings(config):
     pair = None
     if 'gap_uncertainty' in config:
         gap = config['gap_uncertainty']
+        if isinstance(gap, dict) and 'pairs' in gap:
+            # The largest spread among S0-S1, S1-S2, ... on each frame, under one gap_std_cut.
+            if 'pair' in gap or gap['pairs'] != ADJACENT_GAPS:
+                raise ValueError('gap_uncertainty takes either a pair or "pairs": "adjacent"')
+            return dict(policy=policy, gap_pair=ADJACENT_GAPS, gap_seeking=seeking)
         pair = gap.get('pair') if isinstance(gap, dict) else None
         if not isinstance(pair, (tuple, list)) or len(pair) != 2:
             raise ValueError('gap_uncertainty requires a pair of ordered states')

@@ -426,7 +426,10 @@ its selected state, and ``Es`` and ``Fs`` uncertainty is measured on that state.
        ``properties_list`` used in training, and can include ``hippynn_kernel``.
    * - ``gap_uncertainty``
      - Optional. ``pair`` names one lower and one upper state, and ALF records the
-       standard deviation of their gap for each frame.
+       standard deviation of their gap for each frame as ``gap_std``. Use
+       ``{"pairs": "adjacent"}`` instead to watch every adjacent pair (S0-S1, S1-S2, ...)
+       under one ``gap_std_cut``: ``gap_std`` is then the largest of their spreads, and
+       ``gap_std_lower_state`` names the lower state of that pair.
    * - ``gap_std_cut``
      - Cutoff for the ``gap`` acquisition term. To trigger labeling on gap
        uncertainty, also add ``"gap"`` to ``acquisition.eligibility``. See

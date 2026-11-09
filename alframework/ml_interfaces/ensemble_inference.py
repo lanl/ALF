@@ -14,6 +14,9 @@ Prediction layout, for ``n_models`` members and ``n_systems`` structures:
 
 import numpy as np
 
+# A gap_pair value meaning every adjacent pair: gap_std is the largest of their spreads.
+ADJACENT_GAPS = 'adjacent'
+
 
 class SelectedStateEvaluator:
     """Physical selected-state view of a multi-state evaluator, retaining all heads."""
@@ -23,7 +26,10 @@ class SelectedStateEvaluator:
         self.n_models = evaluator.n_models
         if not 0 <= state < evaluator.n_states:
             raise ValueError('Selected state is absent from the ensemble')
-        if gap_pair is not None and not 0 <= gap_pair[0] < gap_pair[1] < evaluator.n_states:
+        if gap_pair == ADJACENT_GAPS:
+            if evaluator.n_states < 2:
+                raise ValueError('Adjacent gaps require at least two states')
+        elif gap_pair is not None and not 0 <= gap_pair[0] < gap_pair[1] < evaluator.n_states:
             raise ValueError('Gap pair is absent from the ensemble')
 
     def predict(self, atoms_list):
@@ -109,7 +115,13 @@ def ensemble_statistics(prediction):
                 for index, row in enumerate(rows):
                     row[key+'_mean'] = float(gaps[:, index].mean())
                     row[key+'_stdev'] = float(gaps[:, index].std())
-        if prediction.get('gap_pair') is not None:
+        if isinstance(prediction.get('gap_pair'), str) and prediction['gap_pair'] == ADJACENT_GAPS:
+            keys = [gap_key_for_pair(lower, lower + 1) + '_stdev' for lower in range(state_energies.shape[1] - 1)]
+            for row in rows:
+                spreads = [row[key] for key in keys]
+                lower = int(np.argmax(spreads))  # The lowest pair wins a tie.
+                row['gap_std'], row['gap_std_lower_state'] = spreads[lower], lower
+        elif prediction.get('gap_pair') is not None:
             key = gap_key_for_pair(*prediction['gap_pair'])
             for row in rows:
                 if key+'_stdev' not in row:

@@ -33,7 +33,7 @@ The files needed to run the example are located in
        S0-S3 one batch at a time.
    * - Acquisition
      - First trigger: each trajectory stops at its first uncertain frame, which is
-       labeled. Energy, force, and S1-S2 gap uncertainty can each trigger it.
+       labeled. Energy, force, and adjacent-gap uncertainty can each trigger it.
 
 Before You Run
 --------------
@@ -211,13 +211,16 @@ Sampling Settings
      - 0.5 fs steps for up to 1 ps at 300 K. Frames before 0.1 ps aren't labeled, since
        each trajectory starts from a stored label.
    * - ``Escut``, ``Fscut``
-     - 0.10 eV on the ensemble spread of the selected state's energy, and 0.05 eV/Angstrom
-       on the mean force spread. The largest force spread also triggers above 0.15
-       eV/Angstrom.
+     - 0.10 eV on the ensemble spread of the selected state's total energy, about 1.1 meV
+       per atom for CPP9, and 0.05 eV/Angstrom on the mean force spread. The largest force
+       spread of any atom also triggers above 0.15 eV/Angstrom, and on a 90-atom ring it
+       usually fires before the mean does.
    * - ``gap_uncertainty``, ``gap_std_cut``
-     - The S1-S2 gap, with a cutoff of 0.05 eV. In CPP rings, S2 and S3 are the bright
-       states and S1 is dark; excitation relaxes into S1, so the S1-S2 gap is the one
-       that decides where it ends up.
+     - The S0-S1, S1-S2, and S2-S3 gaps, with one cutoff of 0.05 eV on the largest of
+       their spreads. In CPP rings, S2 and S3 are the bright states and S1 is dark, and
+       excitation relaxes from S2 and S3 into S1. S2 and S3 are nearly degenerate near
+       the minimum, so their gap's spread can dominate; if ``gap_lower_state`` in the
+       trajectory summary is mostly 2, use ``"pair": [1, 2]`` instead.
    * - ``state_selection``
      - ``batch_cycle`` over S0-S3 with ``block_size`` 16. Each state is given to 16
        structures in a row, so each builder task (``maximum_builder_structures`` 16)

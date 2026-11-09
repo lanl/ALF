@@ -15,7 +15,7 @@ NUMBERS = {"simtime": "simulationtime", "realtime": "realtime_simulation", "Es":
            "peak_Es": "peak_Es", "peak_Fs": "peak_Fs", "peak_Fsmax": "peak_Fsmax",
            "gap_std": "gap_std", "peak_gap_std": "peak_gap_std"}
 LABELS = {"outcome": "trajectory_outcome", "reason": "screen_reject_reason", "state": "selected_state",
-          "window": "sampling_window"}
+          "window": "sampling_window", "gap_lower_state": "gap_std_lower_state"}
 COLUMNS = ("model", *LABELS, *NUMBERS)
 TASK_FAILED = "task_failed"
 

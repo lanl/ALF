@@ -24,7 +24,7 @@ from tests.helpers.molecules import WATER
 
 BATCHED = dict(trajectory_outcome="rejected", screen_reject_reason="physical_force", selected_state=np.int64(1),
                sampling_window=2, simulationtime=0.5, realtime_simulation=np.float64(3.0), Es=0.1, Fs=0.2, Fsmax=0.3,
-               peak_Es=0.4, peak_Fs=0.5, peak_Fsmax=0.6, gap_std=0.7, peak_gap_std=0.8, positions=np.zeros((3, 3)), acquisition_candidates=[{"big": 1}])
+               peak_Es=0.4, peak_Fs=0.5, peak_Fsmax=0.6, gap_std=0.7, peak_gap_std=0.8, gap_std_lower_state=np.int64(1), positions=np.zeros((3, 3)), acquisition_candidates=[{"big": 1}])
 
 
 def molecule(moleculeid="mol-0003-0000000012", **metadata):
@@ -36,7 +36,7 @@ def molecule(moleculeid="mol-0003-0000000012", **metadata):
 def test_trajectory_row_keeps_only_what_plots_need():
     row = trajectory_row("mol-0003-0000000012", BATCHED)
     assert row == {"id": "mol-0003-0000000012", "model": 3, "outcome": "rejected", "reason": "physical_force", "state": 1,
-                   "window": 2, "simtime": 0.5, "realtime": 3.0, "Es": 0.1, "Fs": 0.2, "Fsmax": 0.3, "peak_Es": 0.4,
+                   "window": 2, "gap_lower_state": 1, "simtime": 0.5, "realtime": 3.0, "Es": 0.1, "Fs": 0.2, "Fsmax": 0.3, "peak_Es": 0.4,
                    "peak_Fs": 0.5, "peak_Fsmax": 0.6, "gap_std": 0.7, "peak_gap_std": 0.8}
     json.dumps(row)
 

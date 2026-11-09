@@ -11,10 +11,7 @@
     "block_size": 16
   },
   "gap_uncertainty": {
-    "pair": [
-      1,
-      2
-    ]
+    "pairs": "adjacent"
   },
   "batched_calculator": "alframework.ml_interfaces.hippynn_interface.load_hippynn_excited_state_ensemble",
   "batched_calculator_options": {

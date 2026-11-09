@@ -180,7 +180,7 @@ def acquisition_settings(sampler_config):
         from alframework.tools.sampler_coordinator import state_settings
         states = state_settings(sampler_config)
         if states is None or states['gap_pair'] is None:
-            raise ValueError('Gap acquisition requires excited_state mode and gap_uncertainty.pair')
+            raise ValueError('Gap acquisition requires excited_state mode and gap_uncertainty.pair or .pairs')
     settings["selection"] = _selection(block)
     if settings['selection'].get('group_by_selected_state') and sampler_config.get('model_mode') != 'excited_state':
         raise ValueError('State-grouped cohorts require model_mode excited_state')

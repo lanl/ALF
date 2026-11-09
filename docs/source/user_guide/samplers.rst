@@ -545,7 +545,8 @@ on, add this to the master config:
 With ``trajectory_summary_path``, the coordinator appends one small row per trajectory to
 that file, from metadata it already receives, and plots read only that file. Each row has the
 trajectory's outcome, state, times, and its last and peak ``Es``, ``Fs``, and ``Fsmax``, plus
-``gap_std`` and ``peak_gap_std`` when a ``gap_uncertainty`` pair is set. Those peaks are what to
+``gap_std`` and ``peak_gap_std`` when ``gap_uncertainty`` is set, and with adjacent pairs,
+``gap_lower_state`` for the pair whose spread was largest on the last frame. Those peaks are what to
 compare with the cutoffs when tuning them. Prefer this to
 ``meta_dir``, particularly in large runs. ``meta_dir`` writes one file per trajectory into one
 directory from every sampler worker, and plots then reread all of them on each update. Without

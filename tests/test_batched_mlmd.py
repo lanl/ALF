@@ -261,7 +261,8 @@ def test_trained_hippynn_gives_same_results_batched(trained_ensemble):
         np.testing.assert_array_equal(single[name]["positions"], batched[name]["positions"])
 
 
-def test_excited_ase_sampling_follows_the_selected_state():
+@pytest.mark.parametrize("gap", [{"pair": [1, 2]}, {"pairs": "adjacent"}], ids=["one_pair", "adjacent"])
+def test_excited_ase_sampling_follows_the_selected_state(gap):
     pytest.importorskip("torch")
     a = SPRING_WATER.copy()
     a.set_array("topology_atom_ids", np.array([0, 2, 1]))
@@ -281,7 +282,7 @@ def test_excited_ase_sampling_follows_the_selected_state():
         distcut=0.5,
         min_time=0.0,
         model_mode="excited_state",
-        gap_uncertainty={"pair": [1, 2]},
+        gap_uncertainty=gap,
         acquisition={"selection": {"mode": "cohort_top_k", "cohort_size": 1, "k": 1}},
         srt_temp=[0.0, 0.0],
         end_temp=[0.0, 0.0],
@@ -299,6 +300,8 @@ def test_excited_ase_sampling_follows_the_selected_state():
     assert frame.get_metadata()["selected_state"] == 1 and frame.get_metadata()["source"] == "fixture"
     np.testing.assert_array_equal(frame.atoms.arrays["topology_atom_ids"], [0, 2, 1])
     assert "dE12_stdev" in frame.get_metadata()
+    assert frame.get_metadata()["gap_pair"] == gap.get("pair", "adjacent")
+    assert ("gap_std_lower_state" in frame.get_metadata()) == ("pairs" in gap)
     for bad, reason in (
         ({"mode": "batch_cycle", "states": [0, 1]}, "state cycling"),
         ({"mode": "fixed", "state": 9}, "absent"),

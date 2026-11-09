@@ -285,6 +285,37 @@ def test_gap_ranking_requires_the_gap_signal():
         ranking_score(stats, acquisition_settings(config), config)
 
 
+@pytest.mark.parametrize("noisy", [0, 1, 2], ids=["S0-S1", "S1-S2", "S2-S3"])
+def test_adjacent_gap_spread_is_the_largest_adjacent_one(noisy):
+    # Two members, four states. Member 1's adjacent gaps differ from member 0's by 0.2, except one by 2.0,
+    # so with two members the adjacent spreads are 0.1, except 1.0 for the noisy pair.
+    differences = np.full(3, 0.2)
+    differences[noisy] = 2.0
+    energies = np.zeros((2, 4, 1))
+    energies[1, 1:, 0] = np.cumsum(differences)
+    prediction = dict(energies=energies[:, 0], forces=[np.zeros((2, 2, 3))], state_energies=energies,
+                      state_forces=[np.zeros((2, 4, 2, 3))], gap_pair="adjacent")
+    row = ensemble_statistics(prediction)[0]
+    assert row["gap_std"] == pytest.approx(1.0)
+    assert row["gap_std_lower_state"] == noisy
+    assert row["dE03_stdev"] == pytest.approx(1.2), "a wider gap spreads more, but only adjacent ones count"
+
+
+@pytest.mark.parametrize("gap, message", [
+    ({"pairs": "all"}, "either a pair"),
+    ({"pairs": "adjacent", "pair": [0, 1]}, "either a pair"),
+    ({}, "pair of ordered states"),
+], ids=["unknown_pairs", "both", "neither"])
+def test_gap_uncertainty_takes_one_pair_or_adjacent_pairs(gap, message):
+    from alframework.tools.sampler_coordinator import state_settings
+
+    with pytest.raises(ValueError, match=message):
+        state_settings(dict(model_mode="excited_state", gap_uncertainty=gap))
+    adjacent = dict(_gap_config(["gap"]), gap_uncertainty={"pairs": "adjacent"})
+    assert state_settings(adjacent)["gap_pair"] == "adjacent"
+    assert acquisition_settings(adjacent)["eligibility"] == ["gap"]
+
+
 @pytest.mark.parametrize("cutoff", [0.0, -1.0, float("nan"), float("inf")])
 def test_invalid_gap_cutoffs_are_rejected(cutoff):
     config = dict(

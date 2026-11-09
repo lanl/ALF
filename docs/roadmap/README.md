@@ -1363,6 +1363,61 @@ remain outside this round.
 
 ## Development and test environments
 
+### Validation artifacts and environment retention (2026-11-08)
+
+The user authorized retiring completed bulk validation artifacts after their results were
+recorded. `<validation root>/records/20261108/` keeps compact result/acceptance reports,
+source and artifact fingerprints, installed-package manifests, cleanup inventories, and a
+compressed archive of historical reports. Large checkpoints, repeated-row capacity fixtures,
+Parsl worker trees, scratch directories, and redundant frozen ALF source trees are disposable.
+Their historical paths in this roadmap are provenance references; they may no longer exist.
+Reconstruct a run from the recorded ALF/harness revisions and settings rather than expecting
+the original worker directory to remain available.
+
+Small inputs retained for future focused checks are the accepted Increment 9 S0–S3 ensemble
+and labels (`inc9_20261105/run-003`), B1's isolated 64-frame DFT test set, B3's final UMA-teacher
+HIPPYNN student and its labeled shards, and the 1,000-row CPP source fixture. The 50,000-row
+capacity copies can be regenerated. The original pretrained MACE and UMA checkpoints outside
+`validation/` are untouched. The entire `github/molecule_smax` checkout, including its original
+`uma-s-1p2p1.pt`, is explicitly outside this cleanup. Keeping these fixtures does not qualify
+additional science.
+
+The retained Increment 9 manifest uses the historical logical `sE#` keys. Current development
+uses `E#`; the fixture reload check translates those keys in memory, retaining the same dataset
+names, units, scales and values. It does not rewrite the accepted fixture or reapply an offset.
+
+Keep the following nine frozen environments under `<environment root>/`:
+
+| Relative path | Use |
+| --- | --- |
+| `20261105/inc11a/cpu` | CPU development tests and coordinator |
+| `20261105/inc11a/ase` | ASE sampling |
+| `20261105/inc11a/torchsim` | TorchSim CUDA and shared base packages for MACE/UMA |
+| `20261105/inc11a/alchemi` | Qualified ALCHEMI sampling |
+| `20261105/inc9-training-cuda` | Ground/excited HIPPYNN training |
+| `20261105/inc8/pyseqm` | Qualified AM1/CIS labeling |
+| `20261106/cpp9-gpu4pyscf-cutensor` | GPU4PySCF 1.9.1/PySCF 2.15.0 with native cuTENSOR |
+| `20261108/mace` | MACE teacher/fine-tuning; overlays the retained TorchSim site-packages |
+| `20261108/uma` | UMA teacher/fine-tuning with its separate Torch 2.13 build and retained base packages |
+
+The five November 4 venvs and `20261105/inc8/gpu4pyscf` are superseded for current development.
+Their retirement, together with `20261104/cache`, was explicitly approved. Package manifests
+are preserved before removal. Hardlinked package files needed by retained environments remain
+allocated; removing a cache directory does not imply reclaiming its entire displayed size.
+No retained environment is moved, upgraded, or consolidated, and MACE/UMA's `.pth` dependencies
+must remain valid. Personal conda environments and upstream HIPPYNN/PySEQM checkouts are outside
+this cleanup. The original upstream source directories under the environment root are retained.
+
+Cleanup completed with all 290 removal targets journaled: **76.85 GiB** of validation payloads
+and **27.13 GiB** of superseded environments/cache, approximately **104 GiB** in total.
+These are allocated file blocks whose final hardlink was removed; directory metadata is excluded.
+The compressed historical report archive contains 66,101 verified members. All nine retained
+environments passed the same role-specific import/module-discovery checks, with unchanged package
+versions and module locations. Retained fixture hashes were unchanged; both four-member ensembles
+reloaded and produced finite CPU predictions with public PyTorch kernels and GCC 11, and all six
+retained HDF5 files were read successfully. The execution journal and checks are in
+`<validation root>/records/20261108/`.
+
 Policy, decided 2026-11-03: test development work against fresh installs with
 up-to-date dependencies, not long-lived personal environments.
 User clarification: this is the next acceptance priority after the running

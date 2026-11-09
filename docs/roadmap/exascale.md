@@ -136,8 +136,8 @@ Worth doing whatever a profile shows, except that item 4 needs a `flock` test fi
 
 | # | Work | Size | Needs from Darwin |
 | --- | --- | --- | --- |
-| 5 | **Built November 7.** Save finished labels during a bootstrap and during training, to a holding area outside `h5_dir`, and move them in at the next training start. Store finished labels at a budget stop too. | Medium, needs design | A kill and restart test |
-| 6 | **Built November 7.** Reconcile status with disk on restart: shard and training IDs, a molecule-ID margin, the bootstrap reset, and pickup from the holding area. Add `tests/test_restarts.py`. | Medium | A kill and restart test |
+| 5 | **Built November 7.** Save finished labels during a bootstrap and during training, to a holding area outside `h5_dir`, and move them in at the next training start. Store finished labels at a budget stop too. | Medium | B2's 18 bounded interruption/restart cases passed November 8 |
+| 6 | **Built November 7.** Reconcile status with disk on restart: shard and training IDs, a molecule-ID margin, the bootstrap reset, and pickup from the holding area. Add `tests/test_restarts.py`. | Medium | B2's 18 bounded interruption/restart cases passed November 8 |
 | 7 | Add a "running at scale" guide section and Darwin settings for `HDF5_USE_FILE_LOCKING`, `worker_logdir_root`, `run_dir`, `MPLCONFIGDIR`, `TMPDIR`, and `PYSCF_TMPDIR`. | Small | The `/tmp` checks below |
 | 8 | Run QM in node-local scratch: remove each directory after its results return, and copy failed calculations to shared storage. | Small | The `/tmp` checks below |
 

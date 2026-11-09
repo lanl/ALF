@@ -21,6 +21,7 @@ and [gap/window qualification](README.md#gap-seeking-and-sampling-window-hardwar
 The [Darwin round results](README.md#darwin-qualification-results-2026-11-08) record the remaining
 gates: UMA B4 accuracy, deferred B7 periodic numerical/full-loop checks, and CPP accuracy training.
 The historical HIP-HOP145 timing baseline did not reproduce within its specified bound.
+
 4. **New uncertainty and acquisition methods** ([Group G](#group-g-new-uncertainty-and-acquisition-methods)).
 5. **Long runs and staged campaigns** ([Group E](#group-e-long-runs)), last: very low priority, and may be removed (user decision, November 6).
 

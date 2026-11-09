@@ -62,9 +62,9 @@ class UmaFineTuner:
     def validate(self, master_config):
         if not Path(self.settings['foundation_model']).is_file():
             raise ValueError(f"A UMA foundation_model is a checkpoint file: {self.settings['foundation_model']}")
-        names = {key: spec[0] for key, spec in (master_config.get('properties_list') or {}).items()}
+        names = {spec[0] for spec in (master_config.get('properties_list') or {}).values()}
         for key, dataset in (('energy', self.settings['energy_dataset']), ('forces', self.settings['forces_dataset'])):
-            if names.get(key) != dataset:
+            if dataset not in names:
                 raise ValueError(f"UMA fine-tuning reads '{dataset}' from each shard, so properties_list must store "
                                  f"'{key}' there. Set fine_tune.{key}_dataset to match.")
 

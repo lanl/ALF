@@ -93,9 +93,9 @@ class MaceFineTuner:
 
     def validate(self, master_config):
         properties = master_config.get('properties_list') or {}
-        names = {key: spec[0] for key, spec in properties.items()}
+        names = {spec[0] for spec in properties.values()}
         for key, dataset in (('energy', self.settings['energy_dataset']), ('forces', self.settings['forces_dataset'])):
-            if names.get(key) != dataset:
+            if dataset not in names:
                 raise ValueError(f"MACE fine-tuning reads '{dataset}' from each shard, so properties_list must store "
                                  f"'{key}' there. Set fine_tune.{key}_dataset to match.")
         replay = self.settings['replay_file']

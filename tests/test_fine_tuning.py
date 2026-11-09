@@ -743,6 +743,18 @@ def test_uma_startup_check(tmp_path):
         uma(tmp_path, foundation_model=str(tmp_path)).validate({"properties_list": PROPERTIES})
 
 
+@pytest.mark.parametrize("family", ["mace", "uma"])
+def test_fine_tuning_accepts_gpu4pyscf_ground_state_storage_names(tmp_path, family):
+    from alframework.qm_interfaces.pyscf.gpu4pyscf import validate_gpu4pyscf_properties
+
+    properties = {"E0": ["energy", "system", 1.0], "F0": ["forces", "atomic", 1.0]}
+    validate_gpu4pyscf_properties(properties, nroots=0)
+    adapter = mace(tmp_path) if family == "mace" else uma(tmp_path)
+    adapter.validate({"properties_list": properties})
+    with pytest.raises(ValueError, match="forces_dataset"):
+        adapter.validate({"properties_list": {**properties, "F0": ["other_forces", "atomic", 1.0]}})
+
+
 def test_uma_defaults_follow_fairchems_template(tmp_path):
     settings = uma(tmp_path).settings
     assert (settings["epochs"], settings["steps"], settings["batch_size"], settings["lr"]) == (1, None, 2, 4e-4)

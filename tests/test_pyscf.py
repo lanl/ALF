@@ -207,6 +207,41 @@ def test_gpu_backend_moves_the_method_to_gpu4pyscf(monkeypatch):
 
 
 @needs_pyscf
+def test_gpu_calculation_does_not_write_inherited_cpu_checkpoint(monkeypatch):
+    """An unused temporary checkpoint must not make an otherwise valid label fail."""
+    import pyscf.scf.chkfile
+
+    inherited = []
+    monkeypatch.setattr(pc, "_single_device_backend", lambda pyscf: (None, None))
+    real_import = pc.importlib.import_module
+    fake_cupy = types.SimpleNamespace(ndarray=type("ndarray", (), {}), asnumpy=np.asarray)
+    monkeypatch.setattr(pc, "importlib", types.SimpleNamespace(
+        import_module=lambda name: fake_cupy if name == "cupy" else real_import(name)))
+    def move(mf):
+        inherited.append(mf.chkfile)
+        return mf
+    monkeypatch.setattr(pc, "_to_gpu", move)
+    def locked(*args, **kwargs):
+        raise BlockingIOError("inherited temporary checkpoint is locked")
+    monkeypatch.setattr(pyscf.scf.chkfile, "save_mol", locked)
+    monkeypatch.setattr(pyscf.scf.chkfile, "dump_scf", locked)
+    atoms = WATER.copy()
+    atoms.calc = PySCFCalculator(backend="gpu", **MOLECULE)
+    assert np.isfinite(atoms.get_forces()).all()
+    assert inherited and inherited[0]
+
+
+@needs_pyscf
+def test_cpu_build_keeps_its_checkpoint():
+    import pyscf
+
+    calc = PySCFCalculator(**MOLECULE)
+    calc.atoms = WATER.copy()
+    mf = calc._build("molecule", 0, 1, pyscf)
+    assert mf.chkfile
+
+
+@needs_pyscf
 def test_gpu_backend_switches_on_multigrid_after_the_move(monkeypatch):
     """PySCF's CPU multigrid integrator has no GPU counterpart, so GPU4PySCF's own is switched on after to_gpu."""
     from pyscf.pbc.dft import rks

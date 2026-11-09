@@ -222,6 +222,10 @@ class PySCFCalculator(Calculator):
             mf.grids.level = options["grids_level"]
         if self.options["backend"] == "gpu":
             mf = _to_gpu(mf)
+            # to_gpu() copies the CPU method's temporary checkpoint path, overriding
+            # GPU4PySCF's checkpoint-disabled default. ALF consumes in-memory results
+            # and never resumes this SCF; avoid unnecessary, occasionally locked HDF5 writes.
+            mf.chkfile = None
         # After the move to the GPU: PySCF's CPU multigrid integrator has no GPU counterpart to convert to, and
         # GPU4PySCF's methods switch on their own.
         if kind == "periodic" and periodic["df"] == "multigrid":

@@ -25,8 +25,9 @@ The files needed to run the example are located in
        every state, and coupling vectors. It wraps
        ``gpu4pyscf_excited_state_task``.
    * - Training
-     - ``train_excited_state_HIPPYNN_ensemble_task``: a four-member ensemble with one
-       head per state. Couplings and optical data are stored but not trained on.
+     - ``train_excited_state_HIPPYNN_ensemble_task``: a four-member HIP-NN ensemble
+       (``hipnn64``) with one head per state, at batch 64. Couplings and optical data are
+       stored but not trained on.
    * - Sampling
      - ``mlmd_trajectories_task`` on the ALCHEMI engine in batches of 4, cycling through
        S0-S3.
@@ -87,8 +88,10 @@ unchanged. It runs on a CPU and submits nothing.
      - Prepare the seeds now. Otherwise, prepare them yourself with
        ``python initial_sampling.py --config seed_config.json --output-dir seeds``.
    * - ``--model``
-     - ``hiphop145``
-     - Network size: ``hiphop145``, ``hiphop100``, ``hiphop64``, or ``hipnn64``.
+     - ``hipnn64``
+     - Network: ``hipnn64``, or the larger HIP-HOP networks ``hiphop64``, ``hiphop100``, or
+       ``hiphop145``. See the timings below before choosing a HIP-HOP network for a large
+       dataset.
    * - ``--reference``, ``--energy-offset-ev``
      - None
      - For another ring size, a minimized S0 XYZ file and its energy offset. Don't reuse
@@ -209,15 +212,22 @@ than a gas-phase one, because of the solvent and the extra solve.
 Memory
 ------
 
-These are measurements on a 40 GB A100, for CPP9 with the default ``hiphop145`` network:
+These are measurements on a 40 GB A100, for CPP9:
 
 * **QM:** a gas-phase label reached about 39 GiB, close to the card's limit, so a harder
   geometry may not fit. A CPP6 label reached about 30 GiB.
-* **Training:** ``hippynn_config.json`` uses a batch size of 8 for training, evaluation,
-  and the scheduler limit, which peaked near 28 GiB. A batch of 16 reached about 37 GiB,
-  and a batch of 32 ran out of memory. Dataset size mainly affects host memory.
+* **Training with the default** ``hipnn64``: ``hippynn_config.json`` uses batch 64 for
+  training, evaluation, and the scheduler limit. With 40,000 training structures, each of
+  the four members took about 167 s per epoch and peaked at about 4 GiB allocated and
+  12.5 GiB reserved. Batch 128 was barely faster and reserved about 32 GiB. At batch 64,
+  the 300-epoch limit comes to about 14 hours, just within a 16-hour allocation.
+* **Training with** ``hiphop145``: at batch 8 it peaked near 28 GiB, batch 16 reached about
+  37 GiB, and batch 32 ran out of memory. An epoch at 40,000 training structures takes
+  roughly an hour, so a 16-hour allocation fits only about 14 epochs.
 
-Memory use for the smaller networks hasn't been measured.
+Dataset size mainly affects host memory. These numbers come from repeated copies of the
+same structures, so they measure capacity and speed, not accuracy. The batch-64 learning
+rate hasn't been tuned; check the first trainings' validation errors.
 
 Expected Outputs
 ----------------

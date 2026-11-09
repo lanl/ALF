@@ -143,6 +143,12 @@ ground-state model or fine-tune on these labels, store them under the names thos
    * - ``grids_level``
      - ``3``
      - DFT integration grid level.
+   * - ``ground_state_grid_response``
+     - ``false``
+     - Include the integration grid's response in the S0 forces only, on CPU and GPU.
+       Excited-state forces never include it, so with ``true`` S0 and the excited
+       states use slightly different conventions. Leave it off to match datasets made
+       without it. Recorded in each label's metadata.
    * - ``scf_conv_tol``, ``scf_max_cycle``
      - ``1e-10``, ``100``
      - SCF convergence.

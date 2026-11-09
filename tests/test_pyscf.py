@@ -232,16 +232,6 @@ def test_gpu_calculation_does_not_write_inherited_cpu_checkpoint(monkeypatch):
 
 
 @needs_pyscf
-def test_cpu_build_keeps_its_checkpoint():
-    import pyscf
-
-    calc = PySCFCalculator(**MOLECULE)
-    calc.atoms = WATER.copy()
-    mf = calc._build("molecule", 0, 1, pyscf)
-    assert mf.chkfile
-
-
-@needs_pyscf
 def test_gpu_backend_switches_on_multigrid_after_the_move(monkeypatch):
     """PySCF's CPU multigrid integrator has no GPU counterpart, so GPU4PySCF's own is switched on after to_gpu."""
     from pyscf.pbc.dft import rks

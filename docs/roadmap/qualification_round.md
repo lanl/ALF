@@ -2,6 +2,12 @@
 
 Planned November 7, 2026. These are instructions for the Darwin round that qualifies the November 7 work on GPUs. Most of that work has run only on CPU. Results go in a new record in [the roadmap index](README.md), and in [`exascale.md`](exascale.md) for B2 and B6.
 
+**Results recorded November 8:** [B1–B8 outcomes and limits](README.md#darwin-qualification-results-2026-11-08).
+B2, B3 and B5 passed their bounded gates. B4 passed for HIPPYNN/MACE but UMA failed the
+accuracy gate; B7 remains incomplete/deferred. B8 capacity/timing follow-ups passed while
+accuracy training and the historical baseline-reproduction gate remain open. The original
+plan below is retained; compact records survive retirement of the generated run directories.
+
 | Section | What it shows | Kind |
 | --- | --- | --- |
 | [B1](#b1-gpu4pyscf-under-the-new-state-names) | GPU4PySCF ground-state DFT (`nroots: 0`) and the excited path under `E#` names | Pass/fail |

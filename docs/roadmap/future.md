@@ -6,18 +6,21 @@ This file lists remaining work and its completed prerequisites. Delivered work i
 
 ## Order of work
 
-Updated November 6, 2026, after E6 passed. The user set the sequence on November 3, and revised the bias work on November 6.
+Updated November 8, 2026, after the bounded restart, teacher and multi-node fine-tuning gates.
+The user set the sequence on November 3 and revised the bias work on November 6.
 
 E6, the bounded quick-win hardware round, and gap-seeking/sampling-window
 mechanics have passed; see the [E6 record](excited_states.md),
 [quick-win qualification](README.md#quick-win-hardware-qualification--passed-2026-11-06),
 and [gap/window qualification](README.md#gap-seeking-and-sampling-window-hardware-qualification--passed-2026-11-06).
 
-1. **Safe restarts and disk races** ([below](#safe-restarts-and-disk-races), with priorities in [`exascale.md`](exascale.md#priority-list)). Items 1-6 were built on November 7, after the Darwin profile: atomic writes, the shard check, the manifest cache, the coordinator lock, the label holding area, and restart reconciliation. Items 7 and 8, settings and node-local QM scratch for running at scale, are open.
-2. **Placement and memory** ([Group C](#group-c-placement-and-memory)). Multi-node independent-member training passed its bounded Darwin gate on November 7; larger deployments remain unqualified. It buys throughput for larger ensembles, not new methods.
-3. **Teacher labeling, then fine-tuning with ALF** ([Group D](#group-d-model-families-and-labels)). Teacher labeling is built, and awaits its Darwin gate. ALF-driven fine-tuning is built for MACE, HIPPYNN, and UMA (November 7).
+1. **Safe restarts and disk races** ([below](#safe-restarts-and-disk-races), with priorities in [`exascale.md`](exascale.md#priority-list)). Items 1-6 were built on November 7 and passed all 18 bounded B2 restart cases on November 8. Items 7 and 8, settings and node-local QM scratch for running at scale, are open; B6 now supplies measurements for three partitions.
+2. **Placement and memory** ([Group C](#group-c-placement-and-memory)). Independent-member HIPPYNN training passed on two/five nodes; B5 added real MACE/UMA clean and selective-retry passes on two nodes. Larger deployments remain unqualified. CPP HIP-NN64 batch-64 capacity/timing passed; long accuracy training remains deferred.
+3. **Teacher labeling, then fine-tuning with ALF** ([Group D](#group-d-model-families-and-labels)). MACE and UMA teacher/student loops passed B3. HIPPYNN and MACE passed B4 DFT accuracy adaptation; UMA's workflow passed but its accuracy regressed and requires investigation.
 
-The next step for items 1–3 is one [Darwin qualification round](qualification_round.md), planned November 7: GPU4PySCF ground-state DFT, restart acceptance, teacher labeling with a real student, fine-tuning in all three families on DFT labels, multi-node fine-tuning, and the `/tmp` checks for items 7–8.
+The [Darwin round results](README.md#darwin-qualification-results-2026-11-08) record the remaining
+gates: UMA B4 accuracy, deferred B7 periodic numerical/full-loop checks, and CPP accuracy training.
+The historical HIP-HOP145 timing baseline did not reproduce within its specified bound.
 4. **New uncertainty and acquisition methods** ([Group G](#group-g-new-uncertainty-and-acquisition-methods)).
 5. **Long runs and staged campaigns** ([Group E](#group-e-long-runs)), last: very low priority, and may be removed (user decision, November 6).
 
@@ -152,7 +155,11 @@ Tabled on November 6, before any restart code changed. ALF has since gained exit
 | Model/training handoffs and distillation | Opaque model-artifact references, model-independent inference adapters, and foundation-MLIP reference labeling. | Record teacher identity, version, units, and label provenance separately from the student sampling model. Teacher labeling is an independent track; handoffs and distillation come later. Fine-tuning tiers F1–F3 are planned below. |
 | Further model and sampling extensions | Additional production model families, reactive batching, and separately planned methods. | Follow the same minimal-core-change and existing-workflow compatibility gates. |
 
-- **Foundation-model teacher labeling: built November 7, Darwin gate pending.** See the [record](README.md#teacher-labeling-2026-11-07) and the [guide](../source/user_guide/teacher_student.rst). The original plan follows. The
+- **Foundation-model teacher labeling: bounded Darwin gate passed November 8.** MACE and UMA
+  native GPU checks and real student loops passed B3; see the
+  [results](README.md#darwin-qualification-results-2026-11-08), earlier
+  [implementation record](README.md#teacher-labeling-2026-11-07), and
+  [guide](../source/user_guide/teacher_student.rst). The original plan follows. The
   labeling boundary already supports this: `LabelingCoordinator`
   (`tools/labeling.py`) packs `native` batches for any `QM_task` that accepts
   `molecule_objects`, as PySEQM does. Storage, retraining, and promotion see

@@ -2,7 +2,7 @@
 
 An audit of where ALF's file operations could become a problem in campaigns of thousands of nodes, with a priority list for fixing them. It was done on November 6, 2026, by reading the file operations in `alframework/` and the CPP example, and the defaults in HIPPYNN, PySCF, and Parsl.
 
-**Where this stands:** items 1-6 of the priority list were built on November 7, after the Darwin round had measured `ce711d8`: atomic writes, the shard check in single-node training, and the replay manifest cache; then the coordinator lock, the label holding area, and restart reconciliation. Items 7 and 8 are open, and the wider restart plan is in [Safe restarts and disk races](future.md#safe-restarts-and-disk-races). Three related changes landed earlier: ALF now releases allocations on exit, the excited-state loader no longer reads `training_summary.json` on each sampler task, and the multi-node training tasks wait for shards. Bounded measurements now cover two-node operation and 20 independent training members on five nodes; they do not establish exascale performance.
+**Where this stands:** items 1-6 of the priority list were built on November 7, after the Darwin round had measured `ce711d8`: atomic writes, the shard check in single-node training, and the replay manifest cache; then the coordinator lock, the label holding area, and restart reconciliation. All 18 bounded B2 restart cases passed on November 8. Items 7 and 8 are open, and the wider restart plan is in [Safe restarts and disk races](future.md#safe-restarts-and-disk-races). Three related changes landed earlier: ALF now releases allocations on exit, the excited-state loader no longer reads `training_summary.json` on each sampler task, and the multi-node training tasks wait for shards. Bounded measurements now cover two-node operation and 20 independent training members on five nodes; they do not establish exascale performance.
 
 **What was and wasn't measured:** the original audit used code inspection and
 in-memory Mac timings. The [November 7 Darwin measurements](#darwin-measurements-2026-11-07)
@@ -10,6 +10,9 @@ add real shared-filesystem and bounded multi-node evidence. Large-dataset costs
 remain estimates; GPU4PySCF temp-file behavior was not measured in this round.
 
 ## Darwin measurements (2026-11-07)
+
+This is the pre-fix baseline. The November 8 results below supersede its open restart status;
+its original measurements and failures remain historical evidence.
 
 ALF `ce711d8`; frozen environments; evidence under
 `validation/development_20261107/`. Use `qualification_summary.json`,
@@ -66,6 +69,43 @@ support item 4; observed restart failures reinforce items 5–6. These small-fix
 measurements do not justify lowering replay/training I/O severity, claiming
 exascale throughput, or enabling node-local environments/scratch across partitions.
 The restart implementation remains tabled by the existing user decision.
+
+## Restart and storage follow-up (2026-11-08)
+
+B2 passed **18/18** real interruption/restart cases at ALF `460a037`, including two open-HDF5
+store SIGKILLs and finite-bootstrap recovery with one real managed-child timeout and a spare.
+No finished label was lost or stored twice, training IDs were not reused, partial shards were
+not training inputs, the second coordinator was refused, and each identical-command restart
+reached promotion and four-member reload without hand repair. Final store cases each retained
+32 labels and trained five actual epochs per member. SIGKILL allocations could remain alive
+for the 120-second observation and were explicitly cleaned before restart. All owned jobs ended.
+The retained reports are in `<validation root>/records/20261108/`, with original identifiers
+`b2-run-002/003/004` and `b2-storage-followup-002`.
+
+B6 measured `/tmp` as `/ram` tmpfs on all three profiled partitions:
+
+| Partition / node | Reported size | `TMPDIR` |
+| --- | ---: | --- |
+| `general` / `cn730` | 95 GiB | `/tmp` |
+| `ml4chem` / `cn4071` | 63 GiB | `/tmp` |
+| `shared-redstone` / `cn0` | 252 GiB | `/tmp` |
+
+`HDF5_USE_FILE_LOCKING`, `PYSCF_TMPDIR`, and `MPLCONFIGDIR` were unset in these probes.
+The observed allocations were exclusive; these observations do not establish policies for
+other partitions. Post-job survival was not checked. Node-local QM scratch remains open and
+must account for tmpfs competing with host memory.
+
+B5's UMA run also demonstrated a shared-home quota failure caused by temporary optimizer and
+inference checkpoints. The interrupted runs were not passes. After authorized cleanup, the
+two-node clean and cancelled-block checks passed, retaining exported models until the later
+artifact-retirement request. The final harness requires 60 GiB free before a UMA case and
+stops if free space falls below a 4 GiB reserve. These are qualification guardrails, not a
+general production disk-capacity guarantee. Native fairchem checkpoints temporarily consume
+much more space than the final `uma.pt` export, even when successful training removes them.
+
+See the [round results](README.md#darwin-qualification-results-2026-11-08) for B3/B4/B5 source
+boundaries and remaining gates. User-authorized artifact retirement preserves compact reports
+and freezes; it does not preserve the ability to reopen every historical raw checkpoint.
 
 ## Main findings
 

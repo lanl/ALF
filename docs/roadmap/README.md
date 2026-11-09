@@ -31,28 +31,113 @@ This folder is the shared plan for bringing the fork's intended capabilities int
   at 20 members/five nodes. Exit cleanup, dead-executor handling and all three engines'
   sampling/plotting checks also passed; see the
   [November 7 hardware record](#current-development-hardware-qualification--passed-with-restart-limits-2026-11-07).
-  Crash-safe restart remains unqualified.
+  The later bounded restart matrix also passed; see the November 8 record below.
 - **Foundation-model teacher labeling is built,** with real MACE and real UMA (uma-s-1p2p1) checked
   locally. Teachers are off-the-shelf checkpoints only, and UMA's `omol` refuses periodic structures
-  unless opted in. The Darwin gate is pending; see the [record](#teacher-labeling-2026-11-07) and the
+  unless opted in. The bounded Darwin gate passed for both teachers and their students; see the
+  [November 8 results](#darwin-qualification-results-2026-11-08) and the
   [periodic guard](#uma-teacher-off-the-shelf-only-and-a-periodic-guard-2026-11-07).
 - **Restarts keep their labels:** atomic status and shard writes, the shard check in single-node
   training, and the replay manifest cache, then the coordinator lock, a holding area for finished
   labels, and restart reconciliation. See the [first](#restart-fixes-without-darwin-2026-11-07) and
-  [second](#restarts-that-keep-labels-2026-11-07) records. Not yet run on Darwin.
+  [second](#restarts-that-keep-labels-2026-11-07) records. All 18 bounded Darwin restart cases passed,
+  including two interruptions during an open HDF5 store.
 - **Fine-tuning with ALF is built for MACE, HIPPYNN, and UMA,** through one interface: ALF selects the
-  samples, and each round fine-tunes copies of the pretrained model. Checked on CPU only; see the
+  samples, and each round fine-tunes copies of the pretrained model. GPU workflow checks passed for
+  all three families; HIPPYNN and MACE also passed the DFT accuracy-improvement gate, while UMA did
+  not. Two-node MACE/UMA fine-tuning and selective cancellation recovery passed. See the
+  [November 8 results](#darwin-qualification-results-2026-11-08) and the earlier
   [MACE](#fine-tuning-with-alf-mace-2026-11-07), [HIPPYNN](#fine-tuning-with-alf-hippynn-2026-11-07), and
   [UMA](#fine-tuning-with-alf-uma-2026-11-07) records.
-- **Next:** the [Darwin qualification round](qualification_round.md): GPU4PySCF ground-state DFT,
-  restart acceptance, teacher labeling with a real student, fine-tuning in all three families on DFT
-  labels, multi-node fine-tuning, `/tmp` checks, `pyscf_task` on the GPU with periodic water, and CPP9 network sizing at
-  40,000 training structures. Then new
+- **Remaining qualification:** investigate UMA's B4 accuracy regression. B7's tight periodic
+  numerical checks and CPP accuracy training remain deferred; the historical HIP-HOP145 timing
+  reproduction gate was not met. CPP HIP-NN64 capacity/timing and batch-64 checks passed.
+  See the [results and limits](#darwin-qualification-results-2026-11-08). Then new
   uncertainty and acquisition methods (see
   [Order of work](future.md#order-of-work)). Long runs and staged campaigns come last, and may be
   removed; see [Order of work](future.md#order-of-work).
 - **No merge to `main` is planned** (user decision, November 6).
 - **Outside current acceptance:** legacy NeuroChem and MI350.
+
+## Darwin qualification results (2026-11-08)
+
+Results of the [November 7 plan](qualification_round.md), checked against the completed
+supervisor and acceptance reports. This is a bounded workflow qualification. It does not establish
+large-campaign accuracy, exascale recovery, or concurrent scaling of a single model.
+
+| Section | Outcome | Evidence and practical limit |
+| --- | --- | --- |
+| B1: GPU4PySCF | Passed | Eight ground-state fixtures, single/sequential labeling, gas/DCM full and reduced requests, forced failure handling, and 64 separate DFT test frames. The opt-in S0 grid response was enabled; existing CPP defaults were preserved. |
+| B2: restart acceptance | Passed, 18/18 | Every interruption row ran twice, including the real managed-child seed timeout and both open-store SIGKILL cases. Identical-command recovery preserved labels, trained/reloaded four members and reached promotion without manual status/shard repair. |
+| B3: teacher labeling | Passed, MACE and UMA | Native GPU widths 1/8/32/128 and dtype/parity checks; two ordinary 48-label student loops, each with 16 propagated samples and two promotions. The held-out DFT set stayed outside training. |
+| B4: DFT fine-tuning | Partial | HIPPYNN and MACE passed. UMA completed the workflow and both promotions, but failed the held-out accuracy-improvement gate. |
+| B5: two-node fine-tuning | Passed, 4/4 | MACE and UMA, clean and cancelled-block cases. Four copies ran on four distinct host/GPU pairs across two nodes. Only the cancelled block's two copies retried; every lineage completed and each round promoted once. |
+| B6: local-storage/settings | Measurements complete for three partitions | `general`, `ml4chem`, and `shared-redstone` were measured; post-allocation file survival and every other partition remain unqualified. |
+| B7: periodic PySCF GPU | Incomplete/deferred | Molecular and k-point checks passed, and the temporary SCF checkpoint issue was fixed. Tight periodic energy/force/stress gates and the complete periodic student loop did not pass. |
+| B8: CPP sizing | Capacity/timing follow-up passed | Four-member, one-epoch 50,000-row HIP-NN64 capacity runs passed at batches 64 and 128. The old HIP-HOP145 timing baseline did not reproduce within 15%; long accuracy training remains deferred. |
+
+**B1 numerical checks.** CPU/GPU ground-state energy difference was `5.00e-7 eV` and the
+representative force finite-difference error was `3.97e-6 eV/Å`. Gas/DCM full/reduced common
+outputs agreed within the requested `1e-5 eV` / `1e-4 eV/Å` limits. Native GPU4PySCF 1.9.1,
+PySCF 2.15.0 and cuTENSOR 2.8.1 were used, with explicit worker binding and preserved masks.
+
+**B2 scope.** The final store cases each finished with 32 converged labels stored exactly once,
+no held labels, model generation 2, and four members reloaded after five actual epochs.
+Worker allocations could remain alive during the 120-second post-SIGKILL observation; owned
+resources were explicitly cleaned before identical-command restart. This is not a claim that
+SIGKILL automatically releases allocations. The harness's storage-return limit was made durable
+across worker replacements; earlier incomplete attempts do not count as passes.
+
+**B3 boundary.** Final CPU acceptance used the qualified GCC 11 compiler after an initial
+frontend compiler mismatch. Frozen models, data and worker events were fingerprint-verified
+unchanged. UMA's effective parameter dtype was recorded; requesting float64 does not imply
+all upstream UMA parameters became float64. Neither teacher is claimed to improve on DFT here.
+
+**B4 measured errors.** Each family started from its original foundation on every round and
+performed initial training plus two promotions with four copies. All QM labels converged;
+stored counts were 52/48/60 for HIPPYNN/MACE/UMA, including 20/16/28 propagated sampled IDs.
+Mean per-copy errors on 64 held-out DFT frames, before and after the final promotion:
+
+| Family | Force MAE before → after (eV/Å) | Offset-corrected energy MAE before → after (eV) |
+| --- | ---: | ---: |
+| HIPPYNN | 1.30034 → 1.15717 | 0.181912 → 0.167084 |
+| MACE | 0.410482 → 0.100613 | 0.061944 → 0.013361 |
+| UMA | 0.102667 → 1.274963 | 0.015293 → 0.178367 |
+
+UMA's B5 scheduling/recovery pass does not close that B4 scientific gate. Its failed B4 recipe
+needs investigation and a new qualification before claiming successful accuracy adaptation.
+
+**B5 source and execution.** ALF `adf1aef` records each member's last actual placement outcome
+in multi-node fine-tuning lineage. The preceding startup storage-schema fix was `7e4e3a4`.
+The final harness was `alf_validation` `5b758bc`, with unchanged scientific settings and the
+original two-hour queue-inclusive deadline. Retained MACE passes were fingerprint-verified;
+only UMA was rerun after the disk-quota interruption. Final members performed 84 real optimizer
+updates each for MACE and 151 for UMA, with changed finite parameters and unchanged child masks.
+ALF's worker-rank CUDA assignment avoided Parsl's synthetic HIP/ROCr mask aliases. The observer
+identified retries by their current Slurm job. All owned jobs and persistent supervisors ended.
+
+**B7 limits.** Periodic energy discrepancies of approximately `2.6e-5`–`3.1e-5 eV` exceeded
+the `1e-5 eV` gate. Representative force and stress finite-difference errors were
+`1.464e-3 eV/Å` and `2.583e-4 eV/Å³`, above their gates. These were not waived as passed DFT
+convergence checks. The user deferred further numerical investigation. Disabling the inherited
+temporary GPU SCF checkpoint (`78af257`) passed a real GPU smoke check; no library API changed.
+
+**B8 measured capacity.** On A100 40 GB, all four HIP-NN64 members used the actual
+40,000/5,000/5,000 split of the repeated-row capacity fixture. Batch 64 took 166.9–168.4 s
+per epoch, with maximum allocated/reserved CUDA peaks of 3.94/12.47 GiB. Batch 128 took
+161.7–163.2 s, with peaks of 7.84/32.45 GiB. The CPP example retains batch 64: the small
+timing gain at 128 cost substantially more reserved memory. A 300-epoch projection at batch
+64 is about 14 hours per member, not a measured 300-epoch run or a prediction of convergence.
+The repeated labels establish capacity, not predictive accuracy.
+
+**Source boundaries and records.** B1 used ALF `f0d2560`; B2 `460a037`; B3 and the B7
+checkpoint fix `78af257`; B4 `7e4e3a4`; B5 `adf1aef`. The final historical run identifiers were
+`development_20261108/b1-run-004`, `b2-storage-followup-002`, `b3b7-run-005` plus
+`b3-acceptance-gcc11-001`, `b4-run-001`, `b5-run-004` (retaining MACE from `b5-run-003`),
+and `batchscale-run-001`. Compact reports, fingerprints, environment freezes and the source
+revision map are retained under `<validation root>/records/20261108/`. Raw run directories
+are retired under the retention policy below; a historical evidence path is provenance, not
+a promise that generated datasets, checkpoints or snapshots remain on disk.
 
 ## Quick start for contributors and agents
 
@@ -79,6 +164,9 @@ Standing rules:
 - Record each result with its source revision, environment, and evidence path,
   and update the status table in this file and the relevant section. The table at the
   top of this file says which file each record belongs in.
+- After results are documented, user-authorized cleanup may retire bulk validation artifacts.
+  Keep compact reports and fingerprints outside Git, and identify any deliberately retained
+  reusable fixtures. Historical evidence paths may then refer to retired runs.
 - The fork is source material, not an integration target. Its own roadmap copy
   is stale; this folder is authoritative.
 
@@ -150,7 +238,7 @@ Its `assemble.sh` combines an ALF revision with the harnesses into one
 committed tree, which is the form the harnesses expect. Earlier entries in this
 roadmap still cite the old `examples/...` paths; they refer to those historical
 locations. Recorded runs keep their own frozen source copies under
-`validation/`.
+`validation/`; completed raw snapshots may subsequently be retired under the retention policy.
 
 Before removal, the harness tests that exercised production code were moved
 into ALF's own tests:

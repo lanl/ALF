@@ -560,7 +560,7 @@ def test_peak_uncertainty_is_the_highest_value_and_not_the_last(monkeypatch):
 
     def statistics(prediction):
         value = next(values)
-        return [dict(Es=value, Fs=value / 2, Fsmax=value * 2, Fsrms=value, energy=0.0)]
+        return [dict(Es=value, Fs=value / 2, Fsmax=value * 2, Fsrms=value, energy=0.0, gap_std=value * 3)]
 
     monkeypatch.setattr(batched_mlmd, "ensemble_statistics", statistics)
     metadata = run_screened({}, config=dict(BASE, Escut=100.0, Fscut=100.0))[0].get_metadata()
@@ -568,6 +568,7 @@ def test_peak_uncertainty_is_the_highest_value_and_not_the_last(monkeypatch):
     assert metadata["peak_Es"] == pytest.approx(0.9)
     assert metadata["peak_Fs"] == pytest.approx(0.45)
     assert metadata["peak_Fsmax"] == pytest.approx(1.8)
+    assert metadata["peak_gap_std"] == pytest.approx(2.7)
 
 
 def test_peak_uncertainty_ignores_the_rejected_frame():
@@ -575,6 +576,7 @@ def test_peak_uncertainty_ignores_the_rejected_frame():
     metadata = run_screened({0: 11}, observed=observed)[0].get_metadata()
     assert metadata["peak_Es"] == pytest.approx(max(row["Es"] for row in observed[1:-1]))
     assert metadata["peak_Es"] < max(row["Es"] for row in observed)
+    assert metadata["peak_gap_std"] is None, "no gap pair, so no gap uncertainty"
 
 
 def test_trajectories_in_one_task_record_their_own_wall_time():

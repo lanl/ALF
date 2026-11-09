@@ -91,13 +91,14 @@
   "target_queued_QM": 64,
   "minimum_QM": 0,
   "save_h5_threshold": 128,
-  "parallel_samplers": 16,
-  "maximum_builder_structures": 4,
+  "parallel_samplers": 64,
+  "maximum_builder_structures": 16,
   "gpus_per_node": 4,
   "parsl_configuration": "parsl_configs.config",
   "status_path": "status.json",
   "h5_path": "h5store/data-{:04d}.h5",
   "h5_dir": "h5store/",
   "model_path": "models/model-{:04d}",
-  "QM_scratch_dir": "qm_scratch/"
+  "QM_scratch_dir": "qm_scratch/",
+  "trajectory_summary_path": "status_plots/trajectories.jsonl"
 }

@@ -29,10 +29,11 @@ The files needed to run the example are located in
        (``hipnn64``) with one head per state, at batch 64. Couplings and optical data are
        stored but not trained on.
    * - Sampling
-     - ``mlmd_trajectories_task`` on the ALCHEMI engine in batches of 4, cycling through
-       S0-S3.
+     - ``mlmd_trajectories_task`` on the ALCHEMI engine in batches of 16, cycling through
+       S0-S3 one batch at a time.
    * - Acquisition
-     - Summed ranking with ``cohort_top_k``, keeping a separate cohort for each state.
+     - First trigger: each trajectory stops at its first uncertain frame, which is
+       labeled. Energy, force, and S1-S2 gap uncertainty can each trigger it.
 
 Before You Run
 --------------
@@ -127,7 +128,7 @@ shorter, set ``ALF_QM_WALLTIME``, ``ALF_ML_WALLTIME``, and ``ALF_SAMPLER_WALLTIM
      - One task that trains four members on four local GPUs.
    * - Sampling
      - 1
-     - Four workers.
+     - Four workers, one GPU each. Each task runs 16 trajectories on one state.
 
 All three start with no nodes. Parsl requests nodes as work arrives, and releases them
 when they are idle, so a smaller run can lower the limits instead of reserving nodes.
@@ -197,12 +198,55 @@ process was killed, restart it with the same command, from the same prepared dir
 
 See :ref:`configuration-restarts` for what a restart keeps and what it costs.
 
+Sampling Settings
+-----------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 66
+
+   * - Setting
+     - In this example
+   * - ``dt``, ``maxt``, ``min_time``
+     - 0.5 fs steps for up to 1 ps at 300 K. Frames before 0.1 ps aren't labeled, since
+       each trajectory starts from a stored label.
+   * - ``Escut``, ``Fscut``
+     - 0.10 eV on the ensemble spread of the selected state's energy, and 0.05 eV/Angstrom
+       on the mean force spread. The largest force spread also triggers above 0.15
+       eV/Angstrom.
+   * - ``gap_uncertainty``, ``gap_std_cut``
+     - The S1-S2 gap, with a cutoff of 0.05 eV. In CPP rings, S2 and S3 are the bright
+       states and S1 is dark; excitation relaxes into S1, so the S1-S2 gap is the one
+       that decides where it ends up.
+   * - ``state_selection``
+     - ``batch_cycle`` over S0-S3 with ``block_size`` 16. Each state is given to 16
+       structures in a row, so each builder task (``maximum_builder_structures`` 16)
+       fills one sampler batch.
+   * - ``parallel_samplers``
+     - 64: one batch of 16 for each of the four sampler GPUs.
+   * - ``topology_check``
+     - Ends trajectories whose bonds stretch below 0.85 or above 1.25 times the
+       reference, or that form new bonds. See :ref:`samplers-runtime-screens`.
+
+The cutoffs are starting values. Without cohorts, ALF rereads them while it runs, so
+you can tune them in ``sampler_config.json`` without a restart. The master config
+writes one row per trajectory to ``status_plots/trajectories.jsonl``, with the peak
+``Es``, ``Fs``, ``Fsmax``, and ``gap_std`` of each; see the progress plots in
+:doc:`../user_guide/samplers`. If almost every trajectory triggers at 0.1 ps, raise the
+cutoffs. If many run to 1 ps without triggering, lower them, or the QM workers run
+short of work.
+
 Solvent
 -------
 
 ``--solvent dcm`` turns on C-PCM with the settings in ``QM_config_dcm.json``:
 dielectrics of 9.02 and 2.03, Lebedev order 29, and a radius scale of 1.2. See
 :ref:`excited-states-solvent` for what each field does.
+
+The gas-phase ``QM_config.json`` holds the same ``solvent`` block with ``"enabled": false``.
+To try PCM on a few labels, for example with ``--test_qm``, set it to ``true``. That
+labels with equilibrium PCM but adds no ``vertical_*`` properties, so prepare a DCM
+campaign with ``--solvent dcm``.
 
 In DCM, state energies, forces, couplings, and the ordinary optical properties use
 equilibrium linear-response PCM. The ``vertical_*`` properties come from a separate

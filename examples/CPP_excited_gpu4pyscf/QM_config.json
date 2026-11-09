@@ -16,5 +16,16 @@
   "max_memory_mb": null,
   "verbosity": 0,
   "compute_nacr": true,
-  "energy_offset_eV": -56537.15659244438
+  "energy_offset_eV": -56537.15659244438,
+  "solvent": {
+    "enabled": false,
+    "name": "dichloromethane",
+    "method": "C-PCM",
+    "static_dielectric": 9.02,
+    "optical_dielectric": 2.03,
+    "lebedev_order": 29,
+    "vdw_scale": 1.2,
+    "surface_discretization_method": "SWIG",
+    "pcm_conv_tol": 1e-07
+  }
 }

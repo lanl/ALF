@@ -418,8 +418,9 @@ its selected state, and ``Es`` and ``Fs`` uncertainty is measured on that state.
    * - ``state_selection``
      - Which state each trajectory uses. ``{"mode": "fixed", "state": 1}`` uses one
        state. ``{"mode": "batch_cycle", "states": [0, 1]}`` assigns the listed
-       states in turn as structures are admitted. A ``selected_state`` value in a
-       molecule's metadata takes priority over either.
+       states in turn as structures are admitted. Add ``"block_size": N`` to give each
+       state to N structures in a row; see :ref:`batching-excited-state-batches`. A
+       ``selected_state`` value in a molecule's metadata takes priority over either.
    * - ``batched_calculator``, ``batched_calculator_options``
      - The model loader, which must provide every state. Options must include the
        ``properties_list`` used in training, and can include ``hippynn_kernel``.

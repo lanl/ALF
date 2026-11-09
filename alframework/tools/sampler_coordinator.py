@@ -60,6 +60,15 @@ def state_settings(config):
             _state_index(state)
         if len(set(states)) != len(states):
             raise ValueError('State cycling cannot contain duplicate states')
+        unknown = set(policy) - {'mode', 'state', 'states', 'block_size'}
+        if unknown:
+            raise ValueError(f'Unknown state_selection settings: {sorted(unknown)}')
+        if 'block_size' in policy:
+            block = policy['block_size']
+            if policy['mode'] != 'batch_cycle':
+                raise ValueError('state_selection.block_size requires batch_cycle mode')
+            if isinstance(block, bool) or not isinstance(block, int) or block < 1:
+                raise ValueError('state_selection.block_size must be a positive integer')
     pair = None
     if 'gap_uncertainty' in config:
         gap = config['gap_uncertainty']
@@ -91,7 +100,9 @@ def resolve_selected_state(molecule, settings, ordinal=None):
     else:
         if ordinal is None:
             raise ValueError('Unresolved state cycling requires coordinator admission')
-        state, source = policy['states'][ordinal % len(policy['states'])], 'state_selection.batch_cycle'
+        # Each state holds for block_size admissions in a row, so a refill of that many fills one batch.
+        block = policy.get('block_size', 1)
+        state, source = policy['states'][(ordinal // block) % len(policy['states'])], 'state_selection.batch_cycle'
     molecule.update_metadata(dict(selected_state=state, selected_state_source=source))
     if ordinal is not None:
         molecule.update_metadata(dict(sampling_admission_ordinal=ordinal))

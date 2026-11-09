@@ -7,6 +7,13 @@
       1,
       2,
       3
+    ],
+    "block_size": 16
+  },
+  "gap_uncertainty": {
+    "pair": [
+      1,
+      2
     ]
   },
   "batched_calculator": "alframework.ml_interfaces.hippynn_interface.load_hippynn_excited_state_ensemble",
@@ -95,9 +102,9 @@
     "strategy": "batched"
   },
   "batching": {
-    "batch_size": 4,
+    "batch_size": 16,
     "partial_policy": "timeout",
-    "max_wait_seconds": 60
+    "max_wait_seconds": 10
   },
   "topology_check": {
     "enabled": true,
@@ -105,29 +112,29 @@
     "reference_format": "xyz",
     "reference_charge": 0,
     "bond_min_scale": 0.85,
-    "bond_max_scale": 1.5,
+    "bond_max_scale": 1.25,
     "connectivity_scale": 1.25
   },
   "max_force_cutoff": 16.0,
   "screen_audit_dir": "sampling/screen_audit",
   "acquisition": {
-    "strategy": "summed",
-    "weights": {
-      "energy": 1.0,
-      "force_rms": 1.0
-    },
-    "trajectory_policy": "continue",
+    "strategy": "uncertainty",
+    "trajectory_policy": "stop",
+    "eligibility": [
+      "energy",
+      "force_mean",
+      "force_max",
+      "gap"
+    ],
     "selection": {
-      "mode": "cohort_top_k",
-      "cohort_size": 4,
-      "k": 2,
-      "group_by_selected_state": true
+      "mode": "first_trigger"
     }
   },
-  "dt": 0.1,
-  "maxt": 0.2,
-  "Escut": 0.001,
-  "Fscut": 0.01,
+  "dt": 0.5,
+  "maxt": 1.0,
+  "Escut": 0.1,
+  "Fscut": 0.05,
+  "gap_std_cut": 0.05,
   "Ncheck": 10,
   "min_time": 0.1,
   "distcut": 0.7,

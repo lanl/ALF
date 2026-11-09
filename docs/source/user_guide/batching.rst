@@ -125,6 +125,28 @@ Sampler batching needs ``mlmd_trajectories_task`` and
 at startup if a single-structure sampler task is given these settings. See
 :ref:`samplers-multi-trajectory`.
 
+.. _batching-excited-state-batches:
+
+Excited-State Batches
+~~~~~~~~~~~~~~~~~~~~~
+
+An excited-state sampler batch holds trajectories on one selected state. By default,
+``"state_selection": {"mode": "batch_cycle", ...}`` changes state with every structure,
+so a refill after a batch finishes adds one structure to each state's batch, and those
+batches leave partly filled when ``max_wait_seconds`` runs out. Give each state a block
+of structures instead:
+
+.. code-block:: json
+
+   {
+     "state_selection": {"mode": "batch_cycle", "states": [0, 1, 2, 3], "block_size": 16},
+     "batching": {"batch_size": 16, "partial_policy": "timeout", "max_wait_seconds": 10}
+   }
+
+Set ``block_size`` to ``batch_size``, and ``maximum_builder_structures`` in the master
+config to the same number, so that each builder task fills one batch. Keep
+``parallel_samplers`` a multiple of it.
+
 Queue Limits And Workers
 ------------------------
 

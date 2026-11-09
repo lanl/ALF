@@ -353,7 +353,8 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
                 entry.update(signals=signals, decision=decision, min_distance=observation['min_distance'],
                              check=check)
                 for key in PEAK_SIGNALS:
-                    entry['peaks'][key] = max(signals[key], entry['peaks'].get(key, signals[key]))
+                    if key in signals:  # gap_std only with a gap_uncertainty pair.
+                        entry['peaks'][key] = max(signals[key], entry['peaks'].get(key, signals[key]))
                 if cohort and decision['outcome'] == 'eligible':
                     entry['candidates'].append(_candidate(molecule_objects[index], engine, index, signals,
                                                           decision, time_ps))
@@ -398,7 +399,7 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
     return list(molecule_objects)
 
 
-PEAK_SIGNALS = ('Es', 'Fs', 'Fsmax')
+PEAK_SIGNALS = ('Es', 'Fs', 'Fsmax', 'gap_std')
 
 
 def _record(molecule, entry, schedule, sampler_config, settings, engine, index, started, seed, meta_dir):

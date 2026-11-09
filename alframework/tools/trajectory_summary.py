@@ -12,7 +12,8 @@ import re
 
 MODEL_IN_ID = re.compile(r'mol-(\d+)-')
 NUMBERS = {"simtime": "simulationtime", "realtime": "realtime_simulation", "Es": "Es", "Fs": "Fs", "Fsmax": "Fsmax",
-           "peak_Es": "peak_Es", "peak_Fs": "peak_Fs", "peak_Fsmax": "peak_Fsmax"}
+           "peak_Es": "peak_Es", "peak_Fs": "peak_Fs", "peak_Fsmax": "peak_Fsmax",
+           "gap_std": "gap_std", "peak_gap_std": "peak_gap_std"}
 LABELS = {"outcome": "trajectory_outcome", "reason": "screen_reject_reason", "state": "selected_state",
           "window": "sampling_window"}
 COLUMNS = ("model", *LABELS, *NUMBERS)

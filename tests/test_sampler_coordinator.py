@@ -355,6 +355,45 @@ def test_state_assignment_ignores_batch_size(tmp_path):
         assert [state for _, state, _ in snapshots[0]] == [0, 1, 1, 1, 0, 1, 0, 1]
 
 
+def test_state_cycling_in_blocks_fills_one_state_per_batch(tmp_path):
+    @python_app(executors=["state_blocks"])
+    def capture(molecule_objects, current_model_id):
+        return molecule_objects
+
+    config = dict(Escut=1.0, Fscut=1.0, model_mode="excited_state",
+                  state_selection={"mode": "batch_cycle", "states": [0, 1, 2, 3], "block_size": 4},
+                  driver={"strategy": "batched"},
+                  batching={"batch_size": 4, "partial_policy": "timeout", "max_wait_seconds": 60})
+
+    def batch_states(coordinator, start, count):
+        for index in range(start, start + count):
+            coordinator.submit(MoleculesObject(SPRING_WATER.copy(), f"block-{index}"), [{"current_model_id": 0}])
+        coordinator.submit_ready([{"current_model_id": 0}])  # No flush: only full batches leave.
+        return [[m.get_metadata()["selected_state"] for m in future.result()] for future in coordinator.queue.task_list]
+
+    with loaded_parsl(tmp_path / "parsl", "state_blocks"):
+        coordinator = SamplerCoordinator(capture, "test.capture", config)
+        assert batch_states(coordinator, 0, 16) == [[0] * 4, [1] * 4, [2] * 4, [3] * 4]
+        # A refill of one block, as after one batch finishes, is one more full batch.
+        assert batch_states(coordinator, 16, 4)[-1] == [0] * 4
+        assert coordinator.queue.get_waiting_number() == 0
+
+
+@pytest.mark.parametrize("policy", [
+    {"mode": "batch_cycle", "states": [0, 1], "block_size": 0},
+    {"mode": "batch_cycle", "states": [0, 1], "block_size": -1},
+    {"mode": "batch_cycle", "states": [0, 1], "block_size": True},
+    {"mode": "batch_cycle", "states": [0, 1], "block_size": 1.5},
+    {"mode": "fixed", "state": 1, "block_size": 4},
+    {"mode": "batch_cycle", "states": [0, 1], "blocks": 4},
+], ids=["zero", "negative", "bool", "float", "fixed_mode", "unknown_key"])
+def test_state_block_size_needs_batch_cycle_and_a_positive_integer(policy):
+    from alframework.tools.sampler_coordinator import state_settings
+
+    with pytest.raises(ValueError, match="block_size|Unknown state_selection"):
+        state_settings(dict(model_mode="excited_state", state_selection=policy))
+
+
 @pytest.mark.parametrize("failure", [None, "builder", "qm"], ids=["all_succeed", "builder_fails", "qm_fails"])
 def test_finite_bootstrap_stops_when_structures_run_out(tmp_path, monkeypatch, failure):
     requested, training, sampled = [], [], []

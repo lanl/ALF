@@ -170,9 +170,26 @@ def test_multinode_round_trains_each_copy_as_its_own_app(run):
             str(run / "models" / "model-{:04d}"), 0, master_directory=str(run), member_retries=0)
         assert future.result(timeout=120) == ([True, True, False], 0)
     root = run / "models" / "model-0000"
+    assert json.loads((root / fine_tuning.LINEAGE).read_text())["completed"] == [True, True, False]
     assert [trained(root / f"model-{member:02d}")["seed"] for member in (0, 1)] == [10, 11]
     assert json.loads((root / fine_tuning.LINEAGE).read_text())["shards"] == ["data-0000.h5"]
     assert len(list(run.glob("models/model-0000/placement-model-*-attempt-1.json"))) == 3
+
+
+def test_multinode_lineage_uses_last_attempt_including_failed_or_missing_members(run, monkeypatch):
+    def controlled_round(submit, n_models, ensemble_dir, training_id, *args, finish=None):
+        root = Path(ensemble_dir)
+        root.mkdir(parents=True)
+        for member, attempt, completed in ((0, 1, False), (0, 2, True), (1, 1, True), (1, 2, False)):
+            (root / f"placement-model-{member:02d}-attempt-{attempt}.json").write_text(
+                json.dumps(dict(attempt=attempt, completed=completed)))
+        finish()
+        return [True, False, False], training_id
+    monkeypatch.setattr(fine_tuning.ensemble_training, "train_ensemble_across_nodes", controlled_round)
+    fine_tuning.fine_tune_ensemble_multinode_task.func(
+        ml_config(run / "foundation.model"), str(run / "h5"), str(run / "models/model-{:04d}"), 0)
+    lineage = json.loads((run / "models/model-0000" / fine_tuning.LINEAGE).read_text())
+    assert lineage["completed"] == [True, False, False]
 
 
 def test_coordinator_checks_the_fine_tuning_config_before_the_bootstrap(tmp_path, monkeypatch):

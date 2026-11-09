@@ -22,6 +22,7 @@ The adapters are ``fine_tuning.hippynn.HippynnFineTuner``, ``fine_tuning.mace.Ma
 ``ase.Atoms``.
 """
 import concurrent.futures
+import json
 import os
 import queue
 import time
@@ -286,7 +287,16 @@ def fine_tune_ensemble_multinode_task(ML_config, h5_dir, model_path, current_tra
 
     def finish():
         from alframework.tools.tools import write_label_sources
-        write_lineage(ensemble_dir, settings, shards)
+        # Placement is written by the actual member child before its app
+        # returns. Use the last attempt, including failed attempts, rather
+        # than treating the mere existence of a checkpoint as success.
+        completed = []
+        for member in range(settings['n_models']):
+            attempts = [json.loads(path.read_text()) for path in
+                        root.glob(f'placement-model-{member:02d}-attempt-*.json')]
+            latest = max(attempts, key=lambda record: record['attempt'], default={})
+            completed.append(bool(latest.get('completed', False)))
+        write_lineage(ensemble_dir, settings, shards, completed)
         write_label_sources(ensemble_dir, h5_dir)
 
     return ensemble_training.train_ensemble_across_nodes(

@@ -3,7 +3,7 @@ Excited-State Cycloparaphenylene With GPU4PySCF
 
 This example runs active learning over the S0-S3 states of a cycloparaphenylene
 (CPP) ring with TDDFT labels, in the gas phase or in implicit dichloromethane (DCM).
-It includes minimized references for CPP6 (60 atoms) and CPP9 (90 atoms), and can
+It includes minimized references for CPP6 through CPP12 (60 to 120 atoms), and can
 prepare other para-linked ring sizes. For a smaller first run, see
 :doc:`acac_excited_pyseqm`. The pieces are explained in
 :doc:`../user_guide/excited_states`.
@@ -72,7 +72,7 @@ unchanged. It runs on a CPU and submits nothing.
      - The new run directory. An existing directory is never overwritten.
    * - ``--ring-size``
      - ``9``
-     - Number of phenylene rings. Sizes 6 and 9 use the included references.
+     - Number of phenylene rings. Sizes 6 through 12 use the included references.
    * - ``--solvent``
      - ``gas``
      - ``gas`` or ``dcm``. ``dcm`` selects ``QM_config_dcm.json`` and adds the
@@ -99,6 +99,12 @@ unchanged. It runs on a CPU and submits nothing.
        the offset from another size. The method only supports para-linked CPP rings.
 
 The included references are gas-phase minima, and ``--solvent dcm`` uses them too.
+All are CAM-B3LYP/6-31G, density-fitted S0 optimizations with the theory in
+``QM_config.json``. Each ``references/cppN_s0.json`` records its source, energy,
+residual gradient and the ``energy_offset_eV`` that ``prepare.py`` writes into
+``QM_config.json``. To add a size, optimize its S0 geometry with the same theory, then
+bundle it with ``python references/import_s0_reference.py /path/to/campaign/cppN``. The
+script checks convergence, theory and topology, and refuses to overwrite a reference.
 Seed preparation applies phenyl rotations and small rattles to the reference, half in
 a narrow range and half in a broad one. It runs no QM or optimization. Edit
 ``seed_config.json`` to change those ranges.
@@ -215,6 +221,8 @@ Sampling Settings
        per atom for CPP9, and 0.05 eV/Angstrom on the mean force spread. The largest force
        spread of any atom also triggers above 0.15 eV/Angstrom, and on a 90-atom ring it
        usually fires before the mean does.
+       ``Escut`` applies to the whole molecule, so it is stricter per atom on larger
+       rings. Consider scaling it with ring size.
    * - ``gap_uncertainty``, ``gap_std_cut``
      - The S0-S1, S1-S2, and S2-S3 gaps, with one cutoff of 0.05 eV on the largest of
        their spreads. In CPP rings, S2 and S3 are the bright states and S1 is dark, and
@@ -263,6 +271,10 @@ These are measurements on a 40 GB A100, for CPP9:
 
 * **QM:** a gas-phase label reached about 39 GiB, close to the card's limit, so a harder
   geometry may not fit. A CPP6 label reached about 30 GiB.
+* **Larger rings:** in an earlier TDDFT benchmark on the same card, a CPP11 label ran out
+  of memory when the three coupling pairs were solved together. It only fit when the
+  pairs were solved one after another, which this example's labeler does not do. Before a
+  CPP10 or larger campaign, label one seed as a test, or use a larger GPU.
 * **Training with the default** ``hipnn64``: ``hippynn_config.json`` uses batch 64 for
   training, evaluation, and the scheduler limit. With 40,000 training structures, each of
   the four members took about 167 s per epoch and peaked at about 4 GiB allocated and

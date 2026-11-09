@@ -2,7 +2,8 @@
 
 python prepare.py --ring-size 6 --output-dir /scratch/cpp6 --generate-seeds
 --count seeds make the bootstrap; --spares more (5% by default) replace seeds whose labels fail.
-For other CPP sizes provide --reference, --energy-offset-ev and --ring-size.
+Sizes with references/cppN_s0.xyz (6-12) need only --ring-size. For another size, provide
+--reference and --energy-offset-ev, or bundle its S0 optimization with references/import_s0_reference.py.
 Model choices: hipnn64 (default), hiphop145, hiphop100, hiphop64; all use four members.
 Configure parsl_configs.py for your site, then run in the prepared directory:
 python -m alframework --master master_config.json
@@ -56,7 +57,10 @@ def prepare(output_dir, *, ring_size=9, reference=None, energy_offset_ev=None,
     if reference is None:
         reference = HERE/f'references/cpp{ring_size}_s0.xyz'
         if not reference.is_file():
-            raise ValueError('Provide a minimized S0 reference and its energy offset for this CPP size')
+            bundled = sorted(int(p.name[3:-7]) for p in (HERE/'references').glob('cpp*_s0.xyz'))
+            raise ValueError(f'No bundled reference for CPP{ring_size} (bundled: {bundled}); provide a '
+                             'minimized S0 reference and its energy offset, or import one with '
+                             'references/import_s0_reference.py')
         record = json.loads(reference.with_suffix('.json').read_text())
         if hashlib.sha256(reference.read_bytes()).hexdigest() != record['reference_sha256']:
             raise ValueError('Minimized reference fingerprint changed')

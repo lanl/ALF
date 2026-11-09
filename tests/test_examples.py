@@ -173,6 +173,73 @@ def test_cpp_prepare_makes_spare_seeds(tmp_path, monkeypatch, spares, expected):
     monkeypatch.delitem(sys.modules, "prepare", raising=False)
 
 
+CPP_FOLDER = ROOT / "examples" / "CPP_excited_gpu4pyscf"
+CPP_REFERENCES = sorted(CPP_FOLDER.glob("references/cpp*_s0.json"), key=lambda p: int(p.name[3:-8]))
+CPP_THEORY = ("xc", "basis", "charge", "multiplicity", "density_fit", "auxbasis", "grids_level",
+              "scf_conv_tol", "scf_max_cycle", "nroots", "cphf_conv_tol")
+
+
+def _cpp_module(monkeypatch, name):
+    monkeypatch.syspath_prepend(str(CPP_FOLDER))
+    monkeypatch.delitem(sys.modules, name, raising=False)
+    return importlib.import_module(name)
+
+
+def test_cpp_references_cover_six_through_twelve():
+    assert [read(p)["ring_size"] for p in CPP_REFERENCES][:7] == list(range(6, 13))
+
+
+@pytest.mark.parametrize("record_path", CPP_REFERENCES, ids=lambda p: p.stem)
+def test_cpp_bundled_reference_is_consistent(record_path, monkeypatch):
+    """Each bundled S0 reference matches its hash, ring size, offset, and the example's theory."""
+    import hashlib
+
+    from ase.io import read as read_atoms
+
+    sampling = _cpp_module(monkeypatch, "initial_sampling")
+    record, ring = read(record_path), int(record_path.name[3:-8])
+    xyz = record_path.with_name(record["reference"])
+    assert xyz.name == f"cpp{ring}_s0.xyz" and record["ring_size"] == ring
+    assert hashlib.sha256(xyz.read_bytes()).hexdigest() == record["reference_sha256"]
+    assert record["success"] and record["optimizer_converged"] and record["selected_state"] == 0
+    assert record["energy_offset_eV"] == pytest.approx(
+        record["ground_energy_hartree"] * record["hartree_to_ev"], abs=1e-8)
+    qm = read(CPP_FOLDER / "QM_config.json")
+    assert {key: record["theory"][key] for key in CPP_THEORY} == {key: qm[key] for key in CPP_THEORY}
+    atoms = read_atoms(xyz)
+    assert len(atoms) == 10 * ring and atoms.get_chemical_formula() == f"C{6 * ring}H{4 * ring}"
+    topology = sampling.infer_topology(atoms, sampling.DEFAULT_SETTINGS["screening"])
+    assert topology["nring"] == ring
+    assert sampling.screen_geometry(atoms.positions, topology, sampling.DEFAULT_SETTINGS["screening"]) is None
+    # CAM-B3LYP/6-31G S0 energies grow by about 230.88 Ha per phenylene; a wrong
+    # offset copied from another size or theory would break this.
+    assert record["ground_energy_hartree"] / ring == pytest.approx(-230.8, abs=0.3)
+
+
+@pytest.mark.parametrize("record_path", CPP_REFERENCES, ids=lambda p: p.stem)
+def test_cpp_prepare_uses_bundled_reference(record_path, tmp_path, monkeypatch):
+    import h5py
+
+    record, ring = read(record_path), int(record_path.name[3:-8])
+    run = _cpp_module(monkeypatch, "prepare").prepare(
+        tmp_path / f"cpp{ring}", ring_size=ring, count=8, spares=2, generate_seeds=True)
+    assert read(run / "QM_config.json")["energy_offset_eV"] == record["energy_offset_eV"]
+    assert read(run / "hippynn_config.json")["n_atoms"] == 10 * ring
+    assert read(run / "preparation.json")["ring_size"] == ring
+    assert (run / "reference.xyz").read_bytes() == record_path.with_name(record["reference"]).read_bytes()
+    with h5py.File(run / "seeds/seed.h5", "r") as handle:
+        assert handle[f"cpp{ring}/coordinates"].shape == (10, 10 * ring, 3)
+    for name in ("prepare", "initial_sampling"):
+        monkeypatch.delitem(sys.modules, name, raising=False)
+
+
+def test_cpp_prepare_rejects_unbundled_size(tmp_path, monkeypatch):
+    prepare = _cpp_module(monkeypatch, "prepare").prepare
+    with pytest.raises(ValueError, match="No bundled reference for CPP13"):
+        prepare(tmp_path / "cpp13", ring_size=13)
+    monkeypatch.delitem(sys.modules, "prepare", raising=False)
+
+
 def test_example_masters_have_valid_bootstrap_spares():
     from alframework.tools.batching import bootstrap_spare_count
 

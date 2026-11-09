@@ -139,7 +139,7 @@ def test_cpp_gpu4pyscf_configs_are_valid(name):
 
 
 def test_cpp_training_benchmark_runs_and_projects_an_epoch(monkeypatch):
-    """The Darwin B8 capacity script, run on CPU for one step of the smallest network."""
+    """The CPP training benchmark, run on CPU for one step of the smallest network."""
     pytest.importorskip("hippynn")
     folder = ROOT / "examples" / "CPP_excited_gpu4pyscf"
     monkeypatch.syspath_prepend(str(folder))

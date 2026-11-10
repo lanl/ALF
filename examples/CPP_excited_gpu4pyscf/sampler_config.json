@@ -133,7 +133,7 @@
   "Fscut": 0.05,
   "gap_std_cut": 0.05,
   "Ncheck": 10,
-  "min_time": 0.1,
+  "min_time": 0.005,
   "distcut": 0.7,
   "srt_temp": [
     300.0,

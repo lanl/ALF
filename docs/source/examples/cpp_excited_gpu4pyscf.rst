@@ -214,8 +214,14 @@ Sampling Settings
    * - Setting
      - In this example
    * - ``dt``, ``maxt``, ``min_time``
-     - 0.5 fs steps for up to 1 ps at 300 K. Frames before 0.1 ps aren't labeled, since
-       each trajectory starts from a stored label.
+     - 0.5 fs steps for up to 1 ps at 300 K. Uncertainty acquisition starts at
+       0.005 ps (5 fs), allowing early frames to improve a small bootstrap model
+       before its trajectories reach the topology limits. Physical screens apply
+       from the start, including before ``min_time``.
+   * - ``save_h5_threshold``
+     - 499: write a new HDF5 batch and retrain after at least 500 new converged
+       labels. ALF uses a strict ``>`` comparison; failed and unconverged QM
+       results do not count toward this threshold.
    * - ``Escut``, ``Fscut``
      - 0.10 eV on the ensemble spread of the selected state's total energy, about 1.1 meV
        per atom for CPP9, and 0.05 eV/Angstrom on the mean force spread. The largest force
@@ -243,9 +249,10 @@ The cutoffs are starting values. Without cohorts, ALF rereads them while it runs
 you can tune them in ``sampler_config.json`` without a restart. The master config
 writes one row per trajectory to ``status_plots/trajectories.jsonl``, with the peak
 ``Es``, ``Fs``, ``Fsmax``, and ``gap_std`` of each; see the progress plots in
-:doc:`../user_guide/samplers`. If almost every trajectory triggers at 0.1 ps, raise the
-cutoffs. If many run to 1 ps without triggering, lower them, or the QM workers run
-short of work.
+:doc:`../user_guide/samplers`. If almost every trajectory triggers at 0.005 ps,
+inspect the uncertainties and model errors before raising the cutoffs or minimum
+time. A weak bootstrap model may need these early labels to improve. If many run
+to 1 ps without triggering, lower the cutoffs, or the QM workers run short of work.
 
 Solvent
 -------

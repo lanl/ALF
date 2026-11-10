@@ -34,10 +34,10 @@ def held_labels_directory(master_config):
 class HeldLabels:
     """Finished QM results that aren't stored yet, kept as atomically written pieces.
 
-    Counts use the QM queue's units (tasks, or structures for batched labeling), so the bootstrap
-    target and ``save_h5_threshold`` keep their meaning. Failed work counts toward the store
-    threshold, as it did while it waited in the queue, but only for this process: after a crash
-    there's nothing left of it to store.
+    Counts use the QM queue's units (tasks, or structures for batched labeling).
+    Bootstrap and retraining thresholds use converged labels. ``finished()`` also includes failed
+    work for queue limits, but failures are counted only for this process: after a crash there's
+    nothing left of them to store.
     """
 
     def __init__(self, directory):
@@ -67,7 +67,7 @@ class HeldLabels:
             self._ids.update(result.get_moleculeid() for result in piece['results'])
 
     def hold(self, results, failed=0):
-        """Write ``results`` as a new piece, and count ``failed`` toward the next store."""
+        """Write ``results`` as a new piece, and track failures until the next store."""
         self.failed_since_store += failed
         if not results:
             return

@@ -98,8 +98,9 @@ Master configuration
         - Number of GPUs on each ML or sampler node. The two share this value, and a
           GPU mask on the worker takes precedence over it.
       * - ``save_h5_threshold``
-        - Number of newly labeled configurations needed before ALF writes a
-          new HDF5 batch and starts another ML training cycle.
+        - ALF writes a new HDF5 batch and starts another ML training cycle when
+          the number of new converged labels exceeds this value. For 500 new
+          labels, set 499. Failed and unconverged QM results do not count.
 
 Data and property expectations
    The ML task reads ALF's HDF5 data. Dataset names in the ML configuration

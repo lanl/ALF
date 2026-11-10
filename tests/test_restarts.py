@@ -271,6 +271,44 @@ def test_held_labels_count_converged_labels_apart_from_failed_ones(tmp_path):
     assert HeldLabels(tmp_path / "held").converged() == 2, "a new process counts the same"
 
 
+@pytest.mark.parametrize('failure', ['unconverged', 'exception'])
+def test_retraining_waits_for_new_converged_labels(tmp_path, monkeypatch, failure):
+    import threading
+    import time
+    from parsl import python_app
+
+    tasks = restart_tasks(tmp_path, [])
+    attempts, training_sizes = [], []
+    lock = threading.Lock()
+
+    @python_app(executors=['alf_QM_executor'])
+    def qm(molecule_object):
+        if not molecule_object.get_moleculeid().startswith('mol-boot-'):
+            with lock:
+                attempts.append(molecule_object.get_moleculeid())
+                fail = len(attempts) <= 4
+            time.sleep(0.01)
+            if fail:
+                if failure == 'exception':
+                    raise RuntimeError('QM task failed')
+                molecule_object.set_converged_flag(False)
+                return molecule_object
+        molecule_object.store_results({'energy': -1., 'forces': np.zeros((len(molecule_object), 3))})
+        molecule_object.set_converged_flag(True)
+        return molecule_object
+
+    @python_app(executors=['alf_ML_executor'])
+    def ml(current_training_id):
+        training_sizes.append(len(stored_ids(tmp_path / 'h5')))
+        (tmp_path / 'models' / f'model-{current_training_id:04d}').mkdir(parents=True)
+        return [True, True], current_training_id
+
+    run_alf_driver(tmp_path, monkeypatch, **dict(tasks, qm=qm, ml=ml),
+                   bootstrap_set=2, parallel_samplers=2, target_queued_QM=2, save_h5_threshold=3)
+    assert training_sizes[0] == 2
+    assert training_sizes[1] >= 6, 'retraining needs four new converged labels beyond the bootstrap'
+
+
 def test_bootstrap_spares_need_a_finite_bootstrap_and_a_count():
     from alframework.tools.batching import bootstrap_spare_count
 
@@ -658,8 +696,8 @@ def test_budget_stop_stores_the_labels_it_holds(tmp_path, monkeypatch, capsys):
     assert len(ids) > 8
 
 
-def test_failed_labels_count_toward_the_next_store_as_before(tmp_path, monkeypatch):
-    """Failed QM work counted toward save_h5_threshold while it waited in the queue, and still does."""
+def test_failed_labels_do_not_trigger_retraining(tmp_path, monkeypatch):
+    """A stream of failed calculations must not retrain on the unchanged bootstrap."""
     from parsl import python_app
 
     built = []
@@ -673,10 +711,8 @@ def test_failed_labels_count_toward_the_next_store_as_before(tmp_path, monkeypat
         molecule_object.set_converged_flag(True)
         return molecule_object
 
-    # Counting only converged labels, the second store would never come.
-    run_alf_driver(tmp_path, monkeypatch, **dict(tasks, qm=fails_in_active_learning), **LOOP, timeout=20,
-                   stop_when=lambda status: status["current_h5_id"] >= 2)
-    with h5py.File(tmp_path / "h5" / "data-0001.h5") as handle:
-        second = [name for group in handle.values() for name in group["_id"].asstr()[()]]
-    assert len(second) <= LOOP["save_h5_threshold"], "failures, not labels, filled the threshold"
-    assert all(name.startswith("mol-boot-") for name in second), "only bootstrap labels that finished late"
+    run = run_alf_driver(tmp_path, monkeypatch, **dict(tasks, qm=fails_in_active_learning), **LOOP,
+                         stop_when=lambda status: status['lifetime_failed_QM_tasks'] >= 6)
+    assert run.status['current_h5_id'] == 1
+    assert run.status['current_training_id'] == 1
+    assert not (tmp_path / 'h5/data-0001.h5').exists()

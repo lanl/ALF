@@ -90,7 +90,7 @@
   "finite_bootstrap": true,
   "target_queued_QM": 64,
   "minimum_QM": 0,
-  "save_h5_threshold": 128,
+  "save_h5_threshold": 499,
   "parallel_samplers": 64,
   "maximum_builder_structures": 16,
   "gpus_per_node": 4,

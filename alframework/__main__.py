@@ -501,7 +501,7 @@ while True:
     hold_finished_labels()
 
     # Train more models
-    if admitting and (held.finished() > master_config['save_h5_threshold']) and (ML_task_queue.get_number() < 1):
+    if admitting and (held.converged() > master_config['save_h5_threshold']) and (ML_task_queue.get_number() < 1):
         store_held_labels()
         task_input = build_input_dict(ml_task.func,
                                       [{"ML_config": ML_config}, *all_configs, status],

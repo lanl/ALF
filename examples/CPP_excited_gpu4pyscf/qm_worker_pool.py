@@ -11,9 +11,23 @@ import subprocess
 import sys
 
 
-CUDA_UUID_QUERY = '''import json, uuid, cupy
+CUDA_UUID_QUERY = '''import json, subprocess, cupy
 runtime = cupy.cuda.runtime
-print(json.dumps(["GPU-" + str(uuid.UUID(bytes=runtime.getDeviceProperties(i)["uuid"]))
+# Some CuPy versions expose the binary UUID as a null-terminated string,
+# truncating UUIDs containing zero bytes. Match CUDA-visible PCI bus IDs to
+# nvidia-smi's textual UUIDs instead, preserving the inherited mask/order.
+def pci_key(value):
+    if isinstance(value, bytes):
+        value = value.decode('ascii')
+    return tuple(int(part, 16) for part in value.strip().replace('.', ':').split(':'))
+inventory = subprocess.check_output(
+    ['nvidia-smi', '--query-gpu=uuid,pci.bus_id', '--format=csv,noheader,nounits'],
+    text=True, timeout=30)
+by_pci = {}
+for line in inventory.splitlines():
+    gpu_uuid, pci = line.split(',', 1)
+    by_pci[pci_key(pci)] = gpu_uuid.strip()
+print(json.dumps([by_pci[pci_key(runtime.deviceGetPCIBusId(i))]
                   for i in range(runtime.getDeviceCount())]))
 '''
 

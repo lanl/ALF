@@ -57,6 +57,7 @@ pieces to a concrete run.
 
    user_guide/parsl
    user_guide/batching
+   user_guide/gpu_sizing
    user_guide/running_at_scale
 
 .. toctree::

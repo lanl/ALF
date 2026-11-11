@@ -316,7 +316,8 @@ These are measurements on a 40 GB A100, for CPP9:
   more than CPP9's largest interatomic distance of 14.6 Angstrom. At 8 Angstrom a CPP9
   structure has 1,670 pairs rather than 3,170. On CPU at batch 16, this made a training
   step about 25% faster and an evaluation step about 40% faster, so expect GPU memory
-  and epoch times below the figures above; rerun ``benchmark_training.py`` to measure
+  and epoch times below the figures above; rerun ``benchmark_training.py``, or
+  ``python -m alframework.benchmark --run-dir`` on a prepared run (see :doc:`../user_guide/gpu_sizing`), to measure
   them. The cutoff sets the network, so choose it before a campaign's first training.
 * **Training with** ``hipnn100``: 2.4 times the parameters of ``hipnn64``. On CPU at
   batch 16, a training step took about 10% longer. It hasn't been measured on a GPU,

@@ -12,6 +12,8 @@ puts several structures into one task. It is useful when:
 Batching is opt-in. Without the settings on this page, ALF submits one structure
 per task.
 
+To measure how many structures a GPU should take, run the benchmark in :doc:`gpu_sizing`.
+
 Choosing Widths
 ---------------
 

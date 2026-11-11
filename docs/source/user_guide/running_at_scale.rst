@@ -53,3 +53,4 @@ Related
 - :ref:`ml-multinode-training` and :ref:`ml-multigpu-members`: spreading an ensemble over nodes, and
   training one member on several GPUs.
 - :doc:`batching`: several structures per task, so fewer, larger tasks.
+- :doc:`gpu_sizing`: measuring batch sizes and GPUs per member on your own hardware.

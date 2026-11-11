@@ -441,7 +441,8 @@ Sizing Executors For Batching
 -----------------------------
 
 A Parsl worker runs one ALF task, whatever its width. With batching, one task can
-hold many structures, so size executors by tasks rather than structures:
+hold many structures, so size executors by tasks rather than structures. To find how many
+trajectories a sampler GPU should run, see :doc:`gpu_sizing`:
 
 * **Sampler:** with the ``torchsim`` or ``alchemi`` engines, one worker per GPU is
   a natural starting point, since each task packs its trajectories onto one device.

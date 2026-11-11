@@ -16,7 +16,7 @@ or running the coordinator under ``nohup``.
 The Status File
 ---------------
 
-``status_path`` in the master configuration, ``status.json`` in most examples, is rewritten every loop.
+``status_path`` in the master configuration, ``status.txt`` in most examples, is rewritten every loop.
 It holds the current model, training, shard, and molecule IDs, the number of labels stored so far
 (``lifetime_stored_labels``), and counts of failed tasks and structures by stage. A restart reads it,
 so don't edit it while the coordinator runs. See :ref:`configuration-restarts`.

@@ -594,3 +594,27 @@ def test_trajectories_in_one_task_record_their_own_wall_time():
     early_time, late_time = early.get_metadata()["realtime_simulation"], late.get_metadata()["realtime_simulation"]
     # Records are written one after another at the end, so a small gap wouldn't show per-trajectory timing.
     assert early_time > 0 and late_time - early_time > 0.05
+
+
+LOADS = []
+
+
+def _counting_loader(model_directory, device="cpu", **options):
+    LOADS.append((model_directory, device, options))
+    return object()
+
+
+def test_worker_ensemble_loads_each_model_once_per_worker(monkeypatch):
+    """Sampler tasks on one worker reuse the loaded ensemble until the model changes."""
+    from alframework.samplers import batched_mlmd
+
+    monkeypatch.setattr(batched_mlmd, "_WORKER_ENSEMBLE", {})
+    LOADS.clear()
+    config = {"batched_calculator": "tests.test_batched_mlmd._counting_loader",
+              "batched_calculator_options": {"energy_key": "energy"}}
+    first = batched_mlmd.worker_ensemble(config, "models/model-0001/", "cpu")
+    assert batched_mlmd.worker_ensemble(config, "models/model-0001/", "cpu") is first
+    second = batched_mlmd.worker_ensemble(config, "models/model-0002/", "cpu")
+    assert second is not first and len(batched_mlmd._WORKER_ENSEMBLE) == 1, "only the current model is held"
+    batched_mlmd.worker_ensemble(dict(config, batched_calculator_options={"energy_key": "E0"}), "models/model-0002/", "cpu")
+    assert [load[0] for load in LOADS] == ["models/model-0001/", "models/model-0002/", "models/model-0002/"]

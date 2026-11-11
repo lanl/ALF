@@ -320,7 +320,9 @@ worker to one GPU. ``gpus_per_node`` has no effect on this:
 A number names GPUs from 0 upward, which can be wrong when the scheduler gave you
 only some of a node's GPUs. In that case, start workers with
 ``examples/CPP_excited_gpu4pyscf/qm_worker_pool.py``, which looks up the allocated GPUs
-and binds one to each worker; see :doc:`../examples/cpp_excited_gpu4pyscf`.
+and binds one to each worker; see :doc:`../examples/cpp_excited_gpu4pyscf`. It matches GPUs by their
+PCI addresses with ``nvidia-smi``, so it works on NVIDIA GPUs only, and ``nvidia-smi`` must be on the
+QM workers' ``PATH``.
 
 Globus Compute Endpoints
 ------------------------

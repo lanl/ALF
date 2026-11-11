@@ -35,9 +35,9 @@ class HeldLabels:
     """Finished QM results that aren't stored yet, kept as atomically written pieces.
 
     Counts use the QM queue's units (tasks, or structures for batched labeling).
-    Bootstrap and retraining thresholds use converged labels. ``finished()`` also includes failed
-    work for queue limits, but failures are counted only for this process: after a crash there's
-    nothing left of them to store.
+    Retraining and a finite bootstrap count converged labels; a bootstrap that isn't finite, and
+    ``maximum_completed_QM``, count every result that returned, converged or not. ``finished()`` also
+    includes failed tasks, which hold no results and are counted only for this process.
     """
 
     def __init__(self, directory):

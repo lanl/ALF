@@ -153,8 +153,9 @@ Training stays on one node here. For a larger ensemble, see :ref:`ml-multinode-t
 **GPU binding.** GPU4PySCF needs each QM worker to see one GPU as its local device 0;
 see :ref:`parsl-gpu4pyscf-workers`. ``parsl_configs.py`` handles this by launching QM
 workers through ``qm_worker_pool.py``, which looks up the GPUs the scheduler allocated
-and has Parsl bind one to each worker. Training and sampling assign their devices as
-usual. To use this binding at another site, keep that launch command and copy
+and has Parsl bind one to each worker. It finds them with ``nvidia-smi``, so it needs NVIDIA GPUs
+and ``nvidia-smi`` on the QM workers' ``PATH``.
+Training and sampling assign their devices as usual. To use this binding at another site, keep that launch command and copy
 ``qm_worker_pool.py`` along with it.
 
 Run The Example

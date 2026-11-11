@@ -139,8 +139,9 @@ The master config controls the workflow wiring. Common fields include:
        ``1``. See :doc:`builders`.
    * - ``maximum_completed_QM``
      - Optional limit on structures in the QM queue plus finished labels waiting to
-       be stored. ALF stops starting builders at this limit until results are
-       stored. By default, there is no limit.
+       be stored, converged or not. Failed calculations don't count. ALF stops
+       starting builders at this limit until results are stored. By default, there
+       is no limit.
    * - ``held_labels_dir``
      - Optional. Where finished labels wait until they're stored; see
        :ref:`configuration-restarts`. The default is ``h5_dir`` with ``_held``

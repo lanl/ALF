@@ -621,11 +621,28 @@ def mlmd_trajectories_task(molecule_objects, sampler_config, model_path, current
         for molecule in molecule_objects:
             molecule.update_metadata(dict(sampling_task_width=len(molecule_objects),
                                            sampling_engine=driver_settings(sampler_config)['engine']))
-    if sampler_config.get('batched_calculator') is not None:
-        loader = load_module_from_config(sampler_config, 'batched_calculator')
-        models = loader(model_path.format(current_model_id) + '/', device=device,
-                        **(sampler_config.get('batched_calculator_options') or {}))
-    else:
-        calc_class = load_module_from_config(sampler_config, 'ase_calculator')
-        models = calc_class(model_path.format(current_model_id) + '/', device=device)
+    models = worker_ensemble(sampler_config, model_path.format(current_model_id) + '/', device)
     return sample_trajectories(list(molecule_objects), models, sampler_config, device=device)
+
+
+# The ensemble this worker loaded last. A promoted model directory never changes, so later tasks
+# with the same model, loader, and device reuse it instead of reading every checkpoint again.
+_WORKER_ENSEMBLE = {}
+
+
+def worker_ensemble(sampler_config, model_directory, device):
+    """Load the sampler's ensemble, or return the one this worker already loaded for the same model."""
+    import json
+    batched = sampler_config.get('batched_calculator') is not None
+    options = sampler_config.get('batched_calculator_options') or {}
+    key = (sampler_config.get('batched_calculator') if batched else sampler_config.get('ase_calculator'),
+           str(model_directory), str(device), json.dumps(options, sort_keys=True, default=str))
+    if key not in _WORKER_ENSEMBLE:
+        _WORKER_ENSEMBLE.clear()  # Free the previous model's memory before loading the new one.
+        if batched:
+            loader = load_module_from_config(sampler_config, 'batched_calculator')
+            _WORKER_ENSEMBLE[key] = loader(model_directory, device=device, **options)
+        else:
+            calc_class = load_module_from_config(sampler_config, 'ase_calculator')
+            _WORKER_ENSEMBLE[key] = calc_class(model_directory, device=device)
+    return _WORKER_ENSEMBLE[key]

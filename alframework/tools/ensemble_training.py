@@ -104,7 +104,8 @@ def wait_for_shards(paths, timeout=SHARD_WAIT_SECONDS, poll=SHARD_POLL_SECONDS):
     """
     deadline = time.monotonic() + timeout
     while True:
-        missing = [path for path in paths if Path(path).name not in os.listdir(Path(path).parent)]
+        listings = {parent: set(os.listdir(parent)) for parent in {Path(path).parent for path in paths}}
+        missing = [path for path in paths if Path(path).name not in listings[Path(path).parent]]
         if not missing:
             return
         if time.monotonic() >= deadline:

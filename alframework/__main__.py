@@ -455,7 +455,7 @@ while True:
 
     # Run more builders
     if admitting and (QM_task_queue.get_queued_number() < master_config['target_queued_QM']) and \
-            (QM_task_queue.get_number() + held.finished() < master_config.get('maximum_completed_QM', 1e12)):
+            (QM_task_queue.get_number() + held.successful() < master_config.get('maximum_completed_QM', 1e12)):
         while sampler_task_queue.get_number() + builder_task_queue.get_number() * master_config.get('maximum_builder_structures', 1) \
                 < master_config['parallel_samplers']:
             moleculeids = ['mol-{:04d}-{:010d}'.format(status['current_model_id'], it_ind) for it_ind in

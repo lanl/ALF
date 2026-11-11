@@ -11,7 +11,7 @@ new ALF run. The example connects all major ALF stages:
 4. Sample new structures with ML-driven molecular dynamics.
 5. Send selected high-uncertainty configurations to ORCA for QM labeling.
 6. Store labeled data in HDF5 files.
-7. Retrain a HIPPYNN ensemble once the number of high-uncertainty configurations exceeds ``save_h5_threshold``.
+7. Retrain a HIPPYNN ensemble once the number of new converged labels exceeds ``save_h5_threshold``.
 
 The files needed to run the example are located in ``examples/simple_water``.
 

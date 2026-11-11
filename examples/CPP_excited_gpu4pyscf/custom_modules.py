@@ -53,6 +53,8 @@ def build_ring_molecules(moleculeids, builder_config, h5_path=None, current_h5_i
                 molecule.update_metadata(dict(ring_tier=int(group['tier_index'][frame]),
                                               ring_rotation_angles_degrees=group['rotation_angles_degrees'][frame].tolist(),
                                               ring_rattle_rms_angstrom=float(group['rattle_rms_angstrom'][frame])))
+                if 'ring_mode_rms_angstrom' in group:  # Seed pools prepared before ring modes lack it.
+                    molecule.update_metadata(dict(ring_mode_rms_angstrom=float(group['ring_mode_rms_angstrom'][frame])))
     return molecules
 
 

@@ -6,26 +6,46 @@
   "tiers": [
     {
       "name": "narrow",
-      "fraction": 0.5,
+      "fraction": 0.35,
       "rotation_range_degrees": [
-        -15,
-        15
+        -15.0,
+        15.0
       ],
       "rattle_rms_range_angstrom": [
-        0,
+        0.0,
         0.015
       ]
     },
     {
       "name": "broad",
-      "fraction": 0.5,
+      "fraction": 0.35,
       "rotation_range_degrees": [
-        -30,
-        30
+        -30.0,
+        30.0
       ],
       "rattle_rms_range_angstrom": [
-        0,
+        0.0,
         0.03
+      ]
+    },
+    {
+      "name": "ring_modes",
+      "fraction": 0.3,
+      "rotation_range_degrees": [
+        -15.0,
+        15.0
+      ],
+      "rattle_rms_range_angstrom": [
+        0.0,
+        0.015
+      ],
+      "ring_mode_orders": [
+        2,
+        3
+      ],
+      "ring_mode_amplitude_range_angstrom": [
+        0.0,
+        0.3
       ]
     }
   ],

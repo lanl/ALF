@@ -105,9 +105,19 @@ residual gradient and the ``energy_offset_eV`` that ``prepare.py`` writes into
 ``QM_config.json``. To add a size, optimize its S0 geometry with the same theory, then
 bundle it with ``python references/import_s0_reference.py /path/to/campaign/cppN``. The
 script checks convergence, theory and topology, and refuses to overwrite a reference.
-Seed preparation applies phenyl rotations and small rattles to the reference, half in
-a narrow range and half in a broad one. It runs no QM or optimization. Edit
-``seed_config.json`` to change those ranges.
+Seed preparation applies phenyl rotations and small rattles to the reference, in three
+tiers. It runs no QM or optimization. Edit ``seed_config.json`` to change them.
+
+* ``narrow`` (35%): rotations up to 15 degrees and rattles up to 0.015 Angstrom RMS.
+* ``broad`` (35%): rotations up to 30 degrees and rattles up to 0.03 Angstrom RMS.
+* ``ring_modes`` (30%): the narrow tier plus smooth deformations of the whole ring, such
+  as squashing it into an ellipse or bending it out of its plane. These are slow motions
+  that short trajectories barely move. For each order ``k`` in ``ring_mode_orders``,
+  the ring is displaced by ``cos(k*phi)`` in and out of its plane, where ``phi`` is the
+  angle around the ring, with amplitudes drawn up to
+  ``ring_mode_amplitude_range_angstrom`` and random phases. Each phenyl moves as a rigid
+  unit, so only the bonds between phenyls stretch. The 0.3 Angstrom limit is an estimate
+  of about twice the thermal amplitude of these modes at 300 K, not a computed value.
 
 Configure Parsl
 ---------------
@@ -214,10 +224,20 @@ Sampling Settings
    * - Setting
      - In this example
    * - ``dt``, ``maxt``, ``min_time``
-     - 0.5 fs steps for up to 1 ps at 300 K. Uncertainty acquisition starts at
+     - 0.5 fs steps for up to 1 ps. Uncertainty acquisition starts at
        0.005 ps (5 fs), allowing early frames to improve a small bootstrap model
        before its trajectories reach the topology limits. Physical screens apply
        from the start, including before ``min_time``.
+   * - ``srt_temp``, ``end_temp``
+     - Each trajectory draws a start and an end temperature between 300 and 500 K and
+       changes linearly between them. Higher temperatures cross the barriers between
+       phenyl twists more often, at the cost of some labels in regions that matter less at
+       300 K and more trajectories ended by the topology check.
+   * - ``friction_per_fs``
+     - 0.01 per fs. The thermostat still holds the temperature within about 100 fs, but
+       slow motions such as phenyl twisting and ring deformations aren't damped out. At
+       0.1, the slowest ring motions would take several picoseconds to move, longer than
+       a trajectory.
    * - ``save_h5_threshold``
      - 499: write a new HDF5 batch and retrain after at least 500 new converged
        labels. ALF uses a strict ``>`` comparison; failed and unconverged QM

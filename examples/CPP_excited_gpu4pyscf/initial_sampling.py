@@ -29,10 +29,13 @@ SCHEMA = "alf.cpp_ring_pool.v1"
 DEFAULT_SETTINGS = {
     "count": 1000, "seed": 42, "shuffle_samples": True,
     "tiers": [
-        {"name": "narrow", "fraction": .5, "rotation_range_degrees": [-15., 15.],
+        {"name": "narrow", "fraction": .35, "rotation_range_degrees": [-15., 15.],
          "rattle_rms_range_angstrom": [0., .015]},
-        {"name": "broad", "fraction": .5, "rotation_range_degrees": [-30., 30.],
+        {"name": "broad", "fraction": .35, "rotation_range_degrees": [-30., 30.],
          "rattle_rms_range_angstrom": [0., .03]},
+        {"name": "ring_modes", "fraction": .3, "rotation_range_degrees": [-15., 15.],
+         "rattle_rms_range_angstrom": [0., .015],
+         "ring_mode_orders": [2, 3], "ring_mode_amplitude_range_angstrom": [0., .3]},
     ],
     "screening": {"bond_min_scale": .9, "bond_max_scale": 1.1,
         "connectivity_scale": 1.2, "duplicate_precision_angstrom": 1.e-6,
@@ -58,8 +61,10 @@ def validate_config(config):
     names = []
     for tier in tiers:
         if set(tier) - {'name', 'fraction', 'rotation_range_degrees', 'rotation_max_degrees',
-                        'rattle_rms_range_angstrom', 'rattle_rms_angstrom'}:
+                        'rattle_rms_range_angstrom', 'rattle_rms_angstrom',
+                        'ring_mode_orders', 'ring_mode_amplitude_range_angstrom'}:
             raise ValueError('Unknown ring sampling tier setting')
+        ring_mode_settings(tier)
         names.append(tier['name'])
         if not isinstance(tier['name'], str) or not tier['name']:
             raise ValueError('Sampling tier names must be nonempty strings')
@@ -179,6 +184,69 @@ def component_ranges(component: dict[str, Any]) -> tuple[tuple[float, float], tu
         intervals.append(tuple(float(x) for x in bounds))
     return intervals[0], intervals[1]
 
+def ring_mode_settings(tier: dict[str, Any]) -> tuple[tuple[int, ...], tuple[float, float]] | None:
+    """Return a tier's ring deformation orders and amplitude interval, or None without them."""
+    keys = {'ring_mode_orders', 'ring_mode_amplitude_range_angstrom'}
+    if not keys & set(tier):
+        return None
+    if not keys <= set(tier):
+        raise ValueError('ring_mode_orders and ring_mode_amplitude_range_angstrom go together')
+    orders = tier['ring_mode_orders']
+    # Order 1 would move or tilt the whole ring rigidly, which alignment removes.
+    if (not isinstance(orders, list) or not orders or len(set(orders)) != len(orders)
+            or any(isinstance(k, bool) or not isinstance(k, int) or k < 2 for k in orders)):
+        raise ValueError('ring_mode_orders must be distinct integers >= 2')
+    bounds = np.asarray(tier['ring_mode_amplitude_range_angstrom'], dtype=float)
+    if bounds.shape != (2,) or not np.isfinite(bounds).all() or not 0 <= bounds[0] <= bounds[1]:
+        raise ValueError(f"Invalid ring mode amplitude interval: {tier['ring_mode_amplitude_range_angstrom']}.")
+    return tuple(orders), (float(bounds[0]), float(bounds[1]))
+
+
+def ring_frame(positions: np.ndarray, topology: dict[str, Any]) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Center, in-plane axes, and normal of the macrocycle, from its phenyl centroids."""
+    centroids = np.asarray([positions[ring].mean(axis=0) for ring in topology['rings']])
+    center = centroids.mean(axis=0)
+    normal = np.linalg.svd(centroids - center)[2][-1]
+    first = centroids[0] - center
+    first -= (first @ normal) * normal
+    first /= np.linalg.norm(first)
+    return center, first, np.cross(normal, first), normal
+
+
+def _rotation(axis: np.ndarray, theta: float) -> np.ndarray:
+    cross = np.array([[0, -axis[2], axis[1]], [axis[2], 0, -axis[0]], [-axis[1], axis[0], 0]])
+    return np.eye(3) + np.sin(theta) * cross + (1 - np.cos(theta)) * cross @ cross
+
+
+def deform_ring(positions: np.ndarray, topology: dict[str, Any], modes: list[tuple[int, float, float, float, float]]) -> np.ndarray:
+    """Deform the macrocycle smoothly, moving each phenyl and its hydrogens as a rigid unit.
+
+    Each mode is (k, A, alpha, B, beta). At a phenyl's angle phi around the macrocycle, its
+    centroid moves radially by A*cos(k*phi + alpha) and tangentially by -(A/k)*sin(k*phi + alpha),
+    which keeps the circumference unchanged to first order, and along the normal by
+    B*cos(k*phi + beta). The phenyl also turns to follow the deformed ring's local direction,
+    so the strain falls on the bonds between phenyls, not inside them.
+    """
+    center, first, second, normal = ring_frame(positions, topology)
+    radius = np.mean([np.linalg.norm(positions[ring].mean(axis=0) - center) for ring in topology['rings']])
+    result = positions.copy()
+    for group, ring in zip(topology['groups'], topology['rings']):
+        centroid = positions[ring].mean(axis=0)
+        phi = np.arctan2((centroid - center) @ second, (centroid - center) @ first)
+        radial = np.cos(phi) * first + np.sin(phi) * second
+        tangential = np.cross(normal, radial)
+        shift, turn_normal, turn_radial = np.zeros(3), 0., 0.
+        for k, inplane, alpha, axial, beta in modes:
+            shift += inplane * np.cos(k*phi + alpha) * radial - inplane / k * np.sin(k*phi + alpha) * tangential
+            shift += axial * np.cos(k*phi + beta) * normal
+            # The deformed ring's tangent turns by (v - dw/dphi)/R in plane and (dz/dphi)/R out of plane.
+            turn_normal += inplane * (k - 1 / k) * np.sin(k*phi + alpha) / radius
+            turn_radial -= axial * k * np.sin(k*phi + beta) / radius
+        rotation = _rotation(normal, turn_normal) @ _rotation(radial, turn_radial)
+        result[group] = (positions[group] - centroid) @ rotation.T + centroid + shift
+    return result
+
+
 def rotate_phenyls(positions: np.ndarray, topology: dict[str, Any], angles: np.ndarray) -> np.ndarray:
     """Rodrigues rotations about fixed para endpoints, including attached H."""
     if len(angles) != topology["nring"]:
@@ -247,7 +315,8 @@ def prepare_ring_pool(config, output_dir, *, config_directory=None):
             group.create_dataset('coordinates', data=samples['coordinates'], compression='gzip', shuffle=True)
             group['topology_atom_ids'] = np.arange(len(atoms), dtype=np.int64)
             group['_id'] = np.asarray([f'cpp{report["ring_size"]}-seed-{i:010d}' for i in range(settings['count'])], dtype='S40')
-            for key in ('rotation_angles_degrees', 'rattle_rms_angstrom', 'requested_rattle_rms_angstrom', 'tier_index', 'attempt_count'):
+            for key in ('rotation_angles_degrees', 'rattle_rms_angstrom', 'ring_mode_rms_angstrom',
+                        'requested_rattle_rms_angstrom', 'tier_index', 'attempt_count'):
                 group[key] = samples[key]
         (temporary/'builder_config.json').write_text(json.dumps(dict(seed_manifest_path=str(output/'provenance.json'), selection_seed=settings['seed']), indent=2)+'\n')
         report['artifacts_sha256'] = {name:_sha256(temporary/name) for name in ('seed.h5', 'reference.xyz', 'builder_config.json')}
@@ -337,14 +406,25 @@ def generate_samples(atoms: Any, config: dict[str, Any], count: int, seed: int) 
     reference_key = np.rint(anchor / config["screening"]["duplicate_precision_angstrom"]).astype(np.int64).tobytes()
     seen = {reference_key}
     coordinates, rotations, rattles, requested_rattles, labels, attempts = [], [], [], [], [], []
+    ring_mode_rms = []
     rejected: Counter[str] = Counter()
     started = time.perf_counter()
     for index, (tier, quota) in enumerate(zip(config["tiers"], tier_counts(count, config["tiers"]))):
         rotation_bounds, rattle_bounds = component_ranges(tier)
+        ring_modes = ring_mode_settings(tier)
         for _ in range(quota):
             for attempt in range(1, config["screening"]["max_attempts_per_structure"] + 1):
                 angles = rng.uniform(*rotation_bounds, topology["nring"])
                 rotated = rotate_phenyls(anchor, topology, angles)
+                deformed = rotated
+                if ring_modes is not None:
+                    # Tiers without ring modes draw nothing here, so their seeds are unchanged.
+                    orders, amplitude_bounds = ring_modes
+                    modes = [(k, *(float(v) for v in rng.uniform([amplitude_bounds[0], 0.]*2, [amplitude_bounds[1], 2*np.pi]*2)))
+                             for k in orders]
+                    deformed = deform_ring(rotated, topology, modes)
+                mode_rms = float(np.sqrt(np.mean(np.sum((deformed - rotated)**2, axis=1))))
+                rotated = deformed
                 rms = rattle_bounds[0] if rattle_bounds[0] == rattle_bounds[1] else float(rng.uniform(*rattle_bounds))
                 displacement = random_rattle(rotated, rms, rng)
                 candidate = align_to_anchor(rotated + displacement, anchor)
@@ -359,6 +439,7 @@ def generate_samples(atoms: Any, config: dict[str, Any], count: int, seed: int) 
                 coordinates.append(candidate)
                 rotations.append(angles)
                 rattles.append(float(np.sqrt(np.mean(np.sum(displacement**2, axis=1)))))
+                ring_mode_rms.append(mode_rms)
                 requested_rattles.append(rms)
                 labels.append(index)
                 attempts.append(attempt)
@@ -370,6 +451,7 @@ def generate_samples(atoms: Any, config: dict[str, Any], count: int, seed: int) 
         "species": np.asarray(atoms.numbers, dtype=np.int64),
         "rotation_angles_degrees": np.asarray(rotations, dtype=np.float64),
         "rattle_rms_angstrom": np.asarray(rattles, dtype=np.float64),
+        "ring_mode_rms_angstrom": np.asarray(ring_mode_rms, dtype=np.float64),
         "requested_rattle_rms_angstrom": np.asarray(requested_rattles, dtype=np.float64),
         "tier_index": np.asarray(labels, dtype=np.int64),
         "attempt_count": np.asarray(attempts, dtype=np.int64),
@@ -380,7 +462,7 @@ def generate_samples(atoms: Any, config: dict[str, Any], count: int, seed: int) 
         raise RuntimeError("Sampling output shape mismatch.")
     if config.get("shuffle_samples", False):
         order = rng.permutation(count)
-        for key in ("coordinates", "rotation_angles_degrees", "rattle_rms_angstrom",
+        for key in ("coordinates", "rotation_angles_degrees", "rattle_rms_angstrom", "ring_mode_rms_angstrom",
                     "requested_rattle_rms_angstrom", "tier_index", "attempt_count"):
             result[key] = result[key][order]
         result["generation_index"] = order

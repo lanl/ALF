@@ -449,7 +449,8 @@ Things to know:
 * ALF checks every window at startup, so a window that combines gap-seeking with UDD,
   for example, stops the run before it starts. The list can't change during a run.
 * A switch happens on the first loop after stored labels reach the limit, so a run can
-  go past the limit by up to ``save_h5_threshold``.
+  go past the limit by up to one batch. A batch holds more than ``save_h5_threshold``
+  labels, and more still when labels converged while a training ran.
 * Tasks already running finish under the old window. A batch uses the window current when
   it's submitted, and each molecule's metadata records its ``sampling_window``.
 * A cohort that spans a switch pools frames from both windows. Selection still works,

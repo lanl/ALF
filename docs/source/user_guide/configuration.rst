@@ -126,8 +126,9 @@ The master config controls the workflow wiring. Common fields include:
        what it dropped, releases its allocations, and exits. Labels that finished
        but weren't stored yet are stored in one last shard, which no model trained
        on. Sampler and QM work still running isn't stored. Labels are counted when a
-       batch is stored, so a run can overshoot by up to ``save_h5_threshold``, plus
-       that last shard. ALF reads this once, at startup.
+       batch is stored, so a run overshoots by up to one batch, plus that last shard.
+       A batch holds more than ``save_h5_threshold`` labels, and more still when
+       labels converged while a training ran. ALF reads this once, at startup.
        The count is kept in ``status_path``. By default, a run continues until you
        stop it.
    * - ``member_retries``

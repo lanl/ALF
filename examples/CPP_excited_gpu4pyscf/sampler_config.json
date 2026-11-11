@@ -137,11 +137,11 @@
   "distcut": 0.7,
   "srt_temp": [
     300.0,
-    300.0
+    500.0
   ],
   "end_temp": [
     300.0,
-    300.0
+    500.0
   ],
   "amp_temp": [
     0.0,
@@ -155,7 +155,7 @@
   "per_dens": null,
   "end_dens": null,
   "translate_to_center": false,
-  "friction_per_fs": 0.1,
+  "friction_per_fs": 0.01,
   "trajectory_frequency": 0,
   "random_seed": 42,
   "device": "cuda"

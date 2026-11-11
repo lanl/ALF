@@ -275,6 +275,23 @@ A single multi-node block (``nodes_per_block=10``, ``max_blocks=1``) starts ever
 may queue for longer. It needs ``SrunLauncher``, because ``SingleNodeLauncher`` starts workers on only
 the first node, and members would run a few at a time.
 
+To train each member on :ref:`several GPUs <ml-multigpu-members>`, give each worker that many GPUs. With
+``gpus_per_member`` 4 on 4-GPU nodes, use one worker per node and no ``available_accelerators``, so
+the worker sees the whole node, and set ``max_blocks`` to the number of members:
+
+.. code-block:: python
+
+   HighThroughputExecutor(
+       label="alf_ML_executor",
+       max_workers_per_node=1,
+       provider=SlurmProvider(nodes_per_block=1, max_blocks=4, ...),
+   )
+
+With ``gpus_per_member`` 2, use two workers per node and list each worker's GPUs, with
+``max_workers_per_node=2`` and ``available_accelerators=["0,1", "2,3"]``. Parsl sets each worker's
+``CUDA_VISIBLE_DEVICES`` to its entry. ALF stops with an error if a worker would get fewer GPUs than
+``gpus_per_member``.
+
 .. _parsl-gpu4pyscf-workers:
 
 GPU4PySCF Workers

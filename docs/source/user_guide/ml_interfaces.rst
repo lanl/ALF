@@ -180,6 +180,9 @@ Important HIPPYNN configuration fields include:
        scheduler set. Any other value overwrites ``CUDA_VISIBLE_DEVICES`` for that
        training process. Multi-node training accepts only ``from_multiprocessing``,
        ``cuda``, or ``cpu``; see :ref:`ml-multinode-training`.
+   * - ``gpus_per_member``
+     - Optional, for the multi-node training tasks. How many GPUs each ensemble member
+       trains on. The default is ``1``. See :ref:`ml-multigpu-members`.
    * - ``remove_high_energy_*``, ``remove_high_forces_*``
      - Optional filters for removing high-energy or high-force structures from
        the training set.
@@ -251,6 +254,31 @@ Each member uses one GPU
 
 Each attempt writes ``placement-model-03-attempt-1.json`` in the ensemble directory, with its
 host, worker, device, and start and end times. The record stays even if the node is lost.
+
+.. _ml-multigpu-members:
+
+Several GPUs per member
+   Set ``gpus_per_member`` in the ML configuration to train each member on that many GPUs, with
+   PyTorch Lightning data parallelism. For example, with ``4`` on 4-GPU nodes, an ensemble of 4
+   trains one member per node, on 4 nodes. Each member's Parsl worker must see that many GPUs;
+   :ref:`parsl-multinode-training` shows the layouts. Install the ``lightning`` extra in the ML
+   worker environment. Both multi-node tasks support it; the single-node tasks stop with an error.
+
+   The batch sizes in the ML configuration, including the scheduler's maximum, are totals across
+   a member's GPUs, so each must divide evenly by ``gpus_per_member``. With ``batch_size`` 64 and 4
+   GPUs, each GPU trains on 16 per step. The optimization is the same as on one GPU, but each GPU
+   does less work per step, so 4 GPUs train less than 4 times faster. Measure the speedup before
+   relying on it.
+
+   A member trained this way writes the same files as one trained on a single GPU, so it is loaded
+   the same way. ``lightning_training.json`` records the devices and the batch sizes per GPU. Some
+   things differ:
+
+   - Each GPU validates its own slice of the validation set, and the losses are averaged, which
+     early stopping uses. When the set doesn't divide evenly, a few structures count twice.
+   - The training set isn't evaluated during training (``fraction_train_eval``), and plots aren't
+     made during training. The final evaluation and plots still run, on one GPU and the full splits.
+   - A member uses one node; a member can't span several nodes.
 
 More members cost more than training time:
 

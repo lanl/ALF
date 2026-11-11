@@ -27,11 +27,25 @@ def validated_retries(member_retries):
     return member_retries
 
 
-def member_device(device_string, gpus_per_node):
+def validated_gpus_per_member(gpus_per_member):
+    if isinstance(gpus_per_member, bool) or not isinstance(gpus_per_member, int) or gpus_per_member < 1:
+        raise ValueError(f'gpus_per_member must be a positive integer, not {gpus_per_member!r}.')
+    return gpus_per_member
+
+
+def single_gpu_members(ML_config):
+    """Refuse several GPUs per member in the single-node tasks, which give each member one GPU."""
+    if validated_gpus_per_member((ML_config or {}).get('gpus_per_member', 1)) > 1:
+        raise ValueError('gpus_per_member above 1 needs a multi-node training task, such as '
+                         'train_excited_state_HIPPYNN_ensemble_multinode_task.')
+
+
+def member_device(device_string, gpus_per_node, gpus_per_member=1):
     """Return this worker's device.
 
     It comes from the worker's rank, not the member number: members 0 and 4 can land on one node,
-    where ``member % 4`` would give them the same GPU. Scheduler masks are left alone.
+    where ``member % 4`` would give them the same GPU. Scheduler masks are left alone. A member
+    with several GPUs uses every GPU its worker sees, and gets the first for setup and testing.
     """
     requested = str(device_string).lower()
     if requested == 'cpu':
@@ -39,20 +53,34 @@ def member_device(device_string, gpus_per_node):
     if requested not in {'from_multiprocessing', 'cuda', 'none'}:
         raise ValueError("Multi-node training picks each member's GPU from its worker, so device_string must be "
                          f"'from_multiprocessing', 'cuda', or 'cpu', not {device_string!r}.")
+    if validated_gpus_per_member(gpus_per_member) > 1:
+        return 'cuda:0'
     return sampling_device({'device': 'cuda'}, gpus_per_node or None)
 
 
-def check_capacity(n_models, gpus_per_node, device_string, executor):
+def check_capacity(n_models, gpus_per_node, device_string, executor, gpus_per_member=1):
     """Refuse members sharing a GPU, and warn when members will have to wait for a slot."""
     workers = getattr(executor, 'workers_per_node', None)
     provider = getattr(executor, 'provider', None)
     if provider is None or workers is None or not math.isfinite(workers):
         return
-    # With available_accelerators each worker has its own GPU, and gpus_per_node may describe sampler nodes.
-    pinned = bool(getattr(executor, 'available_accelerators', None))
-    if gpus_per_node and workers > gpus_per_node and not pinned and str(device_string).lower() != 'cpu':
-        raise ValueError(f'alf_ML_executor has {workers} workers per node but gpus_per_node is {gpus_per_node}, '
-                         'so members would share a GPU. Set available_accelerators if each worker has its own.')
+    # With available_accelerators each worker has its own GPUs, and gpus_per_node may describe sampler nodes.
+    accelerators = getattr(executor, 'available_accelerators', None)
+    if isinstance(accelerators, int):
+        accelerators = [str(index) for index in range(accelerators)]
+    if str(device_string).lower() == 'cpu':
+        pass
+    elif accelerators:
+        # Parsl sets each worker's CUDA_VISIBLE_DEVICES to one entry, such as "0,1".
+        narrowest = min(len(str(entry).split(',')) for entry in accelerators)
+        if narrowest < gpus_per_member:
+            raise ValueError(f'gpus_per_member is {gpus_per_member}, but an alf_ML_executor worker is given '
+                             f'{narrowest} GPU(s) by available_accelerators. List each worker\'s GPUs, such as '
+                             '["0,1", "2,3"].')
+    elif gpus_per_node and workers * gpus_per_member > gpus_per_node:
+        raise ValueError(f'alf_ML_executor has {workers} workers per node with {gpus_per_member} GPU(s) each, but '
+                         f'gpus_per_node is {gpus_per_node}, so members would share a GPU. Lower '
+                         'max_workers_per_node, or set available_accelerators if each worker has its own GPUs.')
     slots = workers * provider.nodes_per_block * provider.max_blocks
     if slots < n_models:
         print(f'Warning: alf_ML_executor has {slots} slots for {n_models} ensemble members, so some members will '
@@ -172,7 +200,7 @@ def train_members(submit, n_models, ensemble_dir, training_id, member_retries=1)
 
 
 def train_ensemble_across_nodes(submit, n_models, ensemble_dir, training_id, gpus_per_node, device_string,
-                                member_retries, executor, finish=None):
+                                member_retries, executor, finish=None, gpus_per_member=1):
     """Start the body of a multi-node ML task, returning the future that a ``join_app`` waits on.
 
     The control loop runs on a daemon thread. Python waits for Parsl's internal threads before it runs
@@ -180,7 +208,8 @@ def train_ensemble_across_nodes(submit, n_models, ensemble_dir, training_id, gpu
     """
     # Before the thread starts, so that these errors reach the coordinator as they are.
     validated_retries(member_retries)
-    check_capacity(n_models, gpus_per_node, device_string, executor)
+    validated_gpus_per_member(gpus_per_member)
+    check_capacity(n_models, gpus_per_node, device_string, executor, gpus_per_member)
     outcome = concurrent.futures.Future()
 
     def control_loop():

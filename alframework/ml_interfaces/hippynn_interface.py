@@ -248,7 +248,8 @@ def train_HIPNN_model(model_dir,
                       remove_high_energy_cut = None, 
                       remove_high_energy_std = None,
                       remove_high_forces_cut = None, 
-                      remove_high_forces_std = None
+                      remove_high_forces_std = None,
+                      gpus_per_member = 1
                       ):
     """Train one HIPPYNN model on the HDF5 data in a directory.
 
@@ -298,6 +299,8 @@ def train_HIPNN_model(model_dir,
         controller_options (dict): Training loop settings.
         device_string (str): GPU to use, or ``'from_multiprocessing'`` to choose one from the worker process.
         from_multiprocessing_nGPU (int): Number of GPUs to distribute over with ``'from_multiprocessing'``.
+        gpus_per_member (int): GPUs this model trains on, with PyTorch Lightning data parallelism when
+            above 1. The batch sizes are totals across them. Only the multi-node task supports more than 1.
         build_lammps_pickle (bool): Whether to build a pickle file for loading the network into LAMMPS
             MLIAP. Requires the LAMMPS Python interface.
         remove_high_energy_cut (float): Remove structures whose energy is farther than this from the mean.
@@ -313,7 +316,8 @@ def train_HIPNN_model(model_dir,
     #This must occur after the subprocess fork!!!
     import torch
     device_cuda = _ensemble_member_device(device_string, from_multiprocessing_nGPU)
-    torch.cuda.set_device(device_cuda)
+    if device_cuda != 'cpu':
+        torch.cuda.set_device(device_cuda)
     
     import hippynn
     from hippynn import plotting
@@ -714,11 +718,17 @@ def train_HIPNN_model(model_dir,
             print(experiment_params)
 
             # Parameters describing the training procedure.
-            setup_and_train(
-                training_modules=training_modules,
-                database=database,
-                setup_params=experiment_params,
-            )
+            if ensemble_training.validated_gpus_per_member(gpus_per_member) > 1:
+                from alframework.ml_interfaces.hippynn_lightning import train_data_parallel
+                train_data_parallel(training_modules, database, controller, n_devices=gpus_per_member,
+                                    accelerator='cpu' if device_cuda == 'cpu' else 'gpu',
+                                    seed=int(np.random.randint(2**31 - 1)))
+            else:
+                setup_and_train(
+                    training_modules=training_modules,
+                    database=database,
+                    setup_params=experiment_params,
+                )
     
             if build_lammps_pickle:
                 from hippynn.interfaces.lammps_interface import MLIAPInterface
@@ -739,7 +749,7 @@ def _ensemble_member_device(device_string, n_gpus):
     if device_string.lower() == "from_multiprocessing":
         member = multiprocessing.current_process()._identity[-1] - 1
         return excited_training_device(device_string, member, n_gpus)
-    if device_string.lower().startswith('cuda:'):
+    if device_string.lower().startswith('cuda:') or device_string.lower() == 'cpu':
         return device_string
     os.environ["CUDA_VISIBLE_DEVICES"] = device_string
     return 'cuda:0'
@@ -803,6 +813,7 @@ def train_HIPPYNN_ensemble_task(ML_config,h5_dir,model_path,current_training_id,
     The coordinator passes ``h5_path`` and ``current_h5_id``, and training waits until every shard it
     stored is visible on this node, so a stale directory listing can't silently leave one out.
     """
+    ensemble_training.single_gpu_members(ML_config)
     ensemble_training.wait_for_shards(ensemble_training.expected_shards(h5_path, current_h5_id))
     p = multiprocessing.Pool(gpus_per_node)
     params_list = _ground_state_member_params(ML_config, h5_dir, model_path, current_training_id, gpus_per_node)
@@ -2095,22 +2106,29 @@ def train_single_excited_state_model(
                 stopping_key="Loss",
                 **controller_options,
             )
-            setup_params = SetupParams(
-                controller=controller,
-                device=device,
-            )
-            training_modules, controller, metric_tracker = setup_training(
-                training_modules=training_modules,
-                setup_params=setup_params,
-            )
-            metric_tracker = train_model(
-                training_modules,
-                database,
-                controller,
-                metric_tracker,
-                callbacks=None,
-                batch_callbacks=None,
-            )
+            gpus_per_member = ensemble_training.validated_gpus_per_member(config.get('gpus_per_member', 1))
+            if gpus_per_member > 1:
+                from alframework.ml_interfaces.hippynn_lightning import train_data_parallel
+                metric_tracker = train_data_parallel(training_modules, database, controller,
+                                                     n_devices=gpus_per_member, seed=seed,
+                                                     accelerator='cpu' if device.type == 'cpu' else 'gpu')
+            else:
+                setup_params = SetupParams(
+                    controller=controller,
+                    device=device,
+                )
+                training_modules, controller, metric_tracker = setup_training(
+                    training_modules=training_modules,
+                    setup_params=setup_params,
+                )
+                metric_tracker = train_model(
+                    training_modules,
+                    database,
+                    controller,
+                    metric_tracker,
+                    callbacks=None,
+                    batch_callbacks=None,
+                )
             if not all(torch.isfinite(p).all() for p in training_modules.model.parameters()):
                 raise RuntimeError('Training produced nonfinite model parameters')
 
@@ -2118,6 +2136,7 @@ def train_single_excited_state_model(
                 "model_id": int(model_id),
                 "seed": seed,
                 "device": str(device),
+                "gpus_per_member": gpus_per_member,
                 "hippynn_kernel": active_kernel,
                 "cuda_visible_devices": recorded_device,
                 "state_table": state_table,
@@ -2390,6 +2409,7 @@ def train_excited_state_HIPPYNN_ensemble_task(
         remove_existing=remove_existing,
         h5_test_dir=h5_test_dir,
     )
+    ensemble_training.single_gpu_members(ML_config)
     ensemble_training.wait_for_shards(ensemble_training.expected_shards(h5_path, current_h5_id))
     return train_excited_state_ensemble(
         ML_config=dict(ML_config or {}),
@@ -2411,7 +2431,8 @@ def _train_ground_state_member(arg_dict, attempt):
     """Run in a fresh child process: choose this worker's GPU, then train one member."""
     arg_dict = dict(arg_dict)
     device = ensemble_training.member_device(arg_dict.get('device_string', 'from_multiprocessing'),
-                                             arg_dict.get('from_multiprocessing_nGPU'))
+                                             arg_dict.get('from_multiprocessing_nGPU'),
+                                             arg_dict.get('gpus_per_member', 1))
     arg_dict['device_string'] = device
     with ensemble_training.member_placement(arg_dict['model_dir'], attempt, device) as record:
         train_HIPNN_model(**arg_dict)
@@ -2423,7 +2444,8 @@ def _train_excited_state_member(arg_dict, attempt):
     """Run in a fresh child process: choose this worker's GPU, train one member, then reload it."""
     config = dict(arg_dict['ML_config'])
     device = ensemble_training.member_device(config.get('device_string', 'from_multiprocessing'),
-                                             arg_dict.get('from_multiprocessing_nGPU'))
+                                             arg_dict.get('from_multiprocessing_nGPU'),
+                                             config.get('gpus_per_member', 1))
     config['device_string'] = device
     arg_dict = dict(arg_dict, ML_config=config)
     with ensemble_training.member_placement(arg_dict['model_dir'], attempt, device) as record:
@@ -2477,7 +2499,8 @@ def train_HIPPYNN_ensemble_multinode_task(ML_config, h5_dir, model_path, current
         lambda member, attempt: _ground_state_member_task(params_list[member], shards, attempt),
         len(params_list), model_path.format(current_training_id), current_training_id, gpus_per_node,
         ML_config.get('device_string', 'from_multiprocessing'), member_retries, _ml_executor(),
-        finish=lambda: write_label_sources(model_path.format(current_training_id), h5_dir))
+        finish=lambda: write_label_sources(model_path.format(current_training_id), h5_dir),
+        gpus_per_member=ML_config.get('gpus_per_member', 1))
 
 
 @join_app
@@ -2505,4 +2528,5 @@ def train_excited_state_HIPPYNN_ensemble_multinode_task(ML_config, h5_dir, model
         lambda member, attempt: _excited_state_member_task(params_list[member], shards, attempt),
         len(params_list), ensemble_dir, int(current_training_id), gpus_per_node,
         config.get('device_string', 'from_multiprocessing'), member_retries, _ml_executor(),
-        finish=lambda: write_label_sources(ensemble_dir, h5_dir))
+        finish=lambda: write_label_sources(ensemble_dir, h5_dir),
+        gpus_per_member=config.get('gpus_per_member', 1))

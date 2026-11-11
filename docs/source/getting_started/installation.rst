@@ -92,6 +92,10 @@ install the Python packages that ALF can pull in directly:
    * - ``alchemi``
      - ``nvalchemi-toolkit``
      - The ALCHEMI dynamics engine. Needs Python 3.11 or newer.
+   * - ``lightning``
+     - ``pytorch-lightning``
+     - Training one HIPPYNN ensemble member on several GPUs, in the ML worker environment; see
+       :ref:`ml-multigpu-members`.
    * - ``pyscf``
      - ``pyscf``
      - DFT labels on the CPU with ``pyscf_task``, for molecules and periodic cells. ``full`` includes it.

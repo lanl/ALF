@@ -106,6 +106,14 @@ Importing it submits no jobs. Set these before starting ALF:
      - Scheduler options. The default is ``#SBATCH --gres=gpu:4``.
    * - ``ALF_SOURCE``
      - Optional ALF checkout to use instead of the installed package.
+   * - ``ALF_ENV_TARBALL``, ``ALF_QM_ENV_TARBALL``, ``ALF_ML_ENV_TARBALL``,
+       ``ALF_SAMPLER_ENV_TARBALL``
+     - Optional archive of the Python environment, unpacked once on each node; the role variables
+       override it for one role. ``ALF_ENV_PYTHON`` is its interpreter inside the archive, by default
+       ``bin/python``. See :ref:`parsl-running-at-scale`.
+   * - ``ALF_NODE_LOCAL_CACHES``, ``ALF_NODE_LOCAL_DIR``, ``ALF_CUPY_CACHE_DIR``
+     - Optional. ``ALF_NODE_LOCAL_CACHES=1`` moves package caches to node-local storage and turns off
+       HDF5 file locking. See :ref:`parsl-running-at-scale`.
 
 See :doc:`../user_guide/parsl` for how executors are laid out.
 

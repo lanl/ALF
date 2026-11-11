@@ -12,6 +12,12 @@ One training task launches four ensemble members on four local GPUs.
 QM workers are bound by Parsl to one allocated GPU UUID each, making its
 local CUDA index zero. The manager retains scheduler visibility; training
 and sampling retain their existing device assignment.
+
+At scale, ALF_ENV_TARBALL (or ALF_{ML,SAMPLER,QM}_ENV_TARBALL) names an archive of a relocatable
+environment (conda-pack, or uv; ALF_ENV_PYTHON is its interpreter) that each node unpacks once
+into node-local storage (ALF_NODE_LOCAL_DIR, default $TMPDIR or /tmp), and
+ALF_NODE_LOCAL_CACHES=1 moves package caches there and turns off HDF5 file locking. Both are off
+by default; see the Parsl guide's Running at Scale section.
 """
 import os
 from pathlib import Path
@@ -19,6 +25,7 @@ import shlex
 import sys
 
 import alframework
+from alframework.tools.node_setup import setup_from_environment
 from parsl.addresses import address_by_hostname
 from parsl.config import Config
 from parsl.executors import HighThroughputExecutor
@@ -36,8 +43,10 @@ def make_config():
     for role, workers, cores in [('ML', 1, 4), ('sampler', 4, 1), ('QM', 4, 8)]:
         prefix = 'ALF_'+role.upper()
         python = os.environ.get(prefix+'_PYTHON', sys.executable)
-        init = [os.environ.get(prefix+'_WORKER_INIT', ''),
-                'export PATH='+shlex.quote(str(Path(python).parent))+':"$PATH"',
+        # A node-local environment changes only the workers' interpreter: the interchange runs here.
+        setup, worker_python = setup_from_environment(prefix)
+        init = [os.environ.get(prefix+'_WORKER_INIT', ''), *setup,
+                'export PATH='+('"$ALF_ENV_BIN"' if worker_python else shlex.quote(str(Path(python).parent)))+':"$PATH"',
                 'export PYTHONPATH='+shlex.quote(str(source)+':'+str(run)),
                 'export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 PYTHONDONTWRITEBYTECODE=1']
         provider = SlurmProvider(
@@ -55,7 +64,7 @@ def make_config():
             cpu_affinity='none', address=address_by_hostname(), provider=provider,
             heartbeat_period=10, heartbeat_threshold=180,
             interchange_launch_cmd=[python, '-m', 'parsl.executors.high_throughput.interchange'],
-            launch_cmd=shlex.quote(python)+(' '+shlex.quote(str(run/'qm_worker_pool.py')) if role=='QM'
+            launch_cmd=(worker_python or shlex.quote(python))+(' '+shlex.quote(str(run/'qm_worker_pool.py')) if role=='QM'
                        else ' -m parsl.executors.high_throughput.process_worker_pool')+
                        DEFAULT_LAUNCH_CMD.removeprefix('process_worker_pool.py')))
     return Config(executors=executors, run_dir=str(run/'runinfo'), retries=0,

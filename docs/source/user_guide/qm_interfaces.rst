@@ -239,7 +239,10 @@ available outside ALF as an ASE calculator; see `Outside ALF`_.
 Install PySCF with ALF's ``pyscf`` extra, ``pip install "alf[pyscf]"``; the ``full`` extra includes it too.
 For the GPU, install GPU4PySCF and a CuPy build matching the QM workers' CUDA, for example
 ``pip install "alf[gpu4pyscf]"`` for CUDA 12. Each GPU QM worker must see exactly one GPU; see
-:ref:`parsl-gpu4pyscf-workers`.
+:ref:`parsl-gpu4pyscf-workers`. GPU4PySCF runs on NVIDIA GPUs only: its kernels are written for CUDA,
+and AMD support is an open request upstream (`gpu4pyscf#215
+<https://github.com/pyscf/gpu4pyscf/issues/215>`__). On AMD GPUs, use PySCF on the CPU or another QM
+code.
 
 **Properties.** ``pyscf_task`` uses state names; see :ref:`configuration-property-names`:
 

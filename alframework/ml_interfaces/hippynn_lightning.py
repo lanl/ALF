@@ -12,8 +12,10 @@ device trains on its own slice of the training split every epoch, and validation
 over the devices, so every rank makes the same early-stopping and batch-size decisions. The test
 split is evaluated afterwards on one device, over the whole split, as in single-device training.
 
-Lightning runs one process per device. They start with ``spawn``, because Lightning's default
-launcher reruns ``sys.argv``, which inside a Parsl worker would start another worker. Import this
+ALF starts one process per device itself, with ``spawn``, and sets the rank variables so Lightning
+treats them as launched externally. Lightning's own launchers either rerun ``sys.argv``, which inside a
+Parsl worker would start another worker, or pass the model and data to each process through shared
+memory, which fails on Linux for empty tensors. Each process reads the setup from a file instead. Import this
 module only after the member has chosen its devices, since it imports Torch.
 """
 import contextlib
@@ -159,23 +161,22 @@ def train_data_parallel(training_modules, database, controller, *, n_devices, ac
     _split_batches(controller, n_devices)
     training_modules, controller, metric_tracker = setup_training(
         training_modules, SetupParams(controller=controller, device='cpu'))
-    module, datamodule = AlfLightningModule.from_train_setup(training_modules, database, controller, metric_tracker)
-    module.n_devices = n_devices
-    module.parent_settings = dict(
+    settings = dict(
         custom_kernels=hippynn.custom_kernels.CUSTOM_KERNELS_ACTIVE or False,
         warn_low_distances=hippynn.settings.WARN_LOW_DISTANCES,
         matmul_tf32=torch.backends.cuda.matmul.allow_tf32, cudnn_tf32=torch.backends.cudnn.allow_tf32,
-        directory=os.getcwd(), accelerator=accelerator)
+        directory=os.getcwd(), accelerator=accelerator, n_devices=n_devices, seed=seed)
     print(f'Training with PyTorch Lightning on {n_devices} {accelerator} devices: batch size '
           f'{controller.batch_size} per device, {controller.batch_size * n_devices} in total.')
     sys.stdout.flush()
-    pl.seed_everything(seed, workers=True, verbose=False)
-    trainer = pl.Trainer(accelerator=accelerator, devices=n_devices,
-                         strategy=DDPStrategy(start_method='spawn', process_group_backend='nccl' if accelerator == 'gpu' else 'gloo'),
-                         max_epochs=controller.max_epochs, use_distributed_sampler=True, num_sanity_val_steps=0,
-                         logger=False, enable_checkpointing=False, enable_progress_bar=False,
-                         enable_model_summary=False, default_root_dir=os.getcwd())
-    trainer.fit(module, datamodule=datamodule)
+    # The ranks read the setup from a file. Passing it as process arguments would share its tensors
+    # through shared memory, which fails on Linux for empty tensors and can exhaust /dev/shm.
+    torch.save(dict(training_modules=training_modules, database=database, controller=controller,
+                    metric_tracker=metric_tracker, settings=settings), PAYLOAD)
+    try:
+        _run_ranks(n_devices)
+    finally:
+        Path(PAYLOAD).unlink(missing_ok=True)
     if Path(RANK_LOG).exists():
         print(Path(RANK_LOG).read_text(), end='')
         Path(RANK_LOG).unlink()
@@ -199,3 +200,57 @@ def train_data_parallel(training_modules, database, controller, *, n_devices, ac
                metric_tracker=metric_tracker)
     print('Training complete.')
     return metric_tracker
+
+
+PAYLOAD = 'lightning_setup.pt'
+
+
+def _free_port():
+    import socket
+    with socket.socket() as probe:
+        probe.bind(('127.0.0.1', 0))
+        return probe.getsockname()[1]
+
+
+def _run_ranks(n_devices):
+    """Start one process per device and wait for all of them; if one fails, stop the rest."""
+    import multiprocessing
+    context = multiprocessing.get_context('spawn')
+    port = _free_port()
+    ranks = [context.Process(target=_rank_main, args=(os.path.abspath(PAYLOAD), rank, n_devices, port),
+                             name=f'alf-lightning-rank-{rank}') for rank in range(n_devices)]
+    for process in ranks:
+        process.start()
+    try:
+        while any(process.is_alive() for process in ranks):
+            if any(process.exitcode not in (None, 0) for process in ranks):
+                break
+            time.sleep(1)
+    finally:
+        for process in ranks:
+            if process.is_alive():
+                process.terminate()
+            process.join()
+    failed = [rank for rank, process in enumerate(ranks) if process.exitcode != 0]
+    if failed:
+        raise RuntimeError(f'Lightning training failed on rank(s) {failed}; see the worker output for the error.')
+
+
+def _rank_main(payload, rank, n_devices, port):
+    """One device's training process. The rank variables make Lightning treat it as launched externally."""
+    os.environ.update(MASTER_ADDR='127.0.0.1', MASTER_PORT=str(port), WORLD_SIZE=str(n_devices),
+                      RANK=str(rank), LOCAL_RANK=str(rank), NODE_RANK='0')
+    import torch
+    setup = torch.load(payload, weights_only=False)
+    settings = setup['settings']
+    module, datamodule = AlfLightningModule.from_train_setup(setup['training_modules'], setup['database'],
+                                                             setup['controller'], setup['metric_tracker'])
+    module.n_devices, module.parent_settings = n_devices, settings
+    pl.seed_everything(settings['seed'], workers=True, verbose=False)
+    accelerator = settings['accelerator']
+    trainer = pl.Trainer(accelerator=accelerator, devices=n_devices,
+                         strategy=DDPStrategy(process_group_backend='nccl' if accelerator == 'gpu' else 'gloo'),
+                         max_epochs=setup['controller'].max_epochs, use_distributed_sampler=True,
+                         num_sanity_val_steps=0, logger=False, enable_checkpointing=False,
+                         enable_progress_bar=False, enable_model_summary=False, default_root_dir=settings['directory'])
+    trainer.fit(module, datamodule=datamodule)

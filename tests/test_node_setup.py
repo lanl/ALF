@@ -61,7 +61,7 @@ def test_two_blocks_on_one_node_unpack_once(tmp_path):
     lines, python = worker_setup(_archive(tmp_path))
     results = _run(lines, python, node, background=2)
     assert all(code == 0 and out.strip() == "one" for code, out, _ in results), results
-    [directory] = node.glob("alf-alf-*")
+    [directory] = [p for p in node.glob("alf-alf-*") if p.is_dir()]
     assert (directory / "env" / DONE).exists()
     assert (directory / "unpack-count").read_text().count("ran") == 1, "one block unpacks, the other waits"
     _run(lines, python, node)
@@ -78,7 +78,7 @@ def test_a_rebuilt_archive_unpacks_into_a_new_directory(tmp_path):
     second, python = worker_setup(_archive(tmp_path, payload="rebuilt-with-more"))
     [(code, out, _)] = _run(second, python, node)
     assert code == 0 and out.strip() == "rebuilt-with-more"
-    assert len(list(node.glob("alf-alf-*"))) == 2
+    assert len([p for p in node.glob("alf-alf-*") if p.is_dir()]) == 2, "the lock files sit beside them"
 
 
 def test_an_interpreter_elsewhere_in_the_archive(tmp_path):
@@ -86,7 +86,7 @@ def test_an_interpreter_elsewhere_in_the_archive(tmp_path):
     node.mkdir()
     lines, python = worker_setup(_archive(tmp_path, python="cpython-3.12/bin/python3"), env_python="cpython-3.12/bin/python3")
     [(code, out, _)] = _run(lines + ['echo "$ALF_ENV_BIN"'], python, node)
-    assert code == 0 and out.split() == [f"{next(node.glob('alf-alf-*'))}/env/cpython-3.12/bin", "one"]
+    assert code == 0 and out.split() == [f"{next(p for p in node.glob('alf-alf-*') if p.is_dir())}/env/cpython-3.12/bin", "one"]
     with pytest.raises(ValueError, match="inside the archive"):
         worker_setup(_archive(tmp_path, name="other.tar.gz"), env_python="/usr/bin/python3")
 

@@ -103,6 +103,7 @@ install the Python packages that ALF can pull in directly:
      - ``pyscf``, ``gpu4pyscf-cuda12x``, and ``cupy-cuda12x``
      - DFT labels on a GPU with ``pyscf_task`` and ``gpu4pyscf_excited_state_task``. These builds are for
        CUDA 12; for another CUDA version, install the matching ``gpu4pyscf`` and ``cupy`` builds instead.
+       GPU4PySCF needs NVIDIA GPUs.
    * - ``teacher-mace``, ``teacher-uma``
      - ``torch-sim-atomistic`` with ``mace-torch`` or ``fairchem-core``
      - Foundation-model teachers, MACE fine-tuning, and UMA fine-tuning. Install each in its own

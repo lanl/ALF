@@ -19,7 +19,7 @@ import sys
 import time
 
 HERE = Path(__file__).resolve().parent
-DEFAULT_PROFILES = ('hiphop145', 'hiphop100', 'hiphop64', 'hipnn64')
+DEFAULT_PROFILES = ('hiphop145', 'hiphop100', 'hiphop64', 'hipnn100', 'hipnn64')
 
 
 def run_case(profile, batch, mode, device, warmup, steps, states):

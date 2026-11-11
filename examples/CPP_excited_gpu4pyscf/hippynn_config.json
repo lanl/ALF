@@ -13,9 +13,9 @@
       1,
       6
     ],
-    "dist_hard_max": 11.833504244685173,
-    "dist_soft_max": 5.67638290906325,
-    "dist_soft_min": 0.7,
+    "dist_hard_max": 8.0,
+    "dist_soft_max": 5.5,
+    "dist_soft_min": 0.85,
     "n_atom_layers": 3,
     "n_features": 64,
     "n_interaction_layers": 2,

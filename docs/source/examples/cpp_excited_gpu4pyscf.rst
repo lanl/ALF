@@ -90,9 +90,9 @@ unchanged. It runs on a CPU and submits nothing.
        ``python initial_sampling.py --config seed_config.json --output-dir seeds``.
    * - ``--model``
      - ``hipnn64``
-     - Network: ``hipnn64``, or the larger HIP-HOP networks ``hiphop64``, ``hiphop100``, or
-       ``hiphop145``. See the timings below before choosing a HIP-HOP network for a large
-       dataset.
+     - Network: ``hipnn64``; ``hipnn100``, the same network with 100 features; or the
+       larger HIP-HOP networks ``hiphop64``, ``hiphop100``, or ``hiphop145``. See the
+       timings below before choosing a HIP-HOP network for a large dataset.
    * - ``--reference``, ``--energy-offset-ev``
      - None
      - For another ring size, a minimized S0 XYZ file and its energy offset. Don't reuse
@@ -307,6 +307,19 @@ These are measurements on a 40 GB A100, for CPP9:
   the four members took about 167 s per epoch and peaked at about 4 GiB allocated and
   12.5 GiB reserved. Batch 128 was barely faster and reserved about 32 GiB. At batch 64,
   the 300-epoch limit comes to about 14 hours, just within a 16-hour allocation.
+  These numbers were measured with an earlier 11.8 Angstrom pair cutoff; see the next item.
+* **Distance settings:** ``dist_soft_min`` 0.85, ``dist_soft_max`` 5.5, and
+  ``dist_hard_max`` 8 Angstrom. The first sensing function sits near the shortest
+  distance the topology check allows, and the last covers contacts between neighboring
+  phenyls. With two interaction layers, information still travels about 16 Angstrom,
+  more than CPP9's largest interatomic distance of 14.6 Angstrom. At 8 Angstrom a CPP9
+  structure has 1,670 pairs rather than 3,170. On CPU at batch 16, this made a training
+  step about 25% faster and an evaluation step about 40% faster, so expect GPU memory
+  and epoch times below the figures above; rerun ``benchmark_training.py`` to measure
+  them. The cutoff sets the network, so choose it before a campaign's first training.
+* **Training with** ``hipnn100``: 2.4 times the parameters of ``hipnn64``. On CPU at
+  batch 16, a training step took about 10% longer. It hasn't been measured on a GPU,
+  where its batch-dependent memory should be roughly 1.5 times that of ``hipnn64``.
 * **Training with** ``hiphop145``: at batch 8 it peaked near 28 GiB, batch 16 reached about
   37 GiB, and batch 32 ran out of memory. An epoch at 40,000 training structures takes
   roughly an hour, so a 16-hour allocation fits only about 14 epochs.

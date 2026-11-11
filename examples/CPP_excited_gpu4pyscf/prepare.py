@@ -4,7 +4,7 @@ python prepare.py --ring-size 6 --output-dir /scratch/cpp6 --generate-seeds
 --count seeds make the bootstrap; --spares more (5% by default) replace seeds whose labels fail.
 Sizes with references/cppN_s0.xyz (6-12) need only --ring-size. For another size, provide
 --reference and --energy-offset-ev, or bundle its S0 optimization with references/import_s0_reference.py.
-Model choices: hipnn64 (default), hiphop145, hiphop100, hiphop64; all use four members.
+Model choices: hipnn64 (default), hipnn100, hiphop145, hiphop100, hiphop64; all use four members.
 Configure parsl_configs.py for your site, then run in the prepared directory:
 python -m alframework --master master_config.json
 GPU4PySCF workers require a compatible cuTENSOR installation/library path.
@@ -20,7 +20,7 @@ import tempfile
 
 
 HERE = Path(__file__).resolve().parent
-MODELS = {'hiphop145': 145, 'hiphop100': 100, 'hiphop64': 64, 'hipnn64': 64}
+MODELS = {'hiphop145': 145, 'hiphop100': 100, 'hiphop64': 64, 'hipnn100': 100, 'hipnn64': 64}
 
 
 def apply_model_profile(config, model, n_atoms):
@@ -29,7 +29,7 @@ def apply_model_profile(config, model, n_atoms):
         raise ValueError('Unknown model profile')
     config['n_atoms'] = n_atoms
     config['network_params']['n_features'] = MODELS[model]
-    if model == 'hipnn64':
+    if model.startswith('hipnn'):
         config['network_choice'] = 0
         for key in ('l_max', 'n_max'):
             config['network_params'].pop(key, None)

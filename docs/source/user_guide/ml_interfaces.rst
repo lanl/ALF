@@ -270,6 +270,12 @@ Several GPUs per member
    does less work per step, so 4 GPUs train less than 4 times faster. Measure the speedup before
    relying on it.
 
+   Several GPUs also make room for larger networks. Each GPU keeps a whole copy of the model, but
+   the memory that grows with the batch is divided among them, and for HIPPYNN networks that is
+   usually most of the memory. A network that runs out of memory at some batch size on one GPU can
+   train at that total batch size on several. A network whose parameters don't fit on one GPU still
+   won't fit, since the model isn't split across GPUs.
+
    A member trained this way writes the same files as one trained on a single GPU, so it is loaded
    the same way. ``lightning_training.json`` records the devices and the batch sizes per GPU. Some
    things differ:

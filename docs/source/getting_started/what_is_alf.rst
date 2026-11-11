@@ -1,27 +1,50 @@
 What Is ALF
 ===========
 
-The **Active Learning Framework (ALF)** automates the construction of structurally diverse datasets for
-machine learning interatomic potentials (MLIPs) using a query by committee (QBC) active-learning approach.
+The **Active Learning Framework (ALF)** builds training datasets for machine-learned interatomic
+potentials (MLIPs). It runs an active-learning loop: an ensemble of models drives sampling, frames
+where the models disagree are labeled with quantum chemistry, and the ensemble is retrained on the
+growing dataset, without a person in the loop.
 
-At a high level, ALF coordinates four core modules:
+ALF coordinates four kinds of task:
 
-* **System construction (Builders)**
-* **Sampling (Samplers)**
-* **ML model training (ML interfaces)**
-* **Electronic structure calculations (QM interfaces)**
+* **Builders** make starting structures.
+* **Samplers** run ML-driven dynamics and pick frames to label.
+* **QM interfaces** compute reference energies, forces, and other properties.
+* **ML interfaces** train the model ensemble.
 
-**These modules are used to perform the main ALF workflow:**
+**A run goes like this:**
 
-1. Build initial structures (bootstrap) and label with a QM engine of choice. This step accomplishes initial sampling of the conformational/chemical space.
-2. Train an initial MLIP ensemble from the labeled data.
-3. Sample new structures with ML-driven molecular dynamics.
-4. Send selected high-uncertainty configurations to QM engine for labeling.
-5. Store labeled data in HDF5 files.
-6. Retrain ML ensemble once the number of high-uncertainty configurations exceeds a user-defined threshold. Repeat until no high-uncertainty
-   frames are identified, or the number of ALF iterations is exceeded. Use final MLIP to perform down-stream production task (Not part of ALF).
+1. Build starting structures (the bootstrap) and label them with the QM code of your choice.
+2. Train an initial MLIP ensemble on those labels.
+3. Sample new structures with molecular dynamics driven by the current ensemble.
+4. Send frames whose uncertainty passes the acquisition criteria to QM for labeling.
+5. Store converged labels in HDF5 shards.
+6. Retrain once enough new converged labels have arrived (``save_h5_threshold``), then sample with
+   the new ensemble. Sampling and labeling continue while a training runs.
+7. Repeat until ``maximum_stored_labels`` is reached, or until you stop the run. The final models
+   are used for production simulations outside ALF.
 
+What ALF Can Do
+---------------
 
+Beyond the basic loop:
+
+* **Choose what to label:** uncertainty thresholds, ranking, per-trajectory policies, and
+  selection across groups of trajectories; see :doc:`../user_guide/acquisition`.
+* **Steer sampling:** uncertainty-driven dynamics, confining potentials, gap-seeking for excited
+  states, and sampling windows that switch methods as the dataset grows; see
+  :doc:`../user_guide/samplers`.
+* **Excited states:** multi-state models with energy gaps and couplings, trained on TDDFT or
+  semi-empirical labels; see :doc:`../user_guide/excited_states`.
+* **Start from existing models:** fine-tune HIPPYNN ensembles or foundation models such as MACE and
+  UMA, or label with a foundation model as a teacher; see :doc:`../user_guide/fine_tuning` and
+  :doc:`../user_guide/teacher_student`.
+* **Run on GPUs in bulk:** batched dynamics engines that advance many trajectories per GPU, and
+  batched QM labeling; see :doc:`../user_guide/batching`.
+* **Run at HPC scale:** Parsl executors on Slurm or Globus Compute, ensembles spread across nodes,
+  members trained on several GPUs, restarts after a crash, and node-local environments; see
+  :doc:`../user_guide/parsl` and :doc:`../user_guide/running_at_scale`.
 
 .. figure:: ../_static/alf.png
    :alt: Core ALF workflow from initial sampling (bootstrapping) to production-ready MLIP.

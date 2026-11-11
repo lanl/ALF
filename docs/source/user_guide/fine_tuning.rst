@@ -64,6 +64,8 @@ choose what to label, several copies so their disagreement can choose, rounds th
 pretrained model each time, a record of what each round started from and learned from, restarts,
 and placing copies across nodes.
 
+.. _fine-tuning-recipes:
+
 Whose recipe ALF runs
 ~~~~~~~~~~~~~~~~~~~~~
 
@@ -143,6 +145,8 @@ pretrained model and the labels. The cost of a round grows with the number of la
 
 The copies' disagreement is what selects new structures, so ``n_models`` must be at least 2.
 
+.. _fine-tuning-starting:
+
 Two Ways To Start
 -----------------
 
@@ -218,285 +222,20 @@ eV/Å. ``properties_list`` converts QM output to those units; see :doc:`units`. 
 ``energy`` and ``forces`` datasets. For ground-state DFT on a GPU, use GPU4PySCF with ``nroots: 0`` and
 store ``E0`` and ``F0`` under those names; see :ref:`configuration-property-names`.
 
-HIPPYNN
--------
+Model Families
+--------------
 
-The source is a HIPPYNN model directory, holding ``experiment_structure.pt`` and
-``best_checkpoint.pt`` as HIPPYNN writes them, or an ensemble directory of such ``model-*``
-members. From an ensemble, copy ``i`` starts from member ``i``, cycling if there are fewer members
-than copies. Each copy keeps the pretrained network and its weights, gets a fresh Adam optimizer,
-and trains on the shards in place, without copying them. This recipe is ALF's own; see
-`Whose recipe ALF runs`_.
+Each family has its own page: settings, what a round writes, and a walkthrough. The examples name
+the checkpoints they expect, but don't include them; see `Pretrained Models And Licenses`_.
 
-.. code-block:: json
+.. toctree::
+   :maxdepth: 1
 
-   {
-     "fine_tune": {
-       "adapter": "alframework.ml_interfaces.fine_tuning.hippynn.HippynnFineTuner",
-       "foundation_model": "models/model-0000",
-       "n_models": 4,
-       "E0s": "foundation",
-       "learning_rate": 1e-4,
-       "freeze": []
-     }
-   }
+   fine_tuning_hippynn
+   fine_tuning_mace
+   fine_tuning_uma
 
-The copies are written in HIPPYNN's usual layout, so the sampler loads them as it loads any trained
-HIPPYNN ensemble, with ``"ase_calculator": "alframework.ml_interfaces.hippynn_interface.HIPNN_ASE_load_ensemble"``
-or the batched ``load_hippynn_batched_ensemble``; see :doc:`ml_interfaces`.
-
-.. list-table::
-   :header-rows: 1
-   :widths: 30 70
-
-   * - Setting
-     - Meaning
-   * - ``E0s``
-     - ``foundation`` keeps the energy head's atomic energies, for labels at the pretrained model's
-       level of theory. ``average`` refits them to the training split before fine-tuning, as ALF's
-       HIPPYNN trainer fits them, for labels at another level of theory.
-   * - ``learning_rate``
-     - Adam's learning rate. The default, 1e-4, is low, to adapt rather than retrain.
-   * - ``scheduler_options``
-     - For HIPPYNN's ``RaiseBatchSizeOnPlateau``. Defaults: ``max_batch_size`` 64, ``patience`` 20,
-       ``factor`` 0.5.
-   * - ``controller_options``
-     - For HIPPYNN's ``PatienceController``. Defaults: ``batch_size`` 32, ``eval_batch_size`` 64,
-       ``max_epochs`` 200, ``termination_patience`` 51.
-   * - ``stopping_key``
-     - The validation loss that decides the best model. By default, the one the pretrained model was
-       trained with.
-   * - ``freeze``
-     - Graph nodes, or parameter-name prefixes, whose weights stay fixed. See below.
-   * - ``valid_size``, ``test_size``
-     - Fractions of the labels for validation and testing, 0.1 each. Each gets at least one structure,
-       so an early round with few labels still trains. A round needs at least 3 labels, or 2 with
-       ``h5_test_dir``.
-   * - ``h5_test_dir``
-     - Optional. A directory of shards to test on instead of a random test split, such as a fixed
-       QM-labeled set.
-   * - ``remove_high_energy_cut``, ``remove_high_energy_std``, ``remove_high_forces_cut``,
-       ``remove_high_forces_std``
-     - Leave out structures with extreme energies or forces, as in ALF's HIPPYNN trainer.
-   * - ``energy_key``, ``force_key``, ``species_key``, ``coordinates_key``, ``quadrupole_key``
-     - Dataset names in the shards. Defaults: ``energy``, ``forces``, ``species``, ``coordinates``, and
-       none.
-   * - ``structure_file``, ``checkpoint_file``
-     - The source files. Defaults: ``experiment_structure.pt`` and ``best_checkpoint.pt``.
-
-Freezing
-~~~~~~~~
-
-``freeze`` takes the names of graph nodes, such as the interaction network or the energy head, or
-the start of parameter names. To see a model's node names, load it and list the nodes that have
-parameters:
-
-.. code-block:: python
-
-   from hippynn.experiment.serialization import load_checkpoint
-
-   model = load_checkpoint("model-00/experiment_structure.pt", "model-00/best_checkpoint.pt",
-                           restart_db=False, map_location="cpu")["training_modules"].model
-   names = [name for name, _ in model.named_parameters()]
-   print([node.name for node, key in model.names_dict.items()
-          if any(name.startswith(f"moddict.{key}.") for name in names)])
-
-For a typical model this prints names such as ``hipnn`` and ``henergy``. ``"freeze": ["hipnn"]``
-then fine-tunes only the energy head. A name that matches nothing stops the round with a list of
-the names that would. ``training_log.txt`` reports how many parameters were frozen.
-
-What a HIPPYNN round writes
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Each ``models/model-NNNN/model-NN`` holds HIPPYNN's usual output: ``experiment_structure.pt``,
-``best_checkpoint.pt``, ``best_model.pt``, ``training_log.txt``, and its metrics and plots. ALF adds
-``fine_tune_args.json``, recording the copy's source, seed, shards, and settings, and
-``fine_tune.log``, the copy's own output before HIPPYNN's log starts.
-
-MACE
-----
-
-Install ``mace-torch`` in the ML workers' environment, and ``mace-torch`` with ALF's ``torchsim``
-extra in the sampler workers' environment. The source is a MACE checkpoint file; see
-`Pretrained Models And Licenses`_. ALF runs MACE's own ``mace_run_train`` for each copy, with
-defaults from MACE's fine-tuning guidance, and any of them can be changed.
-
-.. code-block:: json
-
-   {
-     "fine_tune": {
-       "adapter": "alframework.ml_interfaces.fine_tuning.mace.MaceFineTuner",
-       "foundation_model": "foundation/mace-mp-0-small.model",
-       "n_models": 4,
-       "E0s": "estimated"
-     }
-   }
-
-The sampler loads the copies for batched MD, with ``mlmd_trajectories_task`` as the
-``sampler_task``:
-
-.. code-block:: json
-
-   "batched_calculator": "alframework.ml_interfaces.fine_tuning.mace.load_mace_batched_ensemble",
-   "batched_calculator_options": {"dtype": "float32"},
-   "driver": {"strategy": "batched", "engine": "torchsim"},
-   "batching": {"batch_size": 16, "partial_policy": "timeout", "max_wait_seconds": 5.0}
-
-.. list-table::
-   :header-rows: 1
-   :widths: 30 70
-
-   * - Setting
-     - Meaning
-   * - ``E0s``
-     - As MACE recommends, in order: isolated-atom energies at your labels' level of theory, as a
-       dictionary from atomic number to energy or a ``.json`` file; else ``estimated``, which fits
-       them with the foundation model's help. ``foundation`` keeps the foundation model's, only for
-       labels at its level of theory. MACE advises against ``average`` for fine-tuning, and ALF warns
-       at startup if you choose it.
-   * - ``learning_rate``, ``max_num_epochs``
-     - MACE's ``lr`` and ``max_num_epochs``. Defaults, from MACE's recipe: 1e-3 and 6 for plain
-       fine-tuning; 1e-4 and 20 with a ``replay_file``.
-   * - ``batch_size``, ``valid_fraction``
-     - MACE's ``batch_size`` and ``valid_fraction``. Defaults: 2 and 0.1.
-   * - ``dtype``
-     - Training precision, ``float64`` (the default) or ``float32``.
-   * - ``freeze``
-     - Optional. Freezes layers, as MACE's ``--freeze``.
-   * - ``replay_file``
-     - Optional. A local file with a sample of the foundation model's training data, for MACE's
-       multihead fine-tuning; see `Forgetting And Checking A Fine-Tuned Model`_.
-   * - ``energy_dataset``, ``forces_dataset``
-     - The HDF5 datasets read from each shard. Defaults: ``energy`` and ``forces``, which must match
-       ``properties_list``.
-   * - ``mace_options``
-     - Other ``mace_run_train`` arguments. By default, MACE's recommended ``ema`` (decay 0.999, or
-       0.9999 with replay), ``amsgrad``, ``clip_grad`` 1.0, ``weight_decay`` 0.0, ``energy_weight`` and
-       ``forces_weight`` 10, and ``scaling`` ``rms_forces_scaling``. Values you give replace these;
-       ``false`` turns a switch off. Settings ALF manages, such as ``lr`` or ``seed``, are refused here.
-
-MACE's guidance on E0s also notes that a high initial error, hundreds of meV per atom, usually
-means the reference energies don't match the labels. Models with several heads, such as MACE-MH,
-haven't been checked with ALF.
-
-Each ``models/model-NNNN/model-NN`` holds ``mace.model``, which sampling loads; ``train.xyz``, the
-labels it trained on as extended XYZ; and MACE's own ``train.log``, ``logs/``, ``results/``, and
-``checkpoints/``.
-
-UMA
----
-
-Install ``fairchem-core`` in the ML workers' environment, and ``fairchem-core`` with ALF's ``torchsim``
-extra in the sampler workers' environment. The source is a UMA checkpoint file; see
-`Pretrained Models And Licenses`_. Compute nodes read the local file and never download.
-
-ALF runs fairchem's own fine-tuning for each copy, writing fairchem's training configuration itself,
-so you don't need fairchem's git repository. UMA fine-tunes one task at a time, and the task is the
-level of theory: labels must match it. A fine-tuned copy must be used with the task it was
-fine-tuned on.
-
-.. list-table::
-   :header-rows: 1
-   :widths: 16 84
-
-   * - Task
-     - What it was trained on
-   * - ``omol``
-     - Non-periodic molecules and clusters, at ωB97M-V/def2-TZVPD. Uses each structure's total
-       charge and spin multiplicity.
-   * - ``omat``
-     - Inorganic materials, at a PBE-level of theory.
-   * - ``oc20``, ``oc25``
-     - Open Catalyst datasets, for catalysis.
-   * - ``odac``
-     - Metal-organic frameworks.
-   * - ``omc``
-     - Molecular crystals.
-
-.. code-block:: json
-
-   {
-     "fine_tune": {
-       "adapter": "alframework.ml_interfaces.fine_tuning.uma.UmaFineTuner",
-       "foundation_model": "foundation/checkpoints/uma-s-1p2p1.pt",
-       "task": "omol",
-       "n_models": 4,
-       "E0s": "average",
-       "epochs": 10
-     }
-   }
-
-The sampler loads the copies for batched MD, with ``mlmd_trajectories_task`` as the
-``sampler_task``. Its ``task`` must be the one the copies were fine-tuned on:
-
-.. code-block:: json
-
-   "batched_calculator": "alframework.ml_interfaces.fine_tuning.uma.load_uma_batched_ensemble",
-   "batched_calculator_options": {"task": "omol", "dtype": "float32", "charge": 0, "spin": 1},
-   "driver": {"strategy": "batched", "engine": "torchsim"}
-
-.. list-table::
-   :header-rows: 1
-   :widths: 30 70
-
-   * - Setting
-     - Meaning
-   * - ``task``
-     - Required: one of the tasks above.
-   * - ``E0s``
-     - ``average`` or ``foundation``. See below.
-   * - ``epochs``, ``steps``
-     - How long each copy trains. Set exactly one; the other is ``null``. The default, 1 epoch, is
-       fairchem's. An early ALF round has few labels, so 1 epoch is only a few steps;
-       ``examples/uma_fine_tuning`` raises it to 10.
-   * - ``batch_size``, ``lr``, ``weight_decay``, ``max_neighbors``
-     - Defaults, from fairchem's template: 2, 4e-4, 1e-3, and 300. fairchem suggests the largest batch
-       that fits, as long as a round still takes many steps, and notes that ``max_neighbors`` 100 is
-       usually enough when memory is short.
-   * - ``valid_fraction``
-     - The fraction of labels each copy keeps aside for validation, split with its own seed, so
-       copies see different data. The default is 0.1; each copy keeps at least one structure aside, and
-       a round needs at least 2 labels.
-   * - ``energy_dataset``, ``forces_dataset``
-     - The HDF5 datasets read from each shard. Defaults: ``energy`` and ``forces``, which must match
-       ``properties_list``.
-   * - ``keep_training_checkpoints``
-     - ``false`` by default: after training, fairchem's resume checkpoints, which hold optimizer state
-       and several copies of the weights, are removed, keeping the copy itself.
-
-Reference energies
-~~~~~~~~~~~~~~~~~~
-
-UMA computes each energy as a per-element reference energy for each atom, plus what the network
-learns on top.
-
-* ``average`` refits the references to your labels by least squares, as fairchem's own dataset
-  script does. Use it when your labels come from a different level of theory than the task, such as
-  ORCA labels on ``omol``: absolute energies then differ by large per-element amounts, which the
-  refit absorbs.
-* ``foundation`` keeps the checkpoint's own references for the task, and its energy scale. Use it
-  when your labels share the task's level of theory, or when they cover too few compositions for a
-  refit to separate the elements; with only water, for example, hydrogen and oxygen always appear
-  together.
-
-Charge and spin
-~~~~~~~~~~~~~~~
-
-``omol`` needs each structure's total charge and spin multiplicity. When a structure's metadata has
-``charge`` or ``mult``, as the teacher and some builders set them, ALF stores them in the shard as
-``total_charge`` and ``spin_multiplicity``, and fine-tuning reads them; structures without them are
-neutral singlets. ALF's batched samplers don't pass charge or spin per structure, so the sampler's
-``charge`` and ``spin`` apply to every structure sampled in a run. They default to 0 and 1.
-
-What a UMA round writes
-~~~~~~~~~~~~~~~~~~~~~~~
-
-Each ``models/model-NNNN/model-NN`` holds ``uma.pt``, the fine-tuned checkpoint, which sampling
-loads; ``fine_tune.yaml``, the training configuration ALF wrote; ``data/``, the copy's training and
-validation sets; ``train.log``; and fairchem's logs under ``runs/``.
-
-Each copy holds a full UMA model while sampling, so several copies of a large checkpoint need GPU
-memory to match.
+.. _fine-tuning-forgetting:
 
 Forgetting And Checking A Fine-Tuned Model
 ------------------------------------------
@@ -540,110 +279,6 @@ learned from, and ``label_sources.json``, the label sources of its shards. For a
 A HIPPYNN source is several files, so its record lists each one's SHA-256 under
 ``foundation_model_files``, such as ``model-00/best_checkpoint.pt``, in place of
 ``foundation_model_sha256``. ``settings`` includes every default the round used.
-
-Walkthroughs
-------------
-
-The examples name the checkpoints they expect, but don't include them; see
-`Pretrained Models And Licenses`_.
-
-HIPPYNN: a pretrained ensemble
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-``examples/fine_tuning`` fine-tunes a pretrained HIPPYNN ensemble on water labeled with ORCA. Run
-each step from that directory.
-
-1. Put the pretrained ensemble in ``models/model-0000/model-00``, ``model-01``, and so on, with
-   ``experiment_structure.pt``, ``best_checkpoint.pt``, and ``best_model.pt`` in each.
-2. Optionally, put earlier labels in ``h5store/`` as ALF shards.
-3. Put starting structures in ``fragment_library/``, set ``QM_run_command`` in
-   ``orca_config.json``, and the machine settings in ``parsl_configs.py``.
-4. Check the stages, then start the run:
-
-   .. code-block:: bash
-
-      python -m alframework --master master_config.json --test_builder
-      python -m alframework --master master_config.json --test_sampler
-      python -m alframework --master master_config.json --test_qm
-      python -m alframework --master master_config.json
-
-ALF samples with the pretrained ensemble from the start. The first store starts round 1, written to
-``models/model-0001``, which replaces the pretrained ensemble for sampling once every copy finishes.
-To fine-tune once on labels already in ``h5store/``, without sampling, run ``--test_ml``.
-
-The same loop was run end to end on a CPU through ALF's coordinator, with small HIPPYNN models,
-single water molecules, and EMT standing in for ORCA. Started from a pretrained two-member ensemble
-in ``models/model-0000``, ALF skipped the bootstrap, sampled with the ensemble, stored only sampled
-structures, and promoted round 1. Started instead from one model and a bootstrap, round 0 was
-promoted, sampling on its copies selected new structures, and round 1 fine-tuned from the original
-model on both shards and was promoted. Those copies barely disagreed (see the warning in
-`Two Ways To Start`_), so that run used cutoffs of zero.
-
-MACE: a foundation model
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-``examples/mace_fine_tuning`` fine-tunes MACE-MP small on water labeled with ORCA.
-
-1. Copy your MACE checkpoint to ``foundation/mace-mp-0-small.model``, or point
-   ``foundation_model`` at it.
-2. Set ``QM_run_command`` in ``orca_config.json``, and the machine settings in
-   ``parsl_configs.py``. The ML executor needs GPUs, and so does the sampler executor for batched
-   MD.
-3. Check the builder and the QM labels, then start the run:
-
-   .. code-block:: bash
-
-      python -m alframework --master master_config.json --test_builder
-      python -m alframework --master master_config.json --test_qm
-      python -m alframework --master master_config.json
-
-After the bootstrap, ``models/model-0000`` holds the first fine-tuned copies, and sampling starts
-with them.
-
-The same loop was run end to end on a CPU, with EMT standing in for ORCA so that the labels differed
-from MACE's predictions. TorchSim MD on the first round's copies selected new water boxes, and the
-second round fine-tuned from the original checkpoint on both shards and was promoted. In a separate
-check with ALF's defaults, which follow MACE's recipe, two copies fine-tuned on 60 EMT-labeled water
-molecules cut the energy error on held-out water from 0.94 eV for the foundation model to 0.011 and
-0.022 eV, once each model's constant offset was removed.
-
-UMA: one task of a checkpoint
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-``examples/uma_fine_tuning`` fine-tunes the ``omol`` task of ``uma-s-1p2p1`` on water labeled with
-ORCA.
-
-1. On a machine with network access, after accepting UMA's license:
-
-   .. code-block:: bash
-
-      hf auth login
-      hf download facebook/UMA checkpoints/uma-s-1p2p1.pt --local-dir foundation
-
-2. Set ``QM_run_command`` in ``orca_config.json``, and the machine settings in
-   ``parsl_configs.py``. The ML executor needs GPUs, and so does the sampler executor.
-3. Check the builder and the QM labels, then start the run:
-
-   .. code-block:: bash
-
-      python -m alframework --master master_config.json --test_builder
-      python -m alframework --master master_config.json --test_qm
-      python -m alframework --master master_config.json
-
-ORCA's level of theory isn't ``omol``'s, so the example refits the reference energies with
-``E0s: "average"``. Its builder makes clusters (``"periodic": false``), because ORCA labels each
-structure as a cluster and ``omol`` was trained only on non-periodic structures. A fine-tuned
-model trained on periodic copies of ORCA's cluster labels would learn interactions with images that
-ORCA never saw. The MACE example builds clusters for the same reason.
-
-The same loop was run end to end on a CPU through ALF's coordinator, with ``uma-s-1p2p1``, single
-water molecules, and EMT standing in for ORCA. Two copies fine-tuned for 4 steps on the bootstrap
-labels and were promoted. TorchSim MD on them selected new structures, and the second round
-fine-tuned from the original checkpoint on both shards and was promoted. Unlike small HIPPYNN
-copies, these UMA copies of one checkpoint disagreed clearly: by 0.24 eV in energy and 0.22 eV/Å in
-forces, in a separate two-copy round. Separate rounds also ran ``omol`` with ``foundation``
-references, and ``omat`` on periodic copper, and an ion and a radical reached training with their
-charge and spin.
 
 Running Across Nodes
 --------------------

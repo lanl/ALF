@@ -52,173 +52,8 @@ Supported Sampler Tasks
      - Reaction-pathway active learning with reactant, transition-state, and
        product structures.
 
-Common Configuration Fields
----------------------------
-
-MLMD dynamics fields
-   These fields control the length and cadence of MD sampling.
-
-   .. list-table::
-      :header-rows: 1
-      :widths: 30 70
-
-      * - Field
-        - Meaning
-      * - ``dt``
-        - MD timestep in femtoseconds.
-      * - ``maxt``
-        - Maximum simulation time in picoseconds.
-      * - ``Ncheck``
-        - Number of MD steps between uncertainty checks.
-      * - ``min_time``
-        - Optional minimum simulation time before uncertainty checks can select
-          a structure.
-      * - ``distcut``
-        - Minimum allowed interatomic distance. Structures can be rejected if
-          atoms come too close.
-
-Uncertainty thresholds
-   These fields decide when a sampled configuration should be sent to QM.
-
-   .. list-table::
-      :header-rows: 1
-      :widths: 30 70
-
-      * - Field
-        - Meaning
-      * - ``Escut``
-        - Energy standard-deviation threshold.
-      * - ``Fscut``
-        - Mean force standard-deviation threshold.
-      * - ``forces_stdev_max``
-        - The MLMD sampler also checks the maximum per-force uncertainty using
-          an internal threshold of ``3 * Fscut``.
-
-Temperature schedule fields
-   The sampler randomly chooses temperature schedule parameters from configured
-   ranges for each task.
-
-   .. list-table::
-      :header-rows: 1
-      :widths: 30 70
-
-      * - Field
-        - Meaning
-      * - ``srt_temp``
-        - Range for the starting temperature.
-      * - ``end_temp``
-        - Range for the ending temperature.
-      * - ``amp_temp``
-        - Range for sinusoidal temperature fluctuation amplitude.
-      * - ``per_temp``
-        - Range for temperature fluctuation period.
-
-Density schedule fields
-   Density changes are optional. Use ``null`` for ``end_dens``, ``amp_dens``,
-   and ``per_dens`` to disable density changes.
-
-   .. list-table::
-      :header-rows: 1
-      :widths: 30 70
-
-      * - Field
-        - Meaning
-      * - ``end_dens``
-        - Target final density range. ``null`` disables cell rescaling.
-      * - ``amp_dens``
-        - Range for density fluctuation amplitude.
-      * - ``per_dens``
-        - Range for density fluctuation period.
-
-ML calculator fields
-   These fields control how sampler tasks load and wrap ML models.
-   See :ref:`ml-interface-extension-points` and
-   :ref:`ml-interface-new-architecture-template` for the corresponding ML
-   interface requirements.
-
-   .. list-table::
-      :header-rows: 1
-      :widths: 30 70
-
-      * - Field
-        - Meaning
-      * - ``ase_calculator``
-        - Import string for the ML calculator or model-loader function.
-      * - ``MLMD_calculator_options``
-        - Options passed to ``MLMD_calculator``, such as ``well_params``.
-      * - ``translate_to_center``
-        - Whether to translate the incoming structure so its center of mass is
-          near the origin before sampling.
-
-Uncertainty-driven dynamics
-   Uncertainty-driven dynamics (UDD) is a biased MLMD sampler that steers
-   dynamics toward regions where the model committee has high ensemble energy
-   uncertainty. The usual ``Escut`` and ``Fscut`` threshold logic still decides
-   whether a sampled configuration is returned for QM labeling.
-
-   Select UDD in ``master_config.json`` with a separate sampler task:
-
-   .. code-block:: json
-
-      {
-        "sampler_task": "alframework.samplers.udd_sampling.simple_udd_sampling_task"
-      }
-
-   Set the bias strength in the sampler config:
-
-   .. code-block:: json
-
-      {
-        "udd_bias_weight": 0.45,
-        "MLMD_calculator_options": {
-          "well_params": null
-        }
-      }
-
-   ``udd_bias_weight`` controls the strength of the energy-uncertainty bias.
-   Use ``simple_mlmd_sampling_task`` instead when no UDD bias is desired.
-
-Output and trajectory fields
-   These fields control sampler metadata and optional trajectory output.
-
-   .. list-table::
-      :header-rows: 1
-      :widths: 30 70
-
-      * - Field
-        - Meaning
-      * - ``meta_dir`` or ``meta_path``
-        - Directory for sampler metadata files. Examples use both names; the
-          task input builder maps compatible names to the sampler function.
-      * - ``trajectory_frequency``
-        - Probability of writing a trajectory for a sampling task.
-      * - ``trajectory_interval``
-        - MD-step interval for trajectory writes when trajectory output is
-          enabled.
-
-Reactive sampler fields
-   These fields are used by ``reactive_sampling``.
-
-   .. list-table::
-      :header-rows: 1
-      :widths: 30 70
-
-      * - Field
-        - Meaning
-      * - ``reactive_sampling_method``
-        - Reactive search mode. Values containing ``NEB`` run NEB; values
-          containing ``DIMER`` run dimer sampling.
-      * - ``N_neb``
-        - Number of intermediate NEB images.
-      * - ``max_iter``
-        - Maximum number of repeated reactive-sampling attempts.
-      * - ``neb_steps``
-        - Optimizer steps for each NEB or dimer call.
-      * - ``Escut``, ``Fscut``
-        - Energy and force uncertainty thresholds.
-      * - ``Fmmult``
-        - Multiplier applied to ``Fscut`` for maximum force uncertainty. The
-          default is ``3.0``.
+Each task's settings come from the sampler configuration. The fields most of them use are listed in
+`Configuration Reference`_ at the end of this page.
 
 .. _samplers-multi-trajectory:
 
@@ -584,6 +419,176 @@ keep going, so it's the time until a screen rejected them or ``maxt``, and it ca
 
 At 1 million trajectories, the summary is about 350 MB, and one plot update takes several seconds
 and about 1.3 GB of memory on the coordinator's node. Each update rereads the whole file.
+
+Configuration Reference
+-----------------------
+
+The fields that most sampler configurations set, by topic.
+
+MLMD dynamics fields
+   These fields control the length and cadence of MD sampling.
+
+   .. list-table::
+      :header-rows: 1
+      :widths: 30 70
+
+      * - Field
+        - Meaning
+      * - ``dt``
+        - MD timestep in femtoseconds.
+      * - ``maxt``
+        - Maximum simulation time in picoseconds.
+      * - ``Ncheck``
+        - Number of MD steps between uncertainty checks.
+      * - ``min_time``
+        - Optional minimum simulation time before uncertainty checks can select
+          a structure.
+      * - ``distcut``
+        - Minimum allowed interatomic distance. Structures can be rejected if
+          atoms come too close.
+
+Uncertainty thresholds
+   These fields decide when a sampled configuration should be sent to QM.
+
+   .. list-table::
+      :header-rows: 1
+      :widths: 30 70
+
+      * - Field
+        - Meaning
+      * - ``Escut``
+        - Energy standard-deviation threshold.
+      * - ``Fscut``
+        - Mean force standard-deviation threshold.
+      * - ``forces_stdev_max``
+        - The MLMD sampler also checks the maximum per-force uncertainty using
+          an internal threshold of ``3 * Fscut``.
+
+Temperature schedule fields
+   The sampler randomly chooses temperature schedule parameters from configured
+   ranges for each task.
+
+   .. list-table::
+      :header-rows: 1
+      :widths: 30 70
+
+      * - Field
+        - Meaning
+      * - ``srt_temp``
+        - Range for the starting temperature.
+      * - ``end_temp``
+        - Range for the ending temperature.
+      * - ``amp_temp``
+        - Range for sinusoidal temperature fluctuation amplitude.
+      * - ``per_temp``
+        - Range for temperature fluctuation period.
+
+Density schedule fields
+   Density changes are optional. Use ``null`` for ``end_dens``, ``amp_dens``,
+   and ``per_dens`` to disable density changes.
+
+   .. list-table::
+      :header-rows: 1
+      :widths: 30 70
+
+      * - Field
+        - Meaning
+      * - ``end_dens``
+        - Target final density range. ``null`` disables cell rescaling.
+      * - ``amp_dens``
+        - Range for density fluctuation amplitude.
+      * - ``per_dens``
+        - Range for density fluctuation period.
+
+ML calculator fields
+   These fields control how sampler tasks load and wrap ML models.
+   See :ref:`ml-interface-extension-points` and
+   :ref:`ml-interface-new-architecture-template` for the corresponding ML
+   interface requirements.
+
+   .. list-table::
+      :header-rows: 1
+      :widths: 30 70
+
+      * - Field
+        - Meaning
+      * - ``ase_calculator``
+        - Import string for the ML calculator or model-loader function.
+      * - ``MLMD_calculator_options``
+        - Options passed to ``MLMD_calculator``, such as ``well_params``.
+      * - ``translate_to_center``
+        - Whether to translate the incoming structure so its center of mass is
+          near the origin before sampling.
+
+Uncertainty-driven dynamics
+   Uncertainty-driven dynamics (UDD) is a biased MLMD sampler that steers
+   dynamics toward regions where the model committee has high ensemble energy
+   uncertainty. The usual ``Escut`` and ``Fscut`` threshold logic still decides
+   whether a sampled configuration is returned for QM labeling.
+
+   Select UDD in ``master_config.json`` with a separate sampler task:
+
+   .. code-block:: json
+
+      {
+        "sampler_task": "alframework.samplers.udd_sampling.simple_udd_sampling_task"
+      }
+
+   Set the bias strength in the sampler config:
+
+   .. code-block:: json
+
+      {
+        "udd_bias_weight": 0.45,
+        "MLMD_calculator_options": {
+          "well_params": null
+        }
+      }
+
+   ``udd_bias_weight`` controls the strength of the energy-uncertainty bias.
+   Use ``simple_mlmd_sampling_task`` instead when no UDD bias is desired.
+
+Output and trajectory fields
+   These fields control sampler metadata and optional trajectory output.
+
+   .. list-table::
+      :header-rows: 1
+      :widths: 30 70
+
+      * - Field
+        - Meaning
+      * - ``meta_dir`` or ``meta_path``
+        - Directory for sampler metadata files. Examples use both names; the
+          task input builder maps compatible names to the sampler function.
+      * - ``trajectory_frequency``
+        - Probability of writing a trajectory for a sampling task.
+      * - ``trajectory_interval``
+        - MD-step interval for trajectory writes when trajectory output is
+          enabled.
+
+Reactive sampler fields
+   These fields are used by ``reactive_sampling``.
+
+   .. list-table::
+      :header-rows: 1
+      :widths: 30 70
+
+      * - Field
+        - Meaning
+      * - ``reactive_sampling_method``
+        - Reactive search mode. Values containing ``NEB`` run NEB; values
+          containing ``DIMER`` run dimer sampling.
+      * - ``N_neb``
+        - Number of intermediate NEB images.
+      * - ``max_iter``
+        - Maximum number of repeated reactive-sampling attempts.
+      * - ``neb_steps``
+        - Optimizer steps for each NEB or dimer call.
+      * - ``Escut``, ``Fscut``
+        - Energy and force uncertainty thresholds.
+      * - ``Fmmult``
+        - Multiplier applied to ``Fscut`` for maximum force uncertainty. The
+          default is ``3.0``.
 
 Related Examples
 ----------------

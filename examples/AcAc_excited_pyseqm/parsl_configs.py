@@ -9,7 +9,7 @@ At scale, ALF_ENV_TARBALL (or ALF_{ML,SAMPLER,QM}_ENV_TARBALL) names an archive 
 environment (conda-pack, or uv; ALF_ENV_PYTHON is its interpreter) that each node unpacks once
 into node-local storage (ALF_NODE_LOCAL_DIR, default $TMPDIR or /tmp), and
 ALF_NODE_LOCAL_CACHES=1 moves package caches there and turns off HDF5 file locking. Both are off
-by default; see the Parsl guide's Running at Scale section.
+by default; see the Running at Scale guide.
 """
 import os
 from pathlib import Path

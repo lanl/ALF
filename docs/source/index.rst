@@ -47,6 +47,7 @@ pieces to a concrete run.
    user_guide/excited_states
    user_guide/batching
    user_guide/parsl
+   user_guide/running_at_scale
 
 .. toctree::
    :maxdepth: 2

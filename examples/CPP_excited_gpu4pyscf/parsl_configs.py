@@ -68,7 +68,7 @@ def make_config():
                        else ' -m parsl.executors.high_throughput.process_worker_pool')+
                        DEFAULT_LAUNCH_CMD.removeprefix('process_worker_pool.py')))
     return Config(executors=executors, run_dir=str(run/'runinfo'), retries=0,
-                  max_idletime=60, strategy_period=5)
+                  max_idletime=900, strategy_period=5)
 
 
 config = make_config()

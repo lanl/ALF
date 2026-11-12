@@ -5,7 +5,7 @@
   "cell_key": null,
   "train_forces": true,
   "export_force_gradients": true,
-  "network_choice": 0,
+  "network_choice": 1,
   "n_atoms": 90,
   "network_params": {
     "possible_species": [
@@ -19,7 +19,9 @@
     "n_atom_layers": 3,
     "n_features": 64,
     "n_interaction_layers": 2,
-    "n_sensitivities": 20
+    "n_sensitivities": 20,
+    "l_max": 3,
+    "n_max": 4
   },
   "energy_weight": 1.0,
   "force_weight": 1.0,
@@ -35,13 +37,13 @@
   "test_size": 0.1,
   "optimizer": "AdamW",
   "learning_rate": 0.000315,
-  "batch_size": 64,
-  "eval_batch_size": 64,
-  "max_epochs": 300,
+  "batch_size": 200,
+  "eval_batch_size": 200,
+  "max_epochs": 200,
   "termination_patience": 50,
   "plot_frequency": 100,
   "scheduler_options": {
-    "max_batch_size": 64,
+    "max_batch_size": 200,
     "patience": 16,
     "factor": 0.2
   },
@@ -53,7 +55,7 @@
     "csv": false,
     "output_subdir": "plots"
   },
-  "hippynn_kernel": "pytorch",
+  "hippynn_kernel": "triton",
   "torch_threads": 1,
   "fraction_train_eval": 0.1
 }

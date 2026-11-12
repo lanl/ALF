@@ -4,7 +4,8 @@ python prepare.py --ring-size 6 --output-dir /scratch/cpp6 --generate-seeds
 --count seeds make the bootstrap; --spares more (5% by default) replace seeds whose labels fail.
 Sizes with references/cppN_s0.xyz (6-12) need only --ring-size. For another size, provide
 --reference and --energy-offset-ev, or bundle its S0 optimization with references/import_s0_reference.py.
-Model choices: hipnn64 (default), hipnn100, hiphop145, hiphop100, hiphop64; all use four members.
+Defaults: CPP9 in DCM, hiphop64 with Triton, batches 200, at most 200 epochs and 50,000 labels.
+Model choices: hiphop64 (default), hipnn64, hipnn100, hiphop145, hiphop100; all use four members.
 Configure parsl_configs.py for your site, then run in the prepared directory:
 python -m alframework --master master_config.json
 GPU4PySCF workers require a compatible cuTENSOR installation/library path.
@@ -24,7 +25,7 @@ MODELS = {'hiphop145': 145, 'hiphop100': 100, 'hiphop64': 64, 'hipnn100': 100, '
 
 
 def apply_model_profile(config, model, n_atoms):
-    """Set a hippynn_config.json dictionary to one of the four network profiles, in place."""
+    """Set a hippynn_config.json dictionary to a network profile, in place."""
     if model not in MODELS:
         raise ValueError('Unknown model profile')
     config['n_atoms'] = n_atoms
@@ -41,7 +42,7 @@ def apply_model_profile(config, model, n_atoms):
 
 
 def prepare(output_dir, *, ring_size=9, reference=None, energy_offset_ev=None,
-            count=1000, spares=None, model='hipnn64', generate_seeds=False, solvent='gas'):
+            count=1000, spares=None, model='hiphop64', generate_seeds=False, solvent='dcm'):
     if solvent not in {'gas','dcm'}:
         raise ValueError('solvent must be gas or dcm')
     if isinstance(ring_size, bool) or not isinstance(ring_size, int) or ring_size < 3:
@@ -102,11 +103,14 @@ def prepare(output_dir, *, ring_size=9, reference=None, energy_offset_ev=None,
             callback(config)
             path.write_text(json.dumps(config, indent=2)+'\n')
         update('master_config.json', lambda c: c.update(bootstrap_set=count, bootstrap_spares=spares))
-        if solvent == 'dcm':
-            def vertical_schema(config):
-                for key in ('vertical_excitation_energies','vertical_transition_dipoles','vertical_oscillator_strengths'):
+        def vertical_schema(config):
+            for key in ('vertical_excitation_energies','vertical_transition_dipoles','vertical_oscillator_strengths'):
+                if solvent == 'dcm':
                     config['properties_list'][key] = [key,'system',1.]
-            update('master_config.json', vertical_schema)
+                else:
+                    config['properties_list'].pop(key, None)
+        update('master_config.json', vertical_schema)
+        update('QM_config.json', lambda c: c['solvent'].update(enabled=solvent=='dcm'))
         update('QM_config.json', lambda c: c.update(energy_offset_eV=float(offset)))
         update('hippynn_config.json', lambda c: apply_model_profile(c, model, len(atoms)))
         seed = dict(DEFAULT_SETTINGS, reference_geometry='reference.xyz', count=count+spares)
@@ -140,9 +144,9 @@ def main(argv=None):
     parser.add_argument('--energy-offset-ev', type=float)
     parser.add_argument('--count', type=int, default=1000)
     parser.add_argument('--spares', type=int, help='extra seeds for failed labels; default 5%% of --count')
-    parser.add_argument('--model', choices=sorted(MODELS), default='hipnn64')
+    parser.add_argument('--model', choices=sorted(MODELS), default='hiphop64')
     parser.add_argument('--generate-seeds', action='store_true')
-    parser.add_argument('--solvent', choices=['gas','dcm'], default='gas')
+    parser.add_argument('--solvent', choices=['gas','dcm'], default='dcm')
     args = parser.parse_args(argv)
     print(prepare(args.output_dir, ring_size=args.ring_size, reference=args.reference,
                   energy_offset_ev=args.energy_offset_ev, count=args.count, spares=args.spares,

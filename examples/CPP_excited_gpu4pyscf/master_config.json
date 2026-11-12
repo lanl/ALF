@@ -83,6 +83,21 @@
       "absolute_state_energies",
       "system",
       1.0
+    ],
+    "vertical_excitation_energies": [
+      "vertical_excitation_energies",
+      "system",
+      1.0
+    ],
+    "vertical_transition_dipoles": [
+      "vertical_transition_dipoles",
+      "system",
+      1.0
+    ],
+    "vertical_oscillator_strengths": [
+      "vertical_oscillator_strengths",
+      "system",
+      1.0
     ]
   },
   "bootstrap_set": 1000,
@@ -100,5 +115,6 @@
   "h5_dir": "h5store/",
   "model_path": "models/model-{:04d}",
   "QM_scratch_dir": "qm_scratch/",
-  "trajectory_summary_path": "status_plots/trajectories.jsonl"
+  "trajectory_summary_path": "status_plots/trajectories.jsonl",
+  "maximum_stored_labels": 50000
 }

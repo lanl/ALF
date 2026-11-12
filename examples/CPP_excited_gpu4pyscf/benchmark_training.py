@@ -8,7 +8,8 @@ profile's network, and times AdamW updates on rattled copies of the minimized re
 memory don't depend on the label values, so the targets are random. Each case runs in its own process,
 so running out of memory in one doesn't affect the next. One JSON line per case goes to --output, then
 a table with epoch projections for --train-rows training and --eval-rows evaluated structures.
-Runs on CPU too (--device cpu), for a quick check that the script works; only GPU numbers mean anything.
+The kernel is selected from hippynn_config.json; --hippynn-kernel overrides it explicitly.
+For a CPU check use --device cpu --hippynn-kernel pytorch; only GPU numbers mean anything.
 """
 import argparse
 import json
@@ -22,9 +23,10 @@ HERE = Path(__file__).resolve().parent
 DEFAULT_PROFILES = ('hiphop145', 'hiphop100', 'hiphop64', 'hipnn100', 'hipnn64')
 
 
-def run_case(profile, batch, mode, device, warmup, steps, states):
+def run_case(profile, batch, mode, device, warmup, steps, states, hippynn_kernel=None):
     import numpy as np
     import torch
+    import hippynn
     from ase.io import read
     from hippynn.graphs import GraphModule, inputs
 
@@ -35,6 +37,8 @@ def run_case(profile, batch, mode, device, warmup, steps, states):
     torch.manual_seed(0)
     atoms = read(HERE/'references/cpp9_s0.xyz')
     config = apply_model_profile(json.loads((HERE/'hippynn_config.json').read_text()), profile, len(atoms))
+    requested_kernel = hippynn_kernel if hippynn_kernel is not None else config['hippynn_kernel']
+    active_kernel = hippynn.custom_kernels.set_custom_kernels(requested_kernel)
     species = inputs.SpeciesNode(db_name='species')
     positions = inputs.PositionsNode(db_name='coordinates')
     network = _build_shared_network(species, positions, network_choice=config['network_choice'],
@@ -75,6 +79,7 @@ def run_case(profile, batch, mode, device, warmup, steps, states):
         step()
         times.append(time.perf_counter() - start)
     record = dict(profile=profile, mode=mode, batch=batch, device=str(device), states=states,
+                  requested_hippynn_kernel=requested_kernel, hippynn_kernel=active_kernel,
                   parameters=sum(p.numel() for p in model.parameters()), result='passed',
                   median_step_s=float(np.median(times)), steps=steps, warmup=warmup)
     if cuda:
@@ -88,6 +93,8 @@ def case_in_subprocess(profile, batch, mode, args):
     command = [sys.executable, str(Path(__file__).resolve()), '--case', profile, str(batch), mode,
                '--device', args.device, '--warmup', str(args.warmup), '--steps', str(args.steps),
                '--states', str(args.states)]
+    if getattr(args, 'hippynn_kernel', None) is not None:
+        command += ['--hippynn-kernel', args.hippynn_kernel]
     done = subprocess.run(command, capture_output=True, text=True, cwd=HERE)
     lines = [line for line in done.stdout.splitlines() if line.startswith('{')]
     if done.returncode == 0 and lines:
@@ -95,6 +102,9 @@ def case_in_subprocess(profile, batch, mode, args):
     text = done.stderr + done.stdout
     result = 'oom' if 'out of memory' in text.lower() else 'error'
     return dict(profile=profile, mode=mode, batch=batch, device=args.device, result=result,
+                requested_hippynn_kernel=(getattr(args,'hippynn_kernel',None)
+                    if getattr(args,'hippynn_kernel',None) is not None
+                    else json.loads((HERE/'hippynn_config.json').read_text())['hippynn_kernel']),
                 error=text.strip().splitlines()[-1] if text.strip() else f'exit {done.returncode}')
 
 
@@ -121,6 +131,7 @@ def main(argv=None):
     parser.add_argument('--batches', nargs='+', type=int, default=[1, 4, 8, 16, 32])
     parser.add_argument('--eval-batches', nargs='+', type=int, default=[8, 16, 32])
     parser.add_argument('--device', default='cuda')
+    parser.add_argument('--hippynn-kernel', help='explicit kernel override; default: hippynn_config.json')
     parser.add_argument('--warmup', type=int, default=2)
     parser.add_argument('--steps', type=int, default=5)
     parser.add_argument('--states', type=int, default=4)
@@ -133,7 +144,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.case:
         profile, batch, mode = args.case
-        print(json.dumps(run_case(profile, int(batch), mode, args.device, args.warmup, args.steps, args.states)))
+        print(json.dumps(run_case(profile, int(batch), mode, args.device, args.warmup, args.steps, args.states,
+                                  args.hippynn_kernel)))
         return 0
     if args.output is None:
         parser.error('--output is required')

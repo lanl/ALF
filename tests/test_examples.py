@@ -138,7 +138,7 @@ def test_cpp_gpu4pyscf_configs_are_valid(name):
     validate_gpu4pyscf_config(read(ROOT / "examples/CPP_excited_gpu4pyscf" / name))
 
 
-def test_cpp_training_benchmark_runs_and_projects_an_epoch(monkeypatch):
+def test_cpp_training_benchmark_runs_and_projects_an_epoch(monkeypatch, tmp_path):
     """The CPP training benchmark, run on CPU for one step of the smallest network."""
     pytest.importorskip("hippynn")
     folder = ROOT / "examples" / "CPP_excited_gpu4pyscf"
@@ -146,8 +146,22 @@ def test_cpp_training_benchmark_runs_and_projects_an_epoch(monkeypatch):
     for name in ("benchmark_training", "prepare"):
         monkeypatch.delitem(sys.modules, name, raising=False)
     benchmark = importlib.import_module("benchmark_training")
-    records = [benchmark.run_case("hipnn64", 1, mode, "cpu", warmup=0, steps=1, states=4) for mode in ("train", "eval")]
+    # A CPU-compatible test config must be honored even if a different kernel was
+    # previously active. The production example deliberately requires Triton/GPU.
+    config = read(folder/'hippynn_config.json')
+    config['hippynn_kernel']='pytorch'
+    (tmp_path/'hippynn_config.json').write_text(json.dumps(config))
+    (tmp_path/'references').mkdir()
+    (tmp_path/'references/cpp9_s0.xyz').write_bytes((folder/'references/cpp9_s0.xyz').read_bytes())
+    monkeypatch.setattr(benchmark, 'HERE', tmp_path)
+    import hippynn
+    original_kernel=hippynn.custom_kernels.CUSTOM_KERNELS_ACTIVE
+    hippynn.custom_kernels.set_custom_kernels('_pytorch_raw')
+    records = [benchmark.run_case("hipnn64", 1, mode, "cpu", warmup=0, steps=1, states=4,
+                                  hippynn_kernel=None if mode=='train' else 'pytorch') for mode in ("train", "eval")]
+    hippynn.custom_kernels.set_custom_kernels(original_kernel)
     assert [record["result"] for record in records] == ["passed", "passed"]
+    assert all(record['requested_hippynn_kernel']==record['hippynn_kernel']=='pytorch' for record in records)
     assert records[0]["parameters"] > 0 and records[0]["median_step_s"] > 0
     [row] = benchmark.projections(records, train_rows=100, eval_rows=10, walltime_hours=16)
     expected = (100 * records[0]["median_step_s"] + 10 * records[1]["median_step_s"]) / 60
@@ -171,6 +185,23 @@ def test_cpp_prepare_makes_spare_seeds(tmp_path, monkeypatch, spares, expected):
     assert read(run / "seed_config.json")["count"] == 40 + expected, "the seed pool holds the spares"
     assert read(run / "preparation.json")["spares"] == expected
     monkeypatch.delitem(sys.modules, "prepare", raising=False)
+
+
+@pytest.mark.parametrize('solvent', ['dcm', 'gas'])
+def test_cpp_prepare_keeps_solvent_and_vertical_schema_consistent(tmp_path, monkeypatch, solvent):
+    folder = ROOT / 'examples' / 'CPP_excited_gpu4pyscf'
+    monkeypatch.syspath_prepend(str(folder))
+    monkeypatch.delitem(sys.modules, 'prepare', raising=False)
+    prepare = importlib.import_module('prepare').prepare
+    # Exercise the new DCM default as well as switching that template back to gas.
+    options = {} if solvent=='dcm' else dict(solvent='gas')
+    run = prepare(tmp_path/solvent, count=2, **options)
+    assert read(run/'QM_config.json')['solvent']['enabled'] == (solvent=='dcm')
+    properties = read(run/'master_config.json')['properties_list']
+    vertical = {'vertical_excitation_energies', 'vertical_transition_dipoles', 'vertical_oscillator_strengths'}
+    assert set(properties) & vertical == (vertical if solvent=='dcm' else set())
+    assert read(run/'preparation.json')['solvent']==solvent
+    monkeypatch.delitem(sys.modules, 'prepare', raising=False)
 
 
 CPP_FOLDER = ROOT / "examples" / "CPP_excited_gpu4pyscf"

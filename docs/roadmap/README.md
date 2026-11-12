@@ -1,6 +1,6 @@
 # ALF development roadmap
 
-Last updated: November 8, 2026.
+Last updated: November 12, 2026.
 
 This is the plan for ALF's `development` branch: what has been built, what has been shown to work on
 real hardware, the decisions that shape it, and what comes next. Detailed work logs and validation
@@ -21,7 +21,7 @@ or performance at scale, except where a row says so.
 | Teacher labeling | Off-the-shelf MACE and UMA checkpoints as labelers. UMA's `omol` task refuses periodic structures unless opted in. | Both teachers on GPU, each with a real HIPPYNN student trained on its labels. | Teacher accuracy against DFT isn't claimed. |
 | Fine-tuning | Adapters for HIPPYNN, MACE, and UMA. ALF selects the samples, and each round fine-tunes copies of the pretrained model on all labels so far. | The workflow for all three on DFT labels. Held-out accuracy improved for HIPPYNN and MACE. | UMA's held-out accuracy got worse; its recipe needs investigation. |
 | PySCF labeling (`pyscf_task`) | One labeler for molecules and periodic cells, on CPU (PySCF) or GPU (GPU4PySCF), through ALF's `PySCFCalculator` ASE calculator. | GPU4PySCF ground-state DFT and the excited path. Molecular and k-point checks on GPU. | On GPU, periodic energies, forces, and stress missed their tight agreement checks, and the periodic student loop didn't finish. |
-| CPP9 training size | The CPP example defaults to `hipnn64` at batch 64. | About 167 s per epoch at 40,000 training structures on a 40 GB A100, about 4 GiB allocated per member. | Accuracy at this size and batch, including the learning rate. |
+| CPP9 training size | Explicit HIPPYNN kernel selection and configurable model, batch, evaluation batch, and epoch limit. | All 1,000 DCM bootstrap labels converged and were stored. Four HIP-HOP64 members each completed three epochs, evaluation, and checkpoint reloads on those labels, using Triton, training/evaluation batch 200, and one 40 GB A100 per member. Peak sampled device use was 31.8 GiB. Dense PyTorch at batch 200 failed while requesting a single 51.3 GiB intermediate. | Full 50,000-label training, the projected 200-epoch walltime, predictive accuracy, and long-run stability remain unqualified. |
 
 ## Design decisions
 
@@ -40,6 +40,13 @@ or performance at scale, except where a row says so.
   compound earlier fine-tuning.
 - **PySCF and GPU4PySCF are the default QM for new examples,** since they're free and install with pip.
 - **Single-node training stays the default;** multi-node training is a separate task.
+- **The HIPPYNN kernel is part of resource qualification.** `pytorch` and `triton` select
+  implementations of HIPPYNN's message-passing operations, not different networks or loss functions;
+  PyTorch still handles training and differentiation. Triton avoids large dense intermediates and
+  can improve GPU throughput, with compilation/autotuning overhead and small floating-point
+  differences from the order of reductions. A memory or speed improvement doesn't establish better
+  predictive accuracy. Benchmarks must explicitly select and record the kernel actually used by
+  each worker role, along with the precision and graph settings.
 - **Tests check ALF's wrappers and catch dependency changes,** not physics. Unit, sign, and convention
   checks use stand-ins with known numbers. Real QM runs once per code path ALF uses, asserting only
   that it runs and returns finite results of the right shape. Accuracy is checked with `--test_qm` and
@@ -53,6 +60,21 @@ or performance at scale, except where a row says so.
   lost login node doesn't, and the jobs run until their walltime unless cancelled.
 - **Training time grows with the data.** Each round trains from scratch on all labels, so trainings
   eventually outgrow a job's time limit, and a training killed at walltime is lost.
+- **Benchmark and production kernels can differ.** The older CPP example benchmark didn't apply the
+  configured `hippynn_kernel`: HIPPYNN chose its default accelerated implementation, while production
+  explicitly used dense PyTorch. The resulting batch-200 memory estimate didn't qualify that
+  production configuration. Selecting Triton explicitly passed real four-member training on the
+  saved bootstrap data. The CPP example benchmark now selects and records its kernel explicitly,
+  as does the newer `python -m alframework.benchmark`;
+  still verify a short real training, evaluation, and checkpoint reload before scaling. Geometry
+  and neighbor counts, batch size, force derivatives, precision, and kernel all affect memory;
+  dataset size alone doesn't determine GPU use.
+- **Allocated GPUs aren't necessarily usable.** A training allocation advertised four GPUs through
+  NVML, but CUDA initialization found only three and every member failed before training. The node
+  was independently marked for draining because of PyTorch crashes; this doesn't prove a physical
+  card failure. Site recovery excluded the node and added fresh-process CUDA initialization and a
+  small computation on every training GPU before worker registration. The 1,000 stored labels were
+  retained for the retry.
 - **Packed inference memory.** HIPPYNN pads each task to its largest system, with no automatic split
   when a batch runs out of memory.
 - **In-memory state.** Waiting batches and sampling cohorts aren't restored after a restart, and
@@ -62,16 +84,22 @@ or performance at scale, except where a row says so.
 - **Stored QM labels aren't filtered.** Runtime force and topology screens apply to sampled frames only.
 - **Node-local storage.** QM scratch still runs on shared storage. Where `/tmp` is a RAM-backed file
   system, as on the partitions measured, scratch there competes with host memory.
-- **File I/O at scale.** Builders cache the replay manifest per worker, but trainers read every shard,
-  each sampler task loads every model member, and metadata is written per structure.
+- **File I/O at scale.** Builders cache the replay manifest and sampler workers reuse their last
+  ensemble, but trainers still read every shard and metadata is written per structure.
 - **UMA fine-tuning disk use.** fairchem's intermediate checkpoints take far more space than the final
   model while training runs.
 
 ## Next
 
-1. **CPP9 at scale.** A full campaign on 10 GPU nodes (8 for labeling, 1 for training, 1 for
-   sampling). Check `--test_qm` and `--test_ml` on the new cluster, then run a small pilot with one
-   kill and restart, before the full run.
+1. **CPP9 at scale.** Complete the campaign with a ceiling of 10 GPU nodes (8 for labeling, 1 for
+   training, 1 for sampling). The earlier pilot exercised a coordinator kill/restart and resumed
+   labeling. The 1,000-label DCM bootstrap and three-epoch HIP-HOP64/Triton training qualification
+   are complete; the production configuration
+   uses training/evaluation batch 200, at most 200 epochs, and a 50,000-label stopping threshold.
+   Confirm production training, sampling, and subsequent retraining, then measure training walltime
+   and peak memory as the dataset and sampled geometries grow. Verify actual executor ports from
+   compute nodes, bound repeated worker-registration failures, and check allocated GPUs before
+   accepting a worker; successful node allocation alone doesn't establish worker health.
 2. **UMA fine-tuning accuracy.** Find why held-out errors grew. The refit of per-element reference
    energies on few labels is one suspect.
 3. **Running at scale.** A guide section on settings (`HDF5_USE_FILE_LOCKING`, `TMPDIR`,

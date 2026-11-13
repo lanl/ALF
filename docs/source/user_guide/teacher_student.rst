@@ -69,7 +69,9 @@ evaluates each batch in one pass. ``teacher_task`` labels one structure per task
      - Required for UMA, with no default, because each task is a different level of theory:
        ``omol`` for molecules, ``omat`` for materials, and so on.
    * - ``dtype``
-     - ``float64`` (the default) or ``float32``. Prefer ``float64`` for labels.
+     - ``float64`` (the default) or ``float32``. Prefer ``float64`` for labels. In fairchem-core 2.21's
+       UMA TorchSim interface, this controls the input and output tensor precision; predictions are
+       computed in float32, so selecting ``float64`` does not increase their numerical precision.
    * - ``device``
      - Optional. By default, each worker picks a GPU as the samplers do; see :doc:`parsl`.
    * - ``allow_periodic``

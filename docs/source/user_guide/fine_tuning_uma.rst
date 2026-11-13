@@ -50,6 +50,10 @@ The sampler loads the copies for batched MD, with ``mlmd_trajectories_task`` as 
    "batched_calculator_options": {"task": "omol", "dtype": "float32", "charge": 0, "spin": 1},
    "driver": {"strategy": "batched", "engine": "torchsim"}
 
+As for the UMA teacher, fairchem-core 2.21 computes predictions in float32. ``dtype`` controls the
+copies' input and output tensor precision; selecting ``float64`` does not increase prediction precision
+(see :doc:`teacher_student`).
+
 .. list-table::
    :header-rows: 1
    :widths: 30 70

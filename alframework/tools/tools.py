@@ -5,6 +5,7 @@ import glob
 import logging
 import signal
 import sys
+import threading
 
 from importlib import import_module
 from alframework.tools.atom_order import TOPOLOGY_ATOM_IDS, validated_atom_ids
@@ -533,25 +534,66 @@ class parsl_task_queue():
         print('Finished Failed Tasks: {:d}'.format(self.get_failed_number()))
 
 
-# Used to find current version of directories to re-start with
-def release_allocations_at_exit(dfk):
+# Seconds Parsl's cleanup gets at exit once ALF has cancelled the blocks itself.
+CLEANUP_TIMEOUT = float(os.environ.get('ALF_PARSL_CLEANUP_TIMEOUT', '120'))
+
+
+def cancel_blocks(dfk):
+    """Cancel every block Parsl's executors have submitted, through each executor's provider.
+
+    This needs only the scheduler (``scancel`` for Slurm), not Parsl's interchange. Blocks that have
+    already ended are cancelled again harmlessly.
+
+    Args:
+        dfk (parsl.dataflow.dflow.DataFlowKernel): The object returned by ``parsl.load``.
+
+    """
+    for label, executor in getattr(dfk, 'executors', {}).items():
+        provider = getattr(executor, 'provider', None)
+        job_ids = [job for job in getattr(executor, 'blocks_to_job_id', {}).values() if job is not None]
+        if provider is None or not job_ids:
+            continue
+        try:
+            provider.cancel(job_ids)
+        except Exception as exc:  # Keep going: the other executors' blocks still need cancelling.
+            print("Could not cancel {}'s blocks {}: {}: {}".format(label, job_ids, type(exc).__name__, exc),
+                  flush=True)
+
+
+def release_allocations_at_exit(dfk, cleanup_timeout=CLEANUP_TIMEOUT):
     """Stop Parsl's interchange and cancel its blocks however the coordinator ends.
 
     Parsl's own exit hook only logs a warning. Without ``cleanup``, the interchange outlives the
     coordinator and keeps answering worker heartbeats, so the scheduler holds the nodes until walltime.
     This covers ``exit()``, uncaught errors, Ctrl-C, and ``SIGTERM`` from ``scancel``, but not ``SIGKILL``.
 
+    The blocks are cancelled through the providers first, because Parsl's cleanup can hang: it asks each
+    interchange which workers are connected and waits for the answer without a time limit. Ctrl-C in a
+    terminal reaches the interchanges too (they share the coordinator's process group), so by then they
+    may be gone. The cleanup then runs for at most ``cleanup_timeout`` seconds.
+
     Args:
         dfk (parsl.dataflow.dflow.DataFlowKernel): The object returned by ``parsl.load``.
+        cleanup_timeout (float): Seconds to wait for Parsl's cleanup (default ``ALF_PARSL_CLEANUP_TIMEOUT``,
+            else 120).
 
     """
-    def release():
-        if dfk.cleanup_called:
-            return
+    def cleanup():
         try:
             dfk.cleanup()
         except Exception as exc:  # Don't hide the error that ended the run.
             print("Could not release Parsl allocations: {}: {}".format(type(exc).__name__, exc), flush=True)
+
+    def release():
+        if dfk.cleanup_called:
+            return
+        cancel_blocks(dfk)
+        worker = threading.Thread(target=cleanup, name='alf-parsl-cleanup', daemon=True)
+        worker.start()
+        worker.join(cleanup_timeout)
+        if worker.is_alive():
+            print("Parsl's cleanup did not finish within {:g} s, probably because its interchange had already "
+                  "stopped; ALF cancelled the blocks itself.".format(cleanup_timeout), flush=True)
 
     atexit.register(release)
     signal.signal(signal.SIGTERM, lambda signum, frame: sys.exit(128 + signum))

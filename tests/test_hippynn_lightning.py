@@ -94,6 +94,15 @@ def test_ground_state_member_trains_on_two_devices(tmp_path):
     ml.HIPNN_ASE_calculator(str(member), energy_key="energy", device="cpu")
 
 
+def test_member_trains_inside_a_slurm_step(tmp_path, monkeypatch):
+    """Under Parsl's SrunLauncher each worker runs inside a Slurm step. Lightning must still see ALF's ranks,
+    not SLURM_PROCID 0 in every rank, which made all of them bind the same port (seen on Frontier)."""
+    for key, value in dict(SLURM_NTASKS="1", SLURM_PROCID="0", SLURM_LOCALID="0", SLURM_NODEID="0",
+                           SLURM_JOB_NAME="alf_ml_executor", SLURM_JOB_ID="1").items():
+        monkeypatch.setenv(key, value)
+    test_ground_state_member_trains_on_two_devices(tmp_path)
+
+
 def test_batch_sizes_must_divide_across_devices():
     pytest.importorskip("pytorch_lightning")
     from alframework.ml_interfaces.hippynn_lightning import _split_batches

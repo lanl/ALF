@@ -157,8 +157,27 @@ def test_child_environment_picks_one_gpu_within_the_worker_mask(monkeypatch):
     with pytest.raises(ValueError, match="outside"):
         child_environment("cuda:2")
     monkeypatch.setenv("HIP_VISIBLE_DEVICES", "0")
-    with pytest.raises(NotImplementedError, match="HIP"):
+    with pytest.raises(NotImplementedError, match="both HIP_VISIBLE_DEVICES and"):
         child_environment("cuda:0")
+
+
+def test_child_environment_on_amd_masks(monkeypatch):
+    """Slurm sets ROCR_VISIBLE_DEVICES on AMD nodes; fine-tuning must still pick one GPU (seen on Frontier)."""
+    for key in ("CUDA_VISIBLE_DEVICES", "HIP_VISIBLE_DEVICES"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("ROCR_VISIBLE_DEVICES", "0,1,2,3,4,5,6,7")
+    name, environment = child_environment("cuda:5")
+    assert name == "cuda" and environment["CUDA_VISIBLE_DEVICES"] == "5"
+    assert environment["ROCR_VISIBLE_DEVICES"] == "0,1,2,3,4,5,6,7", "the ROCr mask is inherited unchanged"
+    monkeypatch.setenv("ROCR_VISIBLE_DEVICES", "2,5")
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "1,0")
+    assert child_environment("cuda:1")[1]["CUDA_VISIBLE_DEVICES"] == "0"
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES")
+    monkeypatch.setenv("HIP_VISIBLE_DEVICES", "1,0")
+    environment = child_environment("cuda:0")[1]
+    assert environment["HIP_VISIBLE_DEVICES"] == "1" and "CUDA_VISIBLE_DEVICES" not in environment
+    with pytest.raises(ValueError, match="outside this worker's HIP_VISIBLE_DEVICES"):
+        child_environment("cuda:2")
 
 
 def test_multinode_round_trains_each_copy_as_its_own_app(run):

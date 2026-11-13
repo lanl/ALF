@@ -133,22 +133,25 @@ def shard_atoms(shards, energy_dataset='energy', forces_dataset='forces'):
 def child_environment(device):
     """Return the device name and environment for a child process that should use ``device``.
 
-    ``device`` is ``'cpu'`` or a local ordinal such as ``'cuda:2'``. The child sees only that GPU,
-    picked from the worker's own ``CUDA_VISIBLE_DEVICES`` when it has one.
+    ``device`` is ``'cpu'`` or a local ordinal such as ``'cuda:2'``, counted among the GPUs this worker
+    sees. The child sees only that GPU. Its mask narrows the worker's innermost one: ``HIP_VISIBLE_DEVICES``
+    when set, else ``CUDA_VISIBLE_DEVICES``. A ROCr mask (``ROCR_VISIBLE_DEVICES``, which Slurm sets on AMD
+    nodes) is inherited unchanged, since both of those apply to the GPUs it leaves, numbered from 0.
     """
     environment = dict(os.environ)
     if device == 'cpu':
         return 'cpu', environment
-    if environment.get('HIP_VISIBLE_DEVICES') or environment.get('ROCR_VISIBLE_DEVICES'):
-        raise NotImplementedError('Fine-tuning selects a GPU with CUDA_VISIBLE_DEVICES; HIP and ROCr masks are '
-                                  'not supported yet.')
+    if environment.get('HIP_VISIBLE_DEVICES') is not None and environment.get('CUDA_VISIBLE_DEVICES') is not None:
+        raise NotImplementedError('Fine-tuning cannot pick a GPU when both HIP_VISIBLE_DEVICES and '
+                                  'CUDA_VISIBLE_DEVICES are set; keep one of them.')
     index = int(str(device).partition(':')[2] or 0)
-    mask = environment.get('CUDA_VISIBLE_DEVICES')
+    name = 'HIP_VISIBLE_DEVICES' if environment.get('HIP_VISIBLE_DEVICES') is not None else 'CUDA_VISIBLE_DEVICES'
+    mask = environment.get(name)
     if mask is not None:
         visible = [entry.strip() for entry in mask.split(',') if entry.strip()]
         if index >= len(visible):
-            raise ValueError(f'{device} is outside this worker\'s CUDA_VISIBLE_DEVICES={mask!r}.')
-        environment['CUDA_VISIBLE_DEVICES'] = visible[index]
+            raise ValueError(f'{device} is outside this worker\'s {name}={mask!r}.')
+        environment[name] = visible[index]
     else:
         environment['CUDA_VISIBLE_DEVICES'] = str(index)
     return 'cuda', environment

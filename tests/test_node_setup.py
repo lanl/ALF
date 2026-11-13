@@ -53,6 +53,10 @@ def test_local_caches_alone_set_caches_and_hdf5_without_unpacking(tmp_path):
     out = subprocess.run(["bash", "-c", script], env=dict(os.environ, TMPDIR=str(tmp_path), USER="alf"),
                          capture_output=True, text=True, check=True).stdout.strip()
     assert out == f"{tmp_path}/alf-alf/cache/cupy|{tmp_path}/alf-alf/cache/matplotlib|FALSE"
+    miopen = subprocess.run(["bash", "-c", "\n".join(lines) + '\necho "$MIOPEN_USER_DB_PATH|$MIOPEN_CUSTOM_CACHE_DIR"\n'],
+                            env=dict(os.environ, TMPDIR=str(tmp_path), USER="alf"),
+                            capture_output=True, text=True, check=True).stdout.strip()
+    assert miopen == f"{tmp_path}/alf-alf/cache/miopen|{tmp_path}/alf-alf/cache/miopen"
 
 
 def test_two_blocks_on_one_node_unpack_once(tmp_path):

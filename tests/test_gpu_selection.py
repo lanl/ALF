@@ -224,3 +224,52 @@ def test_batched_sampler_uses_the_selected_gpu(monkeypatch):
         result.reraise()
     assert result == []
     assert captured == {"loader": "cuda:1", "engine": "cuda:1"}
+
+
+# Parsl's available_accelerators gives worker N both CUDA_VISIBLE_DEVICES=N and ROCR_VISIBLE_DEVICES=N.
+@pytest.mark.parametrize(
+    "masks,amd,changed",
+    [
+        ({"ROCR_VISIBLE_DEVICES": "3", "CUDA_VISIBLE_DEVICES": "3"}, True, True),
+        ({"ROCR_VISIBLE_DEVICES": "2,3", "CUDA_VISIBLE_DEVICES": "2, 3"}, True, True),
+        ({"ROCR_VISIBLE_DEVICES": "0", "CUDA_VISIBLE_DEVICES": "0"}, True, True),
+        ({"ROCR_VISIBLE_DEVICES": "3", "CUDA_VISIBLE_DEVICES": "3"}, False, False),
+        ({"ROCR_VISIBLE_DEVICES": "2,5", "CUDA_VISIBLE_DEVICES": "1"}, True, False),
+        ({"ROCR_VISIBLE_DEVICES": "3", "CUDA_VISIBLE_DEVICES": "3", "HIP_VISIBLE_DEVICES": "0"}, True, False),
+        ({"ROCR_VISIBLE_DEVICES": "3"}, True, False),
+        ({"CUDA_VISIBLE_DEVICES": "3"}, True, False),
+        ({"ROCR_VISIBLE_DEVICES": "", "CUDA_VISIBLE_DEVICES": ""}, True, False),
+    ],
+    ids=["parsl_one_gpu", "parsl_gpu_group", "parsl_gpu_0", "nvidia_node", "nested_mask", "hip_mask_too",
+         "rocr_only", "cuda_only", "empty_masks"],
+)
+def test_amd_nodes_drop_a_cuda_mask_that_repeats_rocr(masks, amd, changed):
+    from alframework.tools.gpu import normalize_amd_visibility
+
+    environ = dict(masks)
+    assert normalize_amd_visibility(environ, amd=amd) is changed
+    expected = {k: v for k, v in masks.items() if not (changed and k == "CUDA_VISIBLE_DEVICES")}
+    assert environ == expected
+    assert normalize_amd_visibility(environ, amd=amd) is False, "a second call changes nothing"
+
+
+def test_importing_alframework_fixes_parsl_masks_on_an_amd_node():
+    import subprocess
+
+    if not os.path.exists("/dev/kfd"):
+        pytest.skip("not an AMD GPU node")
+    env = dict(os.environ, ROCR_VISIBLE_DEVICES="3", CUDA_VISIBLE_DEVICES="3")
+    out = subprocess.run([sys.executable, "-c", "import os, alframework; print(os.environ.get('CUDA_VISIBLE_DEVICES'))"],
+                         env=env, capture_output=True, text=True, check=True).stdout.strip()
+    assert out == "None"
+
+
+@pytest.mark.parametrize("masks", [{"ROCR_VISIBLE_DEVICES": "3", "CUDA_VISIBLE_DEVICES": "3"},
+                                   {"CUDA_VISIBLE_DEVICES": "2,5"}], ids=["amd_parsl", "cuda"])
+def test_an_assigned_gpu_that_is_not_visible_is_an_error_not_the_cpu(monkeypatch, masks):
+    runtime(monkeypatch, 0)
+    for key, value in masks.items():
+        monkeypatch.setenv(key, value)
+    with pytest.raises(RuntimeError, match="none is visible"):
+        sampling_device({}, 4)
+    assert sampling_device({"device": "cpu"}, 4) == "cpu", "the CPU stays available on purpose"

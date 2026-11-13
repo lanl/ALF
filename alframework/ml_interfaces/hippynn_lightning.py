@@ -251,7 +251,10 @@ def _rank_main(payload, rank, n_devices, port):
     module.n_devices, module.parent_settings = n_devices, settings
     pl.seed_everything(settings['seed'], workers=True, verbose=False)
     accelerator = settings['accelerator']
-    trainer = pl.Trainer(accelerator=accelerator, devices=n_devices,
+    # Name the environment: inside a Slurm step (Parsl's SrunLauncher), Lightning would otherwise pick its
+    # Slurm environment, read every rank as SLURM_PROCID 0, and have all of them bind MASTER_PORT.
+    from pytorch_lightning.plugins.environments import LightningEnvironment
+    trainer = pl.Trainer(accelerator=accelerator, devices=n_devices, plugins=[LightningEnvironment()],
                          strategy=DDPStrategy(process_group_backend='nccl' if accelerator == 'gpu' else 'gloo'),
                          max_epochs=setup['controller'].max_epochs, use_distributed_sampler=True,
                          num_sanity_val_steps=0, logger=False, enable_checkpointing=False,

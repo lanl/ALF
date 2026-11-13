@@ -98,6 +98,50 @@ def test_hidden_gpus_stay_hidden(monkeypatch, mask):
     assert os.environ["CUDA_VISIBLE_DEVICES"] == mask
 
 
+@pytest.mark.parametrize("mask", ["", "-1", "NoDevFiles"])
+@pytest.mark.parametrize(
+    "hip,hidden,inherited",
+    [
+        (None, "CUDA_VISIBLE_DEVICES", {"ROCR_VISIBLE_DEVICES": "3"}),
+        ("7.1", "CUDA_VISIBLE_DEVICES", {"ROCR_VISIBLE_DEVICES": "3"}),
+        ("7.1", "HIP_VISIBLE_DEVICES", {"ROCR_VISIBLE_DEVICES": "3", "CUDA_VISIBLE_DEVICES": "3"}),
+        ("7.1", "ROCR_VISIBLE_DEVICES", {"HIP_VISIBLE_DEVICES": "0"}),
+    ],
+    ids=["cuda_with_rocr_assignment", "amd_cuda_hide", "amd_hip_hide", "amd_rocr_hide"],
+)
+def test_intentional_cpu_masks_override_inherited_gpu_assignments(monkeypatch, mask, hip, hidden, inherited):
+    runtime(monkeypatch, 0, hip=hip)
+    for key, value in {**inherited, hidden: mask}.items():
+        monkeypatch.setenv(key, value)
+    before = dict(os.environ)
+    assert sampling_device({}) == "cpu"
+    with pytest.raises(RuntimeError, match="No GPU"):
+        sampling_device({"device": "cuda"})
+    assert dict(os.environ) == before
+
+
+@pytest.mark.parametrize(
+    "hip,masks",
+    [
+        (None, {"CUDA_VISIBLE_DEVICES": "3", "HIP_VISIBLE_DEVICES": "", "ROCR_VISIBLE_DEVICES": ""}),
+        ("7.1", {"ROCR_VISIBLE_DEVICES": "3", "HIP_VISIBLE_DEVICES": "0", "CUDA_VISIBLE_DEVICES": ""}),
+    ],
+    ids=["cuda_ignores_amd_masks", "hip_overrides_cuda_mask"],
+)
+def test_irrelevant_hidden_masks_do_not_hide_a_broken_gpu_assignment(monkeypatch, hip, masks):
+    runtime(monkeypatch, 0, hip=hip)
+    for key, value in masks.items():
+        monkeypatch.setenv(key, value)
+    with pytest.raises(RuntimeError, match="none is visible"):
+        sampling_device({})
+
+
+def test_cuda_runtime_ignores_an_amd_assignment(monkeypatch):
+    runtime(monkeypatch, 0)
+    monkeypatch.setenv("ROCR_VISIBLE_DEVICES", "3")
+    assert sampling_device({}) == "cpu"
+
+
 def test_cpu_works_without_torch(monkeypatch):
     monkeypatch.setitem(sys.modules, "torch", None)
     monkeypatch.setenv("PARSL_WORKER_RANK", "not-an-integer")

@@ -39,10 +39,21 @@ def normalize_amd_visibility(environ=os.environ, amd=None):
     return True
 
 
-def _assigned_masks(environ=os.environ):
-    """Masks that give this process particular GPUs, as opposed to hiding them all."""
-    return {key: environ[key] for key in VISIBILITY_VARIABLES
-            if key in environ and environ[key].strip() not in HIDDEN_MASKS}
+def _assigned_masks(environ=os.environ, *, amd=False):
+    """Runtime-relevant GPU assignments, or none when an effective mask hides every GPU.
+
+    NVIDIA uses only the CUDA mask. On AMD, ROCr narrows the devices first, then HIP uses its own mask
+    if set, otherwise the CUDA mask. An intentional hiding mask at either active layer takes precedence
+    over an inherited assignment at the other layer.
+    """
+    variables = ('CUDA_VISIBLE_DEVICES',)
+    if amd:
+        inner = 'HIP_VISIBLE_DEVICES' if 'HIP_VISIBLE_DEVICES' in environ else 'CUDA_VISIBLE_DEVICES'
+        variables = ('ROCR_VISIBLE_DEVICES', inner)
+    masks = {key: environ[key] for key in variables if key in environ}
+    if any(mask.strip() in HIDDEN_MASKS for mask in masks.values()):
+        return {}
+    return masks
 
 
 def _cuda_device(requested, count, gpus_per_node, masked):
@@ -85,10 +96,12 @@ def sampling_device(sampler_config, gpus_per_node=None):
         import torch
     except ImportError:
         count = 0
+        amd = os.path.exists(AMD_GPU_DRIVER)
     else:
         count = torch.cuda.device_count() if torch.cuda.is_available() else 0
+        amd = bool(getattr(torch.version, 'hip', None))
     if requested is None and count == 0:
-        assigned = _assigned_masks()
+        assigned = _assigned_masks(amd=amd)
         if assigned:
             # Falling back to the CPU here would quietly run GPU work orders of magnitude slower.
             raise RuntimeError(

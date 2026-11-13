@@ -194,7 +194,8 @@ def fine_tune_hippynn_member(arguments):
     from hippynn.databases.database import prettyprint_arrays
     from hippynn.experiment import SetupParams, setup_and_train
     from hippynn.experiment.controllers import PatienceController, RaiseBatchSizeOnPlateau
-    from hippynn.experiment.serialization import load_checkpoint
+    from alframework.ml_interfaces._hippynn_compat import checkpoints
+    load_checkpoint = checkpoints().load_checkpoint
     from hippynn.graphs import find_unique_relative
     from hippynn.graphs.nodes.targets import HEnergyNode
     from hippynn.tools import active_directory, log_terminal

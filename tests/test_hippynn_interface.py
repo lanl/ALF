@@ -113,7 +113,8 @@ import alframework.ml_interfaces.hippynn_interface
 
 def test_trained_hippynn_checkpoints_reload_through_alf(tmp_path):
     pytest.importorskip("hippynn")
-    from hippynn.experiment.serialization import load_checkpoint
+    from alframework.ml_interfaces._hippynn_compat import checkpoints
+    load_checkpoint = checkpoints().load_checkpoint
 
     from tests.helpers.hippynn import train_cpu_ensemble
 
@@ -168,7 +169,9 @@ def test_members_load_concurrently_without_changing_directory(tmp_path, monkeypa
     serialization.load_checkpoint = load
     interface = ModuleType("hippynn.interfaces.ase_interface")
     interface.HippynnCalculator = Calculator
-    monkeypatch.setitem(sys.modules, serialization.__name__, serialization)
+    from alframework.ml_interfaces._hippynn_compat import CHECKPOINT_MODULES
+    for name in CHECKPOINT_MODULES:  # whichever name this hippynn uses, ALF must find the fake
+        monkeypatch.setitem(sys.modules, name, serialization)
     monkeypatch.setitem(sys.modules, interface.__name__, interface)
     monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(float32="float32", device=lambda x: x))
 
@@ -203,7 +206,8 @@ def test_members_load_concurrently_without_changing_directory(tmp_path, monkeypa
 
 def test_concurrent_loading_matches_legacy_predictions(monkeypatch, trained_ensemble):
     import torch
-    from hippynn.experiment import serialization
+    from alframework.ml_interfaces._hippynn_compat import checkpoints
+    serialization = checkpoints()
     from hippynn.interfaces.ase_interface import HippynnCalculator
     from hippynn.tools import active_directory
 
@@ -419,7 +423,8 @@ def two_state_ensemble(request, tmp_path_factory):
 
 
 def _reload_checkpoint(ensemble):
-    from hippynn.experiment.serialization import load_checkpoint
+    from alframework.ml_interfaces._hippynn_compat import checkpoints
+    load_checkpoint = checkpoints().load_checkpoint
 
     return load_checkpoint(
         str(ensemble.member / "experiment_structure.pt"),

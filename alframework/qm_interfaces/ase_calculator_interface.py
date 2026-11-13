@@ -4,6 +4,7 @@ import pickle
 import re
 import parsl
 from parsl import python_app, bash_app
+from alframework.tools.task_timeline import timed
 
 import os
 import ase
@@ -31,6 +32,7 @@ def fresh_scratch_directory(directory):
 
 
 @python_app(executors=['alf_QM_executor'])
+@timed('QM')
 def ase_calculator_task(molecule_object, QM_config, QM_scratch_dir, properties_list):
     """Creates an ASE calculator based on the parameters in qm_config.json.
 
@@ -71,6 +73,7 @@ def ase_calculator_task(molecule_object, QM_config, QM_scratch_dir, properties_l
 
    
 @python_app(executors=['alf_QM_executor'])
+@timed('QM')
 def VASP_ase_calculator_task(molecule_object, QM_config, QM_scratch_dir, properties_list):
     """ASE VASP calculator based on the parameters in qm_config.json.
 

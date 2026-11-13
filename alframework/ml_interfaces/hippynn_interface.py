@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from parsl import python_app, bash_app, join_app
+from alframework.tools.task_timeline import timed
 import sys
 import multiprocessing
 import re
@@ -807,6 +808,7 @@ def _ground_state_member_complete(model_dir):
 
 
 @python_app(executors=['alf_ML_executor'])
+@timed('ML')
 def train_HIPPYNN_ensemble_task(ML_config,h5_dir,model_path,current_training_id,gpus_per_node,remove_existing=False,h5_test_dir=None,
                                 h5_path=None,current_h5_id=None):
     """Train a ground-state ensemble on one node, one member per GPU.
@@ -2390,6 +2392,7 @@ def validate_excited_state_task_options(
 
 
 @python_app(executors=["alf_ML_executor"])
+@timed('ML')
 def train_excited_state_HIPPYNN_ensemble_task(
     ML_config,
     h5_dir,
@@ -2468,6 +2471,7 @@ def _train_excited_state_member(arg_dict, attempt):
 
 
 @python_app(executors=['alf_ML_executor'])
+@timed('ML')
 def _ground_state_member_task(arg_dict, shards, attempt):
     from alframework.ml_interfaces import hippynn_interface
     from alframework.tools import ensemble_training
@@ -2476,6 +2480,7 @@ def _ground_state_member_task(arg_dict, shards, attempt):
 
 
 @python_app(executors=['alf_ML_executor'])
+@timed('ML')
 def _excited_state_member_task(arg_dict, shards, attempt):
     from alframework.ml_interfaces import hippynn_interface
     from alframework.tools import ensemble_training

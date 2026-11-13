@@ -10,6 +10,7 @@ from ase_interface import ANIENS, batchedensemblemolecule
 from alframework.tools.tools import build_input_dict
 
 from parsl import python_app, bash_app
+from alframework.tools.task_timeline import timed
 
 import time
 
@@ -149,6 +150,7 @@ def NeuroChemCalculator(model_details):
 #Gen
 #configuration,h5_train_dir,ensemble_path,ensemble_index,remove_existing=False,h5_test_dir=None)
 @python_app(executors=['alf_ML_executor'])
+@timed('ML')
 def train_ANI_model_task(ML_config, h5_dir, model_path, current_training_id, gpus_per_node, remove_existing=False, h5_test_dir=None):
     """ANI executor task.
 

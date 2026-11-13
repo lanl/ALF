@@ -13,6 +13,7 @@ from ase import Atoms
 from ase.data import atomic_numbers
 from ase.io import read
 from parsl import python_app
+from alframework.tools.task_timeline import timed
 
 from alframework.tools.atom_order import TOPOLOGY_ATOM_IDS, validated_atom_ids
 from alframework.tools.files import cached_sha256, file_key
@@ -198,6 +199,7 @@ def _build_one(moleculeid, manifest, mode, builder_config, handles, stack):
 
 
 @python_app(executors=['alf_sampler_executor'])
+@timed('builder')
 def external_geometry_builder_task(moleculeid=None, moleculeids=None,
                                    builder_config=None, master_directory=None):
     """Builder compatible with ALF's single and multi-structure dispatch."""

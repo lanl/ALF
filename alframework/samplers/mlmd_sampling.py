@@ -8,6 +8,7 @@ import time
 from ase import Atoms
 import pickle as pkl
 from parsl import python_app, bash_app
+from alframework.tools.task_timeline import timed
 
 from alframework.tools.tools import annealing_schedule
 from alframework.tools.tools import load_module_from_config
@@ -178,6 +179,7 @@ def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Escut, Fscut, Nchec
 
 
 @python_app(executors=['alf_sampler_executor'])
+@timed('sampler')
 def simple_mlmd_sampling_task(molecule_object, sampler_config, model_path, current_model_id, gpus_per_node):
     """ A simple implementation of uncertanty based MD sampling.
 

@@ -10,8 +10,8 @@ workers should launch with. Everything is opt-in, so with the defaults it return
   inside the archive. A ``bin/conda-unpack`` script, when present, runs after unpacking. The directory name includes a key from the archive's path, size, and modification
   time, so a rebuilt archive unpacks afresh. Blocks on the same node take turns under a lock, and a
   marker written last shows the unpack finished; an unfinished one is redone.
-- With ``local_caches``, package caches that default to ``$HOME`` (CuPy kernels, Matplotlib, Numba,
-  Triton) go to node-local storage, and HDF5 file locking is turned off. That is safe for ALF, whose
+- With ``local_caches``, package caches that default to ``$HOME`` (CuPy kernels, Matplotlib, MIOpen,
+  Numba, Triton) go to node-local storage, and HDF5 file locking is turned off. That is safe for ALF, whose
   shards are written once and renamed into place.
 
 Only the standard library is used, since this runs where the coordinator builds its Parsl config.
@@ -85,6 +85,8 @@ def worker_setup(env_tarball=None, node_dir=None, local_caches=False, cupy_cache
             'export XDG_CACHE_HOME="$ALF_CACHE_DIR" MPLCONFIGDIR="$ALF_CACHE_DIR/matplotlib"',
             'export NUMBA_CACHE_DIR="$ALF_CACHE_DIR/numba" TRITON_CACHE_DIR="$ALF_CACHE_DIR/triton"',
             f'export CUPY_CACHE_DIR={cupy}',
+            # MIOpen (PyTorch on AMD GPUs) keeps its kernel database under $HOME by default.
+            'export MIOPEN_USER_DB_PATH="$ALF_CACHE_DIR/miopen" MIOPEN_CUSTOM_CACHE_DIR="$ALF_CACHE_DIR/miopen"',
             # Shards are written once and renamed into place, so readers need no locks.
             'export HDF5_USE_FILE_LOCKING=FALSE',
         ]

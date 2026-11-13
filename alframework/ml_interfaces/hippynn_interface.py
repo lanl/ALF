@@ -591,7 +591,8 @@ def train_HIPNN_model(model_dir,
 
             arrays[species_key] = arrays[species_key].to(torch.int64)   # or .long()
 
-            min_dists = hippynn.pretraining.calculate_min_dists(database.arr_dict,species_key,coordinates_key,6.0,cell_name=cell_key,batch_size=256,device=device_cuda)
+            # Keywords: hippynn's development branch made dist_hard_max the second positional argument.
+            min_dists = hippynn.pretraining.calculate_min_dists(database.arr_dict,species_name=species_key,positions_name=coordinates_key,dist_hard_max=6.0,cell_name=cell_key,batch_size=256,device=device_cuda)
             min_dists_flag = min_dists>network_params["dist_soft_min"]
             for curK in database.arr_dict.keys():
                 database.arr_dict[curK] = database.arr_dict[curK][min_dists_flag]
@@ -828,7 +829,8 @@ def train_HIPPYNN_ensemble_task(ML_config,h5_dir,model_path,current_training_id,
 
 
 def HIPNN_ASE_calculator(HIPNN_model_directory,energy_key='energy',device="cuda:0"):
-    from hippynn.experiment.serialization import load_checkpoint
+    from alframework.ml_interfaces._hippynn_compat import checkpoints
+    load_checkpoint = checkpoints().load_checkpoint
     from hippynn.interfaces.ase_interface import HippynnCalculator
     import torch
     member_directory = os.path.abspath(HIPNN_model_directory)
@@ -880,7 +882,8 @@ def load_hippynn_batched_ensemble(model_directory, device="cuda:0", energy_key="
 
 def _load_member(member_directory, device):
     # Absolute paths: no process-wide chdir, so concurrent loads in one process are safe.
-    from hippynn.experiment.serialization import load_saved_tensors
+    from alframework.ml_interfaces._hippynn_compat import checkpoints
+    load_saved_tensors = checkpoints().load_saved_tensors
     structure, state = load_saved_tensors(os.path.join(member_directory, "experiment_structure.pt"),
                                           os.path.join(member_directory, "best_model.pt"), map_location=device)
     model = structure["training_modules"].model

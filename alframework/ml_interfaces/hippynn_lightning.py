@@ -93,7 +93,8 @@ class AlfLightningModule(HippynnLightningModule):
     def _save_best(self):
         import copy
         import torch
-        from hippynn.experiment import serialization
+        from alframework.ml_interfaces._hippynn_compat import checkpoints
+        serialization = checkpoints()
 
         best = copy.deepcopy(self.model.state_dict())
         self.metric_tracker.best_model = best
@@ -152,7 +153,9 @@ def train_data_parallel(training_modules, database, controller, *, n_devices, ac
     require_lightning()
     import hippynn
     import torch
-    from hippynn.experiment import SetupParams, serialization, setup_training, test_model
+    from hippynn.experiment import SetupParams, setup_training, test_model
+    from alframework.ml_interfaces._hippynn_compat import checkpoints
+    serialization = checkpoints()
 
     if accelerator == 'gpu' and torch.cuda.device_count() < n_devices:
         raise RuntimeError(f'gpus_per_member is {n_devices}, but this worker sees {torch.cuda.device_count()} GPUs. '

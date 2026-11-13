@@ -49,7 +49,8 @@ def _check_member(member, devices=2, batch_size=4):
     record = json.loads((member / "lightning_training.json").read_text())
     assert record["devices"] == devices and record["epochs"] >= 1
     assert record["batch_size"] == batch_size and record["batch_size_per_device"] == batch_size // devices
-    from hippynn.experiment.serialization import load_checkpoint
+    from alframework.ml_interfaces._hippynn_compat import checkpoints
+    load_checkpoint = checkpoints().load_checkpoint
 
     bundle = load_checkpoint(str(member / "experiment_structure.pt"), str(member / "best_checkpoint.pt"),
                              map_location="cpu")

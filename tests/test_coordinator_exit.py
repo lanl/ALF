@@ -11,6 +11,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -22,7 +23,7 @@ from parsl import python_app
 
 from alframework.tools import tools as tool_module
 from alframework.tools.molecules_class import MoleculesObject
-from alframework.tools.tools import release_allocations_at_exit, stop_if_executor_failed
+from alframework.tools.tools import cancel_blocks, release_allocations_at_exit, stop_if_executor_failed
 from tests.helpers.driver import run_alf_driver
 from tests.helpers.molecules import WATER
 
@@ -93,7 +94,7 @@ def slow_multinode(current_training_id):
 
 
 def start_coordinator(tmp_path, ml_task, parsl_config="local", arguments=(), trained_labels=True,
-                      builder="builder", sampler="sampler", qm="qm"):
+                      builder="builder", sampler="sampler", qm="qm", new_session=False, environ=()):
     """Start a coordinator. ``trained_labels`` skips the bootstrap by pretending data is already stored."""
     (tmp_path / "exit_harness.py").write_text(HARNESS)
     master = {
@@ -122,10 +123,12 @@ def start_coordinator(tmp_path, ml_task, parsl_config="local", arguments=(), tra
                   "lifetime_failed_ML_tasks": 0, "lifetime_failed_QM_tasks": 0}
         (tmp_path / "status.json").write_text(json.dumps(status))
     environment = dict(os.environ, HARNESS_ROOT=str(tmp_path), PYTHONPATH=f"{tmp_path}{os.pathsep}{REPOSITORY}",
-                       PATH=f"{Path(sys.executable).parent}{os.pathsep}{os.environ['PATH']}")
+                       PATH=f"{Path(sys.executable).parent}{os.pathsep}{os.environ['PATH']}", **dict(environ))
+    # new_session: its own process group, as in a terminal, so a test can signal the whole group.
     return subprocess.Popen(
         [sys.executable, "-m", "alframework", "--master", str(tmp_path / "master.json"), *arguments],
-        cwd=tmp_path, env=environment, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        cwd=tmp_path, env=environment, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+        start_new_session=new_session)
 
 
 def test_test_qm_reports_why_a_label_failed(tmp_path):
@@ -183,8 +186,8 @@ def real_coordinator(tmp_path):
         pytest.skip("needs pgrep")
     started = SimpleNamespace(coordinator=None, children=[])
 
-    def start(ml_task):
-        started.coordinator = start_coordinator(tmp_path, ml_task, "real_workers")
+    def start(ml_task, **options):
+        started.coordinator = start_coordinator(tmp_path, ml_task, "real_workers", **options)
         deadline = time.monotonic() + 120
         while not (tmp_path / "member_started").exists():
             assert started.coordinator.poll() is None, started.coordinator.communicate()[0]
@@ -218,17 +221,44 @@ def test_coordinator_sigterm_during_multinode_training_releases_everything(tmp_p
     assert not _workers_for(tmp_path), "the worker pool outlived the coordinator"
 
 
+def test_coordinator_ctrl_c_in_a_terminal_releases_everything(tmp_path, real_coordinator):
+    """Ctrl-C signals the terminal's whole foreground process group, so Parsl's interchanges stop along with
+    the coordinator. Parsl's cleanup then waits forever for an interchange's answer (seen on Frontier, with
+    the blocks left running), so the coordinator must cancel the blocks itself and still exit."""
+    started = real_coordinator("slow_multinode", new_session=True, environ={"ALF_PARSL_CLEANUP_TIMEOUT": "5"})
+    os.killpg(started.coordinator.pid, signal.SIGINT)
+    output = started.coordinator.communicate(timeout=60)[0]
+    assert started.coordinator.returncode is not None
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline and _workers_for(tmp_path):
+        time.sleep(0.5)
+    assert not _workers_for(tmp_path), "the worker pool outlived the coordinator:\n" + output[-2000:]
+
+
 # The handler itself.
 
 
 class FakeDataFlowKernel:
-    def __init__(self, cleanup_called=False, error=None):
+    def __init__(self, cleanup_called=False, error=None, executors=None, hang=None):
         self.cleanup_called, self.error, self.calls = cleanup_called, error, 0
+        self.executors, self.hang = executors or {}, hang
 
     def cleanup(self):
         self.calls += 1
+        if self.hang:
+            self.hang.wait()
         if self.error:
             raise self.error
+
+
+class FakeProvider:
+    def __init__(self, error=None):
+        self.cancelled, self.error = [], error
+
+    def cancel(self, job_ids):
+        if self.error:
+            raise self.error
+        self.cancelled.append(list(job_ids))
 
 
 @pytest.fixture
@@ -266,6 +296,31 @@ def test_release_allocations_turns_sigterm_into_a_normal_exit(registered_handler
     with pytest.raises(SystemExit) as stopped:
         signal.raise_signal(signal.SIGTERM)
     assert stopped.value.code == 128 + signal.SIGTERM
+
+
+def test_release_allocations_cancels_the_blocks_when_parsl_cleanup_hangs(registered_handler, capsys):
+    stuck, provider = threading.Event(), FakeProvider()
+    blocks = {"0": "5919430", "1": "5919528", "2": None}  # block 2 was never submitted
+    dfk = FakeDataFlowKernel(executors={"alf_sampler_executor": SimpleNamespace(provider=provider,
+                                                                                blocks_to_job_id=blocks)},
+                             hang=stuck)
+    release_allocations_at_exit(dfk, cleanup_timeout=0.2)
+    start = time.monotonic()
+    registered_handler[0]()
+    assert time.monotonic() - start < 5
+    assert provider.cancelled == [["5919430", "5919528"]]
+    assert "did not finish within 0.2 s" in capsys.readouterr().out
+    stuck.set()
+
+
+def test_cancel_blocks_goes_on_past_a_provider_that_fails(capsys):
+    failing, working = FakeProvider(error=RuntimeError("scancel timed out")), FakeProvider()
+    cancel_blocks(FakeDataFlowKernel(executors={
+        "alf_QM_executor": SimpleNamespace(provider=failing, blocks_to_job_id={"0": "11"}),
+        "alf_ML_executor": SimpleNamespace(provider=working, blocks_to_job_id={"0": "12"}),
+        "threads": SimpleNamespace()}))  # an executor without blocks, such as a ThreadPoolExecutor
+    assert working.cancelled == [["12"]]
+    assert "Could not cancel alf_QM_executor's blocks ['11']: RuntimeError: scancel timed out" in capsys.readouterr().out
 
 
 # A dead executor.

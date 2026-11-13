@@ -123,3 +123,63 @@ def test_templates_launch_workers_from_the_unpacked_copy_but_not_the_interchange
             assert executor.launch_cmd.startswith('"$ALF_ENV_BIN/"python'), executor.label
             assert "ALF_ENV_BIN" not in " ".join(executor.interchange_launch_cmd), executor.label
             assert 'export PATH="$ALF_ENV_BIN":' in executor.provider.worker_init
+
+
+def _fake_srun(tmp_path, nodes=2):
+    """An ``srun`` stand-in that runs its command once per fake node, each with that node's own TMPDIR."""
+    bin_dir = tmp_path / "fake-bin"
+    bin_dir.mkdir()
+    srun = bin_dir / "srun"
+    srun.write_text(
+        "#!/bin/bash\n"
+        'while [[ "$1" == -* ]]; do shift; done\n'
+        "status=0\n"
+        f"for node in $(seq 0 {nodes - 1}); do\n"
+        '  TMPDIR="$FAKE_NODES/node$node" "$@" || status=1\n'
+        "done\n"
+        "exit $status\n")
+    srun.chmod(0o755)
+    return bin_dir
+
+
+def test_multinode_blocks_unpack_on_every_node(tmp_path):
+    nodes = tmp_path / "nodes"
+    for index in range(2):
+        (nodes / f"node{index}").mkdir(parents=True)
+    lines, python = worker_setup(_archive(tmp_path), local_caches=True, all_nodes=True)
+    script = "\n".join(lines + ['echo "BIN=$ALF_ENV_BIN CACHE=$MIOPEN_USER_DB_PATH"', python]) + "\n"
+    env = dict(os.environ, PATH=f"{_fake_srun(tmp_path)}:{os.environ['PATH']}", FAKE_NODES=str(nodes),
+               TMPDIR=str(nodes / "node0"), USER="alf")
+    done = subprocess.run(["bash", "-c", "set -e\n" + script], env=env, capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr
+    for index in range(2):
+        [directory] = [p for p in (nodes / f"node{index}").glob("alf-alf-*") if p.is_dir()]
+        assert (directory / "env" / DONE).exists(), f"node{index} has its own copy"
+        assert (directory / "cache").is_dir(), f"node{index} has its cache directory"
+        assert (directory / "unpack-count").read_text().count("ran") == 1, "each node unpacks once"
+    [head] = [p for p in (nodes / "node0").glob("alf-alf-*") if p.is_dir()]
+    assert done.stdout.split() == [f"BIN={head}/env/bin", f"CACHE={head}/cache/miopen", "one"]
+
+
+def test_multinode_setup_stops_the_block_when_a_node_fails(tmp_path):
+    nodes = tmp_path / "nodes"
+    (nodes / "node0").mkdir(parents=True)
+    (nodes / "node1").mkdir(parents=True)
+    archive = _archive(tmp_path)
+    lines, python = worker_setup(archive, all_nodes=True)
+    (nodes / "node1").chmod(0o500)  # node1 cannot create its directory
+    try:
+        env = dict(os.environ, PATH=f"{_fake_srun(tmp_path)}:{os.environ['PATH']}", FAKE_NODES=str(nodes),
+                   TMPDIR=str(nodes / "node0"), USER="alf")
+        done = subprocess.run(["bash", "-c", "\n".join(lines + [python])], env=env, capture_output=True, text=True)
+    finally:
+        (nodes / "node1").chmod(0o700)
+    assert done.returncode == 1 and "failed on a node of this block" in done.stderr
+
+
+def test_single_node_lines_are_unchanged_by_the_multinode_option(tmp_path):
+    archive = _archive(tmp_path)
+    assert worker_setup(archive, all_nodes=False) == worker_setup(archive)
+    assert worker_setup(all_nodes=True) == ([], None), "nothing to run on the nodes"
+    lines, _ = worker_setup(archive, all_nodes="mpiexec -ppn 1")
+    assert any(line.startswith('mpiexec -ppn 1 bash -c "$ALF_NODE_SCRIPT"') for line in lines)

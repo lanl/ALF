@@ -33,9 +33,15 @@ The environment in the archive must still work after being moved:
   ``cpython-3.12.12-linux-x86_64-gnu/bin/python3``.
 
 Unpack the archive on the node, not onto shared storage, and check that its interpreter imports ALF's
-dependencies there before a long run. For multi-node blocks with ``SrunLauncher``, add an ``sbcast`` of
-the archive to ``ALF_<ROLE>_WORKER_INIT`` and point ``ALF_ENV_TARBALL`` at the copy, so each node reads
-its own.
+dependencies there before a long run.
+
+A provider's ``worker_init`` runs once per block, on its first node. For blocks of several nodes whose
+launcher starts workers on all of them (``SrunLauncher``), pass ``all_nodes=True`` to ``worker_setup`` (or
+``setup_from_environment``): the setup then runs on every node of the block as one ``srun`` step, and a
+node that cannot unpack stops the block. ``all_nodes`` can also be the command that runs one task per
+node, such as ``mpiexec -ppn 1``. Reading the archive from shared storage is usually fine: on Frontier,
+unpacking a 6.5 GB conda-pack archive took about 72 s per node, whether it was read from Lustre or from a
+node-local ``sbcast`` copy, since decompressing dominates.
 
 Node-Local Caches and HDF5
 --------------------------

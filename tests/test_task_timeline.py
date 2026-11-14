@@ -133,3 +133,51 @@ def test_a_partial_line_does_not_hide_the_other_records(tmp_path, monkeypatch):
         handle.write('{"stage": "sampler", "start": 1')  # a worker killed mid-write
     (tmp_path / "other.jsonl").write_text("[1, 2]\n")
     assert [r["task"] for r in read_timeline(str(tmp_path))] == ["_sample"]
+
+
+TIMED_MODULES = [
+    "alframework.builders.builders", "alframework.builders.rdkit_molecule", "alframework.builders.external_geometry",
+    "alframework.builders.rdkit_condensed_phase", "alframework.builders.defect_crystal_builder",
+    "alframework.builders.reactive_builder", "alframework.samplers.batched_mlmd", "alframework.samplers.mlmd_sampling",
+    "alframework.samplers.udd_sampling", "alframework.samplers.reactive_sampler",
+    "alframework.qm_interfaces.teacher_interface", "alframework.qm_interfaces.ase_calculator_interface",
+    "alframework.qm_interfaces.orca5_interface", "alframework.qm_interfaces.qchem_DFT_interface",
+    "alframework.ml_interfaces.hippynn_interface",
+]
+
+
+def _timed_apps():
+    import importlib
+    from parsl.app.python import PythonApp
+    apps = []
+    for name in TIMED_MODULES:
+        try:
+            module = importlib.import_module(name)
+        except ImportError:
+            continue
+        apps += [(f"{name}.{key}", value) for key, value in vars(module).items()
+                 if isinstance(value, PythonApp) and hasattr(value.func, "__wrapped__")]
+    return apps
+
+
+def test_timed_tasks_serialize_for_remote_workers():
+    # A worker gets each task through Parsl's serializer, which copies the timed wrapper by value; anything
+    # unpicklable it refers to (a thread-local, a lock) fails every task on a real executor.
+    from parsl.serialize import pack_apply_message
+    apps = _timed_apps()
+    assert len(apps) >= 10, [name for name, _ in apps]
+    failed = []
+    for name, app in apps:
+        try:
+            pack_apply_message(app.func, (), {})
+        except Exception as exc:
+            failed.append(f"{name}: {type(exc).__name__}: {exc}")
+    assert not failed, failed
+
+
+def test_a_deserialized_task_records_once(tmp_path, monkeypatch):
+    from parsl.serialize import pack_apply_message, unpack_apply_message
+    monkeypatch.setenv(ENV, str(tmp_path))
+    function, args, kwargs = unpack_apply_message(pack_apply_message(_outer, ([1, 2],), {}))
+    assert function(*args, **kwargs) == [2, 4]
+    assert [r["task"] for r in read_timeline(str(tmp_path))] == ["_outer"]

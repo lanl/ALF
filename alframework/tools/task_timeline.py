@@ -20,8 +20,23 @@ import time
 
 ENV = 'ALF_TASK_TIMELINE_DIR'
 # Tasks that call another task's ``.func`` (UDD sampling calls MLMD sampling) are recorded once, as the
-# outer task: the inner call is part of the outer task's time.
-_active = threading.local()
+# outer task: the inner call is part of the outer task's time. The flag lives on the running thread, not in
+# this module: Parsl serializes a decorated task's wrapper by value, with this module's globals, so they must
+# all be picklable (a threading.local is not).
+_FLAG = '_alf_timed_task_running'
+
+
+def _begin_outermost():
+    """Whether this call is the outermost timed task in its thread; if so, mark one as running."""
+    thread = threading.current_thread()
+    if getattr(thread, _FLAG, False):
+        return False
+    setattr(thread, _FLAG, True)
+    return True
+
+
+def _end_outermost():
+    setattr(threading.current_thread(), _FLAG, False)
 
 
 def _items(args, kwargs):
@@ -47,17 +62,16 @@ def timed(stage):
         @functools.wraps(function)
         def wrapper(*args, **kwargs):
             directory = os.environ.get(ENV)
-            if not directory or getattr(_active, 'task', False):
+            if not directory or not _begin_outermost():
                 return function(*args, **kwargs)
             start, outcome = time.time(), 'ok'
-            _active.task = True
             try:
                 return function(*args, **kwargs)
             except BaseException as exc:
                 outcome = type(exc).__name__
                 raise
             finally:
-                _active.task = False
+                _end_outermost()
                 end = time.time()
                 try:
                     write_record(directory, {

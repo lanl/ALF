@@ -43,8 +43,8 @@ def _batched_neighbor_search():
     try:
         from torch_sim.neighbors.alchemiops import ALCHEMIOPS_AVAILABLE
         if ALCHEMIOPS_AVAILABLE:
-            from torch_sim.neighbors.alchemiops import alchemiops_nl_n2
-            return alchemiops_nl_n2
+            from torch_sim.neighbors.alchemiops import alchemiops_nl_cell_list
+            return alchemiops_nl_cell_list
         from torch_sim.neighbors.torch_nl import torch_nl_linked_cell
         return torch_nl_linked_cell
     except ImportError:

@@ -306,6 +306,7 @@ class BatchedTaskQueue(parsl_task_queue):
         results_list = []
         failed_number = 0
         remaining = []
+        self.last_failed = []
         for task in self.task_list:
             if not is_final_task(task):
                 remaining.append(task)
@@ -323,6 +324,7 @@ class BatchedTaskQueue(parsl_task_queue):
                 except Exception:
                     logger.warning("Task failed", exc_info=True)
             failed_number += 1
+            self.last_failed.append(task)
             self.failed_structures += self.widths.width(task)
             self.failed_inputs.extend(self._inputs.get(id(task), []))
         self.task_list = remaining

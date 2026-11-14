@@ -123,7 +123,9 @@ The master config controls the workflow wiring. Common fields include:
    * - ``bootstrap_spares``
      - Optional, with ``finite_bootstrap``. The number of extra seeds after the first
        ``bootstrap_set``, default ``0``. Each failed label, unconverged or lost with its
-       worker, lets the bootstrap label one spare, so a clean bootstrap labels none. If
+       worker, and each seed whose builder task was lost, lets the bootstrap label one
+       spare, so a clean bootstrap labels none. Once every seed is built, a partly filled
+       QM batch is submitted even with ``"partial_policy": "full_only"``. If
        labels still fail once the spares are used, ALF trains on the labels that
        converged, and stops with an error only if none did. The seed list needs
        ``bootstrap_set + bootstrap_spares`` structures.

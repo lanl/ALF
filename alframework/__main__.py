@@ -329,23 +329,36 @@ if status['current_h5_id'] == 0 and status['current_model_id'] < 0:
             return held.converged() < master_config['bootstrap_set']
         return held.successful() + QM_task_queue.get_exec_done_number() < master_config['bootstrap_set']
 
+    # Seeds held by each running builder task, and seeds whose builder task was lost in this process.
+    bootstrap_builder_seeds = {}
+    lost_builder_seeds = 0
+
     def bootstrap_failures():
-        """Seeds that didn't give a converged label: unconverged results, and tasks lost in this process."""
-        return held.successful() - held.converged() + held.failed_since_store
+        """Seeds that didn't give a converged label: unconverged results, and QM and builder tasks lost in
+        this process."""
+        return held.successful() - held.converged() + held.failed_since_store + lost_builder_seeds
+
+    def bootstrap_seeds_exhausted():
+        """No more seeds can be built now, so a waiting partial batch will never fill."""
+        return (finite_bootstrap
+                and status['current_molecule_id'] >= master_config['bootstrap_set'] + min(spare_seeds, bootstrap_failures())
+                and builder_task_queue.get_number() == 0)
+
+    def spares_handed_out():
+        return max(0, status['current_molecule_id'] - master_config['bootstrap_set'])
 
     while bootstrap_unfinished():
         # A spare seed is handed out only once a label has failed, so a clean bootstrap labels no spares.
         bootstrap_limit = master_config['bootstrap_set'] + min(spare_seeds, bootstrap_failures())
-        if (finite_bootstrap
-                and status['current_molecule_id'] >= bootstrap_limit
-                and builder_task_queue.get_number() == 0
+        if (bootstrap_seeds_exhausted()
                 and QM_task_queue.get_number() == 0
                 and not (getattr(labeling, 'buffer', None) and len(labeling.buffer))):
             if held.converged() == 0:
                 raise RuntimeError('Finite bootstrap: no seed gave a converged label, so there is nothing to train on; '
                                    'inspect failed work')
-            print('Finite bootstrap: all {} spare seeds are used, so it trains on fewer labels than bootstrap_set'
-                  .format(spare_seeds), flush=True)
+            print('Finite bootstrap: {} of {} spare seeds used and {} seeds failed, so it trains on {} labels, fewer '
+                  'than bootstrap_set ({})'.format(spares_handed_out(), spare_seeds, bootstrap_failures(),
+                                                    held.converged(), master_config['bootstrap_set']), flush=True)
             break
         if QM_task_queue.get_queued_number() < master_config['target_queued_QM']:
             while builder_task_queue.get_number() * master_config.get('maximum_builder_structures', 1) < master_config['parallel_samplers']:
@@ -360,13 +373,19 @@ if status['current_h5_id'] == 0 and status['current_model_id'] < 0:
                                                 "moleculeids": moleculeids, "builder_config": builder_config},
                                                *all_configs, status],
                                               raise_on_fail=True)
-                builder_task_queue.add_task(builder_task(**task_input))
-        
+                task = builder_task(**task_input)
+                bootstrap_builder_seeds[task] = len(moleculeids)
+                builder_task_queue.add_task(task)
+
         if (builder_task_queue.get_exec_done_number() > master_config['minimum_QM']
                 or builder_task_queue.get_failed_number() > 0
                 or (master_config.get('finite_bootstrap', False) and builder_task_queue.get_completed_number() > 0)):
             builder_results, failed = builder_task_queue.get_task_results()
             status['lifetime_failed_builder_tasks'] = status['lifetime_failed_builder_tasks'] + failed
+            # A lost builder's seeds count as failed, so spares can replace them.
+            lost_builder_seeds += sum(bootstrap_builder_seeds.get(task, 0) for task in builder_task_queue.last_failed)
+            bootstrap_builder_seeds = {task: seeds for task, seeds in bootstrap_builder_seeds.items()
+                                       if any(task is running for running in builder_task_queue.task_list)}
             for structure in builder_results:
                 #If builders return a single structure:
                 if isinstance(structure, MoleculesObject):
@@ -375,14 +394,15 @@ if status['current_h5_id'] == 0 and status['current_model_id'] < 0:
                     for substructure in structure:
                         assert isinstance(substructure, MoleculesObject), 'substructure must be a MoleculesObject instance'
                         labeling.submit(substructure, [{"QM_config": QM_config}, *all_configs, status])
-        labeling.submit_ready([{"QM_config": QM_config}, *all_configs, status])
+        # Once every seed is built, a partial batch can't fill, so send it ("full_only" would wait forever).
+        labeling.submit_ready([{"QM_config": QM_config}, *all_configs, status], flush=bootstrap_seeds_exhausted())
         hold_finished_labels()
 
         print("### Bootstraping Learning Status at: " + time.ctime() + " ###")
         if finite_bootstrap:
             print("bootstrap: {} of {} labels converged, {} failed, {} of {} spare seeds handed out".format(
                 held.converged(), master_config['bootstrap_set'], bootstrap_failures(),
-                max(0, status['current_molecule_id'] - master_config['bootstrap_set']), spare_seeds))
+                spares_handed_out(), spare_seeds))
         print("builder status:")
         builder_task_queue.print_status()
         print("QM status:")
@@ -396,7 +416,7 @@ if status['current_h5_id'] == 0 and status['current_model_id'] < 0:
     if finite_bootstrap:
         print("Finite bootstrap finished: {} of {} labels converged, {} seeds failed, {} spare seeds handed out".format(
             held.converged(), master_config['bootstrap_set'], bootstrap_failures(),
-            max(0, status['current_molecule_id'] - master_config['bootstrap_set'])), flush=True)
+            spares_handed_out()), flush=True)
     print("Saving Bootstrap and training model")
     store_held_labels()
     

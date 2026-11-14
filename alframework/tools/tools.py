@@ -444,7 +444,9 @@ class parsl_task_queue():
     def __init__(self):
         # Create a list
         self.task_list = []
-    
+        # The tasks the last get_task_results counted as failed.
+        self.last_failed = []
+
     def add_task(self,task):
         """Add a task to the task list
         """
@@ -498,6 +500,7 @@ class parsl_task_queue():
         """
         results_list = []
         failed_number = 0
+        self.last_failed = []
         for taski,task in reversed(list(enumerate(self.task_list))):
             if not is_final_task(task):
                 continue
@@ -508,6 +511,7 @@ class parsl_task_queue():
                 except Exception as e:
                     logger.error("Task marked as done but raised", exc_info=True)
                     failed_number += 1
+                    self.last_failed.append(task)
                 del self.task_list[taski]
             else: # Handle all others as failure states
                 try:
@@ -516,6 +520,7 @@ class parsl_task_queue():
                 except Exception as e:
                     logger.warning("Task failed", exc_info=True)
                 failed_number += 1
+                self.last_failed.append(task)
                 del self.task_list[taski]
 
         return results_list, failed_number

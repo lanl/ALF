@@ -542,9 +542,56 @@ def test_bootstrap_trains_on_what_it_has_once_the_spares_are_used(tmp_path, monk
     assert bootstrap_shard_ids(tmp_path) == boot(0, 2, 4, 5, 6)
     assert built_seeds(built) == boot(*range(7))
     output = capsys.readouterr().out
-    assert "all 1 spare seeds are used, so it trains on fewer labels" in output
+    assert "1 of 1 spare seeds used and 2 seeds failed, so it trains on 5 labels, fewer than bootstrap_set (6)" \
+        in output
     assert "Finite bootstrap finished: 5 of 6 labels converged, 2 seeds failed, 1 spare seeds handed out" in output
     assert result.status["current_model_id"] >= 0, "the run went on to train"
+
+
+def losing_builders(tmp_path, built, lost):
+    """``restart_tasks`` whose builder loses its worker the first time it builds a seed in ``lost``."""
+    from parsl import python_app
+    from parsl.executors.high_throughput.errors import ManagerLost
+
+    lost = boot(*lost)
+
+    @python_app(executors=["alf_builder_executor"])
+    def builder(moleculeid):
+        first_time = moleculeid not in built
+        built.append(moleculeid)
+        if moleculeid in lost and first_time:
+            raise ManagerLost(b"expired-allocation", "worker")
+        return MoleculesObject(WATER.copy(), moleculeid)
+
+    return dict(restart_tasks(tmp_path, built), builder=builder)
+
+
+def test_a_seed_lost_with_its_builder_is_replaced_by_a_spare(tmp_path, monkeypatch, capsys):
+    built = []
+    result = run_alf_driver(tmp_path, monkeypatch, **losing_builders(tmp_path, built, lost=[2]),
+                            **dict(LOOP, finite_bootstrap=True, bootstrap_spares=2))
+    assert bootstrap_shard_ids(tmp_path) == boot(0, 1, 3, 4, 5, 6), "the spare replaces the lost seed"
+    assert built_seeds(built) == boot(*range(7))
+    assert result.status["lifetime_failed_builder_tasks"] == 1
+    assert "Finite bootstrap finished: 6 of 6 labels converged, 1 seeds failed, 1 spare seeds handed out" \
+        in capsys.readouterr().out
+
+
+FULL_ONLY_QM = {"batching": {"mode": "sequential", "batch_size": 2, "partial_policy": "full_only"}}
+
+
+@pytest.mark.parametrize("bootstrap_set, lost, labels", [(5, [], boot(*range(5))),
+                                                         (6, [1], boot(0, 2, 3, 4, 5))],
+                         ids=["seeds-not-a-multiple-of-the-batch", "seed-lost-with-its-builder"])
+def test_finite_bootstrap_sends_a_partial_full_only_batch_once_every_seed_is_built(
+        tmp_path, monkeypatch, bootstrap_set, lost, labels):
+    """A "full_only" batch can't fill once the seeds run out; waiting for it would stall the bootstrap."""
+    built = []
+    result = run_alf_driver(tmp_path, monkeypatch, **losing_builders(tmp_path, built, lost=lost),
+                            qm_config=FULL_ONLY_QM, timeout=60,
+                            **dict(LOOP, bootstrap_set=bootstrap_set, finite_bootstrap=True))
+    assert bootstrap_shard_ids(tmp_path) == labels
+    assert result.status["current_model_id"] >= 0, "the bootstrap finished and trained"
 
 
 def test_finite_bootstrap_without_a_converged_label_stops(tmp_path, monkeypatch):

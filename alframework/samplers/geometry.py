@@ -7,6 +7,9 @@ import numpy as np
 # every pair closer than the radius, so if it finds any pair, its closest is the exact minimum-image
 # minimum. Only structures with no pair this close (dilute gases) fall back to the full matrix.
 SEARCH_RADIUS = 3.0
+# Molecules (no periodic direction) up to this many atoms use the all-pairs matrix directly: without a
+# cell, a neighbor search costs ~10x more than the matrix at molecular sizes (0.8 vs 7.9 ms at 120 atoms).
+ALL_PAIRS_LIMIT = 1000
 
 
 def minimum_distance(atoms):
@@ -18,11 +21,17 @@ def minimum_distance(atoms):
     """
     if len(atoms) < 2:
         return float('inf')
+    if not np.any(atoms.pbc) and len(atoms) <= ALL_PAIRS_LIMIT:
+        return _all_pairs_minimum(atoms)
     from ase.neighborlist import neighbor_list
     first, second, distances = neighbor_list('ijd', atoms, SEARCH_RADIUS, self_interaction=False)
     distinct = first != second
     if distinct.any():
         return float(distances[distinct].min())
+    return _all_pairs_minimum(atoms)
+
+
+def _all_pairs_minimum(atoms):
     distances = atoms.get_all_distances(mic=True)
     np.fill_diagonal(distances, np.inf)
     return float(distances.min())

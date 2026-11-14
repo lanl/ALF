@@ -351,6 +351,15 @@ def test_minimum_distance_matches_the_all_pairs_minimum_image(name):
     assert minimum_distance(atoms) == pytest.approx(_all_pairs_minimum(atoms), rel=1e-12, abs=1e-12)
 
 
+def test_minimum_distance_uses_the_all_pairs_matrix_for_molecules(monkeypatch):
+    """Without a cell, a neighbor search costs more than the matrix at molecular sizes."""
+    import ase.neighborlist
+    atoms = _random_structures()["molecule"]
+    expected = _all_pairs_minimum(atoms)
+    monkeypatch.setattr(ase.neighborlist, "neighbor_list", lambda *args, **kwargs: pytest.fail("neighbor search used"))
+    assert minimum_distance(atoms) == pytest.approx(expected, rel=1e-12, abs=1e-12)
+
+
 def test_minimum_distance_skips_the_all_pairs_matrix_for_dense_structures(monkeypatch):
     """The O(N^2) matrix is only for structures with no pair within the search radius."""
     atoms = _random_structures()["cubic"]

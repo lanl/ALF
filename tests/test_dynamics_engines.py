@@ -398,8 +398,12 @@ def test_periodic_trained_hippynn_uses_shared_pairs(trained_periodic_ensemble):
         _batched_and_reference(batched, trained_periodic_ensemble, systems)
 
 
-def test_zero_skin_rebuilds_neighbors_even_for_identical_coordinates(trained_periodic_ensemble):
-    batched = load_hippynn_batched_ensemble(str(trained_periodic_ensemble), device=DEVICE, pair_skin=0)
+@pytest.mark.parametrize("backend", ["ase", "vesin"])
+def test_zero_skin_rebuilds_neighbors_even_for_identical_coordinates(trained_periodic_ensemble, backend):
+    if backend == "vesin":
+        pytest.importorskip("vesin")
+    batched = load_hippynn_batched_ensemble(str(trained_periodic_ensemble), device=DEVICE, pair_skin=0,
+                                          neighbor_backend=backend)
     systems = _periodic_waters(8, SKEWED_AND_SMALL)
     _batched_and_reference(batched, trained_periodic_ensemble, systems)
     _batched_and_reference(batched, trained_periodic_ensemble, systems)

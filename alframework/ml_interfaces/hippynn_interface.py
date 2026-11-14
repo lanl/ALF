@@ -882,14 +882,16 @@ def HIPNN_ASE_load_ensemble(HIPNN_ensemble_directory,device="cuda:0"):
 # ---------------------------------------------------------------------------------------------
 
 def load_hippynn_batched_ensemble(model_directory, device="cuda:0", energy_key="energy", force_key="forces",
-                                  hippynn_kernel=None, pair_skin=1.0):
+                                  hippynn_kernel=None, pair_skin=1.0, neighbor_backend="ase"):
     """Load a HIPPYNN ensemble for batched evaluation (``batched_calculator`` loader).
 
     ``hippynn_kernel`` and ``pair_skin`` (Angstrom) can be set through the sampler's
     ``batched_calculator_options``. A zero ``pair_skin`` rebuilds the shared list at every evaluation.
+    ``neighbor_backend`` is ``"ase"`` (default) or the optional ``"vesin"`` package. ASE avoids a
+    Vesin thread-pool teardown/fork interaction seen with Frontier's XALT exit hook.
     """
     return HippynnBatchedEnsemble(model_directory, device=device, energy_key=energy_key, force_key=force_key,
-                                  hippynn_kernel=hippynn_kernel, pair_skin=pair_skin)
+                                  hippynn_kernel=hippynn_kernel, pair_skin=pair_skin, neighbor_backend=neighbor_backend)
 
 
 def _load_member(member_directory, device):
@@ -985,14 +987,11 @@ def _member_graph(model, energy_key, force_key, periodic):
     return GraphModule([species, positions, cell, first, second, shifts], outputs), cutoff
 
 
-def _periodic_neighbors(points, box, cutoff):
+def _periodic_neighbors(points, box, cutoff, backend="ase"):
     """(i, j, S) for all pairs within ``cutoff`` in a fully periodic box, both directions and self-images
-    included: the pair vector is points[j] - points[i] + S @ box. Uses vesin if installed, else ASE."""
-    try:
+    included: the pair vector is points[j] - points[i] + S @ box."""
+    if backend == "vesin":
         import vesin
-    except ImportError:
-        vesin = None
-    if vesin is not None:
         i, j, shifts = vesin.NeighborList(cutoff=cutoff, full_list=True).compute(
             points=points, box=box, periodic=True, quantities="ijS")
     else:
@@ -1008,10 +1007,11 @@ class VerletPairs:
     more than ``skin / 2`` since it was built; until then it still holds every pair within ``cutoff``.
     """
 
-    def __init__(self, cutoff, skin, device):
+    def __init__(self, cutoff, skin, device, backend="ase"):
         if not skin >= 0:
             raise ValueError(f"pair_skin must be a non-negative distance; received {skin!r}.")
         self.cutoff, self.skin, self.device = float(cutoff), float(skin), device
+        self.backend = backend
         self.builds = 0
         self._counts = None
 
@@ -1030,7 +1030,7 @@ class VerletPairs:
         firsts, seconds, shifts, offset = [], [], [], 0
         for system, count in enumerate(counts):
             i, j, cell_shifts = _periodic_neighbors(points[offset:offset + count], boxes[system],
-                                                    self.cutoff + self.skin)
+                                                    self.cutoff + self.skin, self.backend)
             firsts.append(i + offset)
             seconds.append(j + offset)
             shifts.append(cell_shifts @ boxes[system])
@@ -1052,7 +1052,7 @@ class HippynnBatchedEnsemble:
     """
 
     def __init__(self, model_directory, device="cuda:0", energy_key="energy", force_key="forces",
-                 hippynn_kernel=None, pair_skin=1.0):
+                 hippynn_kernel=None, pair_skin=1.0, neighbor_backend="ase"):
         import torch
         import hippynn
         if hippynn_kernel is not None:
@@ -1060,6 +1060,9 @@ class HippynnBatchedEnsemble:
         elif getattr(torch.version, "hip", None) is not None:
             hippynn.custom_kernels.set_custom_kernels("pytorch")
         self.pair_skin = pair_skin
+        if neighbor_backend not in {"ase", "vesin"}:
+            raise ValueError("neighbor_backend must be 'ase' or 'vesin'.")
+        self.neighbor_backend = neighbor_backend
         self.pairs = None  # VerletPairs, once a periodic graph is built
         self.device = torch.device(device)
         self.energy_key, self.force_key = energy_key, force_key
@@ -1088,7 +1091,7 @@ class HippynnBatchedEnsemble:
                 if cutoff is not None:
                     cutoffs.append(cutoff)
             if cutoffs:
-                self.pairs = VerletPairs(max(cutoffs), self.pair_skin, self.device)
+                self.pairs = VerletPairs(max(cutoffs), self.pair_skin, self.device, self.neighbor_backend)
             self._graphs[periodic] = graphs
         return self._graphs[periodic]
 

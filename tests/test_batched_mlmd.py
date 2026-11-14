@@ -295,7 +295,7 @@ def test_trajectory_files_still_go_to_the_task_directory_without_metadata_files(
 
 @pytest.mark.parametrize("ncheck", [1, 5, 7, 10, 125])
 def test_step_timing_is_recorded_every_100_steps(tmp_path, ncheck):
-    """The CAAR FOM analyzer reads delta_realtime_step_<n> (the 100 steps ending at step n) from these files."""
+    """Timing analyses read delta_realtime_step_<n> (the 100 steps ending at step n) from these files."""
     import pickle
 
     config = dict(GROUP_CONFIG, dt=0.5, maxt=0.125, Ncheck=ncheck, Escut=100.0, Fscut=100.0, meta_dir=str(tmp_path),
@@ -379,8 +379,8 @@ def test_step_timing_waits_for_device_work_and_uses_a_monotonic_clock(monkeypatc
 
 
 def test_fom_settings_label_the_frame_after_the_full_trajectory():
-    """The CAAR FOM labels every trajectory after its full length (200 steps); ALF does it with cutoffs that
-    always trigger and min_time between its last two checks (checks stop one short of maxt)."""
+    """Labeling every trajectory after its full length: ALF does it with cutoffs that always trigger and
+    min_time between its last two checks (checks stop one short of maxt)."""
     config = dict(GROUP_CONFIG, dt=0.5, maxt=0.1, Ncheck=1, Escut=-1.0, min_time=0.09925)  # checks at 0.0990, 0.0995 ps
     molecules = [MoleculesObject(m.get_atoms().copy(), m.get_moleculeid()) for m in mixed_inputs()[:2]]
     sample_trajectories(molecules, fake_ensemble(), config)

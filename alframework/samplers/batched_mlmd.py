@@ -440,8 +440,9 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
 
 PEAK_SIGNALS = ('Es', 'Fs', 'Fsmax', 'gap_std')
 
-# Each ``delta_realtime_step_<n>`` is the wall time of the STEP_TIMING_INTERVAL steps that end at step n, as the
-# CAAR FOM analyzer reads it. This includes checks between those steps, but excludes initial screening.
+# Each ``delta_realtime_step_<n>`` is the wall time of the STEP_TIMING_INTERVAL steps that end at step n, for
+# analyses that extrapolate MD cost from step times. This includes checks between those steps, but excludes initial
+# screening.
 # In a batch all trajectories step together, so it is the batch wall time, shared by its active trajectories.
 STEP_TIMING_INTERVAL = 100
 

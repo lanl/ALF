@@ -317,3 +317,22 @@ def test_an_assigned_gpu_that_is_not_visible_is_an_error_not_the_cpu(monkeypatch
     with pytest.raises(RuntimeError, match="none is visible"):
         sampling_device({}, 4)
     assert sampling_device({"device": "cpu"}, 4) == "cpu", "the CPU stays available on purpose"
+
+
+def test_an_assigned_gpu_with_a_cpu_only_torch_says_so(monkeypatch):
+    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(
+        cuda=SimpleNamespace(is_available=lambda: False, device_count=lambda: 0),
+        version=SimpleNamespace(hip=None, cuda=None)))
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0")
+    with pytest.raises(RuntimeError, match="none is visible. This PyTorch build has no GPU support"):
+        sampling_device({}, 4)
+
+
+def test_an_assigned_gpu_with_a_gpu_torch_explains_the_amd_masks(monkeypatch):
+    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(
+        cuda=SimpleNamespace(is_available=lambda: False, device_count=lambda: 0),
+        version=SimpleNamespace(hip="6.4", cuda=None)))
+    monkeypatch.setenv("ROCR_VISIBLE_DEVICES", "3")
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "3")
+    with pytest.raises(RuntimeError, match="repeats ROCR_VISIBLE_DEVICES"):
+        sampling_device({}, 4)

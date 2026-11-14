@@ -13,7 +13,8 @@ HIDDEN_MASKS = ('', '-1', 'NoDevFiles')
 AMD_GPU_DRIVER = '/dev/kfd'
 
 
-def _entries(mask):
+def mask_entries(mask):
+    """The device entries of a visibility mask such as ``"2, 5"``."""
     return [entry.strip() for entry in mask.split(',') if entry.strip()]
 
 
@@ -31,7 +32,7 @@ def normalize_amd_visibility(environ=os.environ, amd=None):
     rocr, cuda = environ.get('ROCR_VISIBLE_DEVICES'), environ.get('CUDA_VISIBLE_DEVICES')
     if not rocr or cuda is None or environ.get('HIP_VISIBLE_DEVICES') is not None:
         return False
-    if _entries(cuda) != _entries(rocr) or not _entries(rocr):
+    if mask_entries(cuda) != mask_entries(rocr) or not mask_entries(rocr):
         return False
     if not (os.path.exists(AMD_GPU_DRIVER) if amd is None else amd):
         return False
@@ -97,18 +98,22 @@ def sampling_device(sampler_config, gpus_per_node=None):
     except ImportError:
         count = 0
         amd = os.path.exists(AMD_GPU_DRIVER)
+        gpu_build = True
     else:
         count = torch.cuda.device_count() if torch.cuda.is_available() else 0
-        amd = bool(getattr(getattr(torch, 'version', None), 'hip', None))
+        version = getattr(torch, 'version', None)
+        amd = bool(getattr(version, 'hip', None))
+        gpu_build = amd or bool(getattr(version, 'cuda', None))
     if requested is None and count == 0:
         assigned = _assigned_masks(amd=amd)
         if assigned:
             # Falling back to the CPU here would quietly run GPU work orders of magnitude slower.
-            raise RuntimeError(
-                f'This worker was given GPUs by {assigned}, but none is visible. On AMD GPUs this happens when '
-                'CUDA_VISIBLE_DEVICES repeats ROCR_VISIBLE_DEVICES (as Parsl\'s available_accelerators sets '
-                'them) and the GPU runtime started before alframework was imported. Set "device": "cpu" to '
-                'run on the CPU on purpose.')
+            reason = ('This PyTorch build has no GPU support.' if not gpu_build else
+                      'On AMD GPUs this happens when CUDA_VISIBLE_DEVICES repeats ROCR_VISIBLE_DEVICES (as '
+                      'Parsl\'s available_accelerators sets them) and the GPU runtime started before '
+                      'alframework was imported.')
+            raise RuntimeError(f'This worker was given GPUs by {assigned}, but none is visible. {reason} '
+                               'Set "device": "cpu" to run on the CPU on purpose.')
         return 'cpu'
     return _cuda_device(requested, count, gpus_per_node,
                         any(key in os.environ for key in VISIBILITY_VARIABLES))

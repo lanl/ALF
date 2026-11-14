@@ -33,6 +33,7 @@ from parsl import join_app, python_app
 from alframework.tools.task_timeline import timed
 
 from alframework.tools import ensemble_training
+from alframework.tools.gpu import mask_entries
 from alframework.tools.files import cached_sha256, write_json_atomic
 
 DEVICES = ('cpu', 'cuda')
@@ -149,7 +150,7 @@ def child_environment(device):
     name = 'HIP_VISIBLE_DEVICES' if environment.get('HIP_VISIBLE_DEVICES') is not None else 'CUDA_VISIBLE_DEVICES'
     mask = environment.get(name)
     if mask is not None:
-        visible = [entry.strip() for entry in mask.split(',') if entry.strip()]
+        visible = mask_entries(mask)
         if index >= len(visible):
             raise ValueError(f'{device} is outside this worker\'s {name}={mask!r}.')
         environment[name] = visible[index]

@@ -234,9 +234,12 @@ def _run_ranks(n_devices):
             if process.is_alive():
                 process.terminate()
             process.join()
-    failed = [rank for rank, process in enumerate(ranks) if process.exitcode != 0]
+    failed = {rank: process.exitcode for rank, process in enumerate(ranks) if process.exitcode != 0}
     if failed:
-        raise RuntimeError(f'Lightning training failed on rank(s) {failed}; see the worker output for the error.')
+        # A negative exit code is the signal that ended the rank (-15: stopped here after another rank failed).
+        codes = ', '.join(f'rank {rank} exit code {code}' for rank, code in failed.items())
+        raise RuntimeError(f'Lightning training failed ({codes}); the failing rank printed its error to the '
+                           'worker output above.')
 
 
 def _rank_main(payload, rank, n_devices, port):

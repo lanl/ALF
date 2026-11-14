@@ -526,6 +526,27 @@ def test_excited_states_stay_correct_after_a_trajectory_finishes(engine_name):
     assert engine.steps == [1, 0, 1]
 
 
+@pytest.mark.parametrize("ncheck", [7, 125])
+def test_timing_boundaries_preserve_packed_trajectories(engine_name, monkeypatch, ncheck):
+    from alframework.samplers import batched_mlmd
+
+    config = copy.deepcopy(CONFIG)
+    config.update(Ncheck=ncheck, maxt=0.125, Escut=-1.0, min_time=0.10, distcut=0.01,
+                  srt_temp=[0.0, 0.0], end_temp=[0.0, 0.0], amp_temp=[0.0, 0.0])
+    molecules = inputs()[:2]
+    timed = run([molecules], config=config, engine_name=engine_name)
+    monkeypatch.setattr(batched_mlmd, "STEP_TIMING_INTERVAL", 10**9)
+    unsplit = run([molecules], config=config, engine_name=engine_name)
+    for name, result in timed.items():
+        actual, expected = result.get_metadata(), unsplit[name].get_metadata()
+        assert actual["delta_realtime_step_100"] > 0
+        assert actual["delta_realtime_step_200"] > 0
+        for key in ("step", "frame_id", "trajectory_outcome", "Es", "Fs"):
+            assert actual[key] == expected[key], key
+        np.testing.assert_array_equal(actual["positions"], expected["positions"])
+        np.testing.assert_array_equal(actual["temps"], expected["temps"])
+
+
 def test_topology_or_force_rejection_stops_before_first_step(engine_name, tmp_path):
     reference = Atoms("OHH", positions=[[0, 0, 0], [0.9572, 0, 0], [-0.239, 0.927, 0]])
     path = tmp_path / "water.xyz"

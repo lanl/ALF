@@ -157,6 +157,7 @@ class ASEEngine:
     current frame; ``atoms(i)``, ``set_temperature(i, T)``,
     ``scale_cell(i, scalar)``, and ``finish(i)``. A batched engine implements
     the same methods over packed systems, freezing members on ``finish``.
+    An optional ``synchronize()`` waits for device work before a timing checkpoint.
     """
 
     def __init__(self, atoms_list, models, dt, temperatures_K, rngs, calculator_options=None, friction=0.02):
@@ -251,7 +252,7 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
         state.append({'temps': [], 'denss': [], 'rho0': rho0, 'decision': None, 'signals': None,
                       'min_distance': None, 'check': 0, 'outcome': None, 'error': None,
                       'candidates': [], 'peaks': {}, 'finished_at': None,
-                      'step_times': {}, 'last_mark': started})
+                      'step_times': {}})
 
     def finish(index, outcome, error=None):
         state[index]['outcome'] = outcome
@@ -260,6 +261,32 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
         state[index]['finished_at'] = time.time()
         engine.finish(index)
         active.remove(index)
+
+    last_step_mark = None
+
+    def advance(n):
+        """Step to timing boundaries without adding uncertainty or acquisition checks."""
+        nonlocal last_step_mark
+        synchronize = getattr(engine, 'synchronize', None)
+        if last_step_mark is None:
+            if synchronize is not None:
+                synchronize()
+            last_step_mark = time.perf_counter()
+        while active and n > 0:
+            completed = engine.steps[active[0]]
+            chunk = min(n, STEP_TIMING_INTERVAL - completed % STEP_TIMING_INTERVAL)
+            for index, exc in engine.step(list(active), chunk).items():
+                finish(index, 'failed', exc)
+            n -= chunk
+            if active and engine.steps[active[0]] % STEP_TIMING_INTERVAL == 0:
+                if synchronize is not None:
+                    synchronize()
+                now = time.perf_counter()
+                elapsed = now - last_step_mark
+                # Every surviving trajectory has completed the same batch steps.
+                for index in active:
+                    state[index]['step_times'][engine.steps[index]] = elapsed
+                last_step_mark = now
 
     if 'sampling_window' in sampler_config:
         for molecule in molecule_objects:
@@ -330,15 +357,13 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
                 finish(index, 'failed', exc)
     for molecule in molecule_objects:
         molecule.update_metadata(dict(sampling_entered_dynamics_width=len(active)))
-    for index, exc in engine.step(list(active), 1).items():
-        finish(index, 'failed', exc)
+    advance(1)
     for check in range(n_checks):
         time_ps = check * Ncheck * dt / 1000
         for index in list(active):
             entry, schedule = state[index], schedules[index]
             try:
                 observation = engine.observe(index)
-                _mark_step_time(entry, engine.steps[index])
                 if screening:
                     report, reason = inspect_frame(index, observation, time_ps)
                     if reason:
@@ -385,8 +410,7 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
                 finish(index, 'failed', exc)
         if not active:
             break
-        for index, exc in engine.step(list(active), Ncheck).items():
-            finish(index, 'failed', exc)
+        advance(Ncheck)
     for index in list(active):
         finish(index, 'completed')
     if cohort:
@@ -404,15 +428,9 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
 PEAK_SIGNALS = ('Es', 'Fs', 'Fsmax', 'gap_std')
 
 # Each ``delta_realtime_step_<n>`` is the wall time of the STEP_TIMING_INTERVAL steps that end at step n, as the
-# CAAR FOM analyzer reads it. In a batch all trajectories step together, so it is the time of those batch steps.
+# CAAR FOM analyzer reads it. This includes checks between those steps, but excludes initial screening.
+# In a batch all trajectories step together, so it is the batch wall time, shared by its active trajectories.
 STEP_TIMING_INTERVAL = 100
-
-
-def _mark_step_time(entry, steps_done):
-    if steps_done and steps_done % STEP_TIMING_INTERVAL == 0 and steps_done not in entry['step_times']:
-        now = time.time()
-        entry['step_times'][steps_done] = now - entry['last_mark']
-        entry['last_mark'] = now
 
 
 def _record(molecule, entry, schedule, sampler_config, settings, engine, index, started, seed, meta_dir):

@@ -256,6 +256,11 @@ class PackedMLMDEngine:
 
     # -- engine contract -------------------------------------------------------------------------
 
+    def synchronize(self):
+        """Wait for queued CUDA/HIP work before recording elapsed batch wall time."""
+        if self.device.type == 'cuda':
+            self._torch.cuda.synchronize(self.device)
+
     def step(self, indices, n):
         failures = {}
         retired = [index for index in self._rows if index not in set(indices)]

@@ -6,6 +6,7 @@ failed trajectory leaves the others alone. Some tests skip without torch, HIPPYN
 
 import copy
 import time
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -228,12 +229,12 @@ def test_metadata_files_are_written_per_trajectory(tmp_path):
         assert (tmp_path / f"metadata-{molecule.get_moleculeid()}.traj").stat().st_size > 0
 
 
-def test_step_timing_is_recorded_every_100_steps(tmp_path):
+@pytest.mark.parametrize("ncheck", [1, 5, 7, 10, 125])
+def test_step_timing_is_recorded_every_100_steps(tmp_path, ncheck):
     """The CAAR FOM analyzer reads delta_realtime_step_<n> (the 100 steps ending at step n) from these files."""
     import pickle
 
-    # dt 0.5 fs, maxt 0.125 ps, Ncheck 1: 250 checks, and the trajectory never triggers.
-    config = dict(GROUP_CONFIG, dt=0.5, maxt=0.125, Ncheck=1, Escut=100.0, Fscut=100.0, meta_dir=str(tmp_path))
+    config = dict(GROUP_CONFIG, dt=0.5, maxt=0.125, Ncheck=ncheck, Escut=100.0, Fscut=100.0, meta_dir=str(tmp_path))
     molecules = [MoleculesObject(m.get_atoms().copy(), m.get_moleculeid()) for m in mixed_inputs()[:2]]
     sample_trajectories(molecules, fake_ensemble(), config)
     for molecule in molecules:
@@ -243,6 +244,73 @@ def test_step_timing_is_recorded_every_100_steps(tmp_path):
         assert timed == [100, 200]
         assert all(meta[f"delta_realtime_step_{n}"] > 0 for n in timed)
         assert sum(meta[f"delta_realtime_step_{n}"] for n in timed) <= meta["realtime_simulation"] + 1e-6
+    for step in (100, 200):
+        assert molecules[0].get_metadata()[f"delta_realtime_step_{step}"] == \
+            molecules[1].get_metadata()[f"delta_realtime_step_{step}"], "one timestamp for the whole batch"
+
+
+def test_step_timing_records_a_boundary_on_the_final_step():
+    config = dict(GROUP_CONFIG, dt=0.5, maxt=0.0495, Ncheck=3, Escut=100.0, Fscut=100.0)
+    [result] = sample_trajectories(mixed_inputs()[:1], fake_ensemble(), config)
+    meta = result.get_metadata()
+    assert meta["step"] == 100
+    assert meta["delta_realtime_step_100"] > 0
+    assert "delta_realtime_step_200" not in meta
+
+
+def test_step_timing_does_not_record_unfinished_intervals():
+    config = dict(GROUP_CONFIG, dt=0.5, maxt=0.125, Ncheck=7, Escut=-1.0, min_time=0.06)
+    [result] = sample_trajectories(mixed_inputs()[:1], fake_ensemble(), config)
+    meta = result.get_metadata()
+    assert meta["trajectory_outcome"] == "eligible"
+    assert 100 <= meta["step"] < 200
+    assert meta["delta_realtime_step_100"] > 0
+    assert "delta_realtime_step_200" not in meta
+
+
+@pytest.mark.parametrize("ncheck", [5, 7, 125])
+def test_timing_boundaries_preserve_dynamics_and_selected_frames(monkeypatch, ncheck):
+    config = dict(GROUP_CONFIG, dt=0.5, maxt=0.125, Ncheck=ncheck, Escut=-1.0, min_time=0.10)
+
+    def run():
+        return sample_trajectories(mixed_inputs()[:2], fake_ensemble(), config)
+
+    timed = run()
+    monkeypatch.setattr(batched_mlmd, "STEP_TIMING_INTERVAL", 10**9)
+    unsplit = run()
+    for actual, expected in zip(timed, unsplit):
+        actual, expected = actual.get_metadata(), expected.get_metadata()
+        for key in ("step", "frame_id", "trajectory_outcome", "Es", "Fs"):
+            assert actual[key] == expected[key], key
+        for key in ("positions", "temps", "cell"):
+            np.testing.assert_array_equal(actual[key], expected[key])
+
+
+def test_step_timing_waits_for_device_work_and_uses_a_monotonic_clock(monkeypatch):
+    clock = dict(completed=0, pending=0)
+
+    class QueuedEngine(ASEEngine):
+        def step(self, indices, n):
+            failures = super().step(indices, n)
+            clock["pending"] += n
+            return failures
+
+        def synchronize(self):
+            clock["completed"] += clock["pending"]
+            clock["pending"] = 0
+
+    monkeypatch.setattr(batched_mlmd, "time", SimpleNamespace(
+        time=time.time, perf_counter=lambda: clock["completed"]))
+    config = dict(BASE, dt=0.5, maxt=0.125, Ncheck=7, Escut=100.0, Fscut=100.0)
+    atoms = [SPRING_WATER.copy() for _ in range(2)]
+    engine = QueuedEngine(atoms, fake_ensemble(), config["dt"], [300.0] * 2,
+                          [np.random.RandomState(i) for i in range(2)])
+    molecules = [MoleculesObject(a, f"queued-{i}") for i, a in enumerate(atoms)]
+    results = run_mlmd_trajectories(molecules, engine, [SCHEDULE] * 2, config)
+    for result in results:
+        meta = result.get_metadata()
+        assert meta["delta_realtime_step_100"] == 100
+        assert meta["delta_realtime_step_200"] == 100
 
 
 def test_fom_settings_label_the_frame_after_the_full_trajectory():

@@ -446,9 +446,11 @@ def build_rdkit_molecules(moleculeids, builder_config, h5_path=None, current_h5_
 
 
 from parsl import python_app
+from alframework.tools.task_timeline import timed
 
 
 @python_app(executors=['alf_sampler_executor'])
+@timed('builder')
 def rdkit_molecule_builder_task(moleculeid=None, moleculeids=None, builder_config=None,
                                 h5_path=None, current_h5_id=0, master_directory=None):
     """Ordinary ALF builder; CPU geometry preparation is explicit and separate."""

@@ -4,6 +4,7 @@ import random
 import os
 import numpy as np
 from parsl import python_app, bash_app
+from alframework.tools.task_timeline import timed
 import json
 
 import ase
@@ -22,6 +23,7 @@ import random
 from copy import deepcopy
 
 @python_app(executors=['alf_sampler_executor'])
+@timed('builder')
 def load_reactive_task(moleculeid, builder_config, rattle=True):
     """Loads atomic configurations for reactions from files to be used by the sampler.
 

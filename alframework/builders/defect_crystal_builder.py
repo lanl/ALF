@@ -16,6 +16,7 @@ from alframework.tools.tools import build_input_dict
 from alframework.tools.molecules_class import MoleculesObject
 
 from parsl import python_app, bash_app
+from alframework.tools.task_timeline import timed
 
 from glob import glob
 
@@ -161,6 +162,7 @@ def builder(StructFile,Rattle=0.0,repAtMax=0,CScale=1.0,CRat=0.0,tInt=[],nVac=0,
     return(S)
 
 @python_app(executors=['alf_sampler_executor'])
+@timed('builder')
 def defect_cell_builder_task(moleculeid: str,cfg_dir: str, maxVac:int = 0, maxInt:int = 0, typInt:list = [], maxRep:int = 0, typRep:list = [], rattle:float=0.0, cScaleRange:list = [.99999, 1.0001], cRattle:float = 0.0, maxAt:int=100):
     cfg_list = glob(cfg_dir+'*.cfg')
     

@@ -4,6 +4,7 @@ import random
 import os
 import numpy as np
 from parsl import python_app, bash_app
+from alframework.tools.task_timeline import timed
 import json
 from pathlib import Path
 
@@ -62,6 +63,7 @@ def ASEfromSMILES(SMILES,elongate=False,maxD=300,dD=10):
     return(aseAtoms)
 
 @python_app(executors=['alf_sampler_executor'])
+@timed('builder')
 def rdkit_condensed_phase_builder_task(moleculeid,builder_config,cell_range,Rrange,solute_molecule_options,solvent_molecules):
     """
     Elements in  builder parameters

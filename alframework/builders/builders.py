@@ -4,6 +4,7 @@ import random
 import os
 import numpy as np
 from parsl import python_app, bash_app
+from alframework.tools.task_timeline import timed
 import json
 
 import ase
@@ -28,6 +29,7 @@ from copy import deepcopy
 #    return(atom_list)
 
 @python_app(executors=['alf_sampler_executor'])
+@timed('builder')
 def simple_cfg_loader_task(moleculeid, builder_config, shake=0.05):
     """Loads an atomic configuration from cfg file to be used by the sampler.
 
@@ -200,6 +202,7 @@ def condensed_phase_builder(start_system, molecule_library, solute_molecules=[],
 
 
 @python_app(executors=['alf_sampler_executor'])
+@timed('builder')
 def simple_condensed_phase_builder_task(moleculeid, builder_config, molecule_library_dir, cell_range,
                                         solute_molecule_options, Rrange, periodic=True):
     """Condensed phase builder task that will be fed to the sampler.
@@ -256,6 +259,7 @@ def simple_condensed_phase_builder_task(moleculeid, builder_config, molecule_lib
 
 
 @python_app(executors=['alf_sampler_executor'])
+@timed('builder')
 def simple_multi_condensed_phase_builder_task(moleculeids, builder_config, molecule_library_dir, cell_range,
                                               solute_molecule_options, Rrange, periodic=True):
     """Multi condensed phase builder task that will be fed to the sampler.
@@ -532,6 +536,7 @@ def atomic_system_builder(atom_charges, target_num_atoms, min_distance, box_leng
 
 
 @python_app(executors=['alf_sampler_executor'])
+@timed('builder')
 def atomic_system_task(moleculeid, atom_charges, target_num_atoms, min_distance, box_length_range):
     """Atomic system task that will be fed to the sampler.
 
@@ -556,6 +561,7 @@ def atomic_system_task(moleculeid, atom_charges, target_num_atoms, min_distance,
 
 
 @python_app(executors=['alf_sampler_executor'])
+@timed('builder')
 def TiAl_builder_task(moleculeid, target_num_atoms, min_distance, box_length_range):
     """Atomic system task that will be fed to the sampler.
 

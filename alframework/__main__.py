@@ -427,7 +427,7 @@ while True:
         # Load the master configuration:
         master_config_new = load_config_file(args.master)
         poll_interval_new = coordinator_poll_interval(master_config_new)
-        if 'master_directory' not in master_config:
+        if 'master_directory' not in master_config_new:
             master_config_new['master_directory'] = None
 
         # Load the builder config:

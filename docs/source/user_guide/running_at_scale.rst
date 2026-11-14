@@ -52,6 +52,29 @@ then compiles GPU4PySCF's CuPy kernels once; to reuse compiled kernels, set ``AL
 a cache filled beforehand. It also sets ``HDF5_USE_FILE_LOCKING=FALSE``, which is safe for ALF, since
 it writes each shard once and renames it into place, and readers never see a partial one.
 
+.. _running-at-scale-small-files:
+
+Fewer Small Files
+-----------------
+
+A parallel filesystem handles every file creation on a metadata server, and a run that writes one file
+per structure sends all of them there at once. On Lustre, a directory's files and subdirectories stay
+on that directory's metadata server, and small files may be stored on it too (Data-on-MDT), so giving
+each task its own subdirectory still loads the same server. On Frontier's Lustre, single file writes
+during sampling stalled for 7 to 25 minutes, at 2, 8 and 16 nodes, with and without per-task
+subdirectories. A stage waits for its slowest task, so one stall delays the whole stage, and stalls
+become more likely as the number of nodes grows.
+
+- Set the sampler's ``metadata_files`` to ``"per_task"``, one file per task instead of one per
+  trajectory, or to ``"none"``. The metadata still returns to the coordinator with each structure
+  (see :doc:`samplers`).
+- Set ``trajectory_summary_path`` so progress plots read one summary file, not every metadata file
+  (see :doc:`monitoring`).
+- On Lustre, create the run's output directories, such as ``meta_dir`` and
+  ``ALF_TASK_TIMELINE_DIR``, before the run, spread over several metadata servers:
+  ``lfs mkdir -c 8 <dir>``. ALF keeps a directory that already exists, and new files and
+  subdirectories are then spread over those servers. ``lfs getdirstripe <dir>`` shows the layout.
+
 Related
 -------
 

@@ -572,9 +572,9 @@ Output and trajectory fields
         - Multi-trajectory sampler only. Where per-trajectory files (metadata and trajectories) go:
           ``"per_task"`` (default) gives each task its own subdirectory,
           ``meta_dir/task-<first moleculeid>/``; ``"flat"`` writes them into ``meta_dir`` itself, for
-          readers that expect one directory. Many tasks creating files in one directory at the same
-          moment are serialized by a parallel filesystem: on Lustre at 8 nodes, a task waited about
-          7 minutes to write its files. Progress plots read every layout.
+          readers that expect one directory. Progress plots read every layout. Subdirectories don't
+          reduce the number of files: at scale, write fewer of them with ``metadata_files``, as
+          described in :ref:`running-at-scale-small-files`.
       * - ``trajectory_frequency``
         - Probability of writing a trajectory for a sampling task.
       * - ``trajectory_interval``

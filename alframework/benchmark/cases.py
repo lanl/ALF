@@ -149,7 +149,7 @@ def sampling_case(case, atoms, torch):
             predict = lambda: ensemble.evaluate(numbers, positions, cells, [False] * 3, counts)
         else:
             ensemble = ml.load_hippynn_excited_state_ensemble(directory, device, properties(states),
-                                                              case.get('hippynn_kernel', 'pytorch'))
+                                                              case.get('hippynn_kernel', 'auto'))
             predict = lambda: ensemble.predict_states(structures)
         step = _timed(predict, case['steps'], case['warmup'], torch, torch.device(device).type == 'cuda')
         return dict(step_s=step, **_memory(torch, torch.device(device).type == 'cuda'))
@@ -160,7 +160,7 @@ def run_case(case):
     import torch
     import hippynn
     from ase.io import read
-    hippynn.custom_kernels.set_custom_kernels(case.get('hippynn_kernel', 'pytorch'))
+    hippynn.custom_kernels.set_custom_kernels(case.get('hippynn_kernel', 'auto'))
     hippynn.settings.WARN_LOW_DISTANCES = False
     torch.manual_seed(0)
     torch.set_num_threads(int(os.environ.get('ALF_BENCHMARK_THREADS', '1')))

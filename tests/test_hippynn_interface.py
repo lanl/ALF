@@ -460,7 +460,14 @@ def test_training_records_what_it_did(two_state_ensemble):
     summary = json.loads((member / "training_summary.json").read_text())
     manifest = json.loads((member / "training_input_manifest.json").read_text())
     assert summary["epochs"] == 2 and summary["parameters_changed"]
-    assert summary["hippynn_kernel"] == "pytorch"
+    # The default, "auto", is recorded as the implementation HIPPYNN chose here.
+    import hippynn
+    previous = hippynn.custom_kernels.CUSTOM_KERNELS_ACTIVE
+    try:
+        chosen = hippynn.custom_kernels.set_custom_kernels("auto")
+    finally:
+        hippynn.custom_kernels.set_custom_kernels(previous)
+    assert summary["hippynn_kernel"] == chosen
     assert manifest["filtered_indices"] == [11]
     assert sorted(i for split in manifest["splits"].values() for i in split) == list(range(11))
 

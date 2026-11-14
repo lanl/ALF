@@ -52,7 +52,7 @@ def parse(argv=None):
     parser.add_argument('--epochs', type=int, default=300)
     parser.add_argument('--walltime-hours', type=float, default=16.0)
     parser.add_argument('--sampler-gpus', type=int, help='GPUs sampling runs on. Default: the GPUs visible here.')
-    parser.add_argument('--hippynn-kernel', default='pytorch')
+    parser.add_argument('--hippynn-kernel', default='auto')
     parser.add_argument('--only', choices=['training', 'sampling'])
     parser.add_argument('--output', type=Path, default=Path('gpu_sizing.json'))
     parser.add_argument('--case', help=argparse.SUPPRESS)

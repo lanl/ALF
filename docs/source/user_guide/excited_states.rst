@@ -334,7 +334,8 @@ differences:
      - Optional plot output, such as ``{"pdf": true, "png": true}``. CSV export is
        not supported.
    * - ``hippynn_kernel``
-     - HIPPYNN kernel implementation. The default is ``pytorch``.
+     - HIPPYNN kernel implementation. The default is ``auto``, HIPPYNN's own choice of the fastest
+       available (Triton on ROCm); ``pytorch``, ``triton``, ``numba``, ``cupy`` or ``sparse`` select one.
 
 The trainer never deletes or overwrites model data, so it doesn't support
 ``remove_existing``. It also doesn't support ``h5_test_dir``; use ``valid_size`` and

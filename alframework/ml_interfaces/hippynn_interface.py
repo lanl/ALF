@@ -877,12 +877,13 @@ def HIPNN_ASE_load_ensemble(HIPNN_ensemble_directory,device="cuda:0"):
 # or cells change). Mixed periodicity is not supported. Members are loaded from absolute paths,
 # without changing the working directory.
 #
-# ``hippynn_kernel`` explicitly selects HIPPYNN's custom kernels (process-wide). Omitted, this
-# preserves ALF's existing policy of using portable pytorch kernels on ROCm.
+# ``hippynn_kernel`` selects HIPPYNN's custom kernels (process-wide). The default, ``"auto"``, is
+# HIPPYNN's own: the fastest implementation available (Triton on ROCm, which also uses far less
+# memory for batches than the pytorch kernels).
 # ---------------------------------------------------------------------------------------------
 
 def load_hippynn_batched_ensemble(model_directory, device="cuda:0", energy_key="energy", force_key="forces",
-                                  hippynn_kernel=None, pair_skin=1.0, neighbor_backend="ase"):
+                                  hippynn_kernel="auto", pair_skin=1.0, neighbor_backend="ase"):
     """Load a HIPPYNN ensemble for batched evaluation (``batched_calculator`` loader).
 
     ``hippynn_kernel`` and ``pair_skin`` (Angstrom) can be set through the sampler's
@@ -1052,13 +1053,10 @@ class HippynnBatchedEnsemble:
     """
 
     def __init__(self, model_directory, device="cuda:0", energy_key="energy", force_key="forces",
-                 hippynn_kernel=None, pair_skin=1.0, neighbor_backend="ase"):
+                 hippynn_kernel="auto", pair_skin=1.0, neighbor_backend="ase"):
         import torch
         import hippynn
-        if hippynn_kernel is not None:
-            hippynn.custom_kernels.set_custom_kernels(hippynn_kernel)
-        elif getattr(torch.version, "hip", None) is not None:
-            hippynn.custom_kernels.set_custom_kernels("pytorch")
+        hippynn.custom_kernels.set_custom_kernels(hippynn_kernel)
         self.pair_skin = pair_skin
         if neighbor_backend not in {"ase", "vesin"}:
             raise ValueError("neighbor_backend must be 'ase' or 'vesin'.")
@@ -1135,7 +1133,7 @@ def _member_atomic_numbers(directory):
     return json.loads((directory / 'training_summary.json').read_text())['data']['atomic_numbers']
 
 
-def load_hippynn_excited_state_ensemble(model_directory, device, properties_list, hippynn_kernel="pytorch"):
+def load_hippynn_excited_state_ensemble(model_directory, device, properties_list, hippynn_kernel="auto"):
     """Load molecular state heads in physical eV and eV/Angstrom units."""
     return HippynnExcitedStateEnsemble(model_directory, device, properties_list, hippynn_kernel)
 
@@ -1143,7 +1141,7 @@ def load_hippynn_excited_state_ensemble(model_directory, device, properties_list
 class HippynnExcitedStateEnsemble:
     """Ordered member/state/system predictions; packed forces keep caller atom order."""
 
-    def __init__(self, model_directory, device, properties_list, hippynn_kernel="pytorch"):
+    def __init__(self, model_directory, device, properties_list, hippynn_kernel="auto"):
         import torch
         import hippynn
         from hippynn.graphs import GraphModule
@@ -1351,7 +1349,7 @@ def validate_excited_state_training_config(
             "The isolated excited-state trainer currently supports "
             "optimizer='AdamW' only."
         )
-    if config.get('hippynn_kernel', 'pytorch') not in {'pytorch', 'auto', 'numba', 'cupy', 'triton', 'sparse'}:
+    if config.get('hippynn_kernel', 'auto') not in {'pytorch', 'auto', 'numba', 'cupy', 'triton', 'sparse'}:
         raise ValueError('hippynn_kernel must name a supported HIPPYNN kernel implementation')
     if config.get("n_atoms") is not None and int(config["n_atoms"]) < 1:
         raise ValueError("n_atoms must be positive when configured.")
@@ -2005,10 +2003,9 @@ def train_single_excited_state_model(
     )
     from hippynn.graphs import inputs
 
-    # Torch kernels execute on the selected CPU/GPU and support force
-    # derivatives without HIPPYNN's optional accelerated-kernel adapters.
-    # Other implementations remain an explicit choice; never silently retry.
-    active_kernel = hippynn.custom_kernels.set_custom_kernels(config.get('hippynn_kernel', 'pytorch'))
+    # HIPPYNN's own default: the fastest kernels available here. An explicit choice is used as given;
+    # never silently retry with another.
+    active_kernel = hippynn.custom_kernels.set_custom_kernels(config.get('hippynn_kernel', 'auto'))
 
     device = torch.device(selected_device)
     if device.type == 'cuda':

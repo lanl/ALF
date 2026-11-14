@@ -962,6 +962,8 @@ def _member_graph(model, energy_key, force_key, periodic):
     # Match HIPPYNN's ASE conversion: periodic checkpoints can contain SparsePairIndexer (or other
     # PairIndexer subclasses), while molecular checkpoints contain OpenPairIndexer.
     pair_indexers = [node for node in get_subgraph(outputs) if isinstance(node, PairIndexer)]
+    if not pair_indexers:
+        return GraphModule(list(model.input_nodes), outputs), None
     outputs, subgraph = copy_subgraph(outputs, assume_inputed=pair_indexers)
     copied_pairs = find_relatives(outputs, lambda node: node in subgraph and isinstance(node, PairIndexer),
                                   why_desc=why)

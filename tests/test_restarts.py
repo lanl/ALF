@@ -170,6 +170,39 @@ def test_coordinator_starts_with_a_partial_shard_left_by_a_crash(tmp_path, monke
     assert not list((tmp_path / "h5").glob("*.partial"))
 
 
+@pytest.mark.parametrize('phase', ['bootstrap', 'sampling'])
+def test_coordinator_recovers_when_every_builder_in_a_wave_fails(tmp_path, monkeypatch, phase):
+    """A lost worker must free builder capacity even when it leaves no successful result."""
+    from parsl import python_app
+    from parsl.executors.high_throughput.errors import ManagerLost
+    from threading import Lock
+
+    affected_wave = []
+    wave_lock = Lock()
+
+    @python_app(executors=['alf_builder_executor'])
+    def builder(moleculeid):
+        initial = moleculeid.startswith('mol-boot-')
+        if initial == (phase == 'bootstrap'):
+            with wave_lock:
+                affected_wave.append(moleculeid)
+                fail = len(affected_wave) <= 2
+            if fail:
+                raise ManagerLost(b'expired-allocation', 'worker')
+        return MoleculesObject(WATER.copy(), moleculeid)
+
+    tasks = coordinator_tasks()
+    tasks.update(builder=builder, save_h5_threshold=1)
+    run = run_alf_driver(tmp_path, monkeypatch, **tasks, timeout=8)
+    assert run.status['current_model_id'] >= 1, 'sampling and retraining must resume'
+    assert run.status['lifetime_failed_builder_tasks'] == 2
+    failed = affected_wave[:2]
+    assert len(failed) == 2, 'the test must lose the entire two-builder wave'
+    ids = stored_ids(tmp_path/'h5')
+    assert len(ids) >= 4 and len(ids) == len(set(ids))
+    assert not set(failed) & set(ids), 'a failed builder must not create a stored label'
+
+
 # --- The coordinator lock ---------------------------------------------------------------------------
 
 HOLDER = """

@@ -420,6 +420,27 @@ nodes. For unmasked sampler workers, ``gpus_per_node`` specifies the number of
 GPUs to distribute over, not the worker count. More workers than visible GPUs
 share devices by rank; scheduler/Parsl visibility takes precedence.
 
+Allocation Rollover
+-------------------
+
+The coordinator can outlive any individual scheduler allocation. Set each
+``HighThroughputExecutor``'s ``drain_period`` so its manager stops accepting new
+tasks before walltime, leaving time for worker startup and the longest expected
+task. Draining lets work finish; it neither extends walltime nor checkpoints a
+task. A training task needs enough allocation time for the whole ensemble.
+
+Use Parsl's bounded ``Config(retries=...)`` and, when needed, ``retry_handler``
+to retry tasks lost with a worker or manager. A retry restarts that task and
+counts against its retry budget. Match the policy to task side effects: a
+partly written training directory isn't automatically a resumable checkpoint.
+Do not repeatedly retry scientific or configuration errors as allocation losses.
+
+ALF harvests terminal builder failures even if every builder in a wave failed,
+so those failures free capacity for new builders during bootstrap and sampling.
+Transient states while Parsl is retrying aren't harvested as terminal failures.
+This keeps a lost allocation from leaving a full, failed builder queue that
+prevents replacement work from being submitted.
+
 .. _parsl-releasing-allocations:
 
 Releasing Allocations
@@ -436,8 +457,9 @@ interchange that is no longer answering. It then gives Parsl's cleanup 120 secon
 ``ALF_PARSL_CLEANUP_TIMEOUT`` in the coordinator's environment, before exiting anyway.
 
 ALF also stops with an error if Parsl permanently stops the builder, sampler, QM, or ML executor, because
-every task on it would fail from then on. The error includes Parsl's reason. Status is saved first, but
-labels that finished since the last store are lost. Restart ALF once the cause is fixed. A failed standby
+every task on it would fail from then on. The error includes Parsl's reason. Status is saved first,
+and finished labels already held on disk survive a restart. Results only inside a lost worker don't.
+Restart ALF once the cause is fixed. A failed standby
 executor doesn't stop ALF. Blocks still running on the failed executor stop at its heartbeat limit, not
 immediately.
 

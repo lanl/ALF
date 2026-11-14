@@ -363,6 +363,7 @@ if status['current_h5_id'] == 0 and status['current_model_id'] < 0:
                 builder_task_queue.add_task(builder_task(**task_input))
         
         if (builder_task_queue.get_exec_done_number() > master_config['minimum_QM']
+                or builder_task_queue.get_failed_number() > 0
                 or (master_config.get('finite_bootstrap', False) and builder_task_queue.get_completed_number() > 0)):
             builder_results, failed = builder_task_queue.get_task_results()
             status['lifetime_failed_builder_tasks'] = status['lifetime_failed_builder_tasks'] + failed
@@ -472,8 +473,8 @@ while True:
             builder_task_queue.add_task(builder_task(**task_input))
             status['current_molecule_id'] = status['current_molecule_id'] + master_config.get('maximum_builder_structures',1)
             
-    # Builders go stright into samplers
-    if admitting and builder_task_queue.get_exec_done_number() > 0:
+    # Harvest failed builders too, so they free capacity for replacement tasks.
+    if admitting and builder_task_queue.get_completed_number() > 0:
         structure_list, failed = builder_task_queue.get_task_results()
         status['lifetime_failed_builder_tasks'] = status['lifetime_failed_builder_tasks'] + failed
         # Douple loop to facilitate possiblitiy of multiple sctructures returned by builder

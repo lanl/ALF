@@ -29,15 +29,24 @@ MUTED = "#52514e"
 GRID = "#e4e3df"
 
 
+def _metadata_files(meta_dir):
+    """Metadata pickles in ``meta_dir`` and, for ``meta_dir_layout`` "per_task", in its ``task-*`` subdirectories."""
+    for entry in os.scandir(meta_dir):
+        if entry.is_dir() and entry.name.startswith('task-'):
+            yield from ((os.path.join(entry.path, name), name) for name in os.listdir(entry.path))
+        else:
+            yield entry.path, entry.name
+
+
 def _read_pickles(meta_dir):
     """Read every metadata pickle into columns, skipping any that are partial or unreadable."""
     rows = []
-    for filename in os.listdir(meta_dir):
+    for path, filename in _metadata_files(meta_dir):
         match = METADATA_FILE.fullmatch(filename)
         if match is None:
             continue
         try:
-            with open(os.path.join(meta_dir, filename), 'rb') as handle:
+            with open(path, 'rb') as handle:
                 rows.append(trajectory_row(match.group(1), pickle.load(handle)))
         except Exception:  # A worker may still be writing it.
             continue

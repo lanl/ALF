@@ -229,6 +229,25 @@ def test_metadata_files_are_written_per_trajectory(tmp_path):
         assert (tmp_path / f"metadata-{molecule.get_moleculeid()}.traj").stat().st_size > 0
 
 
+def test_per_task_layout_puts_each_tasks_files_in_its_own_directory(tmp_path):
+    config = dict(GROUP_CONFIG, meta_dir=str(tmp_path), meta_dir_layout="per_task", trajectory_frequency=1.0,
+                  trajectory_interval=1)
+    molecules = [MoleculesObject(m.get_atoms().copy(), m.get_moleculeid()) for m in mixed_inputs()[:2]]
+    sample_trajectories(molecules, fake_ensemble(), config)
+    task = tmp_path / f"task-{molecules[0].get_moleculeid()}"
+    assert sorted(p.name for p in tmp_path.iterdir()) == [task.name], "nothing written to meta_dir itself"
+    for molecule in molecules:
+        assert (task / f"metadata-{molecule.get_moleculeid()}.p").exists()
+        assert (task / f"metadata-{molecule.get_moleculeid()}.traj").stat().st_size > 0
+    assert config["meta_dir"] == str(tmp_path), "the caller's config is unchanged"
+
+
+def test_an_unknown_meta_dir_layout_is_refused(tmp_path):
+    molecules = [MoleculesObject(m.get_atoms().copy(), m.get_moleculeid()) for m in mixed_inputs()[:1]]
+    with pytest.raises(ValueError, match="meta_dir_layout"):
+        sample_trajectories(molecules, fake_ensemble(), dict(GROUP_CONFIG, meta_dir=str(tmp_path), meta_dir_layout="tree"))
+
+
 @pytest.mark.parametrize("ncheck", [1, 5, 7, 10, 125])
 def test_step_timing_is_recorded_every_100_steps(tmp_path, ncheck):
     """The CAAR FOM analyzer reads delta_realtime_step_<n> (the 100 steps ending at step n) from these files."""

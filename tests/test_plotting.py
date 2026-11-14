@@ -113,6 +113,16 @@ def test_analysis_plot_titles_say_when_uncertainty_is_a_peak(tmp_path, monkeypat
     assert "Energy uncertainty" in titles
 
 
+def test_analysis_plot_reads_per_task_subdirectories(tmp_path):
+    from alframework.tools.plotting import _read_pickles
+    meta = tmp_path / "meta"
+    write_pickles(meta, [(0, finished())])
+    write_pickles(meta / "task-mol-0000-0000000005", [(0, finished()), (0, finished())])
+    (meta / "other").mkdir()
+    write_pickles(meta / "other", [(0, finished())])  # only task-* subdirectories are per-task layout
+    assert len(_read_pickles(str(meta))["model"]) == 3
+
+
 def test_analysis_plot_ignores_a_truncated_pickle_and_other_files(tmp_path):
     meta = tmp_path / "meta"
     write_pickles(meta, [(0, finished())])

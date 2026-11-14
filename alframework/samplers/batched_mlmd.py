@@ -522,11 +522,33 @@ def make_engine(engine, atoms_list, models, dt, temperatures_K, rngs, calculator
     return ASEEngine(atoms_list, models, dt, temperatures_K, rngs, calculator_options, friction=friction)
 
 
+META_DIR_LAYOUTS = ('flat', 'per_task')
+
+
+def task_meta_dir(sampler_config, molecule_objects):
+    """The directory this task writes its metadata (and trajectory) files to.
+
+    ``meta_dir_layout`` ``"flat"`` (default): ``meta_dir`` itself. ``"per_task"``: a subdirectory of it,
+    ``task-<first molecule id>``, so that the tasks of a large run don't all create files in one directory at
+    once, which a parallel filesystem serializes (on Lustre, a task stalled for minutes at 8 nodes).
+    """
+    meta_dir = sampler_config.get('meta_dir')
+    layout = sampler_config.get('meta_dir_layout', 'flat')
+    if layout not in META_DIR_LAYOUTS:
+        raise ValueError(f"meta_dir_layout must be one of {META_DIR_LAYOUTS}, not {layout!r}")
+    if meta_dir is None or layout == 'flat' or not molecule_objects:
+        return meta_dir
+    path = os.path.join(meta_dir, 'task-' + molecule_objects[0].get_moleculeid())
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
 def sample_trajectories(molecule_objects, models, sampler_config, engine_class=None, device=None):
     """Seed, schedule, and run MLMD for a group of molecules with a loaded ensemble.
 
     ``engine_class`` overrides the configured ``driver.engine`` (for tests).
     """
+    sampler_config = dict(sampler_config, meta_dir=task_meta_dir(sampler_config, list(molecule_objects)))
     driver = driver_settings(sampler_config)
     states = state_settings(sampler_config)
     from alframework.tools.molecular_topology import load_reference_topology, validate_fixed_topology, topology_metadata

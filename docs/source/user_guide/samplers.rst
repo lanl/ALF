@@ -385,8 +385,9 @@ trajectory's outcome, state, times, and its last and peak ``Es``, ``Fs``, and ``
 ``gap_lower_state`` for the pair whose spread was largest on the last frame. Those peaks are what to
 compare with the cutoffs when tuning them. Prefer this to
 ``meta_dir``, particularly in large runs. ``meta_dir`` writes one file per trajectory into one
-directory from every sampler worker, and plots then reread all of them on each update. Without
-``trajectory_summary_path``, plots read ``meta_dir`` if it's set.
+directory from every sampler worker (unless ``meta_dir_layout`` is ``"per_task"``), and plots then
+reread all of them on each update. Without ``trajectory_summary_path``, plots read ``meta_dir`` if
+it's set.
 
 ALF writes these to ``plot_dir``, as ``analysis-plot-<name>.png``:
 
@@ -560,6 +561,13 @@ Output and trajectory fields
       * - ``meta_dir`` or ``meta_path``
         - Directory for sampler metadata files. Examples use both names; the
           task input builder maps compatible names to the sampler function.
+      * - ``meta_dir_layout``
+        - Multi-trajectory sampler only. ``"flat"`` (default) writes every file into ``meta_dir``.
+          ``"per_task"`` gives each sampler task its own subdirectory,
+          ``meta_dir/task-<first molecule id>/``. Use it for large runs on a parallel filesystem:
+          there, many tasks creating files in one directory at the same moment are serialized, and
+          on Lustre at 8 nodes a task waited about 7 minutes to write its files. Progress plots
+          read both layouts.
       * - ``trajectory_frequency``
         - Probability of writing a trajectory for a sampling task.
       * - ``trajectory_interval``

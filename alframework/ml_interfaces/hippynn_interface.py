@@ -931,10 +931,16 @@ def _padded_external_neighbor_indexer():
         def forward(self, coordinates, real_atoms, shifts, cell, pair_first, pair_second):
             atom_coordinates = coordinates.reshape(-1, 3)[real_atoms]
             paircoord = atom_coordinates[pair_second] - atom_coordinates[pair_first] + shifts.to(coordinates.dtype)
-            return filter_pairs(self.dist_hard_max, paircoord.norm(dim=1), pair_first, pair_second, paircoord)
+            # hippynn's development branch renamed the module's hard_dist_cutoff to dist_hard_max.
+            cutoff = getattr(self, "dist_hard_max", None)
+            if cutoff is None:
+                cutoff = self.hard_dist_cutoff
+            return filter_pairs(cutoff, paircoord.norm(dim=1), pair_first, pair_second, paircoord)
 
     class PaddedExternalNeighborIndexer(ExternalNeighborIndexer):
+        # hippynn's development branch reads auto_module_class; released hippynn reads _auto_module_class.
         auto_module_class = PaddedExternalNeighbors
+        _auto_module_class = PaddedExternalNeighbors
 
     return PaddedExternalNeighborIndexer
 

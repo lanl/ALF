@@ -326,6 +326,39 @@ def test_minimum_distance_handles_every_cell_type(atoms, expected):
     np.testing.assert_array_equal(atoms.pbc, pbc)
 
 
+def _all_pairs_minimum(atoms):
+    distances = atoms.get_all_distances(mic=True)
+    np.fill_diagonal(distances, np.inf)
+    return float(distances.min()) if len(atoms) > 1 else float("inf")
+
+
+def _random_structures():
+    rng = np.random.default_rng(7)
+    cubic = Atoms("H64", positions=rng.uniform(0, 8, (64, 3)), cell=[8] * 3, pbc=True)
+    skewed_cell = [[7.0, 0, 0], [3.5, 6.0, 0], [2.0, 2.5, 5.5]]
+    skewed = Atoms("H50", scaled_positions=rng.uniform(0, 1, (50, 3)), cell=skewed_cell, pbc=True)
+    tiny = Atoms("H2", scaled_positions=[[0.1, 0.2, 0.3], [0.6, 0.7, 0.4]], cell=[2.0, 2.2, 1.9], pbc=True)
+    gas = Atoms("H3", positions=rng.uniform(0, 30, (3, 3)), cell=[30] * 3, pbc=True)  # no pair within 3 A
+    slab = Atoms("H40", positions=rng.uniform(0, 9, (40, 3)), cell=[9, 9, 9], pbc=[True, True, False])
+    molecule = Atoms("H30", positions=rng.uniform(0, 6, (30, 3)))
+    coincident = Atoms("H3", positions=[[1, 1, 1], [1, 1, 1], [4, 4, 4]], cell=[10] * 3, pbc=True)
+    return dict(cubic=cubic, skewed=skewed, tiny=tiny, gas=gas, slab=slab, molecule=molecule, coincident=coincident)
+
+
+@pytest.mark.parametrize("name", list(_random_structures()))
+def test_minimum_distance_matches_the_all_pairs_minimum_image(name):
+    atoms = _random_structures()[name]
+    assert minimum_distance(atoms) == pytest.approx(_all_pairs_minimum(atoms), rel=1e-12, abs=1e-12)
+
+
+def test_minimum_distance_skips_the_all_pairs_matrix_for_dense_structures(monkeypatch):
+    """The O(N^2) matrix is only for structures with no pair within the search radius."""
+    atoms = _random_structures()["cubic"]
+    expected = _all_pairs_minimum(atoms)
+    monkeypatch.setattr(Atoms, "get_all_distances", lambda *args, **kwargs: pytest.fail("all-pairs matrix used"))
+    assert minimum_distance(atoms) == pytest.approx(expected, rel=1e-12, abs=1e-12)
+
+
 @pytest.mark.parametrize("legacy", [True, False], ids=["legacy", "batched"])
 @pytest.mark.parametrize(
     "positions, periodic, cutoff, rejected, expected",

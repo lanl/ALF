@@ -48,6 +48,19 @@ member. In each, ``training_log.txt`` has the epoch-by-epoch losses, and the fin
 the best quick check of model quality. Multi-node trainings also write a ``placement-*.json`` record per
 member attempt: host, GPU, and start and end times. See :ref:`ml-multinode-training`.
 
+Task Timeline
+-------------
+
+To measure how long each stage takes, set ``ALF_TASK_TIMELINE_DIR`` to a directory on shared storage in the
+workers' environment (``worker_init``). ALF's builder, sampler, QM, and ML tasks then each append one JSON
+line as they end, to ``<host>-<pid>.jsonl`` in that directory, so no two workers write to the same file.
+Each line has ``stage``, ``task``, ``items`` (the number of structures), ``start`` and ``end`` (Unix
+seconds), ``seconds``, ``outcome`` (``ok``, or the exception's class name), ``host``, ``pid``, and the
+Slurm job and Parsl block, pool and rank. A stage's time is then its first task's start to its last
+task's end, without the time a block spends idle. Tasks in your own modules are recorded if they are
+decorated with ``alframework.tools.task_timeline.timed(stage)`` under ``@python_app``. With the variable
+unset, nothing is written, and a line that can't be written is skipped without failing the task.
+
 Parsl
 -----
 

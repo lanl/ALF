@@ -431,6 +431,10 @@ time limit. ``SIGKILL`` can't be handled, and neither can a kill that arrives be
 After either one, the interchange can keep running and keep nodes allocated until walltime, so check
 ``squeue`` and cancel any leftover blocks yourself.
 
+ALF cancels the blocks through the scheduler first, since Parsl's cleanup can wait without a limit for an
+interchange that is no longer answering. It then gives Parsl's cleanup 120 seconds, or the number set in
+``ALF_PARSL_CLEANUP_TIMEOUT`` in the coordinator's environment, before exiting anyway.
+
 ALF also stops with an error if Parsl permanently stops the builder, sampler, QM, or ML executor, because
 every task on it would fail from then on. The error includes Parsl's reason. Status is saved first, but
 labels that finished since the last store are lost. Restart ALF once the cause is fixed. A failed standby

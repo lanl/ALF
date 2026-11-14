@@ -204,8 +204,31 @@ the sampler config instead:
 ``load_hippynn_batched_ensemble(model_directory, device="cuda:0", energy_key="energy",
 force_key="forces")`` evaluates each ensemble member on a whole batch of structures
 at once. It needs at least two ``model-*`` members, and a checkpoint trained with a
-cell requires fully periodic systems. ``batched_calculator_options`` can set
-``energy_key`` and ``force_key``. See :ref:`samplers-multi-trajectory`.
+cell requires fully periodic systems. ``batched_calculator_options`` can set:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 75
+
+   * - Option
+     - Meaning
+   * - ``energy_key``, ``force_key``
+     - The model's energy and force outputs (default ``"energy"`` and ``"forces"``).
+   * - ``hippynn_kernel``
+     - HIPPYNN's custom kernels, for the whole process. The default, ``"auto"``, is HIPPYNN's own
+       choice of the fastest one installed. On AMD GPUs that is Triton, which also needs far less
+       memory for large batches than ``"pytorch"``.
+   * - ``pair_skin``
+     - Fully periodic systems only. All members share one neighbor list, which is kept until an atom
+       has moved more than half of this distance (Angstrom, default ``1.0``) or the batch's atoms or
+       cells change. ``0`` rebuilds it at every evaluation. A larger skin rebuilds less often but
+       finds more pairs each time.
+   * - ``neighbor_backend``
+     - Fully periodic systems only. How that list is built: ``"ase"`` (default) or ``"vesin"``, which
+       is usually faster but must be installed separately. The default is ASE because Vesin's thread
+       pool can hang a forked process at exit, which was seen with Frontier's exit hooks.
+
+See :ref:`samplers-multi-trajectory`.
 
 .. _ml-multinode-training:
 

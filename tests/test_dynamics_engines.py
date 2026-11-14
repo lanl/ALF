@@ -316,6 +316,113 @@ def test_batched_hippynn_matches_ase_calculators(periodic, engine_name, trained_
     np.testing.assert_allclose(forces.cpu().numpy(), np.concatenate(reference["forces"], axis=1), rtol=1e-5, atol=1e-5)
 
 
+def _periodic_waters(seed, boxes):
+    rng = np.random.default_rng(seed)
+    systems = []
+    for cell, waters in boxes:
+        positions = []
+        for _ in range(waters):
+            center = rng.uniform(0, 1, 3) @ np.asarray(cell)
+            positions += [center, center + [0.96, 0, 0], center + [-0.24, 0.93, 0]]
+        systems.append(Atoms("OH2" * waters, positions=positions, cell=cell, pbc=True))
+    return systems
+
+
+def _batched_and_reference(batched, trained_ensemble, systems):
+    import torch
+
+    energies, forces = batched.evaluate(
+        torch.as_tensor(np.concatenate([a.numbers for a in systems])),
+        torch.as_tensor(np.concatenate([a.positions for a in systems])),
+        torch.as_tensor(np.stack([a.cell.array for a in systems])),
+        systems[0].pbc,
+        [len(a) for a in systems],
+    )
+    reference = ASEEnsembleEvaluator(HIPNN_ASE_load_ensemble(str(trained_ensemble), device=DEVICE)).predict(systems)
+    np.testing.assert_allclose(energies.cpu().numpy(), reference["energies"], rtol=1e-5, atol=1e-5)
+    np.testing.assert_allclose(forces.cpu().numpy(), np.concatenate(reference["forces"], axis=1), rtol=1e-5, atol=1e-5)
+
+
+# A skewed cell and a cell smaller than the cutoff, where atoms pair with their own images.
+SKEWED_AND_SMALL = ([[7.0, 0, 0], [2.0, 6.5, 0], [1.0, 1.5, 6.0]], 10), (np.eye(3) * 5.0, 1)
+
+
+def test_batched_hippynn_reuses_pairs_until_an_atom_moves_half_the_skin(neighbor_ensemble):
+    """Pairs are found once for all members and kept, Verlet-style, while no atom has moved more than
+    half the skin; the results match HIPPYNN's ASE calculators before and after a rebuild."""
+    trained_ensemble = neighbor_ensemble
+    batched = load_hippynn_batched_ensemble(str(trained_ensemble), device=DEVICE, pair_skin=1.0)
+    systems = _periodic_waters(2, SKEWED_AND_SMALL)
+    _batched_and_reference(batched, trained_ensemble, systems)
+    assert batched.pairs.builds == 1
+
+    rng = np.random.default_rng(3)
+    for atoms in systems:  # every atom moves 0.4 A in a random direction, under half the skin
+        directions = rng.normal(size=atoms.positions.shape)
+        atoms.positions += 0.4 * directions / np.linalg.norm(directions, axis=1, keepdims=True)
+    _batched_and_reference(batched, trained_ensemble, systems)
+    assert batched.pairs.builds == 1
+
+    systems[0].positions[4] += [0.6, 0.0, 0.0]  # one atom past half the skin
+    _batched_and_reference(batched, trained_ensemble, systems)
+    assert batched.pairs.builds == 2
+
+
+def test_batched_hippynn_rebuilds_pairs_for_a_different_batch(neighbor_ensemble):
+    trained_ensemble = neighbor_ensemble
+    batched = load_hippynn_batched_ensemble(str(trained_ensemble), device=DEVICE)
+    systems = _periodic_waters(4, SKEWED_AND_SMALL)
+    _batched_and_reference(batched, trained_ensemble, systems)
+    _batched_and_reference(batched, trained_ensemble, systems[:1])  # a trajectory left the batch
+    assert batched.pairs.builds == 2
+    stretched = systems[0].copy()
+    stretched.set_cell(stretched.cell.array * 1.01, scale_atoms=False)
+    _batched_and_reference(batched, trained_ensemble, [stretched])
+    assert batched.pairs.builds == 3
+
+
+def test_periodic_trained_hippynn_uses_shared_pairs(trained_periodic_ensemble):
+    from hippynn.graphs.nodes.inputs import CellNode
+
+    batched = load_hippynn_batched_ensemble(str(trained_periodic_ensemble), device=DEVICE)
+    assert all(any(isinstance(n, CellNode) for n in model.input_nodes) for model in batched._members)
+    systems = _periodic_waters(7, SKEWED_AND_SMALL)
+    _batched_and_reference(batched, trained_periodic_ensemble, systems)
+    assert batched.pairs is not None, "periodic-trained checkpoints must activate the external neighbor list"
+    assert batched.pairs.builds == 1, "one neighbor build serves all ensemble members"
+    _batched_and_reference(batched, trained_periodic_ensemble, systems)
+    assert batched.pairs.builds == 1
+    for atoms in systems:
+        atoms.pbc = False
+    with pytest.raises(ValueError, match="requires fully periodic"):
+        _batched_and_reference(batched, trained_periodic_ensemble, systems)
+
+
+def test_zero_skin_rebuilds_neighbors_even_for_identical_coordinates(trained_periodic_ensemble):
+    batched = load_hippynn_batched_ensemble(str(trained_periodic_ensemble), device=DEVICE, pair_skin=0)
+    systems = _periodic_waters(8, SKEWED_AND_SMALL)
+    _batched_and_reference(batched, trained_periodic_ensemble, systems)
+    _batched_and_reference(batched, trained_periodic_ensemble, systems)
+    assert batched.pairs.builds == 2
+
+
+def test_batched_hippynn_selects_the_requested_kernels(trained_ensemble):
+    import hippynn
+
+    previous = hippynn.custom_kernels.CUSTOM_KERNELS_ACTIVE
+    try:
+        load_hippynn_batched_ensemble(str(trained_ensemble), device=DEVICE, hippynn_kernel="pytorch")
+        assert hippynn.custom_kernels.CUSTOM_KERNELS_ACTIVE == "pytorch"
+    finally:
+        hippynn.custom_kernels.set_custom_kernels(previous or "pytorch")
+
+
+def test_batched_hippynn_rejects_a_negative_skin(trained_ensemble):
+    batched = load_hippynn_batched_ensemble(str(trained_ensemble), device=DEVICE, pair_skin=-0.1)
+    with pytest.raises(ValueError, match="pair_skin"):
+        _batched_and_reference(batched, trained_ensemble, _periodic_waters(5, SKEWED_AND_SMALL[:1]))
+
+
 def test_batched_hippynn_sampling_uncertainty_matches_ase(engine_name, trained_ensemble):
 
     batched = load_hippynn_batched_ensemble(str(trained_ensemble), device=DEVICE)

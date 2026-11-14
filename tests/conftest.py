@@ -43,3 +43,20 @@ def trained_ensemble(tmp_path_factory):
     directory = tmp_path_factory.mktemp("trained") / "ensemble"
     train_cpu_ensemble(directory)
     return directory
+
+
+@pytest.fixture(scope="session")
+def trained_periodic_ensemble(tmp_path_factory):
+    """Periodic-trained vector HIPPYNN members, including a real cell input and periodic pair finder."""
+    pytest.importorskip("torch")
+    pytest.importorskip("hippynn")
+    from tests.helpers.hippynn import train_cpu_ensemble
+
+    directory = tmp_path_factory.mktemp("trained-periodic") / "ensemble"
+    train_cpu_ensemble(directory, periodic=True)
+    return directory
+
+
+@pytest.fixture(params=["trained_ensemble", "trained_periodic_ensemble"])
+def neighbor_ensemble(request):
+    return request.getfixturevalue(request.param)

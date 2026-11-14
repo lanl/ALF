@@ -868,16 +868,26 @@ def HIPNN_ASE_load_ensemble(HIPNN_ensemble_directory,device="cuda:0"):
 # [models, systems] in eV and ``forces`` [models, atoms, 3] in eV/Angstrom, in input atom order.
 # No UDD, well potential, or thresholds are applied.
 #
-# Molecular checkpoints evaluate nonperiodic systems. Fully periodic systems use the
-# checkpoint's cell input if it was trained with one; otherwise its open-boundary pair finders
-# are replaced by HIPPYNN periodic pair finders, as HIPPYNN's own ASE calculator does, so results
-# match ``HIPNN_ASE_load_ensemble``. Mixed periodicity is not supported. Members are loaded from
-# absolute paths, without changing the working directory.
+# Molecular checkpoints evaluate nonperiodic systems. For fully periodic systems, both molecular
+# and periodic-trained checkpoints are fed periodic pairs from outside the graph, as HIPPYNN's
+# own ASE calculator does, so results match ``HIPNN_ASE_load_ensemble``. The pairs are shared by all members and
+# kept, Verlet-style, until an atom has moved more than half of ``pair_skin`` (or the batch's atoms
+# or cells change). Mixed periodicity is not supported. Members are loaded from absolute paths,
+# without changing the working directory.
+#
+# ``hippynn_kernel`` explicitly selects HIPPYNN's custom kernels (process-wide). Omitted, this
+# preserves ALF's existing policy of using portable pytorch kernels on ROCm.
 # ---------------------------------------------------------------------------------------------
 
-def load_hippynn_batched_ensemble(model_directory, device="cuda:0", energy_key="energy", force_key="forces"):
-    """Load a HIPPYNN ensemble for batched evaluation (``batched_calculator`` loader)."""
-    return HippynnBatchedEnsemble(model_directory, device=device, energy_key=energy_key, force_key=force_key)
+def load_hippynn_batched_ensemble(model_directory, device="cuda:0", energy_key="energy", force_key="forces",
+                                  hippynn_kernel=None, pair_skin=1.0):
+    """Load a HIPPYNN ensemble for batched evaluation (``batched_calculator`` loader).
+
+    ``hippynn_kernel`` and ``pair_skin`` (Angstrom) can be set through the sampler's
+    ``batched_calculator_options``. A zero ``pair_skin`` rebuilds the shared list at every evaluation.
+    """
+    return HippynnBatchedEnsemble(model_directory, device=device, energy_key=energy_key, force_key=force_key,
+                                  hippynn_kernel=hippynn_kernel, pair_skin=pair_skin)
 
 
 def _load_member(member_directory, device):
@@ -898,48 +908,157 @@ def _target(model, key):
     return matches[0]
 
 
+# Graph inputs that carry externally found pairs, by name.
+PAIR_INPUTS = ("pair_first", "pair_second", "pair_shifts")
+
+
+def _padded_external_neighbor_indexer():
+    """HIPPYNN's ExternalNeighborIndexer for a padded batch of several systems.
+
+    HIPPYNN's own accepts one system and applies its cell to integer shifts. Here the shifts are already
+    Cartesian, each pair carrying its own system's cell, and the indices count the batch's real atoms.
+    """
+    from hippynn.graphs.nodes.pairs import ExternalNeighborIndexer
+    from hippynn.layers.pairs.indexing import ExternalNeighbors
+    from hippynn.layers.pairs.periodic import filter_pairs
+
+    class PaddedExternalNeighbors(ExternalNeighbors):
+        def forward(self, coordinates, real_atoms, shifts, cell, pair_first, pair_second):
+            atom_coordinates = coordinates.reshape(-1, 3)[real_atoms]
+            paircoord = atom_coordinates[pair_second] - atom_coordinates[pair_first] + shifts.to(coordinates.dtype)
+            return filter_pairs(self.dist_hard_max, paircoord.norm(dim=1), pair_first, pair_second, paircoord)
+
+    class PaddedExternalNeighborIndexer(ExternalNeighborIndexer):
+        auto_module_class = PaddedExternalNeighbors
+
+    return PaddedExternalNeighborIndexer
+
+
 def _member_graph(model, energy_key, force_key, periodic):
-    """Return a GraphModule computing (energy, forces), made periodic if requested."""
+    """Return (GraphModule computing energy and forces, pair cutoff or None).
+
+    A periodic graph takes its pairs as inputs (``PAIR_INPUTS``), found within the returned cutoff.
+    Nonperiodic graphs retain their own pair finders.
+    """
     from hippynn.graphs import GraphModule, copy_subgraph, find_relatives, find_unique_relative, get_subgraph, \
         replace_node
+    from hippynn.graphs.nodes.base import InputNode
     from hippynn.graphs.nodes.inputs import CellNode, PositionsNode, SpeciesNode
-    from hippynn.graphs.nodes.pairs import OpenPairIndexer, PeriodicPairIndexer
+    from hippynn.graphs.nodes.pairs import PairFilter
+    from hippynn.graphs.nodes.tags import AtomIndexer, PairIndexer
 
     outputs = [_target(model, energy_key), _target(model, force_key)]
     trained_cell = any(isinstance(node, CellNode) for node in model.input_nodes)
     if trained_cell and not periodic:
         raise ValueError("This HIPPYNN checkpoint was trained with a cell and requires fully periodic systems.")
-    if trained_cell or not periodic:
-        return GraphModule(list(model.input_nodes), outputs)
+    if not periodic:
+        return GraphModule(list(model.input_nodes), outputs), None
     why = "Building a periodic batched HIPPYNN evaluator"
-    open_pairs = [node for node in get_subgraph(outputs) if isinstance(node, OpenPairIndexer)]
-    outputs, subgraph = copy_subgraph(outputs, assume_inputed=open_pairs)
-    copied_pairs = find_relatives(outputs, lambda node: node in subgraph and isinstance(node, OpenPairIndexer),
+    # Match HIPPYNN's ASE conversion: periodic checkpoints can contain SparsePairIndexer (or other
+    # PairIndexer subclasses), while molecular checkpoints contain OpenPairIndexer.
+    pair_indexers = [node for node in get_subgraph(outputs) if isinstance(node, PairIndexer)]
+    outputs, subgraph = copy_subgraph(outputs, assume_inputed=pair_indexers)
+    copied_pairs = find_relatives(outputs, lambda node: node in subgraph and isinstance(node, PairIndexer),
                                   why_desc=why)
     species = find_unique_relative(outputs, lambda node: node in subgraph and isinstance(node, SpeciesNode),
                                    why_desc=why)
     positions = find_unique_relative(outputs, lambda node: node in subgraph and isinstance(node, PositionsNode),
                                      why_desc=why)
-    cell = CellNode("cell", db_name="cell")
+    indexer = find_unique_relative(species, lambda node: node in subgraph and isinstance(node, AtomIndexer),
+                                   why_desc=why)
+    cutoff = max(pairs.dist_hard_max for pairs in copied_pairs)
+    # Keep a copied cell input if another part of the energy/force graph still needs it. Pair-only
+    # dependencies are pruned by copy_subgraph, just as in HIPPYNN's ASE graph conversion.
+    cells = [node for node in subgraph if isinstance(node, CellNode)]
+    cell = find_unique_relative(outputs, lambda node: node in cells, why_desc=why) if cells else \
+        CellNode("cell", db_name="cell")
+    first, second, shifts = (InputNode(name) for name in PAIR_INPUTS)
+    external = _padded_external_neighbor_indexer()(
+        "external_neighbors", (positions, indexer.real_atoms, shifts, cell, first, second), hard_dist_cutoff=cutoff)
     for pairs in copied_pairs:
-        replace_node(pairs, PeriodicPairIndexer(pairs.name, (positions, species, cell),
-                                                dist_hard_max=pairs.dist_hard_max), disconnect_old=True)
-    return GraphModule([species, positions, cell], outputs)
+        # As HIPPYNN's ASE calculator does: shorter cutoffs filter the longest one's pairs.
+        replacement = external if pairs.dist_hard_max == cutoff else \
+            PairFilter(pairs.name, (external,), dist_hard_max=pairs.dist_hard_max)
+        replace_node(pairs, replacement, disconnect_old=True)
+    return GraphModule([species, positions, cell, first, second, shifts], outputs), cutoff
+
+
+def _periodic_neighbors(points, box, cutoff):
+    """(i, j, S) for all pairs within ``cutoff`` in a fully periodic box, both directions and self-images
+    included: the pair vector is points[j] - points[i] + S @ box. Uses vesin if installed, else ASE."""
+    try:
+        import vesin
+    except ImportError:
+        vesin = None
+    if vesin is not None:
+        i, j, shifts = vesin.NeighborList(cutoff=cutoff, full_list=True).compute(
+            points=points, box=box, periodic=True, quantities="ijS")
+    else:
+        from ase.neighborlist import primitive_neighbor_list
+        i, j, shifts = primitive_neighbor_list("ijS", [True] * 3, box, points, cutoff, self_interaction=False)
+    return np.asarray(i, dtype=np.int64), np.asarray(j, dtype=np.int64), np.asarray(shifts, dtype=np.float64)
+
+
+class VerletPairs:
+    """Periodic pairs of a packed batch within ``cutoff + skin``, shared by all members.
+
+    The list is rebuilt when the batch's atoms, counts, or cells change, or once any atom has moved
+    more than ``skin / 2`` since it was built; until then it still holds every pair within ``cutoff``.
+    """
+
+    def __init__(self, cutoff, skin, device):
+        if not skin >= 0:
+            raise ValueError(f"pair_skin must be a non-negative distance; received {skin!r}.")
+        self.cutoff, self.skin, self.device = float(cutoff), float(skin), device
+        self.builds = 0
+        self._counts = None
+
+    def get(self, numbers, positions, cells, counts):
+        import torch
+        counts = tuple(int(count) for count in counts)
+        if (self.skin == 0 or counts != self._counts or not torch.equal(numbers, self._numbers) or not torch.equal(cells, self._cells)
+                or bool(((positions - self._positions).norm(dim=1).max() > 0.5 * self.skin).item())):
+            self._build(numbers, positions, cells, counts)
+        return self._pairs
+
+    def _build(self, numbers, positions, cells, counts):
+        import torch
+        points = positions.detach().cpu().double().numpy()
+        boxes = cells.detach().cpu().double().numpy()
+        firsts, seconds, shifts, offset = [], [], [], 0
+        for system, count in enumerate(counts):
+            i, j, cell_shifts = _periodic_neighbors(points[offset:offset + count], boxes[system],
+                                                    self.cutoff + self.skin)
+            firsts.append(i + offset)
+            seconds.append(j + offset)
+            shifts.append(cell_shifts @ boxes[system])
+            offset += count
+        self._pairs = (torch.as_tensor(np.concatenate(firsts), device=self.device),
+                       torch.as_tensor(np.concatenate(seconds), device=self.device),
+                       torch.as_tensor(np.concatenate(shifts), dtype=torch.float32, device=self.device))
+        self._counts, self._numbers = counts, numbers.detach().clone()
+        self._cells, self._positions = cells.detach().clone(), positions.detach().clone()
+        self.builds += 1
 
 
 class HippynnBatchedEnsemble:
     """Padded batched evaluation of HIPPYNN ensemble members on one device.
 
     Members are evaluated one after another, in ``model-*`` directory order, each on the
-    whole batch. (``hippynn.graphs.make_ensemble`` does not preserve member order.)
+    whole batch. (``hippynn.graphs.make_ensemble`` does not preserve member order.) Periodic
+    neighbors are built once per batch rebuild and shared by all members (see ``VerletPairs``).
     """
 
-    def __init__(self, model_directory, device="cuda:0", energy_key="energy", force_key="forces"):
+    def __init__(self, model_directory, device="cuda:0", energy_key="energy", force_key="forces",
+                 hippynn_kernel=None, pair_skin=1.0):
         import torch
         import hippynn
-        if getattr(torch.version, "hip", None) is not None:
-            # CUDA-specific custom kernels can be importable in a ROCm process; use portable kernels.
+        if hippynn_kernel is not None:
+            hippynn.custom_kernels.set_custom_kernels(hippynn_kernel)
+        elif getattr(torch.version, "hip", None) is not None:
             hippynn.custom_kernels.set_custom_kernels("pytorch")
+        self.pair_skin = pair_skin
+        self.pairs = None  # VerletPairs, once a periodic graph is built
         self.device = torch.device(device)
         self.energy_key, self.force_key = energy_key, force_key
         directories = sorted(glob.glob(os.path.join(str(model_directory), "model-*/")))
@@ -952,17 +1071,22 @@ class HippynnBatchedEnsemble:
     def _member_graphs(self, periodic):
         if periodic not in self._graphs:
             from hippynn.graphs.nodes.inputs import CellNode, PositionsNode, SpeciesNode
-            graphs = []
+            graphs, cutoffs = [], []
             for model in self._members:
-                graph = _member_graph(model, self.energy_key, self.force_key, periodic)
+                graph, cutoff = _member_graph(model, self.energy_key, self.force_key, periodic)
                 graph.to(self.device)
                 graph.eval()
                 kinds = []
                 for node in graph.input_nodes:
-                    kind = next(name for cls, name in ((SpeciesNode, "species"), (PositionsNode, "positions"),
-                                                       (CellNode, "cell")) if isinstance(node, cls))
+                    kind = node.name if node.name in PAIR_INPUTS else next(
+                        name for cls, name in ((SpeciesNode, "species"), (PositionsNode, "positions"),
+                                               (CellNode, "cell")) if isinstance(node, cls))
                     kinds.append(kind)
                 graphs.append((graph, kinds))
+                if cutoff is not None:
+                    cutoffs.append(cutoff)
+            if cutoffs:
+                self.pairs = VerletPairs(max(cutoffs), self.pair_skin, self.device)
             self._graphs[periodic] = graphs
         return self._graphs[periodic]
 
@@ -979,8 +1103,13 @@ class HippynnBatchedEnsemble:
         species[mask] = numbers.to(self.device, torch.long)
         coordinates[mask] = positions.detach().to(self.device, torch.float32)
         values = {"species": species, "cell": cells.detach().to(self.device, torch.float32)}
+        graphs = self._member_graphs(all(pbc))
+        if any(kind in PAIR_INPUTS for _, kinds in graphs for kind in kinds):
+            pairs = self.pairs.get(numbers.to(self.device), positions.detach().to(self.device),
+                                   cells.detach().to(self.device), counts)
+            values.update(zip(PAIR_INPUTS, pairs))
         energies, forces = [], []
-        for graph, kinds in self._member_graphs(all(pbc)):
+        for graph, kinds in graphs:
             # Forces are autograd derivatives with respect to the coordinates input.
             values["positions"] = coordinates.clone().requires_grad_(True)
             with torch.enable_grad():

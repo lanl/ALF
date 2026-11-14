@@ -3,7 +3,7 @@
 from pathlib import Path
 
 
-def train_cpu_ensemble(directory, members=2):
+def train_cpu_ensemble(directory, members=2, *, periodic=False):
     import h5py
     import numpy as np
     import torch
@@ -27,15 +27,21 @@ def train_cpu_ensemble(directory, members=2):
         group["coordinates"] = coordinates
         group["energy"] = (coordinates**2).sum(axis=(1, 2))
         group["forces"] = -2 * coordinates
+        if periodic:
+            group["cell"] = np.tile(np.eye(3) * 8.0, (len(coordinates), 1, 1))
 
     reports = []
     for member in range(members):
         torch.manual_seed(member + 13)
         species = inputs.SpeciesNode(db_name="species")
         positions = inputs.PositionsNode(db_name="coordinates")
-        network = networks.Hipnn(
+        parents = (species, positions)
+        if periodic:
+            parents += (inputs.CellNode(db_name="cell"),)
+        network = (networks.HipnnVec if periodic else networks.Hipnn)(
             "hipnn",
-            (species, positions),
+            parents,
+            periodic=periodic,
             module_kwargs=dict(
                 possible_species=[0, 1, 8],
                 n_features=4,

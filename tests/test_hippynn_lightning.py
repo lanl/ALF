@@ -144,3 +144,20 @@ def test_single_node_tasks_refuse_several_gpus_per_member():
     ensemble_training.single_gpu_members({"gpus_per_member": 1})
     with pytest.raises(ValueError, match="multi-node"):
         ensemble_training.single_gpu_members({"gpus_per_member": 4})
+
+
+def test_the_final_test_runs_where_the_model_is():
+    """After data-parallel training the parent tests the member on one device. hippynn's evaluator moves each
+    batch to its own model_device, which setup_training left on the CPU; on a GPU node the batches stayed on the
+    CPU while the model moved to the GPU (seen on Frontier). The meta device stands in for the GPU here."""
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("pytorch_lightning")
+    from alframework.ml_interfaces.hippynn_lightning import _evaluate_on
+
+    model, loss = torch.nn.Linear(2, 2), torch.nn.Linear(2, 1)
+    evaluator = SimpleNamespace(model=model, model_device=torch.device("cpu"))
+    modules = SimpleNamespace(model=model, loss=loss, evaluator=evaluator)
+    _evaluate_on(modules, "meta")
+    assert evaluator.model_device == torch.device("meta")
+    assert evaluator.model is model
+    assert {p.device.type for p in [*model.parameters(), *loss.parameters()]} == {"meta"}

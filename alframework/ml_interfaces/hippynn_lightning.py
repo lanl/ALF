@@ -195,7 +195,7 @@ def train_data_parallel(training_modules, database, controller, *, n_devices, ac
     print('Reverting to best model found.')
     _scale_batches(controller, lambda size: size * n_devices)
     controller.current_epoch = record['epochs']
-    model.to('cuda' if accelerator == 'gpu' else 'cpu')
+    _evaluate_on(training_modules, 'cuda' if accelerator == 'gpu' else 'cpu')
     print('Making plots over training time...')
     metric_tracker.plot_over_time()
     print('Testing model...')
@@ -206,6 +206,20 @@ def train_data_parallel(training_modules, database, controller, *, n_devices, ac
 
 
 PAYLOAD = 'lightning_setup.pt'
+
+
+def _evaluate_on(training_modules, device):
+    """Put the model and its loss on ``device`` for the final test, and point the evaluator there too.
+
+    ``setup_training(..., device='cpu')`` set the evaluator's ``model_device`` to the CPU, and the evaluator
+    moves every batch to ``model_device``; moving only the model left GPU weights fed with CPU batches.
+    """
+    import torch
+    device = torch.device(device)
+    training_modules.model.to(device)
+    training_modules.loss.to(device)
+    training_modules.evaluator.model = training_modules.model
+    training_modules.evaluator.model_device = device
 
 
 def _free_port():

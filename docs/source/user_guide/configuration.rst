@@ -113,6 +113,13 @@ The master config controls the workflow wiring. Common fields include:
      - Optional. ``true`` is for a builder reading a fixed list of seeds: the bootstrap
        labels seeds in order until ``bootstrap_set`` labels have converged. The default
        is ``false``, which keeps building until enough labeling tasks have finished.
+   * - ``poll_interval``
+     - Optional positive finite number of seconds between coordinator checks, default
+       ``60``. Set it to ``1`` for short workflow benchmarks to avoid minute-long waits
+       between completed tasks and the next stage. Partial-batch deadlines can shorten
+       this interval. ALF applies it to bootstrap and active learning, and reloads it
+       with the master configuration during active learning. It is independent of
+       the sampler's MD observation interval, ``Ncheck``.
    * - ``bootstrap_spares``
      - Optional, with ``finite_bootstrap``. The number of extra seeds after the first
        ``bootstrap_set``, default ``0``. Each failed label, unconverged or lost with its

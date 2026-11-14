@@ -24,6 +24,7 @@ import alframework
 from alframework.tools.tools import parsl_task_queue
 from alframework.tools.tools import store_current_data
 from alframework.tools.tools import stored_label_budget
+from alframework.tools.tools import coordinator_poll_interval
 from alframework.tools.tools import load_config_file
 from alframework.tools.tools import find_empty_directory
 from alframework.tools.tools import system_checker
@@ -52,6 +53,7 @@ args = parser.parse_args()
 
 # Load the master configuration:
 master_config = load_config_file(args.master)
+poll_interval = coordinator_poll_interval(master_config)
 if 'master_directory' not in master_config:
     master_config['master_directory'] = None
 
@@ -388,7 +390,7 @@ if status['current_h5_id'] == 0 and status['current_model_id'] < 0:
         write_status(master_config['status_path'], status)
         stop_if_executor_failed(parsl.dfk())
 
-        time.sleep(labeling.poll_delay(60))
+        time.sleep(labeling.poll_delay(poll_interval))
 
     if finite_bootstrap:
         print("Finite bootstrap finished: {} of {} labels converged, {} seeds failed, {} spare seeds handed out".format(
@@ -424,6 +426,7 @@ while True:
     try:
         # Load the master configuration:
         master_config_new = load_config_file(args.master)
+        poll_interval_new = coordinator_poll_interval(master_config_new)
         if 'master_directory' not in master_config:
             master_config_new['master_directory'] = None
 
@@ -443,6 +446,7 @@ while True:
         print(e)
     else:
         master_config = master_config_new
+        poll_interval = poll_interval_new
         builder_config = builder_config_new
         sampler_config = sampling.apply_window(sampling.keep_startup_settings(sampler_config_new),
                                                status.get('lifetime_stored_labels', 0))
@@ -552,7 +556,7 @@ while True:
         break
 
     master_loop_iter += 1
-    time.sleep(labeling.poll_delay(sampling.poll_delay(60)))
+    time.sleep(labeling.poll_delay(sampling.poll_delay(poll_interval)))
 
 # Release the allocations; a run without a label budget never reaches this.
 parsl.dfk().cleanup()

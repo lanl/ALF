@@ -413,6 +413,15 @@ def write_label_sources(ensemble_dir, h5_dir):
         print('Could not record label sources in {}: {}: {}'.format(ensemble_dir, type(exc).__name__, exc), flush=True)
 
 
+def coordinator_poll_interval(master_config):
+    """Maximum seconds between coordinator checks; partial-batch deadlines may shorten it."""
+    interval = master_config.get('poll_interval', 60)
+    if (isinstance(interval, bool) or not isinstance(interval, (int, float))
+            or not np.isfinite(interval) or interval <= 0):
+        raise ValueError(f'poll_interval must be a positive finite number of seconds; received {interval!r}.')
+    return float(interval)
+
+
 def stored_label_budget(master_config):
     """Return the validated ``maximum_stored_labels`` setting, or ``None`` when it isn't set."""
     budget = master_config.get('maximum_stored_labels')

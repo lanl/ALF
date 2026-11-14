@@ -15,6 +15,7 @@ from parsl import python_app
 from alframework.samplers import batched_mlmd
 from alframework.samplers.mlmd_sampling import simple_mlmd_sampling_task
 from alframework.tools import tools as tool_module
+from alframework.tools.tools import coordinator_poll_interval
 from alframework.tools.molecules_class import MoleculesObject
 from alframework.tools.sampler_coordinator import SamplerCoordinator, driver_settings
 from tests.helpers.driver import MODEL_PATTERN, loaded_parsl, run_alf_driver, stored_ids
@@ -129,8 +130,10 @@ def test_active_learning_loop_completes_a_full_cycle(tmp_path, monkeypatch, driv
         save_h5_threshold=3,
         maximum_completed_QM=8,
         gpus_per_node=0,
+        poll_interval=0.25,
     )
 
+    assert run.sleeps and max(run.sleeps) <= 0.25
     assert run.status["lifetime_failed_sampler_tasks"] == 0 and run.status["lifetime_failed_QM_tasks"] == 0
     assert training_calls[0][0] == 0 and training_calls[1][0] == 1
     sampled_ids = [value for value in training_calls[1][1] if value.startswith("mol-0000-")]
@@ -151,6 +154,16 @@ def test_active_learning_loop_completes_a_full_cycle(tmp_path, monkeypatch, driv
         assert set(sampler_widths) == {1}
     else:
         assert max(sampler_widths) > 1 and max(sampler_widths) <= 3
+
+
+@pytest.mark.parametrize('interval', [0, -1, float('nan'), float('inf'), None, True, '1'])
+def test_invalid_coordinator_poll_interval(interval):
+    with pytest.raises(ValueError, match='poll_interval'):
+        coordinator_poll_interval({'poll_interval': interval})
+
+
+def test_default_coordinator_poll_interval():
+    assert coordinator_poll_interval({}) == 60
 
 
 def test_driver_settings_are_validated():

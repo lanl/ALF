@@ -282,3 +282,76 @@ def test_opened_ring_is_rejected():
     atoms.positions[3] = [-3, 3, 0]
     result = topology.validate_fixed_topology(atoms, reference)
     assert not result.valid and result.reason == "topology_bond_window"
+
+
+def _loop_reference(atoms, reference):
+    """The pair-by-pair screen validate_fixed_topology used before it was vectorized (bonds, then the
+    other pairs in combinations order), for checking that results stay identical."""
+    from itertools import combinations
+
+    from ase.data import covalent_radii
+
+    positions = np.asarray(atoms.get_positions(), dtype=np.float64)
+    distances = np.linalg.norm(positions[:, None, :] - positions[None, :, :], axis=-1)
+    violations, bond_ratios, nonbonded_ratios = [], [], []
+    for (first, second), length in zip(reference.bonds, reference.bond_lengths):
+        distance = float(distances[first, second])
+        ratio = distance / float(length)
+        bond_ratios.append(ratio)
+        below = ratio < reference.bond_min_scale and not np.isclose(ratio, reference.bond_min_scale,
+                                                                     rtol=1.0e-12, atol=1.0e-12)
+        above = ratio > reference.bond_max_scale and not np.isclose(ratio, reference.bond_max_scale,
+                                                                     rtol=1.0e-12, atol=1.0e-12)
+        if below or above:
+            violations.append({"kind": "topology_bond_window", "atom_indices": [int(first), int(second)],
+                               "distance_A": distance, "reference_distance_A": float(length), "ratio": ratio,
+                               "allowed_ratio": [reference.bond_min_scale, reference.bond_max_scale]})
+    for first, second in combinations(range(reference.n_atoms), 2):
+        if (first, second) in reference.bond_set:
+            continue
+        radius_sum = float(covalent_radii[reference.atomic_numbers[first]]
+                           + covalent_radii[reference.atomic_numbers[second]])
+        distance = float(distances[first, second])
+        ratio = distance / radius_sum
+        nonbonded_ratios.append(ratio)
+        if ratio <= reference.connectivity_scale:
+            violations.append({"kind": "topology_extra_bond", "atom_indices": [int(first), int(second)],
+                               "distance_A": distance, "covalent_radius_ratio": ratio,
+                               "connectivity_scale": reference.connectivity_scale})
+    return violations, min(bond_ratios), max(bond_ratios), min(nonbonded_ratios) if nonbonded_ratios else None
+
+
+def _random_molecule(seed, atoms_count):
+    """A random CHNO molecule with a bond graph from its own geometry, and a perturbed copy of it."""
+    from ase.data import covalent_radii
+
+    rng = np.random.default_rng(seed)
+    numbers = rng.choice([1, 6, 7, 8], atoms_count)
+    positions = rng.uniform(0, atoms_count ** (1 / 3) * 1.6, (atoms_count, 3))
+    distances = np.linalg.norm(positions[:, None] - positions[None], axis=-1)
+    bonds = [(i, j) for i in range(atoms_count) for j in range(i + 1, atoms_count)
+             if distances[i, j] < 1.2 * (covalent_radii[numbers[i]] + covalent_radii[numbers[j]])]
+    if not bonds:
+        bonds = [(0, 1)]
+    reference = _reference_topology(atomic_numbers=tuple(int(z) for z in numbers), bonds=tuple(bonds),
+                                    bond_lengths=tuple(float(distances[i, j]) for i, j in bonds),
+                                    bond_min_scale=0.85, bond_max_scale=1.25)
+    moved = Atoms(numbers=numbers, positions=positions + rng.normal(0, 0.15, positions.shape))
+    moved.set_array("topology_atom_ids", np.arange(atoms_count))
+    return moved, reference
+
+
+@pytest.mark.parametrize("seed,atoms_count", [(0, 15), (1, 15), (2, 60), (3, 120), (4, 120)])
+def test_topology_screen_matches_the_pair_by_pair_screen(seed, atoms_count):
+    """Same validity, reason, metrics, and violations, in the same order, as checking one pair at a time.
+    The perturbed geometries break bond windows and form extra bonds, so violations of both kinds occur."""
+    atoms, reference = _random_molecule(seed, atoms_count)
+    result = topology.validate_fixed_topology(atoms, reference)
+    violations, min_bond, max_bond, min_nonbonded = _loop_reference(atoms, reference)
+    assert list(result.violations) == violations
+    assert result.valid is (not violations)
+    assert result.reason == (violations[0]["kind"] if violations else None)
+    assert result.metrics["topology_min_bond_ratio"] == min_bond
+    assert result.metrics["topology_max_bond_ratio"] == max_bond
+    assert result.metrics["topology_min_nonbonded_covalent_ratio"] == min_nonbonded
+    assert result.metrics["topology_violation_count"] == len(violations)

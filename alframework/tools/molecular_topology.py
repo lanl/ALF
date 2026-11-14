@@ -349,6 +349,26 @@ def load_reference_topology(
     )
 
 
+@lru_cache(maxsize=16)
+def _topology_arrays(topology: ReferenceTopology):
+    """Index and reference arrays that depend only on the reference, for validate_fixed_topology:
+    bonds in their stored order, then every other atom pair in ``combinations`` order with its covalent
+    radius sum."""
+    bonds = np.asarray(topology.bonds, dtype=np.int64).reshape(-1, 2)
+    references = np.asarray(topology.bond_lengths, dtype=np.float64)
+    pair_first, pair_second = np.triu_indices(topology.n_atoms, 1)
+    bonded = np.zeros((topology.n_atoms, topology.n_atoms), dtype=bool)
+    bonded[bonds[:, 0], bonds[:, 1]] = True  # a stored (first, second) pair, as bond_set holds it
+    keep = ~bonded[pair_first, pair_second]
+    pair_first, pair_second = pair_first[keep], pair_second[keep]
+    radii = np.asarray([covalent_radii[number] for number in topology.atomic_numbers], dtype=np.float64)
+    arrays = (bonds[:, 0], bonds[:, 1], references, pair_first, pair_second,
+              radii[pair_first] + radii[pair_second])
+    for array in arrays:
+        array.flags.writeable = False
+    return arrays
+
+
 def validate_fixed_topology(
     atoms,
     topology: ReferenceTopology | None,
@@ -417,69 +437,42 @@ def validate_fixed_topology(
         axis=-1,
     )
     violations: list[dict[str, Any]] = []
-    bond_ratios: list[float] = []
-    for (first, second), reference in zip(
-        topology.bonds,
-        topology.bond_lengths,
-    ):
-        distance = float(distances[first, second])
-        ratio = distance / float(reference)
-        bond_ratios.append(ratio)
-        below_minimum = (
-            ratio < topology.bond_min_scale
-            and not np.isclose(
-                ratio,
-                topology.bond_min_scale,
-                rtol=1.0e-12,
-                atol=1.0e-12,
-            )
+    first, second, references, pair_first, pair_second, radius_sums = _topology_arrays(topology)
+    # Elementwise, the same float64 operations, comparisons, and order as one pair at a time.
+    bond_distances = distances[first, second]
+    ratios = bond_distances / references
+    below_minimum = (ratios < topology.bond_min_scale) & ~np.isclose(
+        ratios, topology.bond_min_scale, rtol=1.0e-12, atol=1.0e-12)
+    above_maximum = (ratios > topology.bond_max_scale) & ~np.isclose(
+        ratios, topology.bond_max_scale, rtol=1.0e-12, atol=1.0e-12)
+    for bond in np.flatnonzero(below_minimum | above_maximum):
+        violations.append(
+            {
+                "kind": "topology_bond_window",
+                "atom_indices": [int(first[bond]), int(second[bond])],
+                "distance_A": float(bond_distances[bond]),
+                "reference_distance_A": float(references[bond]),
+                "ratio": float(ratios[bond]),
+                "allowed_ratio": [
+                    topology.bond_min_scale,
+                    topology.bond_max_scale,
+                ],
+            }
         )
-        above_maximum = (
-            ratio > topology.bond_max_scale
-            and not np.isclose(
-                ratio,
-                topology.bond_max_scale,
-                rtol=1.0e-12,
-                atol=1.0e-12,
-            )
+    bond_ratios = ratios.tolist()
+    pair_distances = distances[pair_first, pair_second]
+    nonbonded = pair_distances / radius_sums
+    for pair in np.flatnonzero(nonbonded <= topology.connectivity_scale):
+        violations.append(
+            {
+                "kind": "topology_extra_bond",
+                "atom_indices": [int(pair_first[pair]), int(pair_second[pair])],
+                "distance_A": float(pair_distances[pair]),
+                "covalent_radius_ratio": float(nonbonded[pair]),
+                "connectivity_scale": topology.connectivity_scale,
+            }
         )
-        if below_minimum or above_maximum:
-            violations.append(
-                {
-                    "kind": "topology_bond_window",
-                    "atom_indices": [int(first), int(second)],
-                    "distance_A": distance,
-                    "reference_distance_A": float(reference),
-                    "ratio": ratio,
-                    "allowed_ratio": [
-                        topology.bond_min_scale,
-                        topology.bond_max_scale,
-                    ],
-                }
-            )
-
-    nonbonded_ratios: list[float] = []
-    bond_set = topology.bond_set
-    for first, second in combinations(range(topology.n_atoms), 2):
-        if (first, second) in bond_set:
-            continue
-        radius_sum = float(
-            covalent_radii[topology.atomic_numbers[first]]
-            + covalent_radii[topology.atomic_numbers[second]]
-        )
-        distance = float(distances[first, second])
-        ratio = distance / radius_sum
-        nonbonded_ratios.append(ratio)
-        if ratio <= topology.connectivity_scale:
-            violations.append(
-                {
-                    "kind": "topology_extra_bond",
-                    "atom_indices": [int(first), int(second)],
-                    "distance_A": distance,
-                    "covalent_radius_ratio": ratio,
-                    "connectivity_scale": topology.connectivity_scale,
-                }
-            )
+    nonbonded_ratios = nonbonded.tolist()
 
     metrics = {
         **base_metrics,

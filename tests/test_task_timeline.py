@@ -96,3 +96,40 @@ def test_through_parsl(tmp_path, monkeypatch):
         assert [_app([1, 2]).result(timeout=60), _app([3]).result(timeout=60)] == [2, 1]
     records = read_timeline(str(tmp_path / "timeline"))
     assert [r["items"] for r in records] == [2, 1] and {r["task"] for r in records} == {"_app"}
+
+
+@timed("sampler")
+def _outer(molecules):
+    return _sample(molecules, scale=2)
+
+
+@timed("builder")
+def _builder(moleculeid=None, moleculeids=None, builder_config=None):
+    return list(moleculeids or [moleculeid])
+
+
+def test_a_task_calling_another_task_is_recorded_once(tmp_path, monkeypatch):
+    # As UDD sampling calls MLMD sampling's function.
+    monkeypatch.setenv(ENV, str(tmp_path))
+    assert _outer([1, 2]) == [2, 4]
+    [record] = read_timeline(str(tmp_path))
+    assert record["task"] == "_outer" and record["items"] == 2
+    _sample([3])
+    assert [r["task"] for r in read_timeline(str(tmp_path))] == ["_outer", "_sample"], "recording resumes after"
+
+
+def test_builders_called_by_keyword_count_their_molecule_ids(tmp_path, monkeypatch):
+    monkeypatch.setenv(ENV, str(tmp_path))
+    _builder(moleculeid="mol-0", moleculeids=["mol-0", "mol-1", "mol-2"], builder_config={})
+    _builder(moleculeid="mol-3", builder_config={})
+    assert [r["items"] for r in read_timeline(str(tmp_path))] == [3, 1]
+
+
+def test_a_partial_line_does_not_hide_the_other_records(tmp_path, monkeypatch):
+    monkeypatch.setenv(ENV, str(tmp_path))
+    _sample([1])
+    [path] = tmp_path.iterdir()
+    with open(path, "a") as handle:
+        handle.write('{"stage": "sampler", "start": 1')  # a worker killed mid-write
+    (tmp_path / "other.jsonl").write_text("[1, 2]\n")
+    assert [r["task"] for r in read_timeline(str(tmp_path))] == ["_sample"]

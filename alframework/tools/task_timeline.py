@@ -15,12 +15,21 @@ import functools
 import json
 import os
 import socket
+import threading
 import time
 
 ENV = 'ALF_TASK_TIMELINE_DIR'
+# Tasks that call another task's ``.func`` (UDD sampling calls MLMD sampling) are recorded once, as the
+# outer task: the inner call is part of the outer task's time.
+_active = threading.local()
 
 
 def _items(args, kwargs):
+    # ALF passes builders both ``moleculeid`` and ``moleculeids``, by keyword; a multi-structure builder
+    # builds all of ``moleculeids``.
+    ids = kwargs.get('moleculeids')
+    if isinstance(ids, (list, tuple)):
+        return len(ids)
     first = args[0] if args else next(iter(kwargs.values()), None)
     return len(first) if isinstance(first, (list, tuple)) else 1
 
@@ -38,15 +47,17 @@ def timed(stage):
         @functools.wraps(function)
         def wrapper(*args, **kwargs):
             directory = os.environ.get(ENV)
-            if not directory:
+            if not directory or getattr(_active, 'task', False):
                 return function(*args, **kwargs)
             start, outcome = time.time(), 'ok'
+            _active.task = True
             try:
                 return function(*args, **kwargs)
             except BaseException as exc:
                 outcome = type(exc).__name__
                 raise
             finally:
+                _active.task = False
                 end = time.time()
                 try:
                     write_record(directory, {
@@ -63,12 +74,21 @@ def timed(stage):
 
 
 def read_timeline(directory):
-    """Every record under ``directory``, oldest start first."""
+    """Every record under ``directory``, oldest start first.
+
+    A line that isn't a complete record, such as the last line of a worker killed while writing it, is skipped.
+    """
     records = []
     for name in sorted(os.listdir(directory)) if os.path.isdir(directory) else []:
         if name.endswith('.jsonl'):
             with open(os.path.join(directory, name)) as handle:
-                records += [json.loads(line) for line in handle if line.strip()]
+                for line in handle:
+                    try:
+                        record = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if isinstance(record, dict) and 'start' in record:
+                        records.append(record)
     return sorted(records, key=lambda record: record['start'])
 
 

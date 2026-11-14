@@ -26,3 +26,42 @@ def minimum_distance(atoms):
     distances = atoms.get_all_distances(mic=True)
     np.fill_diagonal(distances, np.inf)
     return float(distances.min())
+
+
+def _batched_neighbor_search():
+    """A batched neighbor search over a packed batch, on the batch's device: ALCHEMI's when installed,
+    else TorchSim's pure-PyTorch cell list (which runs on CUDA, ROCm and CPU). ``None`` without TorchSim."""
+    try:
+        from torch_sim.neighbors.alchemiops import ALCHEMIOPS_AVAILABLE
+        if ALCHEMIOPS_AVAILABLE:
+            from torch_sim.neighbors.alchemiops import alchemiops_nl_n2
+            return alchemiops_nl_n2
+        from torch_sim.neighbors.torch_nl import torch_nl_linked_cell
+        return torch_nl_linked_cell
+    except ImportError:
+        return None
+
+
+def batched_minimum_distances(positions, cells, system_idx, n_systems):
+    """Each fully periodic system's minimum interatomic distance, for a whole packed batch at once.
+
+    ``positions`` [atoms, 3] and ``cells`` [systems, 3, 3] (ASE's row-vector convention) are torch tensors on
+    the batch's device; ``system_idx`` [atoms] gives each atom's system. Same quantity as
+    ``minimum_distance``, found with one batched neighbor search within ``SEARCH_RADIUS``: a system with
+    no pair that close gets infinity, and callers fall back to ``minimum_distance`` for it. Returns
+    ``None`` when no batched search is available. Values agree with ``minimum_distance`` to float64
+    rounding (the order of operations differs).
+    """
+    import torch
+    search = _batched_neighbor_search()
+    if search is None:
+        return None
+    positions, cells = positions.to(torch.float64), cells.to(torch.float64)
+    pbc = torch.ones((n_systems, 3), dtype=torch.bool, device=positions.device)
+    mapping, system_mapping, shifts = search(positions, cells, pbc, SEARCH_RADIUS, system_idx)
+    first, second = mapping
+    vectors = positions[second] - positions[first] + torch.einsum(
+        'pi,pij->pj', shifts.to(positions.dtype), cells[system_mapping])
+    distinct = first != second  # an atom's own periodic images are outside this screen
+    distances = torch.full((n_systems,), float('inf'), dtype=positions.dtype, device=positions.device)
+    return distances.scatter_reduce_(0, system_mapping[distinct], vectors[distinct].norm(dim=1), reduce='amin')

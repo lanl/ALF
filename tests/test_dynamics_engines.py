@@ -596,3 +596,50 @@ def test_topology_or_force_rejection_stops_before_first_step(engine_name, tmp_pa
     out = sample_trajectories(molecules(), QuadraticStateEnsemble(), config, engine_class=engine_class(engine_name))
     assert all(m.atoms is None and m.get_metadata()["step"] == 0 for m in out)
     assert out[0].get_metadata()["screen_reject_reason"] == "physical_force"
+
+
+def _periodic_boxes():
+    rng = np.random.default_rng(11)
+    skewed = Atoms("H40", scaled_positions=rng.uniform(0, 1, (40, 3)),
+                   cell=[[7.0, 0, 0], [3.5, 6.0, 0], [2.0, 2.5, 5.5]], pbc=True)
+    tiny = Atoms("H2", scaled_positions=[[0.1, 0.2, 0.3], [0.6, 0.7, 0.4]], cell=[2.0, 2.2, 1.9], pbc=True)
+    dilute = Atoms("H3", positions=rng.uniform(0, 30, (3, 3)), cell=[30] * 3, pbc=True)  # no pair within 3 A
+    return [skewed, tiny, dilute]
+
+
+def _screened_engine(engine_name):
+    systems = _periodic_boxes()
+    engine = engine_class(engine_name)([a.copy() for a in systems], [Tether(0.1), Tether(0.1)], 0.5,
+                                       [300.0] * len(systems), [np.random.RandomState(i) for i in range(len(systems))])
+    engine.batched_distance_screen = True  # the default off the CPU
+    return engine
+
+
+def test_batched_distance_screen_matches_minimum_distance_once_per_step(engine_name, monkeypatch):
+    """Every system's distance comes from one batched search per step; values match the per-system screen
+    (a skewed cell, a cell smaller than the search radius, and a dilute box that falls back to it)."""
+    from alframework.samplers import packed_engine
+    from alframework.samplers.geometry import minimum_distance
+
+    searches = []
+    batched = packed_engine.batched_minimum_distances
+    monkeypatch.setattr(packed_engine, "batched_minimum_distances",
+                        lambda *args: searches.append(1) or batched(*args))
+    engine = _screened_engine(engine_name)
+    for step in range(3):
+        for index in range(3):
+            expected = minimum_distance(engine.atoms(index))
+            assert engine.observe(index)["min_distance"] == pytest.approx(expected, rel=1e-12, abs=1e-12)
+        assert len(searches) == step + 1
+        engine.step([0, 1, 2], 1)
+
+
+def test_batched_distance_screen_falls_back_without_a_batched_search(engine_name, monkeypatch):
+    from alframework.samplers import geometry
+    from alframework.samplers.geometry import minimum_distance
+
+    monkeypatch.setattr(geometry, "_batched_neighbor_search", lambda: None)
+    engine = _screened_engine(engine_name)
+    for index in range(3):
+        assert engine.observe(index)["min_distance"] == pytest.approx(minimum_distance(engine.atoms(index)),
+                                                                      rel=1e-12, abs=1e-12)

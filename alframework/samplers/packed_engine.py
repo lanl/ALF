@@ -37,7 +37,7 @@ from ase import units
 from ase.io.trajectory import Trajectory
 
 from alframework.ml_interfaces.ensemble_inference import ASEEnsembleEvaluator
-from alframework.samplers.geometry import minimum_distance
+from alframework.samplers.geometry import batched_minimum_distances, minimum_distance
 from alframework.tools.gap_seeking import gap_seeking_energy_forces
 
 KB_EV_PER_K = 8.617333262145e-5
@@ -111,7 +111,10 @@ class PackedMLMDEngine:
             forces=torch.zeros((sum(counts), 3), dtype=self.dtype, device=self.device))
         self._rows = list(range(len(self._atoms)))
         self._layout()
-        self._host = None
+        # Find every fully periodic system's minimum distance in one batched search on the device
+        # (see geometry.batched_minimum_distances); on the CPU, ASE's per-system search is as fast.
+        self.batched_distance_screen = self.device.type != "cpu"
+        self._host = self._distances = None
         self._evaluate()
 
     # -- packed layout ---------------------------------------------------------------------------
@@ -142,7 +145,7 @@ class PackedMLMDEngine:
         else:
             self.state, self._members = None, None
             self._state_members = None
-        self._host = None
+        self._host = self._distances = None
         self._layout()
 
     def _host_arrays(self):
@@ -173,7 +176,7 @@ class PackedMLMDEngine:
         forces = forces.to(self.device, self.dtype)
         self._members = (energies, forces)
         self._state_members = getattr(self.evaluator, 'last_states', None)
-        self._host = None
+        self._host = self._distances = None
         self._stale = False
         energy, force = energies.mean(0), forces.mean(0)
         if self._gap_seeking:
@@ -301,7 +304,22 @@ class PackedMLMDEngine:
             prediction.update(state_energies=energies[:, :, [self._position[index]]].cpu().numpy(),
                               state_forces=[forces[:, :, selection].cpu().numpy()],
                               selected_state=self.evaluator.selected_state, gap_pair=self.evaluator.gap_pair)
-        return {"prediction": prediction, "min_distance": minimum_distance(self.atoms(index))}
+        return {"prediction": prediction, "min_distance": self._minimum_distance(index)}
+
+    def _minimum_distance(self, index):
+        """This system's minimum interatomic distance. With the batched screen, every active fully periodic
+        system's is found together at its first observation after a step; a system with no pair within
+        geometry.SEARCH_RADIUS, or any other system, uses ``minimum_distance`` on its Atoms."""
+        if self.batched_distance_screen and bool(self.state.pbc.all()):
+            if self._distances is None:
+                found = batched_minimum_distances(self.state.positions, self.state.cell.transpose(-1, -2),
+                                                  self.state.system_idx, len(self._rows))
+                self._distances = False if found is None else found.cpu().numpy()
+            if self._distances is not False:
+                value = float(self._distances[self._position[index]])
+                if np.isfinite(value):
+                    return value
+        return minimum_distance(self.atoms(index))
 
     def atoms(self, index):
         self._sync(index)
@@ -315,7 +333,7 @@ class PackedMLMDEngine:
         selection, row = self._slices[index], self._position[index]
         self.state.positions[selection] *= scalar
         self.state.cell[row] *= scalar
-        self._host = None
+        self._host = self._distances = None
         self._stale = True
 
     def finish(self, index):

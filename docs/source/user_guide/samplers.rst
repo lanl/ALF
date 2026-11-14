@@ -348,7 +348,8 @@ Sampler metadata records the relevant diagnostics, including uncertainty
 values, temperature and density schedule history, distance checks, selection
 flags, final positions, and cell information. MLMD metadata is commonly written
 to files such as ``sampling/metadata-<moleculeid>.p`` when ``meta_dir`` or a
-compatible metadata path is configured.
+compatible metadata path is configured; the multi-trajectory sampler puts them in
+``sampling/task-<first moleculeid>/`` by default (``metadata_files``, ``meta_dir_layout``).
 
 With the multi-trajectory sampler:
 
@@ -385,7 +386,7 @@ trajectory's outcome, state, times, and its last and peak ``Es``, ``Fs``, and ``
 ``gap_lower_state`` for the pair whose spread was largest on the last frame. Those peaks are what to
 compare with the cutoffs when tuning them. Prefer this to
 ``meta_dir``, particularly in large runs. ``meta_dir`` writes one file per trajectory into one
-directory from every sampler worker (unless ``meta_dir_layout`` is ``"per_task"``), and plots then
+directory per task by default (see ``metadata_files`` and ``meta_dir_layout``), and plots then
 reread all of them on each update. Without ``trajectory_summary_path``, plots read ``meta_dir`` if
 it's set.
 
@@ -561,13 +562,19 @@ Output and trajectory fields
       * - ``meta_dir`` or ``meta_path``
         - Directory for sampler metadata files. Examples use both names; the
           task input builder maps compatible names to the sampler function.
+      * - ``metadata_files``
+        - Multi-trajectory sampler only. What a task writes to ``meta_dir``: ``"per_trajectory"``
+          (default) writes ``metadata-<moleculeid>.p`` per trajectory; ``"per_task"`` writes one
+          ``metadata-task-<first moleculeid>.p`` per task, a list of the same dicts, each with a
+          ``moleculeid`` key; ``"none"`` writes no metadata file. Either way the metadata returns with
+          each structure, and ``trajectory_summary_path`` still records it.
       * - ``meta_dir_layout``
-        - Multi-trajectory sampler only. ``"flat"`` (default) writes every file into ``meta_dir``.
-          ``"per_task"`` gives each sampler task its own subdirectory,
-          ``meta_dir/task-<first molecule id>/``. Use it for large runs on a parallel filesystem:
-          there, many tasks creating files in one directory at the same moment are serialized, and
-          on Lustre at 8 nodes a task waited about 7 minutes to write its files. Progress plots
-          read both layouts.
+        - Multi-trajectory sampler only. Where per-trajectory files (metadata and trajectories) go:
+          ``"per_task"`` (default) gives each task its own subdirectory,
+          ``meta_dir/task-<first moleculeid>/``; ``"flat"`` writes them into ``meta_dir`` itself, for
+          readers that expect one directory. Many tasks creating files in one directory at the same
+          moment are serialized by a parallel filesystem: on Lustre at 8 nodes, a task waited about
+          7 minutes to write its files. Progress plots read every layout.
       * - ``trajectory_frequency``
         - Probability of writing a trajectory for a sampling task.
       * - ``trajectory_interval``

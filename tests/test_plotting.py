@@ -123,6 +123,18 @@ def test_analysis_plot_reads_per_task_subdirectories(tmp_path):
     assert len(_read_pickles(str(meta))["model"]) == 3
 
 
+def test_analysis_plot_reads_one_file_per_task(tmp_path):
+    import pickle
+    from alframework.tools.plotting import _read_pickles
+    meta = tmp_path / "meta"
+    meta.mkdir()
+    records = [dict(finished(), moleculeid=f"mol-0001-{n:010d}") for n in range(3)]
+    with open(meta / "metadata-task-mol-0001-0000000000.p", "wb") as handle:
+        pickle.dump(records, handle)
+    columns = _read_pickles(str(meta))
+    assert columns["model"] == [1, 1, 1]
+
+
 def test_analysis_plot_ignores_a_truncated_pickle_and_other_files(tmp_path):
     meta = tmp_path / "meta"
     write_pickles(meta, [(0, finished())])

@@ -221,7 +221,8 @@ def test_each_trajectory_gets_its_own_reproducible_seed():
 
 
 def test_metadata_files_are_written_per_trajectory(tmp_path):
-    config = dict(GROUP_CONFIG, meta_dir=str(tmp_path), trajectory_frequency=1.0, trajectory_interval=1)
+    config = dict(GROUP_CONFIG, meta_dir=str(tmp_path), meta_dir_layout="flat", trajectory_frequency=1.0,
+                  trajectory_interval=1)
     molecules = [MoleculesObject(m.get_atoms().copy(), m.get_moleculeid()) for m in mixed_inputs()[:2]]
     sample_trajectories(molecules, fake_ensemble(), config)
     for molecule in molecules:
@@ -242,10 +243,54 @@ def test_per_task_layout_puts_each_tasks_files_in_its_own_directory(tmp_path):
     assert config["meta_dir"] == str(tmp_path), "the caller's config is unchanged"
 
 
-def test_an_unknown_meta_dir_layout_is_refused(tmp_path):
+@pytest.mark.parametrize("key,value", [("meta_dir_layout", "tree"), ("metadata_files", "all")])
+def test_unknown_metadata_settings_are_refused(tmp_path, key, value):
     molecules = [MoleculesObject(m.get_atoms().copy(), m.get_moleculeid()) for m in mixed_inputs()[:1]]
-    with pytest.raises(ValueError, match="meta_dir_layout"):
-        sample_trajectories(molecules, fake_ensemble(), dict(GROUP_CONFIG, meta_dir=str(tmp_path), meta_dir_layout="tree"))
+    with pytest.raises(ValueError, match=key):
+        sample_trajectories(molecules, fake_ensemble(), dict(GROUP_CONFIG, meta_dir=str(tmp_path), **{key: value}))
+
+
+def test_per_task_directories_are_the_default(tmp_path):
+    molecules = [MoleculesObject(m.get_atoms().copy(), m.get_moleculeid()) for m in mixed_inputs()[:2]]
+    sample_trajectories(molecules, fake_ensemble(), dict(GROUP_CONFIG, meta_dir=str(tmp_path)))
+    task = tmp_path / f"task-{molecules[0].get_moleculeid()}"
+    assert sorted(p.name for p in task.iterdir()) == sorted(f"metadata-{m.get_moleculeid()}.p" for m in molecules)
+
+
+def test_one_metadata_file_per_task_holds_the_same_records(tmp_path):
+    import pickle
+    per_trajectory, per_task = tmp_path / "per_trajectory", tmp_path / "per_task"
+    for directory, files in ((per_trajectory, "per_trajectory"), (per_task, "per_task")):
+        directory.mkdir()
+        molecules = [MoleculesObject(m.get_atoms().copy(), m.get_moleculeid()) for m in mixed_inputs()[:2]]
+        sample_trajectories(molecules, fake_ensemble(),
+                            dict(GROUP_CONFIG, meta_dir=str(directory), meta_dir_layout="flat", metadata_files=files))
+    [bundle] = per_task.iterdir()
+    assert bundle.name == f"metadata-task-{molecules[0].get_moleculeid()}.p", "one file, no subdirectory"
+    with open(bundle, "rb") as handle:
+        records = pickle.load(handle)
+    assert [r["moleculeid"] for r in records] == [m.get_moleculeid() for m in molecules]
+    for record in records:
+        with open(per_trajectory / f"metadata-{record['moleculeid']}.p", "rb") as handle:
+            single = pickle.load(handle)
+        assert set(record) - {"moleculeid"} == set(single)
+        assert record["step"] == single["step"] and record["trajectory_outcome"] == single["trajectory_outcome"]
+
+
+def test_no_metadata_files_but_the_metadata_still_returns(tmp_path):
+    molecules = [MoleculesObject(m.get_atoms().copy(), m.get_moleculeid()) for m in mixed_inputs()[:2]]
+    results = sample_trajectories(molecules, fake_ensemble(), dict(GROUP_CONFIG, meta_dir=str(tmp_path),
+                                                                   metadata_files="none"))
+    assert list(tmp_path.iterdir()) == [], "no files and no task directory"
+    assert all("realtime_simulation" in m.get_metadata() for m in results)
+
+
+def test_trajectory_files_still_go_to_the_task_directory_without_metadata_files(tmp_path):
+    molecules = [MoleculesObject(m.get_atoms().copy(), m.get_moleculeid()) for m in mixed_inputs()[:2]]
+    sample_trajectories(molecules, fake_ensemble(), dict(GROUP_CONFIG, meta_dir=str(tmp_path), metadata_files="none",
+                                                         trajectory_frequency=1.0, trajectory_interval=1))
+    task = tmp_path / f"task-{molecules[0].get_moleculeid()}"
+    assert sorted(p.suffix for p in task.iterdir()) == [".traj", ".traj"]
 
 
 @pytest.mark.parametrize("ncheck", [1, 5, 7, 10, 125])
@@ -253,7 +298,8 @@ def test_step_timing_is_recorded_every_100_steps(tmp_path, ncheck):
     """The CAAR FOM analyzer reads delta_realtime_step_<n> (the 100 steps ending at step n) from these files."""
     import pickle
 
-    config = dict(GROUP_CONFIG, dt=0.5, maxt=0.125, Ncheck=ncheck, Escut=100.0, Fscut=100.0, meta_dir=str(tmp_path))
+    config = dict(GROUP_CONFIG, dt=0.5, maxt=0.125, Ncheck=ncheck, Escut=100.0, Fscut=100.0, meta_dir=str(tmp_path),
+                  meta_dir_layout="flat")
     molecules = [MoleculesObject(m.get_atoms().copy(), m.get_moleculeid()) for m in mixed_inputs()[:2]]
     sample_trajectories(molecules, fake_ensemble(), config)
     for molecule in molecules:

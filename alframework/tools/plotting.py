@@ -18,6 +18,8 @@ import pandas as pd
 from alframework.tools.trajectory_summary import COLUMNS, read_trajectory_summary, trajectory_row
 
 METADATA_FILE = re.compile(r'metadata-(mol-\d+-\d+)\.p')
+TASK_METADATA_FILE = re.compile(r'metadata-task-(mol-\d+-\d+)\.p')
+MOLECULE_ID = re.compile(r'mol-\d+-\d+')
 # The reference categorical palette, in its fixed order. An outcome keeps its color in every run.
 OUTCOME_COLORS = {"completed": "#2a78d6", "eligible": "#1baf7a", "rejected": "#eb6834", "failed": "#eda100",
                   "task_failed": "#e87ba4"}
@@ -30,7 +32,7 @@ GRID = "#e4e3df"
 
 
 def _metadata_files(meta_dir):
-    """Metadata pickles in ``meta_dir`` and, for ``meta_dir_layout`` "per_task", in its ``task-*`` subdirectories."""
+    """Files in ``meta_dir`` and, for ``meta_dir_layout`` "per_task", in its ``task-*`` subdirectories."""
     for entry in os.scandir(meta_dir):
         if entry.is_dir() and entry.name.startswith('task-'):
             yield from ((os.path.join(entry.path, name), name) for name in os.listdir(entry.path))
@@ -43,11 +45,17 @@ def _read_pickles(meta_dir):
     rows = []
     for path, filename in _metadata_files(meta_dir):
         match = METADATA_FILE.fullmatch(filename)
-        if match is None:
+        bundle = TASK_METADATA_FILE.fullmatch(filename)
+        if match is None and bundle is None:
             continue
         try:
             with open(path, 'rb') as handle:
-                rows.append(trajectory_row(match.group(1), pickle.load(handle)))
+                loaded = pickle.load(handle)
+            if match is not None:
+                rows.append(trajectory_row(match.group(1), loaded))
+            else:  # metadata_files "per_task": a list of dicts, each with its molecule id
+                rows.extend(trajectory_row(record['moleculeid'], record) for record in loaded
+                            if MOLECULE_ID.fullmatch(str(record.get('moleculeid'))))
         except Exception:  # A worker may still be writing it.
             continue
     return {name: [row[name] for row in rows] for name in COLUMNS}

@@ -221,7 +221,8 @@ class ASEEngine:
         self._atoms[index].calc = None
 
 
-def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, seeds=None, *, topology=None, screen_audit=None):
+def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, seeds=None, *, topology=None, screen_audit=None,
+                          bundle_dir=None):
     """Run trajectories in lockstep with independent first-trigger stopping.
 
     Args:
@@ -231,8 +232,9 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
             ``Ramp``, ``Rper``, ``Rend``.
         sampler_config (dict): ``dt``, ``maxt``, ``Ncheck``, ``Escut``,
             ``Fscut`` and optional ``distcut``, ``min_time``, ``meta_dir``,
-            ``acquisition``.
+            ``metadata_files``, ``acquisition``.
         seeds (list): Optional per-trajectory seeds to record.
+        bundle_dir (str): Where ``metadata_files`` "per_task" writes its one file (default ``meta_dir``).
 
     Returns:
         (list): The input ``MoleculesObject`` instances, updated in place.
@@ -420,9 +422,19 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
                 entry['outcome'] = 'eligible'
             entry['candidates'] = _prune(entry['candidates'], settings['selection'])
 
+    files, _ = metadata_settings(sampler_config)
+    records = []
     for index, molecule in enumerate(molecule_objects):
-        _record(molecule, state[index], schedules[index], sampler_config, settings, engine,
-                index, started, None if seeds is None else seeds[index], meta_dir)
+        records.append(_record(molecule, state[index], schedules[index], sampler_config, settings, engine, index,
+                               started, None if seeds is None else seeds[index],
+                               meta_dir if files == 'per_trajectory' else None))
+    bundle_dir = meta_dir if bundle_dir is None else bundle_dir
+    if files == 'per_task' and bundle_dir is not None and molecule_objects:
+        # One file for the whole task: the same dicts as the per-trajectory files, each with its molecule id.
+        name = 'metadata-task-' + molecule_objects[0].get_moleculeid() + '.p'
+        with open(os.path.join(bundle_dir, name), 'wb') as handle:
+            pkl.dump([dict(record, moleculeid=molecule.get_moleculeid())
+                      for record, molecule in zip(records, molecule_objects)], handle)
     return list(molecule_objects)
 
 
@@ -483,6 +495,7 @@ def _record(molecule, entry, schedule, sampler_config, settings, engine, index, 
     molecule.update_metadata(meta_dict)
     # In cohort mode frames travel as candidates; nothing is labeled until the cohort selects.
     molecule.update_atoms(atoms if entry['outcome'] == 'eligible' and not cohort else None)
+    return meta_dict
 
 
 def _candidate(molecule, engine, index, signals, decision, time_ps):
@@ -522,21 +535,40 @@ def make_engine(engine, atoms_list, models, dt, temperatures_K, rngs, calculator
     return ASEEngine(atoms_list, models, dt, temperatures_K, rngs, calculator_options, friction=friction)
 
 
-META_DIR_LAYOUTS = ('flat', 'per_task')
+METADATA_FILES = ('per_trajectory', 'per_task', 'none')
+META_DIR_LAYOUTS = ('per_task', 'flat')
+
+
+def metadata_settings(sampler_config):
+    """``(metadata_files, meta_dir_layout)``, checked: what a task writes to ``meta_dir``, and where.
+
+    ``metadata_files``: ``"per_trajectory"`` (default) writes ``metadata-<id>.p`` per trajectory;
+    ``"per_task"`` writes one ``metadata-task-<first id>.p`` per task, a list of the same dicts with a
+    ``moleculeid`` key; ``"none"`` writes no metadata file (it still returns with each structure).
+    ``meta_dir_layout``: ``"per_task"`` (default) puts a task's per-trajectory files (metadata and trajectories)
+    in ``task-<first id>/``; ``"flat"`` puts them in ``meta_dir`` itself, for readers that expect one directory.
+    """
+    files = sampler_config.get('metadata_files', 'per_trajectory')
+    layout = sampler_config.get('meta_dir_layout', 'per_task')
+    if files not in METADATA_FILES:
+        raise ValueError(f"metadata_files must be one of {METADATA_FILES}, not {files!r}")
+    if layout not in META_DIR_LAYOUTS:
+        raise ValueError(f"meta_dir_layout must be one of {META_DIR_LAYOUTS}, not {layout!r}")
+    return files, layout
 
 
 def task_meta_dir(sampler_config, molecule_objects):
-    """The directory this task writes its metadata (and trajectory) files to.
+    """The directory this task writes its per-trajectory files (metadata, trajectories) to.
 
-    ``meta_dir_layout`` ``"flat"`` (default): ``meta_dir`` itself. ``"per_task"``: a subdirectory of it,
-    ``task-<first molecule id>``, so that the tasks of a large run don't all create files in one directory at
-    once, which a parallel filesystem serializes (on Lustre, a task stalled for minutes at 8 nodes).
+    With ``meta_dir_layout`` "per_task", a subdirectory ``task-<first molecule id>`` of ``meta_dir``, so that the
+    tasks of a large run don't all create files in one directory at once, which a parallel filesystem
+    serializes (on Lustre at 8 nodes, a task waited about 7 minutes to write its files). It is made only when
+    the task may write such files.
     """
     meta_dir = sampler_config.get('meta_dir')
-    layout = sampler_config.get('meta_dir_layout', 'flat')
-    if layout not in META_DIR_LAYOUTS:
-        raise ValueError(f"meta_dir_layout must be one of {META_DIR_LAYOUTS}, not {layout!r}")
-    if meta_dir is None or layout == 'flat' or not molecule_objects:
+    files, layout = metadata_settings(sampler_config)
+    trajectories = bool(sampler_config.get('trajectory_frequency')) and sampler_config.get('trajectory_interval') is not None
+    if meta_dir is None or layout == 'flat' or not molecule_objects or not (files == 'per_trajectory' or trajectories):
         return meta_dir
     path = os.path.join(meta_dir, 'task-' + molecule_objects[0].get_moleculeid())
     os.makedirs(path, exist_ok=True)
@@ -548,6 +580,7 @@ def sample_trajectories(molecule_objects, models, sampler_config, engine_class=N
 
     ``engine_class`` overrides the configured ``driver.engine`` (for tests).
     """
+    bundle_dir = sampler_config.get('meta_dir')
     sampler_config = dict(sampler_config, meta_dir=task_meta_dir(sampler_config, list(molecule_objects)))
     driver = driver_settings(sampler_config)
     states = state_settings(sampler_config)
@@ -642,7 +675,7 @@ def sample_trajectories(molecule_objects, models, sampler_config, engine_class=N
             engine.attach_trajectory(index, meta_dir + "/metadata-" + molecule.get_moleculeid() + '.traj', interval)
     try:
         run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, seeds,
-                              topology=topology, screen_audit=audit)
+                              topology=topology, screen_audit=audit, bundle_dir=bundle_dir)
         entered = molecule_objects[0].get_metadata()['sampling_entered_dynamics_width']
         for molecule in original_molecules:
             molecule.update_metadata(dict(sampling_entered_dynamics_width=entered))

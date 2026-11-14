@@ -99,7 +99,7 @@ def sampling_device(sampler_config, gpus_per_node=None):
         amd = os.path.exists(AMD_GPU_DRIVER)
     else:
         count = torch.cuda.device_count() if torch.cuda.is_available() else 0
-        amd = bool(getattr(torch.version, 'hip', None))
+        amd = bool(getattr(getattr(torch, 'version', None), 'hip', None))
     if requested is None and count == 0:
         assigned = _assigned_masks(amd=amd)
         if assigned:

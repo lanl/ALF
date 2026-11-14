@@ -250,7 +250,8 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
             (1.66054e-24 / 1.0e-24) * (np.sum(atoms.get_masses()) / atoms.get_volume())
         state.append({'temps': [], 'denss': [], 'rho0': rho0, 'decision': None, 'signals': None,
                       'min_distance': None, 'check': 0, 'outcome': None, 'error': None,
-                      'candidates': [], 'peaks': {}, 'finished_at': None})
+                      'candidates': [], 'peaks': {}, 'finished_at': None,
+                      'step_times': {}, 'last_mark': started})
 
     def finish(index, outcome, error=None):
         state[index]['outcome'] = outcome
@@ -337,6 +338,7 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
             entry, schedule = state[index], schedules[index]
             try:
                 observation = engine.observe(index)
+                _mark_step_time(entry, engine.steps[index])
                 if screening:
                     report, reason = inspect_frame(index, observation, time_ps)
                     if reason:
@@ -401,6 +403,17 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
 
 PEAK_SIGNALS = ('Es', 'Fs', 'Fsmax', 'gap_std')
 
+# Each ``delta_realtime_step_<n>`` is the wall time of the STEP_TIMING_INTERVAL steps that end at step n, as the
+# CAAR FOM analyzer reads it. In a batch all trajectories step together, so it is the time of those batch steps.
+STEP_TIMING_INTERVAL = 100
+
+
+def _mark_step_time(entry, steps_done):
+    if steps_done and steps_done % STEP_TIMING_INTERVAL == 0 and steps_done not in entry['step_times']:
+        now = time.time()
+        entry['step_times'][steps_done] = now - entry['last_mark']
+        entry['last_mark'] = now
+
 
 def _record(molecule, entry, schedule, sampler_config, settings, engine, index, started, seed, meta_dir):
     atoms = entry['finished_atoms']
@@ -428,7 +441,8 @@ def _record(molecule, entry, schedule, sampler_config, settings, engine, index, 
                  "acquisition_strategy": settings['strategy'],
                  "step": step,
                  "frame_id": frame_id(molecule.get_moleculeid(), step),
-                 "random_seed": seed}
+                 "random_seed": seed,
+                 **{f"delta_realtime_step_{steps}": seconds for steps, seconds in entry['step_times'].items()}}
     cohort = settings['selection']['mode'] == 'cohort_top_k'
     if entry['outcome'] == 'eligible' and not cohort:
         meta_dict['ranking_score'] = decision['ranking_score']

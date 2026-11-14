@@ -228,6 +228,39 @@ def test_metadata_files_are_written_per_trajectory(tmp_path):
         assert (tmp_path / f"metadata-{molecule.get_moleculeid()}.traj").stat().st_size > 0
 
 
+def test_step_timing_is_recorded_every_100_steps(tmp_path):
+    """The CAAR FOM analyzer reads delta_realtime_step_<n> (the 100 steps ending at step n) from these files."""
+    import pickle
+
+    # dt 0.5 fs, maxt 0.125 ps, Ncheck 1: 250 checks, and the trajectory never triggers.
+    config = dict(GROUP_CONFIG, dt=0.5, maxt=0.125, Ncheck=1, Escut=100.0, Fscut=100.0, meta_dir=str(tmp_path))
+    molecules = [MoleculesObject(m.get_atoms().copy(), m.get_moleculeid()) for m in mixed_inputs()[:2]]
+    sample_trajectories(molecules, fake_ensemble(), config)
+    for molecule in molecules:
+        with open(tmp_path / f"metadata-{molecule.get_moleculeid()}.p", "rb") as handle:
+            meta = pickle.load(handle)
+        timed = sorted(int(key.rsplit("_", 1)[1]) for key in meta if key.startswith("delta_realtime_step_"))
+        assert timed == [100, 200]
+        assert all(meta[f"delta_realtime_step_{n}"] > 0 for n in timed)
+        assert sum(meta[f"delta_realtime_step_{n}"] for n in timed) <= meta["realtime_simulation"] + 1e-6
+
+
+def test_fom_settings_label_the_frame_after_the_full_trajectory():
+    """The CAAR FOM labels every trajectory after its full length (200 steps); ALF does it with cutoffs that
+    always trigger and min_time between its last two checks (checks stop one short of maxt)."""
+    config = dict(GROUP_CONFIG, dt=0.5, maxt=0.1, Ncheck=1, Escut=-1.0, min_time=0.09925)  # checks at 0.0990, 0.0995 ps
+    molecules = [MoleculesObject(m.get_atoms().copy(), m.get_moleculeid()) for m in mixed_inputs()[:2]]
+    sample_trajectories(molecules, fake_ensemble(), config)
+    for molecule in molecules:
+        meta = molecule.get_metadata()
+        assert meta["trajectory_outcome"] == "eligible" and meta["step"] == 200
+        assert molecule.get_atoms() is not None
+    late = dict(config, min_time=0.1)  # = maxt
+    molecules = [MoleculesObject(m.get_atoms().copy(), m.get_moleculeid()) for m in mixed_inputs()[:1]]
+    sample_trajectories(molecules, fake_ensemble(), late)
+    assert molecules[0].get_metadata()["trajectory_outcome"] == "completed", "min_time = maxt labels nothing"
+
+
 def test_trained_hippynn_gives_same_results_batched(trained_ensemble):
 
     models = HIPNN_ASE_load_ensemble(str(trained_ensemble), device="cpu")

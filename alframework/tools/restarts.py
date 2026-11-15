@@ -40,6 +40,8 @@ class HeldLabels:
     includes failed tasks, which hold no results and are counted only for this process.
     """
 
+    PIECE_SIZE = 1000
+
     def __init__(self, directory):
         self.directory = Path(directory)
         self.directory.mkdir(parents=True, exist_ok=True)
@@ -67,14 +69,22 @@ class HeldLabels:
             self._ids.update(result.get_moleculeid() for result in piece['results'])
 
     def hold(self, results, failed=0):
-        """Write ``results`` as a new piece, and track failures until the next store."""
+        """Write ``results`` as new pieces of at most ``PIECE_SIZE`` each, and track failures until the next store.
+
+        Bounded pieces keep a store's memory bounded too: it reads one piece at a time, and when most QM tasks
+        finish together a single piece would otherwise hold nearly every label of the cycle.
+        """
         self.failed_since_store += failed
         if not results:
             return
+        results = list(results)
         existing = self.pieces()
         number = int(existing[-1][len('held-'):-len('.pkl')]) + 1 if existing else 0
-        piece = dict(format=FORMAT, successful=len(results), results=list(results))
-        write_bytes_atomic(self.directory / f'held-{number:08d}.pkl', pickle.dumps(piece, pickle.HIGHEST_PROTOCOL))
+        for start in range(0, len(results), self.PIECE_SIZE):
+            chunk = results[start:start + self.PIECE_SIZE]
+            piece = dict(format=FORMAT, successful=len(chunk), results=chunk)
+            write_bytes_atomic(self.directory / f'held-{number:08d}.pkl', pickle.dumps(piece, pickle.HIGHEST_PROTOCOL))
+            number += 1
         if self._successful is not None:
             self._successful += len(results)
             self._converged += sum(1 for result in results if result.check_convergence())

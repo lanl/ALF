@@ -227,7 +227,8 @@ During a run, ALF writes a standard set of outputs:
        ``charge`` or ``mult``, the shard also stores ``total_charge`` and ``spin_multiplicity`` for every
        structure, defaulting to 0 and 1; UMA fine-tuning reads them, and HIPPYNN training ignores them.
    * - ``h5store_held/held-*.pkl``
-     - Finished labels waiting for the next store. They're removed once stored.
+     - Finished labels waiting for the next store, at most 1,000 per file. They're
+       removed once stored.
    * - ``models/model-*``
      - Model ensembles trained or fine-tuned during the ALF loop.
    * - ``sampling/metadata-*.p``

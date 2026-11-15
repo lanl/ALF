@@ -85,7 +85,7 @@ grows with the number of structures in a cycle: on the order of 100 KB per struc
 settings, mostly ASE atoms and sampler metadata, at its peak. With thousands of samplers that reaches
 tens of gigabytes, on what is often a shared login node. Finished labels don't add to it: each pass of
 the loop moves them to ``held_labels_dir`` on disk (see :ref:`configuration-restarts`), and a store
-reads them back one held piece at a time.
+reads them back one held piece, at most 1,000 labels, at a time.
 
 - Set the sampler's ``returned_metadata`` to ``"compact"`` with ``metadata_files`` ``"per_task"``:
   structures return without the per-trajectory arrays the metadata file already keeps (see

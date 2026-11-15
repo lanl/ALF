@@ -841,3 +841,19 @@ def test_the_coordinator_releases_each_harvest_once_it_is_handed_on():
     source = MAIN.read_text()
     assert "sampler_results = structure = None" in source
     assert "structure_list = structure = substructure = None" in source
+
+
+def test_a_large_hold_is_written_as_bounded_pieces(tmp_path, monkeypatch):
+    """When most QM tasks finish together one hold gets nearly every label; bounded pieces keep a store's memory
+    bounded, since it reads one piece at a time."""
+    from alframework.tools.restarts import HeldLabels
+
+    monkeypatch.setattr(HeldLabels, "PIECE_SIZE", 2)
+    held = HeldLabels(tmp_path / "held")
+    held.hold([labeled(f"water-{i}") for i in range(5)])
+    held.hold([labeled("water-5")])
+    assert len(held.pieces()) == 4
+    assert held.successful() == held.converged() == 6
+    names = held.pieces()
+    assert [r.get_moleculeid() for r in held.iter_results(names)] == [f"water-{i}" for i in range(6)]
+    assert HeldLabels(tmp_path / "held").successful() == 6, "a restart counts the same"

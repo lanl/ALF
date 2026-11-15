@@ -247,6 +247,9 @@ class TaskWidths:
     def total(self, tasks):
         return sum(self.width(task) for task in tasks)
 
+    def forget(self, task):
+        self._widths.pop(id(task), None)
+
     def prune(self, tasks):
         """Forget tasks no longer present in ``tasks`` (e.g. after harvesting)."""
         live = {id(task) for task in tasks}
@@ -273,6 +276,9 @@ class BatchedTaskQueue(parsl_task_queue):
         self.failed_inputs = []
         self._inputs = {}
 
+    def _weight(self, task):
+        return self.widths.width(task)
+
     def add_task(self, task, width=1, inputs=None):
         self.widths.record(task, width)
         if inputs is not None:
@@ -286,52 +292,49 @@ class BatchedTaskQueue(parsl_task_queue):
         return len(self.task_list)
 
     def get_number(self):
-        return self.widths.total(self.task_list) + self.get_waiting_number()
+        return self._total + self.get_waiting_number()
 
     def get_completed_number(self):
-        return self.widths.total(task for task in self.task_list if is_final_task(task))
+        return int(self._count('final', is_final_task))
 
     def get_running_number(self):
-        return self.widths.total(task for task in self.task_list if task.running())
+        return super().get_running_number()
 
     def get_exec_done_number(self):
-        return self.widths.total(task for task in self.task_list
-                                 if task.task_status() == 'exec_done' and task.done())
+        return int(self._count('exec_done', lambda task: task.task_status() == 'exec_done' and task.done()))
 
     def get_failed_number(self):
-        return self.widths.total(task for task in self.task_list
-                                 if task.task_status() in FAILED_TASK_STATUSES)
+        return int(self._count('failed', lambda task: task.task_status() in FAILED_TASK_STATUSES))
 
     def get_task_results(self):
         results_list = []
         failed_number = 0
-        remaining = []
         self.last_failed = []
-        for task in self.task_list:
-            if not is_final_task(task):
-                remaining.append(task)
-                continue
-            if task.task_status() in SUCCESSFUL_TASK_STATUSES:
+        for task, status in self._take_finished():
+            if status in SUCCESSFUL_TASK_STATUSES:
                 try:
                     results_list.extend(flatten_molecule_output(task.result()))
+                    self._forget(task)
                     continue
                 except Exception:
                     logger.error("Task marked as done but raised or returned invalid output", exc_info=True)
             else:
                 try:
                     task.result()
-                    logger.warning("Task marked as %s returned a result; discarding it", task.task_status())
+                    logger.warning("Task marked as %s returned a result; discarding it", status)
                 except Exception:
                     logger.warning("Task failed", exc_info=True)
             failed_number += 1
             self.last_failed.append(task)
             self.failed_structures += self.widths.width(task)
             self.failed_inputs.extend(self._inputs.get(id(task), []))
-        self.task_list = remaining
-        self.widths.prune(self.task_list)
-        live = {id(task) for task in self.task_list}
-        self._inputs = {key: value for key, value in self._inputs.items() if key in live}
+            self._forget(task)
         return results_list, failed_number
+
+    def _forget(self, task):
+        """Drop a harvested task's width and inputs."""
+        self.widths.forget(task)
+        self._inputs.pop(id(task), None)
 
     def print_status(self):
         print('Total Structures: {:d} ({:d} tasks, {:d} waiting for a batch)'.format(

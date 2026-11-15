@@ -444,6 +444,15 @@ def stored_label_budget(master_config):
     return budget
 
 
+def _is_parsl_future(task):
+    """Parsl's AppFuture, whose running() is never true (Parsl doesn't mark its futures running)."""
+    try:
+        from parsl.dataflow.futures import AppFuture
+    except ImportError:
+        return False
+    return isinstance(task, AppFuture)
+
+
 def is_final_task(task):
     """
     Helper to determine if a Parsl task has reached a final state.
@@ -453,29 +462,101 @@ def is_final_task(task):
 
 # Recommend creation of parsl queue object
 class parsl_task_queue():
+    """Tasks the coordinator submitted and hasn't harvested yet, with counts by state.
+
+    Tasks that support ``add_done_callback`` (Parsl's futures) report their final state once, when they finish,
+    so a count costs the same whatever the number of tasks; the coordinator counts several times every poll.
+    Other tasks (test doubles) are checked one by one, as before. Results are harvested in the same order either way.
+    """
+
     def __init__(self):
-        # Create a list
         self.task_list = []
         # The tasks the last get_task_results counted as failed.
         self.last_failed = []
+        self._lock = threading.Lock()
+        self._finished = {}  # id(task) -> final state, for tracked tasks not harvested yet
+        self._sums = {'final': 0, 'exec_done': 0, 'failed': 0}  # weights of the finished tracked tasks, by state
+        self._untracked = {}  # id(task) -> task, for tasks without add_done_callback
+        self._may_run = {}  # id(task) -> task whose running() can be true (not Parsl's AppFuture)
+        self._total = 0  # weight of every task in task_list
+
+    def _weight(self, task):
+        """What a task counts as: one task here; the structures it holds in a batched queue."""
+        return 1
 
     def add_task(self,task):
         """Add a task to the task list
         """
         self.task_list.append(task)
-        #self.task_list[-1].start()
-        
+        self._track(task)
+
+    def _track(self, task):
+        self._total += self._weight(task)
+        if not _is_parsl_future(task):
+            self._may_run[id(task)] = task
+        if hasattr(task, 'add_done_callback') and hasattr(task, 'task_status'):
+            task.add_done_callback(self._on_done)  # runs at once if it's already done
+        else:
+            self._untracked[id(task)] = task
+
+    def _on_done(self, task):
+        status = task.task_status()  # Parsl sets the final state before it completes the future
+        weight = self._weight(task)
+        with self._lock:
+            if id(task) in self._finished:
+                return
+            self._finished[id(task)] = status
+            self._sums['final'] += weight
+            if status == 'exec_done':
+                self._sums['exec_done'] += weight
+            if status in FAILED_TASK_STATUSES:
+                self._sums['failed'] += weight
+
+    def _count(self, kind, check):
+        with self._lock:
+            tracked = self._sums[kind]
+        return tracked + sum(self._weight(task) for task in list(self._untracked.values()) if check(task))
+
+    def _take_finished(self, reverse=False):
+        """Remove the finished tasks from the queue and return ``(task, final state)`` in queue order."""
+        with self._lock:
+            finished = dict(self._finished)
+        untracked = {key for key, task in self._untracked.items() if is_final_task(task)}
+        if not finished and not untracked:
+            return []
+        taken = []
+        for task in (reversed(self.task_list) if reverse else self.task_list):
+            key = id(task)
+            if key in finished:
+                taken.append((task, finished[key]))
+            elif key in untracked:
+                taken.append((task, task.task_status()))
+        gone = {id(task) for task, _ in taken}
+        self.task_list = [task for task in self.task_list if id(task) not in gone]
+        with self._lock:
+            for task, status in taken:
+                weight = self._weight(task)
+                self._total -= weight
+                if self._finished.pop(id(task), None) is not None:
+                    self._sums['final'] -= weight
+                    if status == 'exec_done':
+                        self._sums['exec_done'] -= weight
+                    if status in FAILED_TASK_STATUSES:
+                        self._sums['failed'] -= weight
+                self._untracked.pop(id(task), None)
+                self._may_run.pop(id(task), None)
+        return taken
+
     def get_completed_number(self):
         """Get the number of completed tasks.
         """
-        task_status = [is_final_task(task) for task in self.task_list]
-        return int(np.sum(task_status))
+        return int(self._count('final', is_final_task))
         
     def get_running_number(self):
         """Get the number of running tasks.
         """
-        task_status = [task.running() for task in self.task_list]
-        return int(np.sum(task_status))
+        # Parsl never marks its futures running, so only other futures are checked.
+        return int(sum(self._weight(task) for task in list(self._may_run.values()) if task.running()))
         
     def get_number(self):
         """Get the the number of tasks in the task list.
@@ -488,20 +569,10 @@ class parsl_task_queue():
         return int(self.get_number() - self.get_running_number() - self.get_completed_number())
         
     def get_exec_done_number(self):
-        successful_number = 0
-        for taski,task in enumerate(self.task_list):
-            task_status = task.task_status()
-            if task_status == 'exec_done' and task.done():
-                successful_number=successful_number+1
-        return(successful_number)
+        return int(self._count('exec_done', lambda task: task.task_status() == 'exec_done' and task.done()))
 
     def get_failed_number(self):
-        failed_number = 0
-        for taski,task in enumerate(self.task_list):
-            task_status = task.task_status()
-            if task_status in FAILED_TASK_STATUSES:
-                failed_number += 1
-        return(failed_number)
+        return int(self._count('failed', lambda task: task.task_status() in FAILED_TASK_STATUSES))
             
     def get_task_results(self):
         """Get the reults of the tasks
@@ -513,10 +584,7 @@ class parsl_task_queue():
         results_list = []
         failed_number = 0
         self.last_failed = []
-        for taski,task in reversed(list(enumerate(self.task_list))):
-            if not is_final_task(task):
-                continue
-            task_status = task.task_status()
+        for task, task_status in self._take_finished(reverse=True):
             if task_status in SUCCESSFUL_TASK_STATUSES:
                 try:
                     results_list.append(task.result())
@@ -524,7 +592,6 @@ class parsl_task_queue():
                     logger.error("Task marked as done but raised", exc_info=True)
                     failed_number += 1
                     self.last_failed.append(task)
-                del self.task_list[taski]
             else: # Handle all others as failure states
                 try:
                     task.result()
@@ -533,7 +600,6 @@ class parsl_task_queue():
                     logger.warning("Task failed", exc_info=True)
                 failed_number += 1
                 self.last_failed.append(task)
-                del self.task_list[taski]
 
         return results_list, failed_number
     

@@ -103,10 +103,12 @@ class HeldLabels:
     def take(self):
         """Return every held result and the names of the pieces holding them. Nothing is removed."""
         names = self.pieces()
-        results = []
+        return list(self.iter_results(names)), names
+
+    def iter_results(self, names):
+        """Yield the results held in ``names``, reading one piece at a time."""
         for name in names:
-            results.extend(self._read(name)['results'])
-        return results, names
+            yield from self._read(name)['results']
 
     def discard(self, names):
         """Remove pieces once a shard holds them, and start counting toward the next store."""

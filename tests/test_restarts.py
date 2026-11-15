@@ -796,3 +796,48 @@ def test_failed_labels_do_not_trigger_retraining(tmp_path, monkeypatch):
     assert run.status['current_h5_id'] == 1
     assert run.status['current_training_id'] == 1
     assert not (tmp_path / 'h5/data-0001.h5').exists()
+
+
+def _shard_contents(path):
+    with h5py.File(path, "r") as handle:
+        return ({name: {key: group[key][()].tolist() for key in group} for name, group in handle.items()},
+                dict(handle.attrs))
+
+
+def test_a_shard_stored_from_a_generator_matches_one_stored_from_a_list(tmp_path):
+    """Held labels are stored one piece at a time, so store_current_data reads its input once, as a generator."""
+    def structures():
+        for i in range(4):
+            molecule = labeled(f"water-{i}", energy=-1.0 - i)
+            molecule.update_metadata({tools.LABEL_PROVENANCE: {"teacher": "test", "level": i % 2}})
+            molecule.set_converged_flag(i != 2)
+            yield molecule
+
+    assert store_current_data(str(tmp_path / "list.h5"), list(structures()), PROPERTIES) == 3
+    assert store_current_data(str(tmp_path / "generator.h5"), structures(), PROPERTIES) == 3
+    assert _shard_contents(tmp_path / "list.h5") == _shard_contents(tmp_path / "generator.h5")
+
+
+def test_held_labels_are_read_back_one_piece_at_a_time(tmp_path, monkeypatch):
+    from alframework.tools.restarts import HeldLabels
+
+    held = HeldLabels(tmp_path / "held")
+    held.hold([labeled("water-0"), labeled("water-1")])
+    held.hold([labeled("water-2")])
+    names = held.pieces()
+    reads = []
+    original = HeldLabels._read
+    monkeypatch.setattr(HeldLabels, "_read", lambda self, name: reads.append(name) or original(self, name))
+    results = held.iter_results(names)
+    assert reads == [], "nothing is read until the results are asked for"
+    assert next(results).get_moleculeid() == "water-0" and reads == names[:1]
+    assert [r.get_moleculeid() for r in results] == ["water-1", "water-2"] and reads == names
+    assert [r.get_moleculeid() for r in held.take()[0]] == ["water-0", "water-1", "water-2"]
+
+
+def test_the_coordinator_releases_each_harvest_once_it_is_handed_on():
+    """The coordinator's loop runs at module level, so a harvest left in a name stays in memory until the next
+    harvest: with one harvest per cycle, every sampled structure stayed alive for the rest of the run."""
+    source = MAIN.read_text()
+    assert "sampler_results = structure = None" in source
+    assert "structure_list = structure = substructure = None" in source

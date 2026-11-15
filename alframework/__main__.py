@@ -196,8 +196,9 @@ def store_held_labels(**attributes):
     holds, then the pieces are removed. A restart that finds the shard ahead of status moves past it.
     """
     hold_finished_labels()
-    results, pieces = held.take()
-    stored = store_current_data(master_config['h5_path'].format(status['current_h5_id']), results,
+    # One held piece in memory at a time, not every held label at once.
+    pieces = held.pieces()
+    stored = store_current_data(master_config['h5_path'].format(status['current_h5_id']), held.iter_results(pieces),
                                 master_config['properties_list'], attributes={HELD_PIECES: json.dumps(pieces), **attributes})
     status['lifetime_stored_labels'] = status.get('lifetime_stored_labels', 0) + stored
     held.discard(pieces)
@@ -507,6 +508,8 @@ while True:
                 for substructure in structure:
                     assert isinstance(substructure, MoleculesObject), 'substructure must be a MoleculesObject instance'
                     sampling.submit(substructure, [{"sampler_config": sampler_config}, *all_configs, status])
+        # This loop runs at module level, so these names would keep the last harvest alive until the next one.
+        structure_list = structure = substructure = None
     if admitting:
         sampling.submit_ready([{"sampler_config": sampler_config}, *all_configs, status])
 
@@ -520,6 +523,9 @@ while True:
         # Without cohort selection this is every result whose atoms is set, as before.
         for structure in sampling.harvest(sampler_results):
             labeling.submit(structure, [{"QM_config": QM_config}, master_config, *all_configs, status])
+        # Labeling holds what it needs; releasing these lets each structure go once its QM task finishes,
+        # instead of the whole harvest staying in memory for the rest of the run.
+        sampler_results = structure = None
     if admitting:
         labeling.submit_ready([{"QM_config": QM_config}, master_config, *all_configs, status])
     # Including during training, when labels can't go into h5_dir.

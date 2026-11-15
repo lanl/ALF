@@ -192,7 +192,7 @@ def store_current_data(h5path, system_data, properties, attributes=None):
 
     Args:
         h5path (str): Path to store the .h5 files.
-        system_data (list): A list of MoleculesObjects objects.
+        system_data (iterable): MoleculesObjects; read once, so a generator works (one piece at a time).
         properties (dict): Dictionary defined in master.json whose keys are the properties that we want to retrieve
                            from the QM calculations and store in the database.
         attributes (dict): Optional strings to record as attributes on the shard.
@@ -217,11 +217,13 @@ def store_current_data(h5path, system_data, properties, attributes=None):
     # Total charge and spin multiplicity, stored for the whole shard when any structure records them.
     states, has_state = {}, False
     print("Saving h5 file: " + h5path)
-    total_number = len(system_data)
+    total_number = 0
+    sources = SourceCollector()
     saved_number = 0
     nan_number = 0
     unconverged_number = 0
     for system in system_data:
+        total_number += 1
         assert isinstance(system, MoleculesObject), 'system must be an instance of MoleculesObject'
 
         cur_moliculeid = system.get_moleculeid()
@@ -232,6 +234,7 @@ def store_current_data(h5path, system_data, properties, attributes=None):
         # Ensure system converged before saving
         if system.check_convergence():
             saved_number += 1
+            sources.add(system)
             # Main's species contract: every row in a formula group is sorted.
             atom_index = np.argsort(cur_atoms.get_atomic_numbers(),
                                     kind="stable" if TOPOLOGY_ATOM_IDS in cur_atoms.arrays else None)
@@ -331,9 +334,8 @@ def store_current_data(h5path, system_data, properties, attributes=None):
         try:
             for key in data_dict:
                 dpack.store_data(key, **data_dict[key])
-            sources = label_sources(system for system in system_data if system.check_convergence())
-            if sources:
-                dpack.store.attrs[LABEL_PROVENANCE] = json.dumps(sources)
+            if sources.sources:
+                dpack.store.attrs[LABEL_PROVENANCE] = json.dumps(sources.sources)
             for name, value in (attributes or {}).items():
                 dpack.store.attrs[name] = value
         finally:
@@ -361,18 +363,28 @@ def write_status(status_path, status):
 LABEL_PROVENANCE = 'label_provenance'
 
 
-def label_sources(structures):
-    """Return the distinct ``label_provenance`` records of labeled structures, in first-seen order."""
-    sources, seen = [], set()
-    for structure in structures:
+class SourceCollector:
+    """The distinct ``label_provenance`` records of labeled structures, in first-seen order, added one at a time."""
+
+    def __init__(self):
+        self.sources, self._seen = [], set()
+
+    def add(self, structure):
         provenance = structure.get_metadata().get(LABEL_PROVENANCE)
         if provenance is None:
-            continue
+            return
         key = json.dumps(provenance, sort_keys=True, default=str)
-        if key not in seen:
-            seen.add(key)
-            sources.append(json.loads(key))
-    return sources
+        if key not in self._seen:
+            self._seen.add(key)
+            self.sources.append(json.loads(key))
+
+
+def label_sources(structures):
+    """Return the distinct ``label_provenance`` records of labeled structures, in first-seen order."""
+    collector = SourceCollector()
+    for structure in structures:
+        collector.add(structure)
+    return collector.sources
 
 
 def read_label_provenance(h5path):

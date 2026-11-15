@@ -784,3 +784,48 @@ def test_worker_ensemble_loads_each_model_once_per_worker(monkeypatch):
     assert second is not first and len(batched_mlmd._WORKER_ENSEMBLE) == 1, "only the current model is held"
     batched_mlmd.worker_ensemble(dict(config, batched_calculator_options={"energy_key": "E0"}), "models/model-0002/", "cpu")
     assert [load[0] for load in LOADS] == ["models/model-0001/", "models/model-0002/", "models/model-0002/"]
+
+
+def test_compact_returned_metadata_leaves_out_only_what_the_file_keeps(tmp_path):
+    import pickle
+    results, records = {}, {}
+    for mode in ("full", "compact"):
+        directory = tmp_path / mode
+        directory.mkdir()
+        molecules = [MoleculesObject(m.get_atoms().copy(), m.get_moleculeid()) for m in mixed_inputs()[:2]]
+        results[mode] = sample_trajectories(molecules, fake_ensemble(), dict(
+            GROUP_CONFIG, meta_dir=str(directory), meta_dir_layout="flat", metadata_files="per_task",
+            returned_metadata=mode))
+        [bundle] = directory.iterdir()
+        with open(bundle, "rb") as handle:
+            records[mode] = pickle.load(handle)
+    assert [set(r) for r in records["compact"]] == [set(r) for r in records["full"]], "the file keeps every field"
+    for full, compact, record in zip(results["full"], results["compact"], records["compact"]):
+        assert set(full.get_metadata()) - set(compact.get_metadata()) == set(batched_mlmd.COMPACT_DROPPED)
+        for key in ("positions", "temps", "chemical_symbols"):
+            assert key in record
+        assert compact.get_metadata()["step"] == record["step"] == full.get_metadata()["step"]
+        assert compact.get_metadata()["trajectory_outcome"] == full.get_metadata()["trajectory_outcome"]
+        assert (compact.get_atoms() is None) == (full.get_atoms() is None)
+
+
+@pytest.mark.parametrize("settings,match", [
+    (dict(returned_metadata="slim"), "returned_metadata must be one of"),
+    (dict(returned_metadata="compact", metadata_files="none"), "metadata files must keep them"),
+    (dict(returned_metadata="compact", meta_dir=None), "metadata files must keep them"),
+])
+def test_compact_returned_metadata_needs_a_metadata_file(tmp_path, settings, match):
+    molecules = [MoleculesObject(m.get_atoms().copy(), m.get_moleculeid()) for m in mixed_inputs()[:1]]
+    with pytest.raises(ValueError, match=match):
+        sample_trajectories(molecules, fake_ensemble(), {**GROUP_CONFIG, "meta_dir": str(tmp_path), **settings})
+
+
+def test_the_coordinator_checks_returned_metadata_before_any_task_runs(tmp_path):
+    from alframework.samplers.mlmd_sampling import simple_mlmd_sampling_task
+    from alframework.tools.sampler_coordinator import SamplerCoordinator
+
+    with pytest.raises(ValueError, match="metadata files must keep them"):
+        SamplerCoordinator(batched_mlmd.mlmd_trajectories_task, "batched",
+                           {"returned_metadata": "compact", "metadata_files": "none", "meta_dir": str(tmp_path)})
+    with pytest.raises(ValueError, match="batched_mlmd sampler tasks only"):
+        SamplerCoordinator(simple_mlmd_sampling_task, "mlmd", {"returned_metadata": "compact", "meta_dir": str(tmp_path)})

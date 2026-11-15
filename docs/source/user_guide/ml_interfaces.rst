@@ -256,7 +256,7 @@ ALF waits for the whole ensemble
    ALF treats the ensemble as one training task. It promotes the new model only after every
    member has succeeded, and it doesn't store new data or start another training until then.
    Sampling and labeling continue on the current model in the meantime, and finished labels
-   stay in the coordinator's memory until the next store. Progress appears in the coordinator's
+   wait in ``held_labels_dir`` until the next store. Progress appears in the coordinator's
    output, for example ``Training 0003: 35/40 members finished, 1 retrying, 0 failed``.
 
 Failed members are retried

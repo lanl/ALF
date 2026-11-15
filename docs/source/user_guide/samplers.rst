@@ -568,6 +568,13 @@ Output and trajectory fields
           ``metadata-task-<first moleculeid>.p`` per task, a list of the same dicts, each with a
           ``moleculeid`` key; ``"none"`` writes no metadata file. Either way the metadata returns with
           each structure, and ``trajectory_summary_path`` still records it.
+      * - ``returned_metadata``
+        - Multi-trajectory sampler only. What metadata each returned structure carries: ``"full"``
+          (default) or ``"compact"``, which leaves out the per-trajectory arrays and lists the metadata
+          file keeps (``positions``, ``chemical_symbols``, ``temps``, ``denss``, ``system_comp``), about two
+          thirds of a trajectory's metadata in the coordinator's memory. Compact needs ``meta_dir`` and
+          ``metadata_files`` ``"per_trajectory"`` or ``"per_task"``; the coordinator refuses it otherwise,
+          and for other sampler tasks. See :ref:`running-at-scale-coordinator-memory`.
       * - ``meta_dir_layout``
         - Multi-trajectory sampler only. Where per-trajectory files (metadata and trajectories) go:
           ``"per_task"`` (default) gives each task its own subdirectory,

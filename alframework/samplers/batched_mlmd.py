@@ -423,11 +423,12 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
             entry['candidates'] = _prune(entry['candidates'], settings['selection'])
 
     files, _ = metadata_settings(sampler_config)
+    compact = returned_metadata(sampler_config) == 'compact'
     records = []
     for index, molecule in enumerate(molecule_objects):
         records.append(_record(molecule, state[index], schedules[index], sampler_config, settings, engine, index,
                                started, None if seeds is None else seeds[index],
-                               meta_dir if files == 'per_trajectory' else None))
+                               meta_dir if files == 'per_trajectory' else None, compact=compact))
     bundle_dir = meta_dir if bundle_dir is None else bundle_dir
     if files == 'per_task' and bundle_dir is not None and molecule_objects:
         # One file for the whole task: the same dicts as the per-trajectory files, each with its molecule id.
@@ -447,7 +448,8 @@ PEAK_SIGNALS = ('Es', 'Fs', 'Fsmax', 'gap_std')
 STEP_TIMING_INTERVAL = 100
 
 
-def _record(molecule, entry, schedule, sampler_config, settings, engine, index, started, seed, meta_dir):
+def _record(molecule, entry, schedule, sampler_config, settings, engine, index, started, seed, meta_dir,
+            compact=False):
     atoms = entry['finished_atoms']
     signals = entry['signals'] or {}
     decision = entry['decision'] or {}
@@ -493,7 +495,7 @@ def _record(molecule, entry, schedule, sampler_config, settings, engine, index, 
     if meta_dir is not None:
         with open(meta_dir + "/metadata-" + molecule.get_moleculeid() + '.p', "wb") as handle:
             pkl.dump(meta_dict, handle)
-    molecule.update_metadata(meta_dict)
+    molecule.update_metadata({k: v for k, v in meta_dict.items() if k not in COMPACT_DROPPED} if compact else meta_dict)
     # In cohort mode frames travel as candidates; nothing is labeled until the cohort selects.
     molecule.update_atoms(atoms if entry['outcome'] == 'eligible' and not cohort else None)
     return meta_dict
@@ -556,6 +558,32 @@ def metadata_settings(sampler_config):
     if layout not in META_DIR_LAYOUTS:
         raise ValueError(f"meta_dir_layout must be one of {META_DIR_LAYOUTS}, not {layout!r}")
     return files, layout
+
+
+RETURNED_METADATA = ('full', 'compact')
+# Per-trajectory arrays and lists the metadata file keeps but the coordinator doesn't read: with
+# returned_metadata "compact" the returned molecule carries everything else.
+COMPACT_DROPPED = ('positions', 'chemical_symbols', 'temps', 'denss', 'system_comp')
+
+
+def returned_metadata(sampler_config):
+    """``"full"`` (default) or ``"compact"``: what metadata each returned molecule carries, checked.
+
+    The coordinator holds every returned molecule until its labels are stored. ``"compact"`` leaves out
+    ``COMPACT_DROPPED`` (the final positions and symbols again, the per-check temperature and density series,
+    the composition), about two thirds of a trajectory's metadata in memory. The metadata file keeps the full
+    record, so compact needs one: ``metadata_files`` "per_trajectory" or "per_task", and a ``meta_dir``.
+    """
+    mode = sampler_config.get('returned_metadata', 'full')
+    if mode not in RETURNED_METADATA:
+        raise ValueError(f"returned_metadata must be one of {RETURNED_METADATA}, not {mode!r}")
+    if mode == 'compact':
+        files, _ = metadata_settings(sampler_config)
+        if files == 'none' or sampler_config.get('meta_dir') is None:
+            raise ValueError('returned_metadata "compact" leaves fields out of the returned molecules, so the '
+                             'metadata files must keep them: set meta_dir and metadata_files "per_trajectory" or '
+                             '"per_task".')
+    return mode
 
 
 def task_meta_dir(sampler_config, molecule_objects):

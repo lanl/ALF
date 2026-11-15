@@ -198,8 +198,11 @@ def train_data_parallel(training_modules, database, controller, *, n_devices, ac
     _evaluate_on(training_modules, 'cuda' if accelerator == 'gpu' else 'cpu')
     print('Making plots over training time...')
     metric_tracker.plot_over_time()
-    print('Testing model...')
-    test_model(database, training_modules.evaluator, when='FinalTraining', batch_size=controller.eval_batch_size,
+    # The final test runs on one device, so it takes one device's share of the evaluation batch: the size each
+    # rank evaluated during training. The configured total can exceed one device's memory.
+    eval_batch_size = record['eval_batch_size_per_device']
+    print(f'Testing model on one device, eval batch size {eval_batch_size}...')
+    test_model(database, training_modules.evaluator, when='FinalTraining', batch_size=eval_batch_size,
                metric_tracker=metric_tracker)
     print('Training complete.')
     return metric_tracker

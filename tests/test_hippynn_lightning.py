@@ -49,6 +49,8 @@ def _check_member(member, devices=2, batch_size=4):
     record = json.loads((member / "lightning_training.json").read_text())
     assert record["devices"] == devices and record["epochs"] >= 1
     assert record["batch_size"] == batch_size and record["batch_size_per_device"] == batch_size // devices
+    assert f"Testing model on one device, eval batch size {batch_size // devices}" in log, \
+        "the final test on one device takes one device's share of the evaluation batch, not the total"
     from alframework.ml_interfaces._hippynn_compat import checkpoints
     load_checkpoint = checkpoints().load_checkpoint
 

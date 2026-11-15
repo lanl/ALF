@@ -49,8 +49,9 @@ def _check_member(member, devices=2, batch_size=4):
     record = json.loads((member / "lightning_training.json").read_text())
     assert record["devices"] == devices and record["epochs"] >= 1
     assert record["batch_size"] == batch_size and record["batch_size_per_device"] == batch_size // devices
-    assert f"Testing model on one device, eval batch size {batch_size // devices}" in log, \
-        "the final test on one device takes one device's share of the evaluation batch, not the total"
+    assert f"Testing model on {devices} devices, eval batch size {batch_size // devices} each" in log, \
+        "the final test is split over the member's devices, each at its share of the evaluation batch"
+    assert not list(member.glob("final_test_rank*.pt")), "the ranks' shares are removed after the final test"
     from alframework.ml_interfaces._hippynn_compat import checkpoints
     load_checkpoint = checkpoints().load_checkpoint
 
@@ -148,18 +149,41 @@ def test_single_node_tasks_refuse_several_gpus_per_member():
         ensemble_training.single_gpu_members({"gpus_per_member": 4})
 
 
-def test_the_final_test_runs_where_the_model_is():
-    """After data-parallel training the parent tests the member on one device. hippynn's evaluator moves each
-    batch to its own model_device, which setup_training left on the CPU; on a GPU node the batches stayed on the
-    CPU while the model moved to the GPU (seen on Frontier). The meta device stands in for the GPU here."""
-    torch = pytest.importorskip("torch")
+def test_the_split_final_test_reports_what_one_device_would(tmp_path, monkeypatch):
+    """The ranks predict every n-th evaluation batch and the parent computes hippynn's metrics over all of them:
+    the same numbers as hippynn's test_model on one device, for every split, after a real two-device training."""
+    pytest.importorskip("hippynn")
     pytest.importorskip("pytorch_lightning")
-    from alframework.ml_interfaces.hippynn_lightning import _evaluate_on
+    from hippynn.experiment import test_model
+    from alframework.ml_interfaces import hippynn_lightning as hl
 
-    model, loss = torch.nn.Linear(2, 2), torch.nn.Linear(2, 1)
-    evaluator = SimpleNamespace(model=model, model_device=torch.device("cpu"))
-    modules = SimpleNamespace(model=model, loss=loss, evaluator=evaluator)
-    _evaluate_on(modules, "meta")
-    assert evaluator.model_device == torch.device("meta")
-    assert evaluator.model is model
-    assert {p.device.type for p in [*model.parameters(), *loss.parameters()]} == {"meta"}
+    seen = {}
+    final_test = hl._final_test
+
+    def recording(evaluator, database, n_devices, metric_tracker, when="FinalTraining"):
+        seen.update(evaluator=evaluator, database=database, n_devices=n_devices)
+        seen["split"] = final_test(evaluator, database, n_devices, metric_tracker, when)
+        return seen["split"]
+
+    monkeypatch.setattr(hl, "_final_test", recording)
+    _water(tmp_path / "data", frames=24)
+    member = tmp_path / "model-00"
+    member.mkdir()
+    ml.train_HIPNN_model(str(member), str(tmp_path / "data"), energy_key="energy", coordinates_key="coordinates",
+                         species_key="species", force_key="forces", network_params=dict(NETWORK),
+                         valid_size=0.25, test_size=0.25, plot_every=1000,
+                         controller_options=dict(batch_size=4, eval_batch_size=4, max_epochs=2,
+                                                 termination_patience=10),
+                         scheduler_options=dict(max_batch_size=8, patience=5, factor=0.5),
+                         device_string="cpu", gpus_per_member=2)
+    assert seen["n_devices"] == 2
+    evaluator = seen["evaluator"]
+    evaluator.plot_maker = None
+    reference = {}
+    tracker = SimpleNamespace(register_metrics=lambda metrics, when: reference.update(metrics),
+                              evaluation_print=lambda *args, **kwargs: None)
+    test_model(seen["database"], evaluator, batch_size=2, when="check", metric_tracker=tracker)
+    assert set(seen["split"]) == set(reference) == {"train", "valid", "test"}
+    for name in reference:
+        for key, value in reference[name].items():
+            assert seen["split"][name][key] == pytest.approx(value, rel=1e-5, abs=1e-8), (name, key)

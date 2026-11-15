@@ -9,8 +9,10 @@ It also writes ``lightning_training.json``, which records the devices and batch 
 
 The configured batch sizes are totals across devices: batch 64 on 4 GPUs gives each GPU 16. Each
 device trains on its own slice of the training split every epoch, and validation losses are averaged
-over the devices, so every rank makes the same early-stopping and batch-size decisions. The test
-split is evaluated afterwards on one device, over the whole split, as in single-device training.
+over the devices, so every rank makes the same early-stopping and batch-size decisions. Afterwards,
+the final test evaluates the best model on every split, in the same batches as single-device training;
+each device predicts every n-th batch, and the parent computes the metrics over all of them, so they
+are the ones a single device would report.
 
 ALF starts one process per device itself, with ``spawn``, and sets the rank variables so Lightning
 treats them as launched externally. Lightning's own launchers either rerun ``sys.argv``, which inside a
@@ -153,7 +155,7 @@ def train_data_parallel(training_modules, database, controller, *, n_devices, ac
     require_lightning()
     import hippynn
     import torch
-    from hippynn.experiment import SetupParams, setup_training, test_model
+    from hippynn.experiment import SetupParams, setup_training
     from alframework.ml_interfaces._hippynn_compat import checkpoints
     serialization = checkpoints()
 
@@ -176,6 +178,7 @@ def train_data_parallel(training_modules, database, controller, *, n_devices, ac
     # through shared memory, which fails on Linux for empty tensors and can exhaust /dev/shm.
     torch.save(dict(training_modules=training_modules, database=database, controller=controller,
                     metric_tracker=metric_tracker, settings=settings), PAYLOAD)
+    Path(RECORD).unlink(missing_ok=True)  # the ranks' final test waits for this run's record
     try:
         _run_ranks(n_devices)
     finally:
@@ -195,15 +198,12 @@ def train_data_parallel(training_modules, database, controller, *, n_devices, ac
     print('Reverting to best model found.')
     _scale_batches(controller, lambda size: size * n_devices)
     controller.current_epoch = record['epochs']
-    _evaluate_on(training_modules, 'cuda' if accelerator == 'gpu' else 'cpu')
     print('Making plots over training time...')
     metric_tracker.plot_over_time()
-    # The final test runs on one device, so it takes one device's share of the evaluation batch: the size each
-    # rank evaluated during training. The configured total can exceed one device's memory.
-    eval_batch_size = record['eval_batch_size_per_device']
-    print(f'Testing model on one device, eval batch size {eval_batch_size}...')
-    test_model(database, training_modules.evaluator, when='FinalTraining', batch_size=eval_batch_size,
-               metric_tracker=metric_tracker)
+    # The ranks evaluated the best model in batches of one device's share of the evaluation batch, the size
+    # each evaluated during training; the configured total can exceed one device's memory.
+    print(f"Testing model on {n_devices} devices, eval batch size {record['eval_batch_size_per_device']} each...")
+    _final_test(training_modules.evaluator, database, n_devices, metric_tracker)
     print('Training complete.')
     return metric_tracker
 
@@ -211,18 +211,71 @@ def train_data_parallel(training_modules, database, controller, *, n_devices, ac
 PAYLOAD = 'lightning_setup.pt'
 
 
-def _evaluate_on(training_modules, device):
-    """Put the model and its loss on ``device`` for the final test, and point the evaluator there too.
+# Each rank's share of the final test, read back and removed by the parent.
+FINAL_SHARE = 'final_test_rank{}.pt'
 
-    ``setup_training(..., device='cpu')`` set the evaluator's ``model_device`` to the CPU, and the evaluator
-    moves every batch to ``model_device``; moving only the model left GPU weights fed with CPU batches.
-    """
+
+def _final_splits(database, evaluator):
+    """The splits hippynn's ``test_model`` evaluates, in its order: train, valid and test first."""
+    database.align(**evaluator.db_info)
+    required = set(database.inputs + database.targets)
+    names = [name for name, split in database.splits.items() if all(key in split for key in required)]
+    basic = [name for name in ('train', 'valid', 'test') if name in names]
+    return basic + [name for name in names if name not in basic]
+
+
+def _evaluate_share(module, database, evaluator, rank, n_devices, accelerator):
+    """This rank's share of the final test: the best model's predictions for every ``n_devices``-th batch of
+    hippynn's evaluation batches, numbered so the parent can put them back in order. On the rank's own device,
+    the one it trained on (Lightning may have moved the model back to the CPU at the end of training)."""
     import torch
-    device = torch.device(device)
-    training_modules.model.to(device)
-    training_modules.loss.to(device)
-    training_modules.evaluator.model = training_modules.model
-    training_modules.evaluator.model_device = device
+    # Rank 0 writes best_model.pt during training and the record last, at the end of training.
+    if torch.distributed.is_available() and torch.distributed.is_initialized():
+        torch.distributed.barrier()
+    else:
+        while not Path(RECORD).exists():
+            time.sleep(0.5)
+    device = torch.device('cuda', rank) if accelerator == 'gpu' else torch.device('cpu')
+    model = module.model.to(device)
+    model.load_state_dict(torch.load('best_model.pt', map_location=device, weights_only=True))
+    model.eval()
+    batch_size = int(module.controller.eval_batch_size)
+    shares = {}
+    for name in _final_splits(database, evaluator):
+        shares[name] = []
+        for index, batch in enumerate(database.make_generator(name, 'eval', batch_size)):
+            if index % n_devices != rank:
+                continue
+            batch = [item.to(device=device) for item in batch]
+            predictions = model(*batch[:evaluator.n_inputs])
+            shares[name].append((index, [value.detach().cpu() for value in predictions],
+                                 [value.detach().cpu() for value in batch[-evaluator.n_targets:]]))
+            del predictions
+    torch.save(shares, FINAL_SHARE.format(rank))
+
+
+def _final_test(evaluator, database, n_devices, metric_tracker, when='FinalTraining'):
+    """hippynn's ``test_model`` from the ranks' shares: the same batches, put back in order, then hippynn's
+    evaluation losses, plots and printout over all of them, as ``Evaluator.evaluate`` computes them."""
+    import torch
+    shares = [torch.load(FINAL_SHARE.format(rank), weights_only=False) for rank in range(n_devices)]
+    metrics = {}
+    for name in _final_splits(database, evaluator):
+        batches = sorted((batch for share in shares for batch in share[name]), key=lambda batch: batch[0])
+        predictions = [[batch[1][i] for batch in batches] for i in range(evaluator.n_outputs)]
+        targets = [[batch[2][i] for batch in batches] for i in range(evaluator.n_targets)]
+        predictions = [torch.cat(x, dim=0) if x[0].shape != () else x[0] for x in predictions]
+        targets = [torch.cat(x, dim=0) for x in targets]
+        losses = [x.mean().item() for x in evaluator.loss(*predictions, *targets)]
+        metrics[name] = dict(zip(evaluator.loss_names, losses))
+        if evaluator.plot_maker:
+            evaluator.plot_maker.plot_phase(prediction_all_vals=predictions, target_all_vals=targets, when=when,
+                                            eval_type=name)
+    for rank in range(n_devices):
+        Path(FINAL_SHARE.format(rank)).unlink(missing_ok=True)
+    metric_tracker.register_metrics(metrics, when=when)
+    metric_tracker.evaluation_print(metrics, quiet=False)
+    return metrics
 
 
 def _free_port():
@@ -280,3 +333,4 @@ def _rank_main(payload, rank, n_devices, port):
                          num_sanity_val_steps=0, logger=False, enable_checkpointing=False,
                          enable_progress_bar=False, enable_model_summary=False, default_root_dir=settings['directory'])
     trainer.fit(module, datamodule=datamodule)
+    _evaluate_share(module, setup['database'], setup['training_modules'].evaluator, rank, n_devices, accelerator)

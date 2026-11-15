@@ -205,6 +205,54 @@ def __getattr__(name):
     return ALFPyAniDirectoryDB
 
 
+def training_minimum_distances(arrays, species_key, coordinates_key, cell_key, device, dist_hard_max=6.0,
+                               batch_size=256):
+    """Each structure's minimum interatomic distance, for the low-distance filter before training.
+
+    hippynn's ``calculate_min_dists`` builds every pair within ``dist_hard_max``: about 0.35 s per batch of 256
+    periodic 200-atom structures on one GPU, 6 minutes for 262,144 structures, repeated by every member at
+    every training. For periodic data, ALF's batched neighbor search (the sampler's screen,
+    ``samplers.geometry.batched_minimum_distances``) finds the same minimum within its smaller search radius;
+    a structure with no pair that close gets its exact minimum-image minimum from ``minimum_distance``.
+    (hippynn gives such a structure the largest distance found in its batch, so its value depends on the other
+    structures in the batch, but a filter below the search radius keeps it either way.) Non-periodic data and
+    environments without a batched search use hippynn's function as before. Returns a CPU tensor in the
+    positions' dtype, as hippynn's does.
+    """
+    import torch
+    from ase import Atoms
+    from hippynn.pretraining import calculate_min_dists
+    from alframework.samplers.geometry import batched_minimum_distances, minimum_distance
+
+    def by_hippynn(subset):
+        # Keywords: hippynn's development branch made dist_hard_max the second positional argument.
+        return calculate_min_dists(subset, species_name=species_key, positions_name=coordinates_key,
+                                   dist_hard_max=dist_hard_max, cell_name=cell_key, batch_size=batch_size,
+                                   device=device)
+
+    if not cell_key or cell_key not in arrays:
+        return by_hippynn(arrays)
+    species = torch.as_tensor(arrays[species_key])
+    positions = torch.as_tensor(arrays[coordinates_key])
+    cells = torch.as_tensor(arrays[cell_key])
+    target = torch.device(device) if device is not None else torch.device('cpu')
+    found = torch.empty(len(species), dtype=torch.float64)
+    for start in range(0, len(species), batch_size):
+        real = species[start:start + batch_size] != 0  # padding atoms have species 0
+        system_idx = torch.arange(real.shape[0]).unsqueeze(1).expand_as(real)[real]
+        batch = batched_minimum_distances(positions[start:start + batch_size][real].to(target),
+                                          cells[start:start + batch_size].to(target), system_idx.to(target),
+                                          real.shape[0])
+        if batch is None:
+            return by_hippynn(arrays)
+        found[start:start + batch_size] = batch.cpu()
+    for i in (~torch.isfinite(found)).nonzero().squeeze(1).tolist():
+        real = species[i] != 0
+        found[i] = minimum_distance(Atoms(numbers=species[i][real].numpy(), positions=positions[i][real].numpy(),
+                                          cell=cells[i].numpy(), pbc=True))
+    return found.to(positions.dtype)
+
+
 def train_HIPNN_model(model_dir,
                       h5_train_dir,
                       energy_key,
@@ -592,8 +640,8 @@ def train_HIPNN_model(model_dir,
 
             arrays[species_key] = arrays[species_key].to(torch.int64)   # or .long()
 
-            # Keywords: hippynn's development branch made dist_hard_max the second positional argument.
-            min_dists = hippynn.pretraining.calculate_min_dists(database.arr_dict,species_name=species_key,positions_name=coordinates_key,dist_hard_max=6.0,cell_name=cell_key,batch_size=256,device=device_cuda)
+            min_dists = training_minimum_distances(database.arr_dict, species_key, coordinates_key, cell_key,
+                                                   device_cuda)
             min_dists_flag = min_dists>network_params["dist_soft_min"]
             for curK in database.arr_dict.keys():
                 database.arr_dict[curK] = database.arr_dict[curK][min_dists_flag]
@@ -604,8 +652,6 @@ def train_HIPNN_model(model_dir,
               .to(torch.int32)             # or .int() / .to(torch.int64) as you prefer
               .sum(dim=1)                  # sum along atom axis
              )
-
-            min_dists = hippynn.pretraining.calculate_min_dists(database.arr_dict,species_name=species_key,positions_name=coordinates_key,dist_hard_max=6.0,cell_name=cell_key,batch_size=256,device=device_cuda)
 
             if not( energy_key+"peratom" in list(arrays.keys())):
                 arrays[energy_key+"peratom"] =  arrays[energy_key] / n_atoms

@@ -120,6 +120,12 @@ The master config controls the workflow wiring. Common fields include:
        this interval. ALF applies it to bootstrap and active learning, and reloads it
        with the master configuration during active learning. It is independent of
        the sampler's MD observation interval, ``Ncheck``.
+   * - ``parsl_data_serializer``
+     - Optional. How the coordinator serializes task data for Parsl: ``"dill"`` (default,
+       Parsl's own) or ``"pickle"``, which tries plain pickle first and falls back to dill for
+       anything pickle can't serialize or that refers to the coordinator's ``__main__``.
+       Workers need no setup. Read once at startup. See
+       :ref:`running-at-scale-coordinator-cpu`.
    * - ``bootstrap_spares``
      - Optional, with ``finite_bootstrap``. The number of extra seeds after the first
        ``bootstrap_set``, default ``0``. Each failed label, unconverged or lost with its

@@ -93,6 +93,22 @@ reads them back one held piece, at most 1,000 labels, at a time.
 - Watch the coordinator's resident memory over a smaller run and scale it by the number of
   structures per cycle before going larger.
 
+.. _running-at-scale-coordinator-cpu:
+
+Coordinator CPU
+---------------
+
+The coordinator is one Python process, and it serializes every task's input structures before Parsl sends
+them. Parsl does this with dill, a pure-Python pickler: one QM task of 256 sampled structures took about
+1.4 s, so with thousands of such tasks the coordinator spends most of its time serializing, and the
+last tasks of a stage start minutes after the first. Two settings cut this, together by about 200 times
+for that task:
+
+- The sampler's ``returned_metadata`` ``"compact"`` (see :ref:`running-at-scale-coordinator-memory`):
+  fewer objects per structure, about 10 times faster to serialize.
+- The master's ``parsl_data_serializer`` ``"pickle"`` (see :doc:`configuration`): plain pickle first, dill
+  only as the fallback, about 20 times faster again.
+
 Related
 -------
 

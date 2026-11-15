@@ -32,6 +32,7 @@ from alframework.tools.tools import load_module_from_string
 from alframework.tools.tools import build_input_dict
 from alframework.tools.tools import release_allocations_at_exit
 from alframework.tools.tools import stop_if_executor_failed
+from alframework.tools.serialization import data_serializer, use_data_serializer
 from alframework.tools.tools import write_status
 from alframework.tools.files import hold_lock
 from alframework.tools.pyanitools import anidataloader
@@ -89,6 +90,9 @@ executor_list = []
 # Create List of parsl executors
 for curExec in parsl_configuration.executors:
     executor_list.append(curExec.label)
+
+# Task data: Parsl's dill, or pickle first (parsl_data_serializer), before anything is submitted.
+use_data_serializer(data_serializer(master_config))
 
 # Load the Parsl config
 release_allocations_at_exit(parsl.load(parsl_configuration))

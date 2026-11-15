@@ -171,10 +171,13 @@ Plan for this pause between the end of labeling and the start of training in lar
 Training With Many Labels
 -------------------------
 
-Two parts of each training grow with the number of labels, whatever the number of GPUs: every training rank
-loads the whole HDF5 database before the distributed sampler gives it its share, and the final test after
-training runs on one GPU over the whole test split. With 8 GPUs per member, the time outside the epochs grew
-roughly linearly, from about 1.3 minutes with 2,048 labels to about 21 minutes with 262,144.
+Every member reads the whole HDF5 database and screens every structure for close atom pairs before it
+trains, and tests the best model on every split afterwards, so these grow with the number of labels. The
+screen uses ALF's batched neighbor search, once per training, and the final test is split over the member's
+GPUs (see :ref:`ml-multigpu-members`). For 262,344 structures of 201 atoms on 8 GPUs per member, a member
+had its data loaded, screened and set up for training 70 s after it started, and its final test, plots and
+saving took 1.6 minutes; it trained in 6.75 minutes with 2 epochs. Before these changes the screen ran twice, about 6
+minutes each, and the final test ran on one GPU, so the same member took 23.5 minutes.
 
 Data parallelism (see :ref:`ml-multigpu-members`) keeps the time per epoch flat only while a member's GPUs
 grow with the labels. A member's ranks start on one node, so a member uses at most one node's GPUs; beyond

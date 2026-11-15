@@ -306,7 +306,9 @@ Several GPUs per member
    - Each GPU validates its own slice of the validation set, and the losses are averaged, which
      early stopping uses. When the set doesn't divide evenly, a few structures count twice.
    - The training set isn't evaluated during training (``fraction_train_eval``), and plots aren't
-     made during training. The final evaluation and plots still run, on one GPU and the full splits.
+     made during training. The final evaluation and plots still run on the full splits: each GPU
+     predicts every n-th evaluation batch, and the metrics are computed over all of them, so they are
+     the ones a single GPU would report.
    - A member uses one node; a member can't span several nodes.
 
 More members cost more than training time:

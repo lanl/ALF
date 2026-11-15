@@ -109,6 +109,78 @@ for that task:
 - The master's ``parsl_data_serializer`` ``"pickle"`` (see :doc:`configuration`): plain pickle first, dill
   only as the fallback, about 20 times faster again.
 
+.. _running-at-scale-huge-pages:
+
+Transparent Huge Pages on the Coordinator's Host
+------------------------------------------------
+
+At scale the coordinator allocates large blocks of memory: harvested results, held-label pieces, and the
+arrays of each stored shard. On a host whose transparent huge pages are always on
+(``cat /sys/kernel/mm/transparent_hugepage/enabled`` shows ``[always]``), the kernel backs these with huge
+pages, and on a busy shared login node that made large allocations 30 to 60 times slower: filling a new
+1.3 GB array took 39 s instead of 0.7 s, and a 400 MB one 4.4 s instead of 0.2 s. Allocations of about
+100 MB were not affected, so small runs don't show it.
+
+A process can opt out for itself and every process it starts, without administrator rights: call
+``prctl(PR_SET_THP_DISABLE, 1, 0, 0, 0)`` and then ``exec`` the coordinator. The setting is kept across
+``exec`` and inherited by child processes, such as Parsl's interchange. For example, a wrapper
+``thp_off.py``:
+
+.. code-block:: python
+
+   import ctypes, os, sys
+   ctypes.CDLL(None).prctl(41, 1, 0, 0, 0)  # 41 = PR_SET_THP_DISABLE
+   os.execvp(sys.argv[1], sys.argv[1:])
+
+started as ``python thp_off.py python -m alframework --master master_config.json``. ``grep THP_enabled
+/proc/<pid>/status`` shows ``0`` for the coordinator and its children once it applies.
+
+.. _running-at-scale-batched-builders:
+
+Batched Builders
+----------------
+
+Each builder task is a Parsl task that the coordinator creates, serializes and tracks. With one structure
+per task, a run with 262,144 trajectories submitted 262,144 builder tasks: the coordinator spent about 5
+minutes of CPU creating them, and sampling started about 2 minutes after its workers did, while they worked
+through the builders. A builder that takes ``moleculeids`` and returns a list, with
+``maximum_builder_structures`` in the master configuration (see :doc:`builders`), divides that by the batch
+size. Matching it to the sampler's batch size (see :doc:`batching`) gives one builder task per sampler task.
+A failed builder task loses its whole batch, so a batched builder should draw a structure that fails again
+rather than raise.
+
+.. _running-at-scale-storing-labels:
+
+Storing Labels
+--------------
+
+Before each training, the coordinator stores the labels held since the last one as a new HDF5 shard, on its
+main thread, and then submits the training. The time grows with the number of labels: about 7 minutes for
+262,144 labels of 201 atoms. Two things dominated it:
+
+- Compression: shards are written with gzip level 6 on one thread. For coordinates and forces it saved only
+  15 to 25% of the space, at about three times the time of writing them uncompressed.
+- Large allocations: storing builds one array per formula and property, which is slow on a host with
+  transparent huge pages always on (see :ref:`running-at-scale-huge-pages`). Without them, storing 65,536
+  labels went from 69 to 51 s.
+
+Plan for this pause between the end of labeling and the start of training in large runs.
+
+.. _running-at-scale-training:
+
+Training With Many Labels
+-------------------------
+
+Two parts of each training grow with the number of labels, whatever the number of GPUs: every training rank
+loads the whole HDF5 database before the distributed sampler gives it its share, and the final test after
+training runs on one GPU over the whole test split. With 8 GPUs per member, the time outside the epochs grew
+roughly linearly, from about 1.3 minutes with 2,048 labels to about 21 minutes with 262,144.
+
+Data parallelism (see :ref:`ml-multigpu-members`) keeps the time per epoch flat only while a member's GPUs
+grow with the labels. A member's ranks start on one node, so a member uses at most one node's GPUs; beyond
+that, each epoch takes longer in proportion to the labels per GPU (four times the labels per GPU, four times
+the epoch). Size the ML job's walltime for both.
+
 Related
 -------
 

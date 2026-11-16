@@ -49,6 +49,7 @@ from ase.io.trajectory import Trajectory
 from ase.calculators.calculator import Calculator, all_changes
 from ase.md.langevin import Langevin
 from parsl import python_app
+from alframework.tools.failed_tasks import releases_memory_on_failure
 from alframework.tools.task_timeline import timed
 
 from alframework.ml_interfaces.ensemble_inference import ensemble_statistics, SelectedStateEvaluator
@@ -259,7 +260,9 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
 
     def finish(index, outcome, error=None):
         state[index]['outcome'] = outcome
-        state[index]['error'] = error
+        # Keep the message, not the exception: its traceback holds the failed evaluation's frames and their
+        # tensors, which would stay allocated for the rest of the task.
+        state[index]['error'] = None if error is None else "{}: {}".format(type(error).__name__, error)
         state[index]['finished_atoms'] = engine.atoms(index)
         state[index]['finished_at'] = time.time()
         engine.finish(index)
@@ -483,7 +486,7 @@ def _record(molecule, entry, schedule, sampler_config, settings, engine, index, 
     if cohort:
         meta_dict['acquisition_candidates'] = entry['candidates']
     if entry['error'] is not None:
-        meta_dict['sampling_error'] = "{}: {}".format(type(entry['error']).__name__, entry['error'])
+        meta_dict['sampling_error'] = entry['error']
     meta_dict.update(molecule.get_metadata())
     meta_dict.update(signals)
     for key in ('acquisition_trigger_flags', 'acquisition_cutoffs', 'acquisition_score_terms'):
@@ -715,6 +718,7 @@ def sample_trajectories(molecule_objects, models, sampler_config, engine_class=N
 
 @python_app(executors=['alf_sampler_executor'])
 @timed('sampler')
+@releases_memory_on_failure
 def mlmd_trajectories_task(molecule_objects, sampler_config, model_path, current_model_id, gpus_per_node=None):
     """Run MLMD for several trajectories in one task.
 

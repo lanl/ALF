@@ -181,3 +181,35 @@ def test_a_deserialized_task_records_once(tmp_path, monkeypatch):
     function, args, kwargs = unpack_apply_message(pack_apply_message(_outer, ([1, 2],), {}))
     assert function(*args, **kwargs) == [2, 4]
     assert [r["task"] for r in read_timeline(str(tmp_path))] == ["_outer"]
+
+
+class _FakeCuda:
+    def __init__(self, peaks):
+        self.peaks, self.resets = peaks, []
+
+    def is_initialized(self):
+        return True
+
+    def device_count(self):
+        return len(self.peaks)
+
+    def reset_peak_memory_stats(self, device):
+        self.resets.append(device)
+
+    def max_memory_allocated(self, device):
+        return self.peaks[device]
+
+
+def test_gpu_peak_is_recorded_only_where_torch_uses_a_gpu(tmp_path, monkeypatch):
+    import sys
+    from types import SimpleNamespace
+    monkeypatch.setenv(ENV, str(tmp_path))
+    monkeypatch.delitem(sys.modules, "torch", raising=False)
+    _sample([1])
+    cuda = _FakeCuda([1 * 2**30, 3 * 2**30])
+    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(cuda=cuda))
+    _sample([2])
+    first, second = read_timeline(str(tmp_path))
+    assert first["gpu_peak_gb"] is None, "a task never imports torch to measure it"
+    assert second["gpu_peak_gb"] == 3.0, "the device that used the most"
+    assert cuda.resets == [0, 1], "each task's peak starts at that task"

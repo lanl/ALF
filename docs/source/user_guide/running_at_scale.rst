@@ -184,6 +184,22 @@ grow with the labels. A member's ranks start on one node, so a member uses at mo
 that, each epoch takes longer in proportion to the labels per GPU (four times the labels per GPU, four times
 the epoch). Size the ML job's walltime for both.
 
+.. _running-at-scale-failed-gpu-tasks:
+
+Failed GPU Tasks
+----------------
+
+A Parsl worker runs many tasks, one after another. ALF's MD sampler tasks free what they held when they fail,
+before the worker takes its next task, and a trajectory that fails keeps only its error message
+(``sampling_error``), not the exception. Python otherwise keeps a failed task's objects, such as its MD engine
+and the tensors of the evaluation that failed, until its cycle collector happens to run. In one 128-node run,
+one batch of 256 trajectories ran its GPU out of memory, and its 63 GB stayed allocated: that worker then
+failed its next five tasks, four within 0.04 s each, and, being free again first, took the tasks resubmitted
+to replace the lost ones. Your own GPU tasks can do the same with
+``alframework.tools.failed_tasks.releases_memory_on_failure``, under ``@python_app`` and ``timed``.
+
+The task timeline (see :doc:`monitoring`) records each task's peak GPU memory, to find what grew.
+
 Related
 -------
 

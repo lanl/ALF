@@ -5,7 +5,9 @@ failed trajectory leaves the others alone. Some tests skip without torch, HIPPYN
 """
 
 import copy
+import gc
 import time
+import weakref
 from types import SimpleNamespace
 
 import numpy as np
@@ -182,6 +184,48 @@ class FailingEngine(ASEEngine):
         if index == 1 and self.steps[index] > 1:
             raise RuntimeError("model evaluation failed")
         return super().observe(index)
+
+
+class Evaluation:
+    """Stands in for the tensors of a failed evaluation."""
+
+
+class FailingEvaluationEngine(ASEEngine):
+    """Trajectory 1's check fails while holding its evaluation; later checks of trajectory 0 look for it."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.failed_evaluation, self.held_after_failure = None, []
+
+    def observe(self, index):
+        if index == 1 and self.steps[index] > 1 and self.failed_evaluation is None:
+            evaluation = Evaluation()
+            self.failed_evaluation = weakref.ref(evaluation)
+            raise RuntimeError("model evaluation failed")
+        if index == 0 and self.failed_evaluation is not None:
+            self.held_after_failure.append(self.failed_evaluation() is not None)
+        return super().observe(index)
+
+
+def test_a_failed_trajectory_does_not_hold_its_evaluation(monkeypatch):
+    engines = []
+
+    class Recorded(FailingEvaluationEngine):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            engines.append(self)
+
+    molecules = [MoleculesObject(m.get_atoms().copy(), m.get_moleculeid()) for m in mixed_inputs()[:3]]
+    enabled = gc.isenabled()
+    gc.disable()  # Only reference counting, as between two runs of the cycle collector.
+    try:
+        failed = sample_trajectories(molecules, fake_ensemble(), dict(GROUP_CONFIG), engine_class=Recorded)
+    finally:
+        if enabled:
+            gc.enable()
+    assert failed[1].get_metadata()["sampling_error"] == "RuntimeError: model evaluation failed"
+    [engine] = engines
+    assert engine.held_after_failure and not any(engine.held_after_failure)
 
 
 def test_one_failed_trajectory_spares_the_others():

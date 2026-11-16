@@ -6,7 +6,9 @@ process, so thousands of workers never share a file and no locking is needed on 
 
 ``stage`` (builder, sampler, QM, ML), ``task`` (function name), ``items`` (structures in the task's first
 argument, 1 for a single one), ``start``/``end`` (Unix seconds) and ``seconds``, ``outcome`` (``ok`` or the
-exception's class name), ``host``, ``pid``, ``slurm_job``, ``parsl_block``, ``parsl_pool``, ``parsl_rank``.
+exception's class name), ``host``, ``pid``, ``slurm_job``, ``parsl_block``, ``parsl_pool``, ``parsl_rank``, and
+``gpu_peak_gb``: the most GPU memory PyTorch had allocated during the task, on the device that used the most, in
+a worker that uses a GPU through PyTorch (``None`` otherwise).
 
 Stage times then come from the tasks themselves (first start to last end), rather than from Parsl's file
 timestamps, which depend on job names and count a block's idle time.
@@ -15,6 +17,7 @@ import functools
 import json
 import os
 import socket
+import sys
 import threading
 import time
 
@@ -49,6 +52,34 @@ def _items(args, kwargs):
     return len(first) if isinstance(first, (list, tuple)) else 1
 
 
+def _torch_cuda():
+    """``torch.cuda`` if this process already uses a GPU through PyTorch, else ``None``; never imports torch."""
+    torch = sys.modules.get('torch')
+    try:
+        return torch.cuda if torch is not None and torch.cuda.is_initialized() else None
+    except Exception:
+        return None
+
+
+def _reset_gpu_peak():
+    cuda = _torch_cuda()
+    try:
+        for device in range(cuda.device_count() if cuda is not None else 0):
+            cuda.reset_peak_memory_stats(device)
+    except Exception:
+        pass
+
+
+def _gpu_peak_gb():
+    cuda = _torch_cuda()
+    try:
+        if cuda is not None and cuda.device_count():
+            return round(max(cuda.max_memory_allocated(device) for device in range(cuda.device_count())) / 2**30, 3)
+    except Exception:
+        pass
+    return None
+
+
 def write_record(directory, record):
     os.makedirs(directory, exist_ok=True)
     path = os.path.join(directory, f"{record['host']}-{record['pid']}.jsonl")
@@ -64,6 +95,7 @@ def timed(stage):
             directory = os.environ.get(ENV)
             if not directory or not _begin_outermost():
                 return function(*args, **kwargs)
+            _reset_gpu_peak()
             start, outcome = time.time(), 'ok'
             try:
                 return function(*args, **kwargs)
@@ -80,7 +112,7 @@ def timed(stage):
                         'host': socket.gethostname(), 'pid': os.getpid(), 'slurm_job': os.environ.get('SLURM_JOB_ID'),
                         'parsl_block': os.environ.get('PARSL_WORKER_BLOCK_ID'),
                         'parsl_pool': os.environ.get('PARSL_WORKER_POOL_ID'),
-                        'parsl_rank': os.environ.get('PARSL_WORKER_RANK')})
+                        'parsl_rank': os.environ.get('PARSL_WORKER_RANK'), 'gpu_peak_gb': _gpu_peak_gb()})
                 except OSError:
                     pass  # A timeline that cannot be written must never fail the task itself.
         return wrapper

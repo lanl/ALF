@@ -11,7 +11,9 @@ import functools
 
 
 def release_failed_task(error):
-    """Clear the frames ``error`` (and the exceptions it chains to) holds, collect, and empty the GPU cache.
+    """Clear the frames ``error`` (and the exceptions it chains to) holds, collect, and empty the GPU caches.
+
+    The caches are PyTorch's and CuPy's memory pools, in a process that already uses them.
 
     The frames keep their code and line numbers, so the traceback still prints; only their local variables
     are dropped. Frames still running, such as the caller's, are left alone.
@@ -28,12 +30,19 @@ def release_failed_task(error):
         traceback.clear_frames(current.__traceback__)
         pending.extend((current.__cause__, current.__context__))
     gc.collect()
-    torch = sys.modules.get('torch')  # Never import torch here: a CPU task may not use it.
+    torch = sys.modules.get('torch')  # Never import torch or CuPy here: a CPU task may not use them.
     try:
         if torch is not None and torch.cuda.is_initialized():
             torch.cuda.empty_cache()
     except Exception:
         pass  # Releasing memory must never replace the task's own error.
+    cupy = sys.modules.get('cupy')
+    try:
+        if cupy is not None:
+            cupy.get_default_memory_pool().free_all_blocks()
+            cupy.get_default_pinned_memory_pool().free_all_blocks()
+    except Exception:
+        pass
 
 
 def releases_memory_on_failure(function):

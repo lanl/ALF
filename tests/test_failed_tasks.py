@@ -97,3 +97,45 @@ def test_a_failed_sampler_task_frees_its_engine(no_cycle_collector, monkeypatch)
         returned.reraise()
     [engine] = engines
     assert engine() is None, "the next task would start with this task's engine still allocated"
+
+
+# Every task that uses a GPU in the worker process. Members train in child processes, so they are not here.
+GPU_TASKS = [
+    ("alframework.samplers.batched_mlmd", "mlmd_trajectories_task"),
+    ("alframework.samplers.mlmd_sampling", "simple_mlmd_sampling_task"),
+    ("alframework.samplers.udd_sampling", "simple_udd_sampling_task"),
+    ("alframework.samplers.reactive_sampler", "reactive_sampling"),
+    ("alframework.qm_interfaces.teacher_interface", "teacher_task"),
+    ("alframework.qm_interfaces.teacher_interface", "teacher_batch_task"),
+    ("alframework.qm_interfaces.pyseqm_interface", "pyseqm_task"),
+    ("alframework.qm_interfaces.pyseqm_interface", "pyseqm_excited_state_task"),
+    ("alframework.qm_interfaces.pyseqm_interface", "pyseqm_excited_state_batch_task"),
+    ("alframework.qm_interfaces.pyscf", "pyscf_task"),
+    ("alframework.qm_interfaces.pyscf.gpu4pyscf", "gpu4pyscf_excited_state_task"),
+]
+RELEASING = releases_memory_on_failure(lambda: None).__code__
+
+
+@pytest.mark.parametrize("module, name", GPU_TASKS)
+def test_every_in_process_gpu_task_releases_on_failure(module, name):
+    import importlib
+    try:
+        task = getattr(importlib.import_module(module), name)
+    except ImportError as missing:
+        pytest.skip(f"{module} needs {missing.name}")
+    function, chain = task.func, []
+    while function is not None:
+        chain.append(function.__code__)
+        function = getattr(function, "__wrapped__", None)
+    assert RELEASING in chain
+
+
+def test_release_empties_the_cupy_pools(monkeypatch):
+    import sys
+    from types import SimpleNamespace
+    freed = []
+    pool = lambda name: SimpleNamespace(free_all_blocks=lambda: freed.append(name))  # noqa: E731
+    monkeypatch.setitem(sys.modules, "cupy", SimpleNamespace(get_default_memory_pool=lambda: pool("device"),
+                                                             get_default_pinned_memory_pool=lambda: pool("pinned")))
+    release_failed_task(RuntimeError("SCF failed"))
+    assert freed == ["device", "pinned"]

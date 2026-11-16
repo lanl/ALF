@@ -29,6 +29,7 @@ from pathlib import Path
 
 import numpy as np
 from parsl import python_app
+from alframework.tools.failed_tasks import releases_memory_on_failure
 from alframework.tools.task_timeline import timed
 
 TEACHER_PROPERTIES = {"energy": "system", "forces": "atomic"}
@@ -345,6 +346,7 @@ def label_with_teacher(molecule_objects, QM_config, properties_list=None, gpus_p
 
 @python_app(executors=['alf_QM_executor'])
 @timed('QM')
+@releases_memory_on_failure
 def teacher_task(molecule_object, QM_config, properties_list, gpus_per_node=None, master_directory=None):
     """Label one structure with the configured teacher. Also used by ``"mode": "sequential"`` batching."""
     return label_with_teacher([molecule_object], QM_config, properties_list, gpus_per_node, master_directory)[0]
@@ -352,6 +354,7 @@ def teacher_task(molecule_object, QM_config, properties_list, gpus_per_node=None
 
 @python_app(executors=['alf_QM_executor'])
 @timed('QM')
+@releases_memory_on_failure
 def teacher_batch_task(molecule_objects, QM_config, properties_list, gpus_per_node=None, master_directory=None):
     """Label a batch with one forward pass of the configured teacher, for ``"mode": "native"`` batching."""
     return label_with_teacher(molecule_objects, QM_config, properties_list, gpus_per_node, master_directory)

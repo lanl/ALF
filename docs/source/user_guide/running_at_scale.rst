@@ -189,9 +189,11 @@ the epoch). Size the ML job's walltime for both.
 Failed GPU Tasks
 ----------------
 
-A Parsl worker runs many tasks, one after another. ALF's MD sampler tasks free what they held when they fail,
-before the worker takes its next task, and a trajectory that fails keeps only its error message
-(``sampling_error``), not the exception. Python otherwise keeps a failed task's objects, such as its MD engine
+A Parsl worker runs many tasks, one after another. ALF's tasks that use a GPU in the worker process (the MD
+samplers, the teacher, PySEQM, PySCF and GPU4PySCF, and the reactive sampler) free what they held when they
+fail, including PyTorch's and CuPy's cached GPU memory, before the worker takes its next task, and a trajectory
+that fails keeps only its error message (``sampling_error``), not the exception. Ensemble members train in a
+child process, so their memory is freed when it exits. Python otherwise keeps a failed task's objects, such as its MD engine
 and the tensors of the evaluation that failed, until its cycle collector happens to run. In one 128-node run,
 one batch of 256 trajectories ran its GPU out of memory, and its 63 GB stayed allocated: that worker then
 failed its next five tasks, four within 0.04 s each, and, being free again first, took the tasks resubmitted

@@ -28,6 +28,7 @@ from typing import Any
 import numpy as np
 from ase.data import chemical_symbols
 from parsl import python_app
+from alframework.tools.failed_tasks import releases_memory_on_failure
 from alframework.tools.task_timeline import timed
 
 from alframework.tools.excited_state_tools import (
@@ -1421,6 +1422,7 @@ def label_gpu4pyscf_excited_state_molecule(
 
 @python_app(executors=["alf_QM_executor"])
 @timed('QM')
+@releases_memory_on_failure
 def gpu4pyscf_excited_state_task(
     molecule_object,
     QM_config,

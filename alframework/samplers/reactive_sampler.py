@@ -8,6 +8,7 @@ import time
 from ase import Atoms
 import pickle as pkl
 from parsl import python_app, bash_app
+from alframework.tools.failed_tasks import releases_memory_on_failure
 from alframework.tools.task_timeline import timed
 
 from alframework.tools.tools import annealing_schedule
@@ -26,6 +27,7 @@ from ase.optimize import BFGS
 
 @python_app(executors=['alf_sampler_executor'])
 @timed('sampler')
+@releases_memory_on_failure
 def reactive_sampling(molecule_object, sampler_config,model_path,current_model_id,gpus_per_node, ase_calculator, N_neb, max_iter, neb_steps, reactive_sampling_method, Escut, Fscut, Fmmult=3.0) :
     # Performs reactive sampling with NEB/dimer methods based on input based in the config file
     

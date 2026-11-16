@@ -215,9 +215,24 @@ PAYLOAD = 'lightning_setup.pt'
 FINAL_SHARE = 'final_test_rank{}.pt'
 
 
+def _align(database, db_info):
+    """Order the database's inputs and targets as the model expects, as hippynn's ``test_model`` does first.
+
+    hippynn's development branch has ``Database.align``; release 0.1.3 checks and assigns them inline.
+    """
+    if hasattr(database, 'align'):
+        database.align(**db_info)
+        return
+    for kind in ('inputs', 'targets'):
+        if set(getattr(database, kind)) != set(db_info[kind]):
+            raise ValueError(f"Database and model have different {kind}: "
+                             f"database has {set(getattr(database, kind))}, model requires {set(db_info[kind])}")
+        setattr(database, kind, db_info[kind])
+
+
 def _final_splits(database, evaluator):
     """The splits hippynn's ``test_model`` evaluates, in its order: train, valid and test first."""
-    database.align(**evaluator.db_info)
+    _align(database, evaluator.db_info)
     required = set(database.inputs + database.targets)
     names = [name for name, split in database.splits.items() if all(key in split for key in required)]
     basic = [name for name in ('train', 'valid', 'test') if name in names]

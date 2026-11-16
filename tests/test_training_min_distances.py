@@ -2,8 +2,8 @@
 
 import numpy as np
 import pytest
-import torch
 
+torch = pytest.importorskip("torch")
 pytest.importorskip("hippynn")
 pytest.importorskip("torch_sim")
 
@@ -72,7 +72,7 @@ def test_nonperiodic_data_and_no_batched_search_use_hippynn(monkeypatch):
     arrays = periodic_arrays(systems=8)
     open_arrays = {k: v for k, v in arrays.items() if k != "cell"}
     assert torch.equal(training_minimum_distances(open_arrays, "Z", "R", None, "cpu", batch_size=16),
-                       hippynn_reference(open_arrays, cell=False))
+                       hippynn_reference(open_arrays, cell=None))
     monkeypatch.setattr(geometry, "_batched_neighbor_search", lambda: None)
     assert torch.equal(training_minimum_distances(arrays, "Z", "R", "cell", "cpu", batch_size=16),
                        hippynn_reference(arrays))

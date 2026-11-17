@@ -287,3 +287,14 @@ def test_no_old_state_names_remain():
              for path in (ROOT / folder).rglob("*") if path.suffix in {".py", ".json", ".rst", ".md", ".txt"}
              and old.search(path.read_text(errors="ignore"))]
     assert found == []
+
+
+@pytest.mark.parametrize("path", MASTERS, ids=lambda path: str(path.relative_to(ROOT / "examples")))
+def test_examples_name_current_module_paths(path):
+    """Moved QM modules still import from their old paths, with a FutureWarning; examples use the new ones."""
+    from alframework.qm_interfaces import MOVED_MODULES
+
+    moved = tuple(f"alframework.qm_interfaces.{name}." for name in MOVED_MODULES)
+    for field, value in read(path).items():
+        if isinstance(value, str):
+            assert not value.startswith(moved), f"{field} names a moved module: {value}"

@@ -8,9 +8,10 @@ import numpy as np
 import pytest
 from ase import Atoms
 
-from alframework.qm_interfaces import ase_calculator_interface, orca5_interface, qchem_DFT_interface
-from alframework.qm_interfaces.orca5_interface import orcaGenerator
-from alframework.qm_interfaces.qchem_DFT_interface import qchemGenerator
+from alframework.qm_interfaces.ase import generic as ase_calculator_interface
+from alframework.qm_interfaces.legacy import orca5_interface, qchem_DFT_interface
+from alframework.qm_interfaces.legacy.orca5_interface import orcaGenerator
+from alframework.qm_interfaces.legacy.qchem_DFT_interface import qchemGenerator
 from alframework.tools.molecules_class import MoleculesObject
 from tests.helpers.fakes import FakeASECalculator
 from tests.helpers.interface_checks import (

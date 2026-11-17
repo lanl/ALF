@@ -5,6 +5,45 @@ QM interfaces connect ALF to electronic structure engines. They receive
 candidate structures from the sampler, run or parse a quantum-mechanical
 calculation, and return labeled data for storage in ALF's HDF5 training sets.
 
+.. _qm-interfaces-layout:
+
+Where The Interfaces Live
+-------------------------
+
+The paths below start with ``alframework.qm_interfaces``.
+
+``ase.generic``
+   ``ase_calculator_task``, which labels with any ASE calculator.
+``ase.vasp``
+   ``VASP_ase_calculator_task``.
+``legacy``
+   The older ORCA, Q-Chem and VASP interfaces, which write their programs' input and parse the output
+   themselves: ``legacy.orca5_interface``, ``legacy.qchem_DFT_interface`` and ``legacy.vaspase_interface``.
+``pyscf``, ``pyseqm_interface``, ``teacher_interface``
+   PySCF and GPU4PySCF, PySEQM, and foundation-model teachers.
+
+Moved modules
+   These modules moved into ``ase`` and ``legacy``. Their old paths still work, in configurations, imports
+   and pickled objects, with a ``FutureWarning`` naming the new path; update configurations to the new
+   paths. The tasks and classes keep their names, and do the same as before.
+
+   .. list-table::
+      :header-rows: 1
+      :widths: 50 50
+
+      * - Old path
+        - New path
+      * - ``ase_calculator_interface.ase_calculator_task``, ``.fresh_scratch_directory``
+        - ``ase.generic``, with the same names
+      * - ``ase_calculator_interface.VASP_ase_calculator_task``
+        - ``ase.vasp.VASP_ase_calculator_task``
+      * - ``orca5_interface``
+        - ``legacy.orca5_interface``
+      * - ``qchem_DFT_interface``
+        - ``legacy.qchem_DFT_interface``
+      * - ``vaspase_interface``
+        - ``legacy.vaspase_interface``
+
 Supported QM Packages
 ---------------------
 
@@ -19,13 +58,13 @@ Supported QM Packages
        cells. The default for new examples, since both are free and pip-installable. See
        :ref:`qm-interfaces-pyscf`.
    * - `ORCA <https://www.faccts.de/orca/>`__
-     - ``alframework.qm_interfaces.orca5_interface.orca_calculator_task``, or
-       ``alframework.qm_interfaces.orca5_interface.orca_double_calculator_task``
+     - ``alframework.qm_interfaces.legacy.orca5_interface.orca_calculator_task``, or
+       ``alframework.qm_interfaces.legacy.orca5_interface.orca_double_calculator_task``
        to run each calculation twice and accept it only if the results agree.
    * - `VASP <https://vasp.at/>`__
-     - ``alframework.qm_interfaces.ase_calculator_interface.VASP_ase_calculator_task``
+     - ``alframework.qm_interfaces.ase.vasp.VASP_ase_calculator_task``
    * - `Q-Chem <https://www.q-chem.com/>`__
-     - ``alframework.qm_interfaces.qchem_DFT_interface.qchem_dft_calculator_task``
+     - ``alframework.qm_interfaces.legacy.qchem_DFT_interface.qchem_dft_calculator_task``
    * - `PySEQM <https://github.com/lanl/PYSEQM>`__
      - ``alframework.qm_interfaces.pyseqm_interface.pyseqm_task`` for ground states.
        For excited states, see :doc:`excited_states`.
@@ -34,7 +73,7 @@ Supported QM Packages
        for excited states, or for ground-state DFT with ``nroots: 0``. See :doc:`excited_states` and
        :ref:`configuration-property-names`.
    * - `ASE-supported calculators <https://docs.ase-lib.org/ase/calculators/calculators.html#supported-calculators>`__
-     - ``alframework.qm_interfaces.ase_calculator_interface.ase_calculator_task``
+     - ``alframework.qm_interfaces.ase.generic.ase_calculator_task``
    * - Foundation models, such as MACE and UMA
      - ``alframework.qm_interfaces.teacher_interface.teacher_batch_task`` or ``teacher_task``,
        to label with a model instead of QM. See :ref:`qm-teacher-labeling`.
@@ -47,8 +86,8 @@ input writing, execution, and result extraction.
 .. note::
 
    New VASP configurations should use
-   ``alframework.qm_interfaces.ase_calculator_interface.VASP_ase_calculator_task``.
-   The older ``alframework.qm_interfaces.vaspase_interface.VASPGenerator`` helper
+   ``alframework.qm_interfaces.ase.vasp.VASP_ase_calculator_task``.
+   The older ``alframework.qm_interfaces.legacy.vaspase_interface.VASPGenerator`` helper
    is deprecated and kept only for backward compatibility. For custom VASP-style
    workflows, prefer the generic ``ase_calculator_task`` whenever the engine can
    be represented as an ASE calculator.
@@ -189,12 +228,12 @@ PySEQM ground states
    batch is kept.
 
 Legacy VASP helper
-   ``alframework.qm_interfaces.vaspase_interface.VASPGenerator`` is deprecated
+   ``alframework.qm_interfaces.legacy.vaspase_interface.VASPGenerator`` is deprecated
    and kept only for older imports. Do not start new configuration files from
    ``vaspase_interface.py``. This compatibility helper is not covered by the
    current integration tests and is unsupported for new workflows. Existing
    users should migrate to
-   ``alframework.qm_interfaces.ase_calculator_interface.VASP_ase_calculator_task``
+   ``alframework.qm_interfaces.ase.vasp.VASP_ase_calculator_task``
    or the generic ``ase_calculator_task`` described above.
 
    The legacy helper also applies ALF-specific VASP defaults before merging
@@ -413,7 +452,7 @@ Preferred ASE route
    .. code-block:: json
 
       {
-        "QM_task": "alframework.qm_interfaces.ase_calculator_interface.ase_calculator_task",
+        "QM_task": "alframework.qm_interfaces.ase.generic.ase_calculator_task",
         "QM_config_path": "my_qm_config.json",
         "QM_scratch_dir": "qm_scratch/"
       }
@@ -485,14 +524,14 @@ QM Interface API Links
 You can link from this guide directly to API pages:
 
 * :doc:`QM interfaces package API <../api_documentation/alframework.qm_interfaces>`
-* :doc:`ASE calculator interface module <../api_documentation/alframework.qm_interfaces.ase_calculator_interface>`
-* :doc:`ORCA interface module <../api_documentation/alframework.qm_interfaces.orca5_interface>`
-* :doc:`QChem interface module <../api_documentation/alframework.qm_interfaces.qchem_DFT_interface>`
+* :doc:`ASE calculator interface module <../api_documentation/alframework.qm_interfaces.ase.generic>`
+* :doc:`ORCA interface module <../api_documentation/alframework.qm_interfaces.legacy.orca5_interface>`
+* :doc:`QChem interface module <../api_documentation/alframework.qm_interfaces.legacy.qchem_DFT_interface>`
 * :doc:`PySEQM interface module <../api_documentation/alframework.qm_interfaces.pyseqm_interface>`
 * :doc:`PySCF interface module <../api_documentation/alframework.qm_interfaces.pyscf>`
 * :doc:`PySCF ASE calculator <../api_documentation/alframework.qm_interfaces.pyscf.calculator>`
 * :doc:`GPU4PySCF interface module <../api_documentation/alframework.qm_interfaces.pyscf.gpu4pyscf>`
-* :doc:`Legacy VASP interface module <../api_documentation/alframework.qm_interfaces.vaspase_interface>`
+* :doc:`Legacy VASP interface module <../api_documentation/alframework.qm_interfaces.legacy.vaspase_interface>`
 * :doc:`Parsl execution guide <parsl>`
 
 Related Examples

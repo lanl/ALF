@@ -33,7 +33,7 @@ How It Runs
      - ``alframework.samplers.mlmd_sampling.simple_mlmd_sampling_task``, loading the current ensemble
        with ``HIPNN_ASE_load_ensemble``
    * - QM
-     - ``alframework.qm_interfaces.orca5_interface.orca_calculator_task``
+     - ``alframework.qm_interfaces.legacy.orca5_interface.orca_calculator_task``
    * - ML
      - ``alframework.ml_interfaces.fine_tuning.fine_tune_ensemble_task``, with the HIPPYNN adapter
 

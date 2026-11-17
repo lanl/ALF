@@ -37,7 +37,7 @@ Workflow Pattern
    * - Sampler
      - ``alframework.samplers.mlmd_sampling.simple_mlmd_sampling_task``
    * - QM
-     - ``alframework.qm_interfaces.orca5_interface.orca_double_calculator_task``
+     - ``alframework.qm_interfaces.legacy.orca5_interface.orca_double_calculator_task``
    * - ML
      - ``alframework.ml_interfaces.hippynn_interface.train_HIPPYNN_ensemble_task``
 

@@ -25,7 +25,7 @@ How It Runs
      - ``alframework.samplers.batched_mlmd.mlmd_trajectories_task`` on TorchSim, loading the copies
        with ``fine_tuning.uma.load_uma_batched_ensemble``
    * - QM
-     - ``alframework.qm_interfaces.orca5_interface.orca_calculator_task``
+     - ``alframework.qm_interfaces.legacy.orca5_interface.orca_calculator_task``
    * - ML
      - ``alframework.ml_interfaces.fine_tuning.fine_tune_ensemble_task``, with ``UmaFineTuner``
 

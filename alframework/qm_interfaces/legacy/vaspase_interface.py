@@ -1,7 +1,7 @@
 """Deprecated legacy VASP ASE interface.
 
 This module is kept for compatibility with older imports. New ALF workflows
-should use ``alframework.qm_interfaces.ase_calculator_interface`` instead,
+should use ``alframework.qm_interfaces.ase`` instead,
 especially ``VASP_ase_calculator_task`` for VASP calculations through ASE.
 """
 
@@ -85,7 +85,7 @@ class VASPGenerator:
     ):
         warnings.warn(
             "VASPGenerator is deprecated. Use "
-            "alframework.qm_interfaces.ase_calculator_interface.VASP_ase_calculator_task "
+            "alframework.qm_interfaces.ase.vasp.VASP_ase_calculator_task "
             "or ase_calculator_task for new ALF workflows.",
             DeprecationWarning,
             stacklevel=2,

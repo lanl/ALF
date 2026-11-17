@@ -376,7 +376,7 @@ def test_next_bootstrap_ids_skips_held_ids_and_reaches_the_end():
 
 
 def test_ase_task_moves_aside_a_scratch_directory_left_by_an_earlier_attempt(tmp_path):
-    from alframework.qm_interfaces.ase_calculator_interface import fresh_scratch_directory
+    from alframework.qm_interfaces.ase.generic import fresh_scratch_directory
 
     directory = tmp_path / "mol-boot-0000000003"
     directory.mkdir()

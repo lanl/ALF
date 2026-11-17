@@ -43,7 +43,7 @@ This example uses:
    * - Sampler
      - ``alframework.samplers.reactive_sampler.reactive_sampling``
    * - QM
-     - ``alframework.qm_interfaces.orca5_interface.orca_calculator_task``
+     - ``alframework.qm_interfaces.legacy.orca5_interface.orca_calculator_task``
    * - ML
      - ``alframework.ml_interfaces.hippynn_interface.train_HIPPYNN_ensemble_task``
 

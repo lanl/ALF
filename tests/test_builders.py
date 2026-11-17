@@ -461,7 +461,11 @@ def test_cpp_ring_builder_replays_its_seed_and_opens_it_twice_per_task(ring_pool
 
 def test_cpp_ring_builder_rejects_a_changed_reference_after_caching_it(ring_pool, fresh_caches):
     ring_pool.module.build_ring_molecules(["mol-boot-0000000000"], ring_pool.builder)
-    write(ring_pool.prepared / "reference.xyz", Atoms("H2", positions=[[0, 0, 0], [0.80, 0, 0]]))
+    reference = ring_pool.prepared / "reference.xyz"
+    before = reference.stat()
+    write(reference, Atoms("H2", positions=[[0, 0, 0], [0.80, 0, 0]]))
+    # Same-size writes can share a filesystem timestamp tick; explicitly change the cache key.
+    os.utime(reference, ns=(before.st_atime_ns, before.st_mtime_ns + 1_000_000))
     with pytest.raises(ValueError, match="Prepared ring input changed: reference.xyz"):
         ring_pool.module.build_ring_molecules(["mol-boot-0000000001"], ring_pool.builder)
 

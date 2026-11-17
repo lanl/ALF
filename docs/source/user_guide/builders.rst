@@ -139,7 +139,8 @@ Fragment and condensed-phase builders
       * - ``center_first_molecule``
         - Whether to center the first solute without random rotation.
       * - ``max_atoms``
-        - Optional atom-count cap for generated systems.
+        - Optional atom-count cap for generated systems. A fragment is added only if the
+          structure stays within it, so solvent filling stops at the cap.
       * - ``shake``
         - Random coordinate perturbation applied during placement or loading.
       * - ``periodic``
@@ -147,6 +148,11 @@ Fragment and condensed-phase builders
           for labelers and models that treat structures as non-periodic. ORCA ignores the cell, so
           use ``false`` whenever a teacher or a fine-tuned model must see the same structure that
           ORCA labels. The two simple condensed-phase builder tasks take this setting.
+
+   Every solute in the chosen set is placed, even once the target density is reached, and
+   an ``early_stop_probability`` can end only the solvent filling. A solute that can't fit
+   within ``max_atoms``, or can't be placed within ``max_patience`` attempts, fails the
+   build. The packing tasks don't change the solute sets in their configuration.
 
 Atomic-system builders
    These fields are used by ``atomic_system_task`` and related atomic box

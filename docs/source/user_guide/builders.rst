@@ -252,12 +252,18 @@ Defect crystal builder
         - Lists of element types for interstitials and replacements.
       * - ``rattle``, ``cRattle``
         - Standard deviations of random atom displacements and random changes to the
-          cell lengths, in Angstroms. The defaults are ``0.0``.
+          cell lengths, in Angstroms. The defaults are ``0.0``. Atoms move with the cell, so
+          a cell change keeps their fractional coordinates.
       * - ``cScaleRange``
         - Range from which a cell scaling factor is drawn.
       * - ``maxAt``
         - The structure is repeated into a supercell with fewer than this many atoms.
           The default is ``100``.
+
+   Replacements choose distinct sites of the host element. Vacancies are then
+   selected from the host sites remaining after replacement and removed together.
+   A request for more replacements or vacancies than the available host sites
+   raises an error; choose the maximum counts to fit the starting structure.
 
 Batched builders
    ``maximum_builder_structures`` belongs in the master configuration, not the

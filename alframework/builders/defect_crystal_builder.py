@@ -20,6 +20,15 @@ from alframework.tools.task_timeline import timed
 
 from glob import glob
 
+
+def _sample_host_sites(atoms, element, count, operation):
+    """Choose distinct sites from the current structure, or reject an impossible request."""
+    sites = [index for index, symbol in enumerate(atoms.get_chemical_symbols()) if symbol == element]
+    if count > len(sites):
+        raise ValueError(f'Requested {count} {operation} on {element} sites, but only {len(sites)} are available.')
+    return r.sample(sites, count)
+
+
 def builder(StructFile,Rattle=0.0,repAtMax=0,CScale=1.0,CRat=0.0,tInt=[],nVac=0,tRep=[], tMain=None):
 
     ## Get Starting Struct from File to Edit
@@ -65,7 +74,7 @@ def builder(StructFile,Rattle=0.0,repAtMax=0,CScale=1.0,CRat=0.0,tInt=[],nVac=0,
 
     ### Rattle the Cell Lengths Individually to Create Small Deviatoric Perturbations
     if CRat > 0:
-        CC = S.cell
+        CC = S.cell.copy()
         CC[0][0] = S.cell[0][0] + np.random.normal(loc=0.0, scale=CRat)
         CC[1][1] = S.cell[1][1] + np.random.normal(loc=0.0, scale=CRat)
         CC[2][2] = S.cell[2][2] + np.random.normal(loc=0.0, scale=CRat)
@@ -124,34 +133,24 @@ def builder(StructFile,Rattle=0.0,repAtMax=0,CScale=1.0,CRat=0.0,tInt=[],nVac=0,
     print("Interstitial time: {:.4f}".format(time()-stime))
     stime=time()
 
-    Natoms = len(S.positions)
-    Elements = S.get_chemical_symbols()
-    
     ### Change Atom Types and Mass for a Type Replacement
     if len(tRep) > 0:
-        i = 0
-        while i < len(tRep):
-            NAt = r.randint(0,Natoms-1)
-            if Elements[NAt] == tMain:
-                zRep = atomic_numbers[tRep[i]]
-                mRep = atomic_masses[zRep]
-                S.numbers[NAt] = zRep
-                masses = S.get_masses()
-                masses[NAt] = mRep
-                S.set_masses(masses)
-                i+=1
+        sites = _sample_host_sites(S, tMain, len(tRep), 'replacements')
+        masses = S.get_masses()
+        for index, element in zip(sites, tRep):
+            number = atomic_numbers[element]
+            S.numbers[index] = number
+            masses[index] = atomic_masses[number]
+        S.set_masses(masses)
     
     print("Replacement time: {:.4f}".format(time()-stime))
     stime=time()
 
     #### Create Vacancies
     if nVac > 0:
-        i = 0
-        while i < nVac:
-            NAt = r.randint(0,Natoms-1)
-            if Elements[NAt] == tMain:
-                del S[NAt]
-                i+=1
+        # Recompute after replacements. Delete together so indices cannot shift between removals.
+        sites = _sample_host_sites(S, tMain, nVac, 'vacancies')
+        del S[sites]
     
     print("Vacancy time: {:.4f}".format(time()-stime))
     stime=time()

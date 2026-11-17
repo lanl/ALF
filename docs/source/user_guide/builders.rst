@@ -194,6 +194,9 @@ Reactive builders
         - Product structure file or file pattern read by ASE.
       * - ``N_reactions``
         - Number of reaction entries available in the files.
+      * - ``rattle``
+        - Whether to randomly displace the reactant, transition state and product: a boolean,
+          or the string ``"true"`` or ``"false"``. The default is ``true``.
 
 External geometry builder
    These fields are used by ``external_geometry_builder_task``.

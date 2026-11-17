@@ -17,6 +17,8 @@ The paths below start with ``alframework.qm_interfaces``.
 ``ase.orca``, ``ase.qchem``
    The checks and settings ``ase_calculator_task`` adds for ASE's own ORCA and Q-Chem calculators. See
    :ref:`qm-ase-orca-qchem`.
+``ase.workflow``
+   ``ase_workflow_task``, which runs several ASE calculations on one geometry. See :ref:`qm-ase-workflows`.
 ``ase.vasp``
    ``VASP_ase_calculator_task``.
 ``legacy``
@@ -65,9 +67,9 @@ Supported QM Packages
        :ref:`qm-interfaces-pyscf`.
    * - `ORCA <https://www.faccts.de/orca/>`__
      - ``alframework.qm_interfaces.ase.generic.ase_calculator_task`` with ASE's
-       ``ase.calculators.orca.ORCA``; see :ref:`qm-ase-orca-qchem`. The legacy tasks in
-       ``legacy.orca5_interface`` remain for properties ASE doesn't read, such as quadrupoles, and for
-       repeated calculations that must agree.
+       ``ase.calculators.orca.ORCA``; see :ref:`qm-ase-orca-qchem`. To repeat a calculation and check that
+       it agrees, see :ref:`qm-ase-workflows`. The legacy tasks in ``legacy.orca5_interface`` remain for
+       properties ASE doesn't read, such as quadrupoles.
    * - `VASP <https://vasp.at/>`__
      - ``alframework.qm_interfaces.ase.vasp.VASP_ase_calculator_task``
    * - `Q-Chem <https://www.q-chem.com/>`__
@@ -201,7 +203,8 @@ practical resource examples.
 Legacy ORCA double calculations
    ``orca_double_calculator_task`` runs the same ORCA calculation twice and stores
    the mean. A structure counts as converged only if both runs converge and agree
-   within the ``Ediff`` and ``Fdiff`` values in the QM config.
+   within the ``Ediff`` and ``Fdiff`` values in the QM config. The workflow task's
+   ``mean_if_agree`` does the same through ASE; see :ref:`qm-ase-workflows`.
 
 Legacy Q-Chem task
    ``qchem_dft_calculator_task`` runs ``QM_run_command`` with the scratch directory as its
@@ -595,6 +598,60 @@ PySCF and GPU4PySCF
 Before a production run, label one structure with ``--test_qm`` on the installation you'll use, and check
 the method, state, units and properties against the program's own output.
 
+.. _qm-ase-workflows:
+
+Several ASE Calculations On One Geometry
+----------------------------------------
+
+``alframework.qm_interfaces.ase.workflow.ase_workflow_task`` takes the same arguments as
+``ase_calculator_task`` and runs a list of stages, each an ASE configuration as above with a ``name``, in
+one QM worker:
+
+.. code-block:: json
+
+   {
+     "result_mode": "last",
+     "stages": [
+       {"name": "initial", "ASE_calculator": "ase.calculators.orca.ORCA",
+        "QM_run_command": "/path/to/orca-or-wrapper",
+        "input": {"orcasimpleinput": "EnGrad PBE def2-SVP TightSCF", "charge": 0, "mult": 1}},
+       {"name": "target", "ASE_calculator": "ase.calculators.orca.ORCA",
+        "QM_run_command": "/path/to/orca-or-wrapper",
+        "input": {"orcasimpleinput": "EnGrad PBE def2-TZVP TightSCF", "charge": 0, "mult": 1}}
+     ]
+   }
+
+Each stage is an independent calculation: it starts from the molecule's original geometry and state, with
+a fresh calculator, in ``<scratch>/<molecule>/<stage name>``. Nothing passes from one stage to the next, no
+orbitals, restart files or coordinates. Every stage must succeed and give every requested property. Stage
+names must be unique, and usable as directory names. ALF checks every stage when the coordinator starts.
+
+``result_mode`` picks the label:
+
+``last`` (the default)
+   The final stage's results. Earlier stages must succeed but don't contribute to the label. See
+   ``examples/ase_qm/staged_orca_qm_config.json``.
+
+``mean_if_agree``
+   Two or more identical stages, the same calculation repeated. The label is their mean if every pair
+   agrees within ``agreement``, which gives the energy tolerance in eV and the force tolerance in
+   eV/Angstrom:
+
+   .. code-block:: json
+
+      {"agreement": {"energy": 0.027211386024367243, "forces": 0.005142206709048065}}
+
+   These are 1e-3 Hartree and 1e-4 Hartree/Bohr, the legacy ORCA double calculation's ``Ediff`` and
+   ``Fdiff``. Every energy difference, and every force component's, must be below its tolerance, and the
+   repeats' labels must have the same shapes. This catches a calculation that doesn't reproduce; it can't
+   tell whether the electronic state is the right one.
+
+A failed stage stops the workflow and leaves the molecule unconverged; ``qm_failed_stage`` names the stage
+and the step, such as ``target:calculation``. ``qm_workflow`` metadata records each stage's name,
+calculator, directory, convergence and charge and multiplicity, and for ``mean_if_agree`` the largest
+deviations. A retried structure's directory, with all its stages, moves to ``.previous-N``. Sequential QM
+batching applies to whole workflows; stages can't be batched.
+
 Engines Without An ASE Calculator
 ---------------------------------
 
@@ -654,6 +711,7 @@ You can link from this guide directly to API pages:
 * :doc:`ASE calculator interface module <../api_documentation/alframework.qm_interfaces.ase.generic>`
 * :doc:`ORCA through ASE <../api_documentation/alframework.qm_interfaces.ase.orca>`
 * :doc:`Q-Chem through ASE <../api_documentation/alframework.qm_interfaces.ase.qchem>`
+* :doc:`ASE workflow task <../api_documentation/alframework.qm_interfaces.ase.workflow>`
 * :doc:`VASP ASE task <../api_documentation/alframework.qm_interfaces.ase.vasp>`
 * :doc:`ORCA interface module <../api_documentation/alframework.qm_interfaces.legacy.orca5_interface>`
 * :doc:`QChem interface module <../api_documentation/alframework.qm_interfaces.legacy.qchem_DFT_interface>`

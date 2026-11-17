@@ -9,6 +9,8 @@ The QM interface guide explains each setting.
 | `master_config_fragment.json` | `QM_task`, scratch directory and `properties_list` for `ase_calculator_task` |
 | `orca_qm_config.json` | One ORCA single point |
 | `qchem_qm_config.json` | One Q-Chem single point; point `QM_config_path` at it instead |
+| `staged_master_config_fragment.json` | The same for `ase_workflow_task` |
+| `staged_orca_qm_config.json` | Two ORCA stages; the second, with the larger basis, gives the label |
 
 1. Merge a master fragment into the run's master configuration, and copy the QM configuration it
    names.
@@ -40,3 +42,9 @@ written, so a wrapper must add its own thread flags (for example `exec qchem -nt
 out to have ASE build its command from `np` and `nt`. The legacy Q-Chem task calls its command
 differently, so its wrappers can't be reused unchanged.
 
+## Workflows
+
+In `staged_orca_qm_config.json`, each stage is an independent calculation from the same geometry,
+and nothing passes between stages; the last stage gives the label. To repeat one calculation and
+average it only when the repeats agree, use `"result_mode": "mean_if_agree"` with identical stages
+and `agreement` tolerances, as `examples/IL` does.

@@ -62,7 +62,7 @@ def test_a_module_that_never_existed_is_still_an_error():
         importlib.import_module(f"{PREFIX}not_a_module")
 
 
-@pytest.mark.parametrize("name", ["generic", "orca", "qchem", "vasp"])
+@pytest.mark.parametrize("name", ["generic", "orca", "qchem", "vasp", "workflow"])
 def test_ase_modules_import_without_torch_or_hippynn(name):
     run_fresh(f"""
 import sys

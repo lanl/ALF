@@ -142,6 +142,7 @@ TIMED_MODULES = [
     "alframework.samplers.udd_sampling", "alframework.samplers.reactive_sampler",
     "alframework.qm_interfaces.teacher_interface", "alframework.qm_interfaces.ase.generic",
     "alframework.qm_interfaces.ase.vasp",
+    "alframework.qm_interfaces.ase.workflow",
     "alframework.qm_interfaces.legacy.orca5_interface", "alframework.qm_interfaces.legacy.qchem_DFT_interface",
     "alframework.ml_interfaces.hippynn_interface",
 ]

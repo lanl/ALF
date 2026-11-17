@@ -219,5 +219,7 @@ def test_startup_checks_survive_the_plain_decorator_the_docs_build_uses():
 import parsl
 parsl.python_app = lambda *args, **kwargs: lambda function: function
 from alframework.qm_interfaces.ase.generic import ase_calculator_task
+from alframework.qm_interfaces.ase.workflow import ase_workflow_task
 assert callable(ase_calculator_task.validate_config)
+assert callable(ase_workflow_task.validate_config)
 '''], check=True)

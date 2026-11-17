@@ -1,0 +1,9 @@
+{
+  "QM_task": "alframework.qm_interfaces.ase.generic.ase_calculator_task",
+  "QM_config_path": "orca_qm_config.json",
+  "QM_scratch_dir": "ase_qm_scratch/",
+  "properties_list": {
+    "energy": ["energy", "system", 1.0],
+    "forces": ["forces", "atomic", 1.0]
+  }
+}

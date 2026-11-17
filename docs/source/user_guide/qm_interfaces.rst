@@ -14,6 +14,9 @@ The paths below start with ``alframework.qm_interfaces``.
 
 ``ase.generic``
    ``ase_calculator_task``, which labels with any ASE calculator.
+``ase.orca``, ``ase.qchem``
+   The checks and settings ``ase_calculator_task`` adds for ASE's own ORCA and Q-Chem calculators. See
+   :ref:`qm-ase-orca-qchem`.
 ``ase.vasp``
    ``VASP_ase_calculator_task``.
 ``legacy``
@@ -25,7 +28,7 @@ The paths below start with ``alframework.qm_interfaces``.
 Moved modules
    These modules moved into ``ase`` and ``legacy``. Their old paths still work, in configurations, imports
    and pickled objects, with a ``FutureWarning`` naming the new path; update configurations to the new
-   paths. The tasks and classes keep their names, and do the same as before.
+   paths. The tasks and classes keep their names.
 
    .. list-table::
       :header-rows: 1
@@ -44,6 +47,9 @@ Moved modules
       * - ``vaspase_interface``
         - ``legacy.vaspase_interface``
 
+   A moved task does the same as before. Changing a legacy ORCA task to ``ase_calculator_task`` with ASE's
+   ORCA calculator is a different interface, with different units; see :ref:`qm-ase-orca-qchem`.
+
 Supported QM Packages
 ---------------------
 
@@ -58,13 +64,16 @@ Supported QM Packages
        cells. The default for new examples, since both are free and pip-installable. See
        :ref:`qm-interfaces-pyscf`.
    * - `ORCA <https://www.faccts.de/orca/>`__
-     - ``alframework.qm_interfaces.legacy.orca5_interface.orca_calculator_task``, or
-       ``alframework.qm_interfaces.legacy.orca5_interface.orca_double_calculator_task``
-       to run each calculation twice and accept it only if the results agree.
+     - ``alframework.qm_interfaces.ase.generic.ase_calculator_task`` with ASE's
+       ``ase.calculators.orca.ORCA``; see :ref:`qm-ase-orca-qchem`. The legacy tasks in
+       ``legacy.orca5_interface`` remain for properties ASE doesn't read, such as quadrupoles, and for
+       repeated calculations that must agree.
    * - `VASP <https://vasp.at/>`__
      - ``alframework.qm_interfaces.ase.vasp.VASP_ase_calculator_task``
    * - `Q-Chem <https://www.q-chem.com/>`__
-     - ``alframework.qm_interfaces.legacy.qchem_DFT_interface.qchem_dft_calculator_task``
+     - ``alframework.qm_interfaces.legacy.qchem_DFT_interface.qchem_dft_calculator_task``, or
+       ``ase_calculator_task`` with ASE's Q-Chem calculator for energies and forces; see
+       :ref:`qm-ase-orca-qchem`.
    * - `PySEQM <https://github.com/lanl/PYSEQM>`__
      - ``alframework.qm_interfaces.pyseqm_interface.pyseqm_task`` for ground states.
        For excited states, see :doc:`excited_states`.
@@ -175,8 +184,10 @@ QM configuration
    workflow. These choices should be made explicitly in the engine-specific QM
    configuration and checked against the intended chemistry. For ORCA and
    Q-Chem, the method, basis, and property requests come from the configured
-   input/rem blocks, while the current task wrappers call the generators as
-   neutral singlets unless customized. For VASP through the current ASE
+   input/rem blocks. The legacy ORCA generator uses a neutral singlet; the
+   legacy Q-Chem task uses the molecule's ``charge`` and ``mult`` metadata,
+   defaulting to 0 and 1, and so do ORCA and Q-Chem through ASE.
+   For VASP through the current ASE
    interface, INCAR-style settings come from ``QM_config["input"]`` and ASE's
    VASP calculator behavior. The deprecated legacy VASP helper is the exception
    with ALF compatibility defaults documented further below.
@@ -187,7 +198,7 @@ with an ``alf_QM_executor`` configuration that requests the matching nodes,
 tasks, walltime, modules, and launcher behavior. See :doc:`parsl` for
 practical resource examples.
 
-ORCA double calculations
+Legacy ORCA double calculations
    ``orca_double_calculator_task`` runs the same ORCA calculation twice and stores
    the mean. A structure counts as converged only if both runs converge and agree
    within the ``Ediff`` and ``Fdiff`` values in the QM config.
@@ -470,14 +481,122 @@ Preferred ASE route
       {
         "ASE_calculator": "ase.calculators.mycode.MyCode",
         "QM_run_command": "mycode_executable",
-        "xc": "PBE",
-        "basis": "def2-SVP"
+        "input": {
+          "xc": "PBE",
+          "basis": "def2-SVP"
+        }
       }
 
-   The generic task loads the ASE calculator class, creates a
-   molecule-specific scratch directory, runs ``calc.calculate(...)``, stores
-   ``calc.results``, sets the convergence flag from ``calc.converged``, and
-   returns the updated ``MoleculesObject``.
+   Put the calculator's options in ``input``. Older configurations that list them beside the ALF settings
+   still work, but a configuration can't mix the two. ``ASE_calculator``, ``QM_run_command`` and ``batching``
+   are ALF settings, never calculator options, and ALF sets ``atoms``, ``directory``, ``command`` and
+   ``profile`` itself, so ``input`` can't contain them. ``label`` may be a file name, without a directory.
+   Calculators that run in ALF's process, such as EMT, need no ``QM_run_command``.
+
+   ALF checks the configuration when the coordinator starts. For each label it then creates a fresh
+   calculator in a fresh scratch directory (moving one left by an earlier attempt to ``.previous-N``),
+   calculates on a copy of the molecule's geometry, and keeps only results from that calculation. A label
+   fails, and the molecule returns unconverged, when:
+
+   * the calculator sets ``converged`` to anything but ``True``;
+   * a requested property is missing, not numeric, the wrong shape, or not finite;
+   * the calculator moved the geometry.
+
+   A failed label records what went wrong in ``qm_error`` and ``qm_error_type``, and the step it happened
+   at in ``qm_failed_stage``. In a sequential batch the other structures keep their labels.
+
+   Property names in ``properties_list`` must be the calculator's property names, such as ``energy`` and
+   ``forces``; the first entry of each property gives the HDF5 dataset to store it in. Calculators built on
+   ASE's profiles take their command from their own ASE configuration; ALF passes ``QM_run_command`` to them
+   only through settings written for that calculator, as it does for ORCA below.
+
+.. _qm-ase-orca-qchem:
+
+ORCA And Q-Chem Through ASE
+---------------------------
+
+``ase_calculator_task`` runs ORCA and Q-Chem with ASE's own calculators, ``ase.calculators.orca.ORCA`` and
+``ase.calculators.qchem.QChem``: ASE writes the input and reads the output. ALF adds checks of the
+configuration at startup and supplies each molecule's charge and multiplicity. A subclass of either
+calculator is treated as any other ASE calculator. Both label nonperiodic molecules, as single points.
+
+ORCA
+   This needs an ASE version that provides ``OrcaProfile``. A configuration:
+
+   .. code-block:: json
+
+      {
+        "ASE_calculator": "ase.calculators.orca.ORCA",
+        "QM_run_command": "/path/to/orca-or-wrapper",
+        "input": {
+          "orcasimpleinput": "EnGrad PBE def2-SVP TightSCF",
+          "orcablocks": "%pal nprocs 4 end\n%maxcore 2000",
+          "charge": 0,
+          "mult": 1
+        }
+      }
+
+   ORCA labels ``energy``, ``free_energy``, ``forces`` and ``dipole``. Forces need ``EnGrad``, and a run that
+   doesn't end with ORCA's normal-termination line fails. ``orcasimpleinput`` must name the method and basis,
+   and can't request an optimization, dynamics or a scan; coordinates come from the molecule, so
+   ``orcablocks`` can't contain a ``coords`` block. Set cores with ``%pal`` and match them to the QM
+   executor's resources.
+
+   ``QM_run_command`` is the ORCA executable, or a wrapper script that ends with
+   ``exec /path/to/orca "$@"``; ASE adds the input file name and captures the output. It can't contain
+   ``source``, redirection or ASE's ``PREFIX`` placeholder, so load modules in the executor's ``worker_init``
+   or in the wrapper. See `ASE's ORCA documentation <https://docs.ase-lib.org/ase/calculators/orca.html>`__.
+
+Q-Chem
+   ASE's Q-Chem calculator labels energies and forces:
+
+   .. code-block:: json
+
+      {
+        "ASE_calculator": "ase.calculators.qchem.QChem",
+        "QM_run_command": "/path/to/qchem-wrapper PREFIX.inp PREFIX.out",
+        "input": {"method": "pbe", "basis": "def2-svp", "nt": 4}
+      }
+
+   ``QM_run_command`` is the whole command, with ASE's ``PREFIX`` placeholders and any launch flags; it is
+   used as written. Without it, ASE builds its usual command from ``np`` and ``nt``. This is not the
+   command form of the legacy Q-Chem task, so its wrappers can't be reused unchanged. ``jobtype`` may be
+   ``SP`` or ``FORCE``; leave it out and ASE chooses ``FORCE`` when forces are requested. Other ``$rem``
+   values follow ASE's conventions, usually strings. For other Q-Chem blocks and properties, use the legacy
+   task.
+
+Charge, spin and units
+   ALF copies the molecule's ``charge`` and ``mult`` metadata into the atoms given to the calculator; the
+   configured ``charge`` and ``mult`` (``multiplicity`` for Q-Chem) apply when a molecule has none, and
+   otherwise 0 and 1. Both must be integers, and the multiplicity positive. The label's metadata records
+   the charge and multiplicity used, so the shard stores the same state as the calculation. Other ASE
+   calculators read ``atoms.info`` themselves, if at all.
+
+   ASE gives energies in eV and forces in eV/Angstrom, so their multipliers in ``properties_list`` are
+   ``1.0``:
+
+   .. code-block:: json
+
+      {"energy": ["energy", "system", 1.0], "forces": ["forces", "atomic", 1.0]}
+
+   ORCA dipoles are in electron-Angstrom about the coordinate origin: ASE moves ORCA's center-of-mass dipole
+   there, which matters for charged molecules. The legacy ORCA task reports dipoles differently.
+
+   **Changing a legacy ORCA run's task to this one also changes its units.** The legacy task's Hartree and
+   Hartree/Bohr multipliers would convert ASE's results a second time: set them to ``1.0``, drop properties
+   ASE doesn't read, and start in new output directories. For quadrupoles and Hirshfeld charges, keep the
+   legacy task. See ``examples/ase_qm``.
+
+PySCF and GPU4PySCF
+   ``pyscf_task`` and ``gpu4pyscf_excited_state_task`` call their calculators directly, with their own state
+   names, gaps, energy offsets, periodic stress and GPU checks; use them rather than ``ase_calculator_task``
+   with ``PySCFCalculator``.
+
+Before a production run, label one structure with ``--test_qm`` on the installation you'll use, and check
+the method, state, units and properties against the program's own output.
+
+Engines Without An ASE Calculator
+---------------------------------
 
 Custom parser route
    Use this path when ASE does not support the engine or when ALF needs
@@ -533,6 +652,9 @@ You can link from this guide directly to API pages:
 
 * :doc:`QM interfaces package API <../api_documentation/alframework.qm_interfaces>`
 * :doc:`ASE calculator interface module <../api_documentation/alframework.qm_interfaces.ase.generic>`
+* :doc:`ORCA through ASE <../api_documentation/alframework.qm_interfaces.ase.orca>`
+* :doc:`Q-Chem through ASE <../api_documentation/alframework.qm_interfaces.ase.qchem>`
+* :doc:`VASP ASE task <../api_documentation/alframework.qm_interfaces.ase.vasp>`
 * :doc:`ORCA interface module <../api_documentation/alframework.qm_interfaces.legacy.orca5_interface>`
 * :doc:`QChem interface module <../api_documentation/alframework.qm_interfaces.legacy.qchem_DFT_interface>`
 * :doc:`PySEQM interface module <../api_documentation/alframework.qm_interfaces.pyseqm_interface>`

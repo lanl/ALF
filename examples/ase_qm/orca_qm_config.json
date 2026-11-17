@@ -1,0 +1,10 @@
+{
+  "ASE_calculator": "ase.calculators.orca.ORCA",
+  "QM_run_command": "/path/to/orca-or-wrapper",
+  "input": {
+    "orcasimpleinput": "EnGrad PBE def2-SVP TightSCF",
+    "orcablocks": "%pal nprocs 1 end\n%maxcore 2000",
+    "charge": 0,
+    "mult": 1
+  }
+}

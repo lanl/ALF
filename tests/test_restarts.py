@@ -840,7 +840,7 @@ def test_the_coordinator_releases_each_harvest_once_it_is_handed_on():
     harvest: with one harvest per cycle, every sampled structure stayed alive for the rest of the run."""
     source = MAIN.read_text()
     assert "sampler_results = structure = None" in source
-    assert "structure_list = structure = substructure = None" in source
+    assert "structure_list = result = structure = None" in source
 
 
 def test_a_large_hold_is_written_as_bounded_pieces(tmp_path, monkeypatch):

@@ -5,6 +5,12 @@ Builders construct the initial structures that enter an ALF active-learning
 loop. A builder task typically returns a ``MoleculesObject`` containing an
 ``ase.Atoms`` object, a molecule id, and any metadata the sampler needs later.
 
+A builder task returns one ``MoleculesObject`` or a list of them. The bootstrap, active
+learning and ``--test_builder`` check this the same way: anything else, such as an older
+``[id, atoms, results]`` record or a tuple, stops the coordinator with an error naming the
+builder. A builder may return an empty list during a run, but ``--test_builder`` needs a
+structure to test.
+
 In a master configuration, the selected builder is specified with the
 ``builder_task`` import string:
 

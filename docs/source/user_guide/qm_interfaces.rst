@@ -192,6 +192,14 @@ ORCA double calculations
    the mean. A structure counts as converged only if both runs converge and agree
    within the ``Ediff`` and ``Fdiff`` values in the QM config.
 
+Legacy Q-Chem task
+   ``qchem_dft_calculator_task`` runs ``QM_run_command`` with the scratch directory as its
+   last argument, from ``<scratch>/<prefix>/`` beside ``<prefix>.in``; the command must
+   print Q-Chem's output. ``qchem_env_file``, if set, is sourced with Bash first. A command
+   or environment that fails, or output missing a requested property or holding a nonfinite
+   value, gives an unconverged label with the reason in ``error``. With ``store_path`` set,
+   the output and error streams are kept there.
+
 PySEQM ground states
    ``pyseqm_task`` evaluates a batch of molecules in one call, and handles atom
    sorting and padding internally. It has no single-structure form, so the QM config

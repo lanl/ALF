@@ -24,6 +24,7 @@ import random
 from copy import deepcopy
 
 import subprocess
+import shlex
 
 class qchemGenerator():
     """
@@ -60,9 +61,7 @@ class qchemGenerator():
         else:
             raise KeyError('length unit not implemented')
         self.datacounter = 0
-        if not os.environ.get('QCSCRATCH'):
-            os.environ['QCSCRATCH'] = scratch_path   
- 
+
     def write_qchem_input(self, molecule, charge, mult, filename="qchem.in"):
         numbers = molecule.get_atomic_numbers()
         positions = molecule.get_positions()
@@ -74,27 +73,34 @@ class qchemGenerator():
             f.write(self.qcheminput)
             f.write("$end\n")
             f.write(self.qchemblocks)
-    
+
     def single_point(self, molecule, charge=0, mult=1, prefix="qchem", properties=['energy','forces']):
         """
         mol : ase.atoms.Atoms object, will get chemical symbols and positions
         prefix : all the input and output file will start with this prefix, eg. qchem.in, qchem.out
         """
 
-        job_path = os.path.join(self.scratch_path, prefix)
+        scratch = str(Path(self.scratch_path).resolve())
+        job_path = os.path.join(scratch, prefix)
         print(f"job_path:, {job_path}")
 
 
         filename = os.path.join(job_path, f"{prefix}.in")
         os.makedirs(job_path, exist_ok=True)
         self.write_qchem_input(molecule, charge, mult, filename=filename)
-        
-        if self.qchem_env_fn != None:
-            runcmd = 'source ' + self.qchem_env_fn + '; '
-        else:
-            runcmd = ''
 
-        runcmd = runcmd + ' ' + self.qchem_command + ' ' + self.scratch_path
+        # Preserve the configured-wrapper contract: it receives the scratch root as one argument,
+        # runs beside prefix.in, and prints Q-Chem output to stdout.
+        runcmd = 'set -e\n'
+        if self.qchem_env_fn is not None:
+            runcmd += 'source ' + shlex.quote(str(Path(self.qchem_env_fn).resolve())) + '\n'
+        if not self.qchem_command.strip():
+            return {'converged': False, 'error': 'Q-Chem command is empty'}
+        runcmd += self.qchem_command + ' ' + shlex.quote(scratch)
+        environment = dict(os.environ)
+        environment.setdefault('QCSCRATCH', scratch)
+        proc = subprocess.run(['bash', '-c', runcmd], cwd=job_path, env=environment,
+                              capture_output=True, text=True)
 
         if self.store_path is not None:
             store_dir = os.path.join(self.store_path, prefix)
@@ -103,28 +109,38 @@ class qchemGenerator():
             Path(store_dir).mkdir(exist_ok=True,parents=True)
             with open(outfile, 'w') as f:
                 f.write(proc.stdout)
+            Path(store_dir, f'{prefix}.stderr').write_text(proc.stderr)
+        if proc.returncode:
+            return {'converged': False, 'error': f'Q-Chem command exited {proc.returncode}: {proc.stderr[-1000:]}'}
+        try:
+            return self.parse_output(proc.stdout, len(molecule), properties)
+        except (ValueError, IndexError, StopIteration) as error:
+            return {'converged': False, 'error': f'Invalid Q-Chem output: {error}'}
 
+    def parse_output(self, text, natoms, properties):
         energy = None
-        for line in proc.stdout.split("\n"):
+        for line in text.split("\n"):
             if "Total energy in the final basis set = " in line:
-                energy = float(line.split()[-1])
+                energy = float(line.split()[-1].replace('D','E'))
 
-        natoms = len(molecule)
         nblocks = natoms // 6
         if natoms%6 > 0: nblocks += 1
         grad = None
-        Acharge = np.zeros(natoms)
-        out = iter(proc.stdout.split("\n"))
+        Acharge = dipole = quadrupole = None
+        out = iter(text.split("\n"))
         for line in out:
             if "Gradient of SCF Energy" in line:
                 grad = np.zeros((natoms, 3))
                 for block in range(nblocks):
                     next(out)
                     for i in range(3):
-                        line = next(out)[5:].rstrip()
-                        grad_i = np.array([float(line[j:j+12]) for j in range(0, len(line), 12)])
+                        line = next(out)
+                        grad_i = np.array([float(value.replace('D','E')) for value in line.split()[1:]])
+                        if len(grad_i) != min(6,natoms-6*block):
+                            raise ValueError('Incomplete SCF gradient block')
                         grad[6*block:6*block+len(grad_i), i] = grad_i
             elif "Ground-State Mulliken Net Atomic Charges" in line:
+                Acharge = np.zeros(natoms)
                 next(out)
                 next(out)
                 next(out)
@@ -149,47 +165,40 @@ class qchemGenerator():
                 [float(Sline1[3]),float(Sline1[5]),float(Sline2[3])],
                 [float(Sline2[1]),float(Sline2[3]),float(Sline2[5])]])
 
-        if energy is None or grad is None:
-            return {'converged': False}
+        # Unit conversion happens once, here; a requested property that is missing or nonfinite fails the label.
+        available = dict(energy=None if energy is None else energy*self.E_unit,
+                         forces=None if grad is None else -grad*self.E_unit/self.L_unit,
+                         dipole=dipole, quadrupole=quadrupole, mulliken_charge=Acharge)
+        if any(available.get(key) is None or not np.isfinite(available[key]).all() for key in properties):
+            return {'converged': False, 'error': 'Missing or nonfinite requested Q-Chem properties'}
 
         propertiesout = {'converged': True}
-        if 'forces' in properties:
-            propertiesout['forces'] = -grad*self.E_unit/self.L_unit
-        if 'energy' in properties:
-            propertiesout['energy'] = energy*self.E_unit
-        if 'dipole' in properties:
-            propertiesout['dipole'] = dipole
-        if 'quadrupole' in properties:
-            propertiesout['quadrupole'] = quadrupole
-        if 'mulliken_charge' in properties:
-            propertiesout['mulliken_charge'] = Acharge
+        propertiesout.update({key: available[key] for key in properties})
 
         self.datacounter += 1
 
         return propertiesout
- 
-        
+
+
 @python_app(executors=['alf_QM_executor'])
 @timed('QM')
 def qchem_dft_calculator_task(molecule_object,ncpu,qchem_env_file,QM_run_command,rem,qchemblocks,QM_scratch_dir,properties_list):
     properties = list(properties_list)
     directory = QM_scratch_dir + '/' + molecule_object.get_moleculeid() + '/'
     Path(directory).mkdir(parents=True,exist_ok=True)
-    
-    molecule_id = molecule_object.get_moleculeid
+
     atoms = molecule_object.get_atoms().copy()
 
     calc = qchemGenerator(scratch_path=directory, store_path=directory+'/', nproc=ncpu,qchem_env_file=qchem_env_file,qchem_command=QM_run_command,qcheminput=rem,qchemblocks=qchemblocks,unit={'energy': 'ev', 'length': 'angstrom'})
-    
-    out_properties = calc.single_point(molecule=atoms, charge=0, mult=1, prefix='qchem', properties=properties)
+
+    metadata = molecule_object.get_metadata()
+    out_properties = calc.single_point(molecule=atoms, charge=metadata.get('charge',0),
+                                       mult=metadata.get('mult',1), prefix='qchem', properties=properties)
 
     molecule_object.store_results(out_properties)
-    if 'forces' in out_properties:
-        molecule_object.set_converged_flag(True)
-    else: 
-        molecule_object.set_converged_flag(False)
-        
-    
+    molecule_object.set_converged_flag(bool(out_properties.get('converged',False)))
+    if not molecule_object.check_convergence():
+        molecule_object.update_metadata({'qm_error': out_properties.get('error','Q-Chem failed')})
+
+
     return(molecule_object)
-
-

@@ -82,3 +82,33 @@ def train_cpu_ensemble(directory, members=2, *, periodic=False):
         assert any(not torch.equal(before, after) for before, after in zip(initial, modules.model.parameters()))
         reports.append(dict(member=output.name, epochs=controller.current_epoch))
     return reports
+
+
+# A HIP-NN small enough to train in seconds on a CPU.
+TINY_NETWORK = dict(possible_species=[0, 1, 8], n_features=4, n_sensitivities=4, n_interaction_layers=1,
+                    n_atom_layers=1, dist_soft_min=0.4, dist_soft_max=2.0, dist_hard_max=3.0)
+
+
+def write_water_shard(directory, frames=16, excited=False):
+    """Write ``directory/data.h5``: perturbed waters with quadratic energies, or two states when ``excited``."""
+    import h5py
+    import numpy as np
+
+    rng = np.random.default_rng(3)
+    coordinates = np.array([[0.0, 0.0, 0.0], [0.96, 0.0, 0.0], [-0.24, 0.93, 0.0]])[None]
+    coordinates = coordinates + rng.normal(0.0, 0.02, (frames, 3, 3))
+    energies = (coordinates**2).sum(axis=(1, 2))
+    directory.mkdir()
+    with h5py.File(directory / "data.h5", "w") as handle:
+        group = handle.create_group("water")
+        group["species"] = np.array(["O", "H", "H"], dtype="S")
+        group["coordinates"] = coordinates
+        if excited:
+            group["_id"] = np.array([f"frame-{i}" for i in range(frames)], dtype="S")
+            group["topology_atom_ids"] = np.tile(np.arange(3), (frames, 1))
+            for state in range(2):
+                group[f"E{state}"] = energies + 0.1 * state
+                group[f"F{state}"] = -2 * coordinates
+        else:
+            group["energy"] = energies
+            group["forces"] = -2 * coordinates

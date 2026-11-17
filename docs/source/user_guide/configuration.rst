@@ -250,6 +250,21 @@ If ``status.txt`` exists, ALF restarts from it. If no status file exists, ALF
 checks existing model and HDF5 paths to decide whether to bootstrap, start from
 provided HDF5 data, or use an existing seed model.
 
+.. _configuration-storable-labels:
+
+Labels ALF Stores
+~~~~~~~~~~~~~~~~~
+
+A converged label is checked before it's held: finite positions and cell, every
+requested property present, numeric and finite after its multiplier, scalar energies
+and ``(atoms, 3)`` forces. A label that fails is held unconverged, with the reason in
+``labeling_error``, so it never counts toward a label threshold and its batch keeps the
+rest. A shard stores fully periodic or nonperiodic frames, and one formula group in it
+can't mix the two: a partly periodic label, or one whose periodicity differs from the
+held labels of its formula, is held unconverged the same way. After a store, the next
+shard can take the other periodicity. Storing a label that bypassed these checks fails
+and writes nothing.
+
 .. _configuration-restarts:
 
 Restarting After A Crash

@@ -225,7 +225,8 @@ External geometry builder
         - Required list of ``.xyz``, ``.extxyz``, ``.h5``, or ``.hdf5`` files.
           Relative paths start from ``master_directory``. HDF5 groups need
           ``coordinates`` shaped ``[frames, atoms, 3]`` and ``species``, and can also
-          provide ``cell`` and ``pbc``.
+          provide ``cell`` and ``pbc``. A frame with a ``cell`` but no ``pbc``, as in ALF's
+          own shards, is fully periodic.
       * - ``selection_mode``
         - ``"deterministic_hash"`` (default) picks a frame from the molecule ID and
           seed, and can pick the same frame more than once. ``"sequential"`` uses the

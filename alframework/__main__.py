@@ -40,6 +40,7 @@ from alframework.tools.molecules_class import MoleculesObject
 from alframework.tools.batching import bootstrap_spare_count, next_bootstrap_ids
 from alframework.tools.restarts import HELD_PIECES, STORED_AT_BUDGET_STOP, HeldLabels, held_labels_directory, reconcile_status
 from alframework.tools.labeling import LabelingCoordinator
+from alframework.tools.label_validation import screen_labels
 from alframework.tools.builder_outputs import builder_outputs
 from alframework.tools.sampler_coordinator import SamplerCoordinator
 #import logging
@@ -188,6 +189,7 @@ spare_seeds = bootstrap_spare_count(master_config)
 def hold_finished_labels():
     """Move finished QM work out of memory, so a crash can't lose it."""
     results, failed = QM_task_queue.get_task_results()
+    screen_labels(results, master_config['properties_list'])
     lost = labeling.take_failed_structures(failed)
     status['lifetime_failed_QM_tasks'] = status['lifetime_failed_QM_tasks'] + failed
     status['lifetime_failed_QM_structures'] = status.get('lifetime_failed_QM_structures', 0) + lost
@@ -257,6 +259,7 @@ if args.test_qm:
     queue_output,failed = QM_task_queue.get_task_results()
     sys.stdout.write('Job Failed: {:d}'.format(failed))
     test_configuration = queue_output[0]
+    screen_labels([test_configuration], master_config['properties_list'])
     assert isinstance(test_configuration, MoleculesObject), 'test_configuration must be a MoleculesObject instance'
     print("Ensure the following data matches that in the QM output and test.h5 after unit conversion:")
     sys.stdout.write('Atomic Numbers: ' + np.array_str(test_configuration[1].get_atomic_numbers()) + '\n')

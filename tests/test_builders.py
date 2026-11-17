@@ -692,3 +692,29 @@ def test_rdkit_command_line_finds_reference_next_to_config(tmp_path):
     report = json.loads((output / "provenance.json").read_text())
     assert report["selected_count"] == 6
     assert report["settings"]["reference_geometry"] == str(config_dir / "enol.xyz")
+
+
+
+@pytest.mark.parametrize("periodic", [None, False, True])
+def test_cfg_loader_keeps_the_file_s_periodicity_unless_told_otherwise(tmp_path, periodic):
+    from parsl.app.errors import RemoteExceptionWrapper
+
+    from alframework.builders.builders import simple_cfg_loader_task
+
+    write(tmp_path / "seed.cfg", Atoms("H2", positions=[[0, 0, 0], [0, 0, 0.74]], cell=[5, 5, 5], pbc=True))
+    config = {"molecule_library_dir": str(tmp_path)}
+    if periodic is not None:
+        config["periodic"] = periodic
+    result = simple_cfg_loader_task.func("seed", config, shake=0.0)
+    if isinstance(result, RemoteExceptionWrapper):
+        result.reraise()
+    assert result.atoms.pbc.tolist() == [True if periodic is None else periodic] * 3
+    np.testing.assert_allclose(result.atoms.positions, [[0, 0, 0], [0, 0, 0.74]])
+
+
+def test_cfg_loader_refuses_a_periodic_setting_that_is_not_a_boolean():
+    from alframework.builders.builders import simple_cfg_loader_task
+
+    result = simple_cfg_loader_task.func("seed", {"molecule_library_dir": "/not-read", "periodic": "false"})
+    with pytest.raises(ValueError, match="periodic"):
+        result.reraise()

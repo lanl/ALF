@@ -35,15 +35,20 @@ def simple_cfg_loader_task(moleculeid, builder_config, shake=0.05):
 
     Args:
         moleculeid (str): System unique identifier in the database.
-        builder_config (dict): Dictionary containing the builder parameters.
+        builder_config (dict): Builder parameters; optional Boolean periodic overrides file PBC.
         shake (float): Amount of random pertubation added to each atom coordinate.
 
     Returns:
         (MoleculesObject): A MoleculesObject representing the system.
     """
+    periodic = builder_config.get('periodic')
+    if periodic is not None and not isinstance(periodic, (bool, np.bool_)):
+        raise ValueError('periodic must be a boolean when specified.')
     cfg_list = glob.glob(builder_config['molecule_library_dir'] + '/*.cfg')
     cfg_choice = random.choice(cfg_list)
     ase_atoms = cfg.read_cfg(cfg_choice)
+    if periodic is not None:
+        ase_atoms.set_pbc(periodic)
     ase_atoms.rattle(shake)
 
     molecule_object = MoleculesObject(ase_atoms, moleculeid)

@@ -33,7 +33,7 @@ How It Runs
      - ``alframework.samplers.mlmd_sampling.simple_mlmd_sampling_task``, loading the current ensemble
        with ``HIPNN_ASE_load_ensemble``
    * - QM
-     - ``alframework.qm_interfaces.legacy.orca5_interface.orca_calculator_task``
+     - ``alframework.qm_interfaces.ase.generic.ase_calculator_task``
    * - ML
      - ``alframework.ml_interfaces.fine_tuning.fine_tune_ensemble_task``, with the HIPPYNN adapter
 
@@ -124,3 +124,17 @@ Outputs
 
 Check a round's ``training_log.txt`` files for ``Training complete``. A copy that fails stops that
 round from replacing the current model, and the next store starts a new round.
+
+ASE labeling configuration
+--------------------------
+
+``orca_config.json`` labels with ASE's ORCA calculator, ``ase.calculators.orca.ORCA``,
+through ``ase_calculator_task``, with the calculator's settings under ``input``. ASE gives
+eV and eV/Angstrom, so the energy and force multipliers are ``1.0``. It doesn't read
+Hirshfeld charges or quadrupoles, so the example doesn't request them. Start this example
+in new output directories: data from its legacy ORCA version is in other units.
+The builder makes nonperiodic clusters, since ORCA labels molecules.
+
+ORCA runs on one core unless ``orcablocks`` sets ``%pal nprocs N end``; match it to the
+QM executor's CPUs. ``QM_run_command`` names the ORCA executable, or a wrapper script that
+loads its environment. See :ref:`qm-ase-orca-qchem`.

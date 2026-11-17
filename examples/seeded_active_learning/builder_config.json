@@ -1,4 +1,5 @@
 {
 	"molecule_library_dir":"fragment_library/",
-	"shake":0.0
+	"shake":0.0,
+	"periodic":false
 }

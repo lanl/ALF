@@ -28,3 +28,11 @@ and the steps of ALF's HIPPYNN trainer.
 Labels must be in the units the pretrained model was trained on; ALF's samplers expect eV and
 eV/Å. HIPPYNN checkpoints are loaded with PyTorch, which can run code in the file, so only use
 checkpoints you trust. See the fine-tuning guide in the ALF documentation.
+
+ORCA labels through ASE's ORCA calculator, `ase.calculators.orca.ORCA`, with its
+settings under `input` in `orca_config.json`. ASE gives eV and eV/Angstrom, so the
+energy and force multipliers are 1.0, and the builder makes nonperiodic clusters,
+since ORCA labels molecules. Set `QM_run_command` to the ORCA executable or a wrapper
+that loads its environment. ORCA runs on one core unless `orcablocks` sets
+`%pal nprocs N end`. Start in new output directories: data from this example's legacy
+ORCA version is in other units.

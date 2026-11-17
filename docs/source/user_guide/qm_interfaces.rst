@@ -644,7 +644,7 @@ names must be unique, and usable as directory names. ALF checks every stage when
    These are 1e-3 Hartree and 1e-4 Hartree/Bohr, the legacy ORCA double calculation's ``Ediff`` and
    ``Fdiff``. Every energy difference, and every force component's, must be below its tolerance, and the
    repeats' labels must have the same shapes. This catches a calculation that doesn't reproduce; it can't
-   tell whether the electronic state is the right one.
+   tell whether the electronic state is the right one. The ionic-liquid example uses it.
 
 A failed stage stops the workflow and leaves the molecule unconverged; ``qm_failed_stage`` names the stage
 and the step, such as ``target:calculation``. ``qm_workflow`` metadata records each stage's name,

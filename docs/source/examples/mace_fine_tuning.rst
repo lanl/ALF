@@ -25,7 +25,7 @@ How It Runs
      - ``alframework.samplers.batched_mlmd.mlmd_trajectories_task`` on TorchSim, loading the copies
        with ``fine_tuning.mace.load_mace_batched_ensemble``
    * - QM
-     - ``alframework.qm_interfaces.legacy.orca5_interface.orca_calculator_task``
+     - ``alframework.qm_interfaces.ase.generic.ase_calculator_task``
    * - ML
      - ``alframework.ml_interfaces.fine_tuning.fine_tune_ensemble_task``, with ``MaceFineTuner``
 
@@ -36,8 +36,7 @@ picks the next structures to label.
 Settings in ``fine_tune_config.json`` follow MACE's naive fine-tuning recipe
 (https://mace-docs.readthedocs.io/en/latest/guide/finetuning.html). ``E0s`` is ``estimated``, as that
 recipe recommends when isolated-atom energies aren't available; use ``foundation`` only when the labels
-share the foundation model's level of theory. ORCA gives Hartree, so ``properties_list`` converts to
-eV and eV/Å, as MACE expects. The builder makes clusters because ORCA labels each structure as a
+share the foundation model's level of theory. ASE returns eV and eV/Å, as MACE expects, so ``properties_list`` uses multipliers of 1.0. The builder makes clusters because ORCA labels each structure as a
 cluster, and the fine-tuned model must learn the same thing.
 
 Before You Run
@@ -64,3 +63,17 @@ recording the checkpoint's SHA-256, the settings, the shards, and each copy's se
 ``h5store/``.
 
 See :doc:`uma_fine_tuning` for the same workflow with UMA, and :doc:`fine_tuning` for HIPPYNN.
+
+ASE labeling configuration
+--------------------------
+
+``orca_config.json`` labels with ASE's ORCA calculator, ``ase.calculators.orca.ORCA``,
+through ``ase_calculator_task``, with the calculator's settings under ``input``. ASE gives
+eV and eV/Angstrom, so the energy and force multipliers are ``1.0``. It doesn't read
+Hirshfeld charges or quadrupoles, so the example doesn't request them. Start this example
+in new output directories: data from its legacy ORCA version is in other units.
+The builder makes nonperiodic clusters, since ORCA labels molecules.
+
+ORCA runs on one core unless ``orcablocks`` sets ``%pal nprocs N end``; match it to the
+QM executor's CPUs. ``QM_run_command`` names the ORCA executable, or a wrapper script that
+loads its environment. See :ref:`qm-ase-orca-qchem`.

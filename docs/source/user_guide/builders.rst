@@ -279,7 +279,8 @@ CFG loader
    ``simple_cfg_loader_task`` loads a random ``.cfg`` file from ``molecule_library_dir``.
    Its optional ``periodic`` setting overrides the file's periodicity: leave it out to keep
    the file's, or set it to ``false`` to label the structure as a molecule, as ORCA and
-   Q-Chem do. The cell is kept either way.
+   Q-Chem do. The cell is kept either way. The ORCA examples that start from CFG seeds set
+   ``false``.
 
 Batched builders
    ``maximum_builder_structures`` belongs in the master configuration, not the

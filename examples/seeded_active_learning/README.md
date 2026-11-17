@@ -37,3 +37,11 @@ Then start active learning:
 ```bash
 python -m alframework --master master_config.json
 ```
+
+ORCA labels through ASE's ORCA calculator, `ase.calculators.orca.ORCA`, with its
+settings under `input` in `orca_config.json`. ASE gives eV and eV/Angstrom, so the
+energy and force multipliers are 1.0, and the builder makes nonperiodic clusters,
+since ORCA labels molecules. Set `QM_run_command` to the ORCA executable or a wrapper
+that loads its environment. ORCA runs on one core unless `orcablocks` sets
+`%pal nprocs N end`. Start in new output directories: data from this example's legacy
+ORCA version is in other units.

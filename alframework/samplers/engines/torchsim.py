@@ -1,7 +1,7 @@
 """TorchSim engine for batched multi-trajectory MLMD (``driver.engine: torchsim``).
 
 :class:`TorchSimEngine` implements the engine contract of
-:class:`alframework.samplers.batched_mlmd.ASEEngine`, so
+:class:`alframework.samplers.engines.ase.ASEEngine`, so
 ``run_mlmd_trajectories`` drives it unchanged: the same checks, schedules,
 stopping, acquisition, and cohorts. All active trajectories are packed into one
 TorchSim ``MDState`` and every MD step makes one batched ensemble evaluation.
@@ -28,7 +28,7 @@ by the sampler's ``batched_calculator``. Without one, the ``ase_calculator``
 ensemble is evaluated one structure at a time.
 """
 
-from alframework.samplers.packed_engine import PackedMLMDEngine, ASECalculatorBatch, _calculator_options
+from alframework.samplers.engines.packed import PackedMLMDEngine, ASECalculatorBatch, _calculator_options
 
 
 def require_torchsim():

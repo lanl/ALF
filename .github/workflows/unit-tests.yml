@@ -65,7 +65,7 @@ jobs:
           import seqm.ElectronicStructure
           import torch_sim
           import torchvision
-          from alframework.samplers.alchemi_engine import SUPPORTED_VERSIONS
+          from alframework.samplers.engines.alchemi import SUPPORTED_VERSIONS
 
           installed = version('nvalchemi-toolkit')
           assert installed in SUPPORTED_VERSIONS, f'ALCHEMI {installed} is not in {SUPPORTED_VERSIONS}'

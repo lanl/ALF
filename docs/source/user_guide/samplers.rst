@@ -93,14 +93,17 @@ Select it in ``master_config.json``, then add its settings to the sampler config
      - ``"single"`` (default) runs one trajectory per task. ``"batched"`` groups
        trajectories using the required ``batching`` block; see :doc:`batching`.
    * - ``driver.engine``
-     - ``"ase"`` (default), ``"torchsim"``, or ``"alchemi"``. See below.
+     - Chooses how trajectories advance. Use ``"ase"`` (default), ``"torchsim"``,
+       or ``"alchemi"``. See below.
    * - ``batched_calculator``
      - Import string for a loader that evaluates many structures at once, used by
        the ``torchsim`` and ``alchemi`` engines in place of ``ase_calculator``. For
        HIPPYNN, use
        ``alframework.ml_interfaces.hippynn_interface.load_hippynn_batched_ensemble``.
-       Without it, these engines evaluate the ``ase_calculator`` ensemble one
-       structure at a time.
+       The MACE and UMA examples use model loaders backed by
+       ``alframework.ml_interfaces.torchsim_ensemble``.
+       With only ``ase_calculator`` configured, these engines evaluate the ensemble
+       one structure at a time.
    * - ``batched_calculator_options``
      - Optional keyword arguments for that loader.
    * - ``random_seed``
@@ -209,12 +212,12 @@ For a 600 K initial draw with a 400 K thermostat, use these sampler settings:
   thermostat from the first step. Explicit momenta, including an array of
   zeros, are preserved.
 
-Initialization happens in the sampler before constructing an engine. The draw
-uses an independent molecule-ID random stream, so ``random_seed`` reproduces it
-without changing the temperature-schedule or Langevin noise streams. Without a
-seed, its generated seed is recorded as ``initial_velocity_seed``. The scalar
-sampler still uses its legacy global random stream for Langevin noise; this
-option alone does not seed its entire trajectory.
+The sampler calls ``alframework.tools.velocities`` to initialize momenta before
+constructing an engine. The draw uses an independent molecule-ID random stream,
+so ``random_seed`` reproduces it without changing the temperature-schedule or
+Langevin noise streams. Without a seed, the generated seed is recorded as
+``initial_velocity_seed``. The scalar sampler still draws Langevin noise from
+the legacy global random stream.
 
 The draw does not rescale to an exact kinetic temperature or remove center-of-mass
 or angular momentum. This retains the Maxwell distribution and its finite-system
@@ -749,12 +752,18 @@ Related Examples
 Sampler API Links
 -----------------
 
-You can link from this guide directly to API pages:
+Sampler task paths in ``sampler_task`` stay the same. Python code that imports
+engines or shared helpers directly should use the paths below. Previous module
+paths still import and emit a warning with the new path.
 
 * :doc:`Samplers package API <../api_documentation/alframework.samplers>`
 * :doc:`MLMD sampling module <../api_documentation/alframework.samplers.mlmd_sampling>`
 * :doc:`Multi-trajectory MLMD module <../api_documentation/alframework.samplers.batched_mlmd>`
-* :doc:`TorchSim engine module <../api_documentation/alframework.samplers.torchsim_engine>`
-* :doc:`ALCHEMI engine module <../api_documentation/alframework.samplers.alchemi_engine>`
+* :doc:`ASE engine module <../api_documentation/alframework.samplers.engines.ase>`
+* :doc:`TorchSim engine module <../api_documentation/alframework.samplers.engines.torchsim>`
+* :doc:`ALCHEMI engine module <../api_documentation/alframework.samplers.engines.alchemi>`
+* :doc:`Shared packed engine module <../api_documentation/alframework.samplers.engines.packed>`
+* :doc:`Velocity initialization module <../api_documentation/alframework.tools.velocities>`
+* :doc:`Geometry module <../api_documentation/alframework.tools.geometry>`
 * :doc:`Reactive sampler module <../api_documentation/alframework.samplers.reactive_sampler>`
 * :doc:`ASE ensemble calculator module <../api_documentation/alframework.samplers.ASE_ensemble_constructor>`

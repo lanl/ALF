@@ -212,7 +212,7 @@ def training_minimum_distances(arrays, species_key, coordinates_key, cell_key, d
     hippynn's ``calculate_min_dists`` builds every pair within ``dist_hard_max``: about 0.35 s per batch of 256
     periodic 200-atom structures on one GPU, 6 minutes for 262,144 structures, repeated by every member at
     every training. For periodic data, ALF's batched neighbor search (the sampler's screen,
-    ``samplers.geometry.batched_minimum_distances``) finds the same minimum within its smaller search radius;
+    ``tools.geometry.batched_minimum_distances``) finds the same minimum within its smaller search radius;
     a structure with no pair that close gets its exact minimum-image minimum from ``minimum_distance``.
     (hippynn gives such a structure the largest distance found in its batch, so its value depends on the other
     structures in the batch, but a filter below the search radius keeps it either way.) Non-periodic data and
@@ -222,7 +222,7 @@ def training_minimum_distances(arrays, species_key, coordinates_key, cell_key, d
     import torch
     from ase import Atoms
     from hippynn.pretraining import calculate_min_dists
-    from alframework.samplers.geometry import batched_minimum_distances, minimum_distance
+    from alframework.tools.geometry import batched_minimum_distances, minimum_distance
 
     def by_hippynn(subset):
         # Keywords: hippynn's development branch made dist_hard_max the second positional argument.
@@ -939,7 +939,7 @@ def HIPNN_ASE_load_ensemble(HIPNN_ensemble_directory,device="cuda:0"):
 # ``load_hippynn_batched_ensemble`` loads the ``model-*`` members written by
 # ``train_HIPPYNN_ensemble_task`` and evaluates many structures of different sizes together:
 # one padded forward pass per member. Evaluator contract (used by
-# ``alframework.samplers.torchsim_engine.TorchSimEngine``):
+# ``alframework.samplers.engines.torchsim.TorchSimEngine``):
 #
 #     energies, forces = evaluator.evaluate(numbers, positions, cells, pbc, counts)
 #

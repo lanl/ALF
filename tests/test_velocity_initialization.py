@@ -8,7 +8,7 @@ from parsl.app.errors import RemoteExceptionWrapper
 from alframework.samplers import mlmd_sampling as scalar_mlmd
 from alframework.samplers.batched_mlmd import sample_trajectories
 from alframework.samplers.udd_sampling import simple_udd_sampling_task
-from alframework.samplers.velocities import initialize_velocities, velocity_initialization_mode
+from alframework.tools.velocities import initialize_velocities, velocity_initialization_mode
 from alframework.tools.molecules_class import MoleculesObject
 from alframework.tools.sampler_coordinator import driver_settings
 from tests.helpers.engines import require_engine

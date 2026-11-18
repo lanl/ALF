@@ -37,7 +37,7 @@ from ase import units
 from ase.io.trajectory import Trajectory
 
 from alframework.ml_interfaces.ensemble_inference import ASEEnsembleEvaluator
-from alframework.samplers.geometry import batched_minimum_distances, minimum_distance
+from alframework.tools.geometry import batched_minimum_distances, minimum_distance
 from alframework.tools.gap_seeking import gap_seeking_energy_forces
 
 KB_EV_PER_K = 8.617333262145e-5

@@ -8,7 +8,7 @@ packed atom indices would change a trajectory's noise when batches change.
 """
 from importlib.metadata import PackageNotFoundError, version
 
-from alframework.samplers.packed_engine import PackedMLMDEngine
+from alframework.samplers.engines.packed import PackedMLMDEngine
 
 SUPPORTED_VERSIONS = ('0.2.0', '0.3.0')
 

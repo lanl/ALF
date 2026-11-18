@@ -19,7 +19,7 @@ def require_engine(name):
     if name == "torchsim":
         pytest.importorskip("torch_sim")
     elif name == "alchemi":
-        from alframework.samplers.alchemi_engine import SUPPORTED_VERSIONS
+        from alframework.samplers.engines.alchemi import SUPPORTED_VERSIONS
 
         try:
             installed = version("nvalchemi-toolkit")
@@ -31,10 +31,10 @@ def require_engine(name):
 
 def engine_class(name):
     if name == "torchsim":
-        from alframework.samplers.torchsim_engine import TorchSimEngine
+        from alframework.samplers.engines.torchsim import TorchSimEngine
 
         return partial(TorchSimEngine, device=DEVICE)
-    from alframework.samplers.alchemi_engine import AlchemiEngine
+    from alframework.samplers.engines.alchemi import AlchemiEngine
 
     return partial(AlchemiEngine, device=DEVICE)
 

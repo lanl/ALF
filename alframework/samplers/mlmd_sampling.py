@@ -14,11 +14,11 @@ from alframework.tools.task_timeline import timed
 from alframework.tools.tools import annealing_schedule
 from alframework.tools.tools import load_module_from_config
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator
-from alframework.samplers.geometry import minimum_distance
+from alframework.tools.geometry import minimum_distance
 from alframework.tools.tools import build_input_dict
 from alframework.tools.molecules_class import MoleculesObject
 from alframework.tools.gpu import sampling_device, neurochem_device
-from alframework.samplers.velocities import initialize_velocities, kinetic_temperature, velocity_initialization_settings
+from alframework.tools.velocities import initialize_velocities, kinetic_temperature, velocity_initialization_settings
     
 
 #For now I will take a dictionary with all sample parameters.

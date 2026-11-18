@@ -31,7 +31,7 @@ from alframework.ml_interfaces.ensemble_inference import ADJACENT_GAPS
 from alframework.tools.gap_seeking import gap_seeking_settings
 from alframework.tools.sampling_windows import validated_windows, window_number, windowed_config
 from alframework.tools.trajectory_summary import TrajectorySummary
-from alframework.samplers.velocities import velocity_initialization_settings
+from alframework.tools.velocities import velocity_initialization_settings
 
 STRATEGIES = ("single", "batched")
 ENGINES = ("ase", "torchsim", "alchemi")

@@ -14,7 +14,7 @@ import pytest
 from ase import Atoms
 from ase.constraints import FixAtoms
 
-from alframework.samplers import alchemi_engine
+from alframework.samplers.engines import alchemi
 from tests.helpers.engines import Tether, engine_class
 
 
@@ -52,9 +52,9 @@ def test_atom_constraints_are_rejected(engine_name):
 
 @pytest.mark.parametrize("unsupported", ["0.1.0", "0.4.0"])
 def test_unsupported_alchemi_version_is_rejected(monkeypatch, unsupported):
-    monkeypatch.setattr(alchemi_engine, "version", lambda name: unsupported)
+    monkeypatch.setattr(alchemi, "version", lambda name: unsupported)
     with pytest.raises(ImportError, match="0.2.0"):
-        alchemi_engine.require_alchemi()
+        alchemi.require_alchemi()
 
 
 def test_ase_engine_runs_without_torch():
@@ -65,8 +65,8 @@ class Block(importlib.abc.MetaPathFinder):
   if fullname.split('.')[0] in {'torch','torch_sim','nvalchemi','nvalchemiops','warp'}:
    raise ImportError('Optional engine blocked: '+fullname)
 sys.meta_path.insert(0,Block())
-from alframework.samplers.batched_mlmd import make_engine
-from alframework.samplers.packed_engine import PackedState
+from alframework.samplers.engines.factory import make_engine
+from alframework.samplers.engines.packed import PackedState
 from tests.helpers.fakes import spring_ensemble
 from ase import Atoms
 import numpy as np

@@ -618,12 +618,12 @@ def _screened_engine(engine_name):
 def test_batched_distance_screen_matches_minimum_distance_once_per_step(engine_name, monkeypatch):
     """Every system's distance comes from one batched search per step; values match the per-system screen
     (a skewed cell, a cell smaller than the search radius, and a dilute box that falls back to it)."""
-    from alframework.samplers import packed_engine
-    from alframework.samplers.geometry import minimum_distance
+    from alframework.samplers.engines import packed
+    from alframework.tools.geometry import minimum_distance
 
     searches = []
-    batched = packed_engine.batched_minimum_distances
-    monkeypatch.setattr(packed_engine, "batched_minimum_distances",
+    batched = packed.batched_minimum_distances
+    monkeypatch.setattr(packed, "batched_minimum_distances",
                         lambda *args: searches.append(1) or batched(*args))
     engine = _screened_engine(engine_name)
     for step in range(3):
@@ -635,8 +635,8 @@ def test_batched_distance_screen_matches_minimum_distance_once_per_step(engine_n
 
 
 def test_batched_distance_screen_falls_back_without_a_batched_search(engine_name, monkeypatch):
-    from alframework.samplers import geometry
-    from alframework.samplers.geometry import minimum_distance
+    from alframework.tools import geometry
+    from alframework.tools.geometry import minimum_distance
 
     monkeypatch.setattr(geometry, "_batched_neighbor_search", lambda: None)
     engine = _screened_engine(engine_name)

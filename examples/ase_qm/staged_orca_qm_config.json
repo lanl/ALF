@@ -2,11 +2,12 @@
   "result_mode": "last",
   "stages": [
     {
-      "name": "initial",
+      "name": "guess",
       "ASE_calculator": "ase.calculators.orca.ORCA",
       "QM_run_command": "/path/to/orca-or-wrapper",
+      "properties": ["energy"],
       "input": {
-        "orcasimpleinput": "EnGrad PBE def2-SVP TightSCF",
+        "orcasimpleinput": "PBE def2-SVP TightSCF",
         "orcablocks": "%pal nprocs 1 end\n%maxcore 2000",
         "charge": 0,
         "mult": 1
@@ -16,9 +17,12 @@
       "name": "target",
       "ASE_calculator": "ase.calculators.orca.ORCA",
       "QM_run_command": "/path/to/orca-or-wrapper",
+      "inputs_from_stages": [
+        {"stage": "guess", "source": "orca.gbw", "destination": "guess.gbw"}
+      ],
       "input": {
-        "orcasimpleinput": "EnGrad PBE def2-TZVP TightSCF",
-        "orcablocks": "%pal nprocs 1 end\n%maxcore 2000",
+        "orcasimpleinput": "EnGrad PBE def2-TZVP TightSCF MORead",
+        "orcablocks": "%pal nprocs 1 end\n%maxcore 2000\n%moinp \"guess.gbw\"",
         "charge": 0,
         "mult": 1
       }

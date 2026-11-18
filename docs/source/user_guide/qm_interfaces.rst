@@ -612,28 +612,44 @@ one QM worker:
    {
      "result_mode": "last",
      "stages": [
-       {"name": "initial", "ASE_calculator": "ase.calculators.orca.ORCA",
+       {"name": "guess", "ASE_calculator": "ase.calculators.orca.ORCA",
         "QM_run_command": "/path/to/orca-or-wrapper",
-        "input": {"orcasimpleinput": "EnGrad PBE def2-SVP TightSCF", "charge": 0, "mult": 1}},
+        "properties": ["energy"],
+        "input": {"orcasimpleinput": "PBE def2-SVP TightSCF"}},
        {"name": "target", "ASE_calculator": "ase.calculators.orca.ORCA",
         "QM_run_command": "/path/to/orca-or-wrapper",
-        "input": {"orcasimpleinput": "EnGrad PBE def2-TZVP TightSCF", "charge": 0, "mult": 1}}
+        "inputs_from_stages": [
+          {"stage": "guess", "source": "orca.gbw", "destination": "guess.gbw"}
+        ],
+        "input": {"orcasimpleinput": "EnGrad PBE def2-TZVP TightSCF MORead",
+                  "orcablocks": "%moinp \"guess.gbw\""}}
      ]
    }
 
-Each stage is an independent calculation: it starts from the molecule's original geometry and state, with
-a fresh calculator, in ``<scratch>/<molecule>/<stage name>``. Nothing passes from one stage to the next, no
-orbitals, restart files or coordinates. Every stage must succeed and give every requested property. Stage
-names must be unique, and usable as directory names. ALF checks every stage when the coordinator starts.
+Every stage runs on the original sampled geometry with a fresh calculator in
+``<scratch>/<molecule>/<stage name>``. Stage names must be unique and usable
+as directory names. ALF validates the workflow when the coordinator starts.
+
+In ``last`` mode, ``inputs_from_stages`` declares files to copy from earlier
+successful stages of the same attempt. Give the source and destination as
+single filenames and use each destination once per receiving stage. ALF
+copies nonempty regular files before constructing the receiving calculator.
+Configure the receiving backend to read those files and check its output
+to confirm it did so. A missing or unreadable artifact fails the label at
+``<stage>:input_files``.
+
+Every stage must succeed. Stages use the full ``properties_list`` by default.
+In ``last`` mode a preparatory stage may request a subset via ``properties``.
+The final stage supplies the full training label.
 
 ``result_mode`` picks the label:
 
 ``last`` (the default)
-   The final stage's results. Earlier stages must succeed but don't contribute to the label. See
-   ``examples/ase_qm/staged_orca_qm_config.json``.
+   The final stage's results. See ``examples/ase_qm`` for one-structure
+   recipes for ORCA orbital warm starts and VASP charge-density restarts.
 
 ``mean_if_agree``
-   Two or more identical stages, the same calculation repeated. The label is their mean if every pair
+   Two or more identical independent stages using the full property list. The label is their mean if every pair
    agrees within ``agreement``, which gives the energy tolerance in eV and the force tolerance in
    eV/Angstrom:
 
@@ -646,11 +662,12 @@ names must be unique, and usable as directory names. ALF checks every stage when
    repeats' labels must have the same shapes. This catches a calculation that doesn't reproduce; it can't
    tell whether the electronic state is the right one. The ionic-liquid example uses it.
 
-A failed stage stops the workflow and leaves the molecule unconverged; ``qm_failed_stage`` names the stage
-and the step, such as ``target:calculation``. ``qm_workflow`` metadata records each stage's name,
-calculator, directory, convergence and charge and multiplicity, and for ``mean_if_agree`` the largest
-deviations. A retried structure's directory, with all its stages, moves to ``.previous-N``. Sequential QM
-batching applies to whole workflows; stages can't be batched.
+A failed stage stops the workflow and leaves the molecule unconverged.
+``qm_failed_stage`` names the stage and step, such as ``target:calculation``.
+``qm_workflow`` records stage provenance, including declared inputs and
+convergence. For ``mean_if_agree`` it also records the largest deviations.
+A retried structure's directory, with all its stages, moves to
+``.previous-N``. Sequential QM batching applies to whole workflows.
 
 Engines Without An ASE Calculator
 ---------------------------------

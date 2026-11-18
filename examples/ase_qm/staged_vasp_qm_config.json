@@ -1,0 +1,52 @@
+{
+  "result_mode": "last",
+  "stages": [
+    {
+      "name": "charge_density",
+      "ASE_calculator": "ase.calculators.vasp.Vasp",
+      "QM_run_command": "/path/to/vasp-or-wrapper",
+      "properties": ["energy"],
+      "input": {
+        "xc": "PBE",
+        "encut": 450,
+        "kpts": [4, 4, 4],
+        "ismear": 1,
+        "sigma": 0.2,
+        "ediff": 1e-6,
+        "nsw": 0,
+        "ibrion": -1,
+        "ispin": 1,
+        "istart": 0,
+        "icharg": 2,
+        "lcharg": true,
+        "lwave": false,
+        "lh5": false
+      }
+    },
+    {
+      "name": "magnetic",
+      "ASE_calculator": "ase.calculators.vasp.Vasp",
+      "QM_run_command": "/path/to/vasp-or-wrapper",
+      "inputs_from_stages": [
+        {"stage": "charge_density", "source": "CHGCAR", "destination": "CHGCAR"}
+      ],
+      "input": {
+        "xc": "PBE",
+        "encut": 450,
+        "kpts": [4, 4, 4],
+        "ismear": 1,
+        "sigma": 0.2,
+        "ediff": 1e-6,
+        "nsw": 0,
+        "ibrion": -1,
+        "ispin": 2,
+        "istart": 0,
+        "icharg": 1,
+        "magmom": [2.2, 2.2],
+        "lcharg": false,
+        "lwave": false,
+        "lh5": false
+      }
+    }
+  ]
+}

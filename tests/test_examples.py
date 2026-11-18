@@ -6,6 +6,7 @@ Submits no jobs and needs no QM programs. NeuroChem examples are imported agains
 import ast
 import importlib
 import json
+import runpy
 import sys
 from pathlib import Path
 
@@ -350,18 +351,69 @@ def test_the_il_example_repeats_its_orca_calculation_and_keeps_the_old_tolerance
     assert all("%pal nprocs 128 end" in stage["input"]["orcablocks"] for stage in config["stages"])
 
 
-def test_the_staged_orca_example_runs_each_stage_with_its_own_basis(tmp_path):
-    from alframework.qm_interfaces.ase.workflow import label_workflow
-    from tests.helpers.ase_qm import orca_command
-    from tests.helpers.labels import PROPERTIES, unlabeled_h2
+def test_the_staged_orca_example_reads_the_small_basis_orbitals(tmp_path, monkeypatch, capsys):
+    from ase.units import Hartree
+    from tests.helpers.ase_qm import executable, orca_output
 
-    config = read(ROOT / "examples" / "ase_qm" / "staged_orca_qm_config.json")
-    for stage in config["stages"]:
-        stage["QM_run_command"] = orca_command(tmp_path)
-    molecule = label_workflow(unlabeled_h2(), config, str(tmp_path / "scratch"), PROPERTIES)
-    assert molecule.check_convergence(), molecule.metadata
-    assert "def2-SVP" in (tmp_path / "scratch" / "h2" / "initial" / "orca.inp").read_text()
-    assert "def2-TZVP" in (tmp_path / "scratch" / "h2" / "target" / "orca.inp").read_text()
+    command = executable(tmp_path, f"""
+import sys
+from pathlib import Path
+
+request = Path(sys.argv[1]).read_text()
+if Path.cwd().name == "guess":
+    assert "def2-SVP" in request and "EnGrad" not in request
+    Path("orca.gbw").write_bytes(b"small-basis orbitals")
+    print({orca_output(energy="-2.5")!r})
+else:
+    assert "def2-TZVP" in request and "EnGrad" in request and "MORead" in request
+    assert '%moinp "guess.gbw"' in request
+    assert Path("guess.gbw").read_bytes() == b"small-basis orbitals"
+    Path("orca.engrad").write_text("# The current gradient\\n#\\n" + "0.1\\n" * 6 + "# The atomic numbers\\n")
+    print({orca_output(energy="-3.0")!r})
+""")
+    script = ROOT / "examples" / "ase_qm" / "run_workflow.py"
+    scratch = tmp_path / "scratch"
+    monkeypatch.setattr(sys, "argv", [str(script), "orca", "--command", command, "--scratch-dir", str(scratch)])
+    runpy.run_path(str(script), run_name="__main__")
+    assert (scratch / "h2/target/guess.gbw").read_bytes() == b"small-basis orbitals"
+    assert f"Final energy (eV): {-3.0 * Hartree}" in capsys.readouterr().out
+
+
+def test_the_staged_vasp_example_reads_charge_density_for_the_magnetic_label(tmp_path, monkeypatch, capsys):
+    import numpy as np
+    from ase.calculators.vasp import Vasp
+
+    seen = []
+
+    def calculate(self, atoms, properties, system_changes):
+        assert atoms.get_chemical_formula() == "Fe2" and atoms.pbc.all()
+        assert self.command == "example-vasp"
+        assert self.int_params["nsw"] == 0 and self.int_params["ibrion"] == -1
+        assert self.int_params["istart"] == 0 and not self.bool_params["lwave"]
+        seen.append(atoms.copy())
+        charge_file = Path(self.directory) / "CHGCAR"
+        if self.int_params["ispin"] == 1:
+            assert properties == ["energy"] and self.int_params["icharg"] == 2
+            assert self.bool_params["lcharg"] and not self.bool_params["lh5"]
+            charge_file.write_bytes(b"nonmagnetic charge density")
+            self.results = {"energy": -1.0}
+        else:
+            assert self.int_params["ispin"] == 2 and self.int_params["icharg"] == 1
+            assert self.list_float_params["magmom"] == [2.2, 2.2]
+            assert properties == ["energy", "forces"] and charge_file.read_bytes() == b"nonmagnetic charge density"
+            self.results = {"energy": -2.0, "forces": np.ones((len(atoms), 3))}
+        self.converged = True
+
+    monkeypatch.setattr(Vasp, "calculate", calculate)
+    script = ROOT / "examples" / "ase_qm" / "run_workflow.py"
+    scratch = tmp_path / "scratch"
+    monkeypatch.setattr(sys, "argv", [
+        str(script), "vasp", "--command", "example-vasp", "--scratch-dir", str(scratch),
+    ])
+    runpy.run_path(str(script), run_name="__main__")
+    assert len(seen) == 2 and seen[0] == seen[1]
+    assert (scratch / "bcc-fe/magnetic/CHGCAR").read_bytes() == b"nonmagnetic charge density"
+    assert "Final energy (eV): -2.0" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize("family", ["fine_tuning", "seeded_active_learning"])

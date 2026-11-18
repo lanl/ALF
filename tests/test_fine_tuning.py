@@ -19,7 +19,7 @@ from alframework.ml_interfaces.fine_tuning import (child_environment, fine_tune_
 from alframework.ml_interfaces.fine_tuning import shard_atoms
 from alframework.ml_interfaces.fine_tuning.mace import MaceFineTuner
 from alframework.tools.molecules_class import MoleculesObject
-from alframework.tools.tools import store_current_data
+from alframework.tools.data_shards import store_current_data
 from tests.helpers.fake_fine_tuner import trained
 from tests.helpers.molecules import WATER
 
@@ -871,7 +871,7 @@ def test_uma_keeps_the_checkpoints_own_references(tmp_path):
 
 
 def test_uma_reads_charge_and_spin_from_the_shards(tmp_path):
-    from alframework.tools.tools import store_current_data
+    from alframework.tools.data_shards import store_current_data
 
     hydroxide = Atoms("OH", positions=[[0, 0, 0], [0.97, 0, 0]])
     anion, plain = labeled("anion", hydroxide), labeled("plain", hydroxide)

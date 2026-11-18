@@ -13,7 +13,7 @@ import pytest
 from matplotlib.axes import Axes
 
 from alframework.tools.plotting import OUTCOME_COLORS, _chosen_models, _table, analysis_plot
-from alframework.tools.tools import build_input_dict
+from alframework.tools.config import build_input_dict
 from alframework.tools.trajectory_summary import trajectory_row
 
 NUMERIC = ("realtime", "Es", "Fs", "Fsmax", "peak_Es", "peak_Fs", "peak_Fsmax")

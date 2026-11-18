@@ -21,9 +21,9 @@ import parsl
 import pytest
 from parsl import python_app
 
-from alframework.tools import tools as tool_module
+from alframework.tools import parsl_tasks
 from alframework.tools.molecules_class import MoleculesObject
-from alframework.tools.tools import cancel_blocks, release_allocations_at_exit, stop_if_executor_failed
+from alframework.tools.parsl_tasks import cancel_blocks, release_allocations_at_exit, stop_if_executor_failed
 from tests.helpers.driver import run_alf_driver
 from tests.helpers.molecules import WATER
 
@@ -385,7 +385,7 @@ def test_coordinator_stops_with_status_saved_when_an_executor_dies(tmp_path, mon
         saved.append(status_on_disk == sys._getframe(1).f_globals["status"])
         real_check(dfk)
 
-    monkeypatch.setattr(tool_module, "stop_if_executor_failed", check_after_comparing_status)
+    monkeypatch.setattr(parsl_tasks, "stop_if_executor_failed", check_after_comparing_status)
 
     def kill_ml_executor_when_ready(status):
         if ready(status):

@@ -17,7 +17,7 @@ from alframework.samplers import batched_mlmd
 from alframework.tools.molecules_class import MoleculesObject
 from alframework.tools.plotting import analysis_plot
 from alframework.tools.sampler_coordinator import SamplerCoordinator
-from alframework.tools.tools import build_input_dict, load_config_file
+from alframework.tools.config import build_input_dict, load_config_file
 from alframework.tools.trajectory_summary import COLUMNS, TrajectorySummary, read_trajectory_summary, trajectory_row
 from tests.helpers.driver import MODEL_PATTERN, run_alf_driver
 from tests.helpers.molecules import WATER

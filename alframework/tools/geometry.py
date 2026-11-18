@@ -1,4 +1,4 @@
-"""Geometry checks shared by the legacy and batched MLMD samplers."""
+"""Geometry operations shared by builders, samplers, and training."""
 
 import numpy as np
 
@@ -74,3 +74,37 @@ def batched_minimum_distances(positions, cells, system_idx, n_systems):
     distinct = first != second  # an atom's own periodic images are outside this screen
     distances = torch.full((n_systems,), float('inf'), dtype=positions.dtype, device=positions.device)
     return distances.scatter_reduce_(0, system_mapping[distinct], vectors[distinct].norm(dim=1), reduce='amin')
+
+
+def random_rotation_matrix(deflection=1.0, randnums=None):
+    """Returns a random rotation matrix
+
+    Args:
+        deflection (float): Pole deflection.
+        randnums (ndarray): A (3,) numpy array containing the parameters theta, phi, and z.
+
+    Returns:
+        (ndarray): Random 3x3 rotation matrix.
+
+    """
+    if randnums is None:
+        randnums = np.random.uniform(size=(3,))
+
+    theta, phi, z = randnums
+
+    theta = theta * 2.0 * deflection * np.pi  # Rotation about the pole (Z).
+    phi = phi * 2.0 * np.pi  # For direction of pole deflection.
+    z = z * 2.0 * deflection  # For magnitude of pole deflection.
+
+    r = np.sqrt(z)
+
+    V = [np.sin(phi) * r, np.cos(phi) * r, np.sqrt(2.0 - z)]
+
+    st = np.sin(theta)
+    ct = np.cos(theta)
+
+    R_z = np.array([[ct, st, 0], [-st, ct, 0], [0, 0, 1]])
+
+    M = (np.outer(V, V) - np.eye(3)) @ R_z
+
+    return M

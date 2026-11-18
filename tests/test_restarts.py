@@ -13,9 +13,10 @@ import h5py
 import numpy as np
 import pytest
 
-from alframework.tools import files, pyanitools, tools
+from alframework.tools import files, pyanitools, restarts
+from alframework.tools.data_shards import LABEL_PROVENANCE, store_current_data, write_label_sources
 from alframework.tools.molecules_class import MoleculesObject
-from alframework.tools.tools import find_empty_directory, store_current_data, write_label_sources, write_status
+from alframework.tools.restarts import find_empty_directory, write_status
 from tests.helpers.driver import run_alf_driver, stored_ids
 from tests.helpers.molecules import WATER
 
@@ -640,7 +641,7 @@ def crash_saving_status(monkeypatch, when, settle=0.0):
     """
     import time
 
-    original = tools.write_status
+    original = restarts.write_status
 
     def write_or_crash(path, status):
         if when(status):
@@ -648,7 +649,7 @@ def crash_saving_status(monkeypatch, when, settle=0.0):
             raise OSError("node lost")
         original(path, status)
 
-    monkeypatch.setattr(tools, "write_status", write_or_crash)
+    monkeypatch.setattr(restarts, "write_status", write_or_crash)
 
 
 def test_restart_after_a_crash_between_a_store_and_saving_status(tmp_path, monkeypatch, capsys):
@@ -809,7 +810,7 @@ def test_a_shard_stored_from_a_generator_matches_one_stored_from_a_list(tmp_path
     def structures():
         for i in range(4):
             molecule = labeled(f"water-{i}", energy=-1.0 - i)
-            molecule.update_metadata({tools.LABEL_PROVENANCE: {"teacher": "test", "level": i % 2}})
+            molecule.update_metadata({LABEL_PROVENANCE: {"teacher": "test", "level": i % 2}})
             molecule.set_converged_flag(i != 2)
             yield molecule
 

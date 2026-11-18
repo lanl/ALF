@@ -10,7 +10,8 @@ from parsl import python_app
 
 from alframework.tools.label_validation import screen_labels
 from alframework.tools.restarts import HeldLabels
-from alframework.tools.tools import store_current_data, system_checker
+from alframework.tools.data_shards import store_current_data
+from alframework.tools.label_validation import system_checker
 from tests.helpers.driver import MODEL_PATTERN, run_alf_driver
 from tests.helpers.labels import PROPERTIES, labeled_h2
 

@@ -1422,7 +1422,7 @@ def test_separate_test_set_matches_the_training_arrays_and_leaves_them_alone(tmp
     torch = pytest.importorskip("torch")
     pytest.importorskip("hippynn")
     from alframework.tools.molecules_class import MoleculesObject
-    from alframework.tools.tools import store_current_data
+    from alframework.tools.data_shards import store_current_data
 
     properties = {"energy": ["energy", "system", 1.0], "forces": ["forces", "atomic", 1.0]}
 

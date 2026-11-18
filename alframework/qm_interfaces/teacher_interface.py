@@ -124,7 +124,7 @@ def _validate_properties(properties):
 
 
 def _refuse_mixed_labels(settings, h5_dir):
-    from alframework.tools.tools import read_label_provenance
+    from alframework.tools.data_shards import read_label_provenance
 
     expected = (file_sha256(settings["checkpoint"]), settings.get("task"), settings["loader"])
     for path in sorted(Path(h5_dir).glob("*.h5")):

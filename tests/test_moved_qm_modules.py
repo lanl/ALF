@@ -8,7 +8,7 @@ import warnings
 
 import pytest
 
-from alframework.tools.tools import load_module_from_string
+from alframework.tools.config import load_module_from_string
 
 PREFIX = "alframework.qm_interfaces."
 
@@ -35,7 +35,7 @@ def run_fresh(code):
 def test_a_configured_old_path_gives_the_same_object_with_a_warning(old, new, name):
     run_fresh(f"""
 import warnings
-from alframework.tools.tools import load_module_from_string
+from alframework.tools.config import load_module_from_string
 with warnings.catch_warnings(record=True) as caught:
     warnings.simplefilter("always")
     moved = load_module_from_string("{PREFIX}{old}.{name}")

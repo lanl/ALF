@@ -7,7 +7,7 @@ import anitraintools as alt
 from ase_interface import aniensloader
 from ase_interface import ANIENS, batchedensemblemolecule
 
-from alframework.tools.tools import build_input_dict
+from alframework.tools.config import build_input_dict
 
 from parsl import python_app, bash_app
 from alframework.tools.task_timeline import timed

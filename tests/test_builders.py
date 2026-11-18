@@ -148,7 +148,8 @@ def test_condensed_phase_builders_return_periodic_systems():
 def test_condensed_phase_builders_can_build_clusters(tmp_path):
     """``"periodic": false`` in the builder configuration gives a cluster that is stored, and read back, as one."""
     from alframework.ml_interfaces.fine_tuning import shard_atoms
-    from alframework.tools.tools import build_input_dict, store_current_data
+    from alframework.tools.config import build_input_dict
+    from alframework.tools.data_shards import store_current_data
 
     library = str(Path(__file__).resolve().parents[1] / "examples" / "simple_water" / "fragment_library") + "/"
     builder_config = {"molecule_library_dir": library, "cell_range": [[6.0, 6.0]] * 3,

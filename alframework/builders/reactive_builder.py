@@ -14,9 +14,9 @@ from ase.geometry.cell import complete_cell
 from ase.io import cfg
 from ase.io import read, write
 
-from alframework.tools.tools import random_rotation_matrix
-from alframework.tools.tools import system_checker
-from alframework.tools.tools import build_input_dict
+from alframework.tools.geometry import random_rotation_matrix
+from alframework.tools.label_validation import system_checker
+from alframework.tools.config import build_input_dict
 from alframework.tools.molecules_class import MoleculesObject
 
 import random

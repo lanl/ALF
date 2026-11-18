@@ -14,7 +14,7 @@ import pickle
 import sys
 import warnings
 
-from alframework.tools.tools import load_module_from_string
+from alframework.tools.config import load_module_from_string
 
 moved = [
     ("packed_engine", "samplers.engines.packed", "PackedState"),

@@ -11,8 +11,8 @@ import random as r
 from time import time
 from collections import Counter
 
-from alframework.tools.tools import random_rotation_matrix   
-from alframework.tools.tools import build_input_dict         
+from alframework.tools.geometry import random_rotation_matrix
+from alframework.tools.config import build_input_dict
 from alframework.tools.molecules_class import MoleculesObject
 
 from parsl import python_app, bash_app

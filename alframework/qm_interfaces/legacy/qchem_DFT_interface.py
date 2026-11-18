@@ -17,9 +17,9 @@ from ase.io import read, write
 from ase.data import chemical_symbols
 from ase import units
 
-from alframework.tools.tools import random_rotation_matrix
-from alframework.tools.tools import build_input_dict
-from alframework.tools.tools import system_checker
+from alframework.tools.geometry import random_rotation_matrix
+from alframework.tools.config import build_input_dict
+from alframework.tools.label_validation import system_checker
 import random
 from copy import deepcopy
 

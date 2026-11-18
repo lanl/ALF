@@ -9,7 +9,7 @@ what checking every task gives.
 from concurrent.futures import Future
 
 from alframework.tools.batching import BatchedTaskQueue
-from alframework.tools.tools import parsl_task_queue
+from alframework.tools.parsl_tasks import parsl_task_queue
 from tests.helpers.fakes import FakeTask
 
 

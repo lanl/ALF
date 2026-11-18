@@ -14,8 +14,8 @@ from ase.geometry.cell import complete_cell
 from ase.io import cfg
 from ase.io import read, write
 
-from alframework.tools.tools import random_rotation_matrix
-from alframework.tools.tools import build_input_dict
+from alframework.tools.geometry import random_rotation_matrix
+from alframework.tools.config import build_input_dict
 from alframework.tools.molecules_class import MoleculesObject
 import random
 from copy import deepcopy
@@ -242,7 +242,7 @@ def simple_condensed_phase_builder_task(moleculeid, builder_config, molecule_lib
     #    from ase.geometry.cell import complete_cell
     #    from ase.io import read, write
     #
-    #    from alframework.tools.tools import random_rotation_matrix
+    #    from alframework.tools.geometry import random_rotation_matrix
     #    import random
     #    from copy import deepcopy
 
@@ -299,7 +299,7 @@ def simple_multi_condensed_phase_builder_task(moleculeids, builder_config, molec
     #    from ase.geometry.cell import complete_cell
     #    from ase.io import read, write
     #
-    #    from alframework.tools.tools import random_rotation_matrix
+    #    from alframework.tools.geometry import random_rotation_matrix
     #    import random
     #    from copy import deepcopy
 

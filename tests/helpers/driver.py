@@ -19,7 +19,7 @@ from parsl.config import Config
 from parsl.errors import NoDataFlowKernelError
 from parsl.executors import ThreadPoolExecutor
 
-from alframework.tools import tools as tool_module
+from alframework.tools import config as workflow_config
 
 EXECUTORS = ("alf_builder_executor", "alf_sampler_executor", "alf_QM_executor", "alf_ML_executor")
 MODEL_PATTERN = "models/model-{:04d}"
@@ -96,7 +96,7 @@ def run_alf_driver(
         "mock.qm": qm,
         "mock.ml": ml,
     }
-    monkeypatch.setattr(tool_module, "load_module_from_string", modules.__getitem__)
+    monkeypatch.setattr(workflow_config, "load_module_from_string", modules.__getitem__)
 
     master = dict(
         master_directory="pwd",

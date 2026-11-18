@@ -14,7 +14,7 @@ from ase import Atoms
 from parsl import python_app
 
 from alframework.qm_interfaces import teacher_interface as ti
-from alframework.tools import tools
+from alframework.tools import data_shards
 from alframework.tools.labeling import LabelingCoordinator
 from alframework.tools.molecules_class import MoleculesObject
 from tests.helpers import teachers
@@ -243,8 +243,8 @@ def test_teacher_labels_record_the_teacher(checkpoint):
 def test_store_writes_teacher_provenance_onto_the_shard(checkpoint, tmp_path):
     molecules = label(structures(4, periodic=set()), config(checkpoint, fail_on_size=4))
     path = tmp_path / "data-0000.h5"
-    tools.store_current_data(str(path), molecules, PROPERTIES)
-    (source,) = tools.read_label_provenance(path)
+    data_shards.store_current_data(str(path), molecules, PROPERTIES)
+    (source,) = data_shards.read_label_provenance(path)
     assert source["checkpoint_sha256"] == ti.file_sha256(checkpoint)
     with h5py.File(path) as handle:
         assert sum(len(group["energy"]) for group in handle.values()) == sum(m.check_convergence() for m in molecules)
@@ -253,8 +253,8 @@ def test_store_writes_teacher_provenance_onto_the_shard(checkpoint, tmp_path):
 def test_shard_without_converged_teacher_labels_records_no_teacher(checkpoint, tmp_path):
     molecules = label(structures(2), config(checkpoint, energy=float("nan")))
     path = tmp_path / "data-0000.h5"
-    tools.store_current_data(str(path), molecules, PROPERTIES)
-    assert tools.read_label_provenance(path) == []
+    data_shards.store_current_data(str(path), molecules, PROPERTIES)
+    assert data_shards.read_label_provenance(path) == []
 
 
 def test_qm_shards_are_unchanged(tmp_path):
@@ -262,17 +262,17 @@ def test_qm_shards_are_unchanged(tmp_path):
     molecule.store_results({"energy": -1.0, "forces": np.zeros((2, 3))})
     molecule.set_converged_flag(True)
     path = tmp_path / "data-0000.h5"
-    tools.store_current_data(str(path), [molecule], PROPERTIES)
+    data_shards.store_current_data(str(path), [molecule], PROPERTIES)
     with h5py.File(path) as handle:
         assert "label_provenance" not in handle.attrs
-    assert tools.read_label_provenance(path) == []
+    assert data_shards.read_label_provenance(path) == []
 
 
 def test_hippynn_reads_a_shard_that_has_provenance(checkpoint, tmp_path):
     pytest.importorskip("hippynn")
     from alframework.ml_interfaces.hippynn_interface import ALFPyAniDirectoryDB
 
-    tools.store_current_data(str(tmp_path / "data-0000.h5"), label(structures(4), config(checkpoint)), PROPERTIES)
+    data_shards.store_current_data(str(tmp_path / "data-0000.h5"), label(structures(4), config(checkpoint)), PROPERTIES)
     database = ALFPyAniDirectoryDB(directory=str(tmp_path), inputs=["species", "coordinates"],
                                    targets=["energy", "forces"], quiet=True, seed=0)
     assert len(database.arr_dict["energy"]) == 4
@@ -281,12 +281,12 @@ def test_hippynn_reads_a_shard_that_has_provenance(checkpoint, tmp_path):
 def test_label_sources_record_what_a_model_learned_from(checkpoint, tmp_path):
     h5 = tmp_path / "h5"
     h5.mkdir()
-    tools.store_current_data(str(h5 / "data-0000.h5"), label(structures(2), config(checkpoint)), PROPERTIES)
+    data_shards.store_current_data(str(h5 / "data-0000.h5"), label(structures(2), config(checkpoint)), PROPERTIES)
     qm = structures(1)[0]
     qm.store_results({"energy": -1.0, "forces": np.zeros((2, 3))})
     qm.set_converged_flag(True)
-    tools.store_current_data(str(h5 / "data-0001.h5"), [qm], PROPERTIES)
-    tools.write_label_sources(tmp_path / "models/model-0001", h5)
+    data_shards.store_current_data(str(h5 / "data-0001.h5"), [qm], PROPERTIES)
+    data_shards.write_label_sources(tmp_path / "models/model-0001", h5)
     record = json.loads((tmp_path / "models/model-0001/label_sources.json").read_text())
     assert [teacher["teacher"] for teacher in record["teachers"]] == ["scripted-teacher"]
     assert record["shards_without_label_provenance"] == ["data-0001.h5"] and record["shards"] == 2
@@ -294,7 +294,7 @@ def test_label_sources_record_what_a_model_learned_from(checkpoint, tmp_path):
 
 def test_label_sources_failure_is_reported_not_raised(tmp_path, capsys):
     (tmp_path / "file").write_text("")
-    tools.write_label_sources(tmp_path / "file" / "ensemble", tmp_path)
+    data_shards.write_label_sources(tmp_path / "file" / "ensemble", tmp_path)
     assert "Could not record label sources" in capsys.readouterr().out
 
 
@@ -358,7 +358,7 @@ def test_relative_checkpoint_is_found_from_the_master_directory(tmp_path):
 
 
 def shard(path, molecules):
-    tools.store_current_data(str(path), molecules, PROPERTIES)
+    data_shards.store_current_data(str(path), molecules, PROPERTIES)
 
 
 def test_teacher_refuses_an_h5_dir_with_qm_labels(checkpoint, tmp_path):
@@ -437,7 +437,7 @@ def test_teacher_labels_a_full_training_cycle(tmp_path, monkeypatch, task, batch
     def ml(current_training_id, h5_dir):
         trained.append(current_training_id)
         (tmp_path / MODEL_PATTERN.format(current_training_id)).mkdir(parents=True)
-        tools.write_label_sources(tmp_path / MODEL_PATTERN.format(current_training_id), h5_dir)
+        data_shards.write_label_sources(tmp_path / MODEL_PATTERN.format(current_training_id), h5_dir)
         return [True] * 4, current_training_id
 
     qm_config = config(checkpoint, "spring")
@@ -450,7 +450,7 @@ def test_teacher_labels_a_full_training_cycle(tmp_path, monkeypatch, task, batch
     shards = sorted((tmp_path / "h5").glob("data-*.h5"))
     assert len(shards) >= 2
     for path in shards:
-        (source,) = tools.read_label_provenance(path)
+        (source,) = data_shards.read_label_provenance(path)
         assert source["teacher"] == "spring-teacher" and source["adapter"] == "AseTeacher"
     record = json.loads((tmp_path / MODEL_PATTERN.format(1) / "label_sources.json").read_text())
     assert [t["teacher"] for t in record["teachers"]] == ["spring-teacher"]

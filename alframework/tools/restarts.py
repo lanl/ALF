@@ -12,7 +12,7 @@ from pathlib import Path
 
 import h5py
 
-from alframework.tools.files import write_bytes_atomic
+from alframework.tools.files import write_bytes_atomic, write_json_atomic
 from alframework.tools.label_validation import reject_label
 
 HELD_PIECES = 'held_pieces'
@@ -77,7 +77,7 @@ class HeldLabels:
         would mix them in the next shard is held unconverged instead: storing it would fail on every restart."""
         if not result.check_convergence():
             return
-        from alframework.tools.tools import compute_empirical_formula
+        from alframework.tools.data_shards import compute_empirical_formula
         atoms = result.get_atoms()
         formula = compute_empirical_formula(atoms.get_chemical_symbols())
         periodic = bool(atoms.pbc.all())
@@ -209,3 +209,25 @@ def reconcile_status(status, master_config, held):
     if held_count:
         changes.append(f'{held_count} finished labels were held from before the crash and will be stored')
     return changes
+
+
+def find_empty_directory(pattern):
+    """Return the first unused index for a run's indexed path pattern.
+
+    Args:
+        pattern (str): A format string for files or directories.
+
+    Returns:
+        int: The first index whose formatted path does not exist.
+
+    """
+    curI = 0
+    while os.path.exists(pattern.format(curI)):
+        curI += 1
+
+    return curI
+
+
+def write_status(status_path, status):
+    """Save the coordinator's status all at once, so a crash mid-write can't stop a restart."""
+    write_json_atomic(status_path, status)

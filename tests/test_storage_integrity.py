@@ -8,7 +8,7 @@ from alframework.builders.external_geometry import build_external_geometries
 from alframework.ml_interfaces.fine_tuning import shard_atoms
 from alframework.tools.label_validation import screen_labels
 from alframework.tools.restarts import HeldLabels
-from alframework.tools.tools import store_current_data
+from alframework.tools.data_shards import store_current_data
 from tests.helpers.labels import PROPERTIES, labeled_h2
 
 
@@ -90,15 +90,15 @@ def test_storing_an_unstorable_periodicity_directly_fails_and_keeps_earlier_shar
 
 
 def test_storing_a_dataset_with_a_row_missing_fails_and_writes_nothing(tmp_path, monkeypatch):
-    from alframework.tools import tools
+    from alframework.tools import data_shards
 
-    original = tools.store_pair_index
+    original = data_shards.store_pair_index
 
     def drop_a_row(group, system, properties):
         original(group, system, properties)
         group["energy"] = group["energy"][:-1]
 
-    monkeypatch.setattr(tools, "store_pair_index", drop_a_row)
+    monkeypatch.setattr(data_shards, "store_pair_index", drop_a_row)
     with pytest.raises(ValueError, match="not aligned"):
         store_current_data(str(tmp_path / "rows.h5"), [labeled_h2("a"), labeled_h2("b")], PROPERTIES)
     assert not (tmp_path / "rows.h5").exists()

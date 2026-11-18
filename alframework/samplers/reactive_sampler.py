@@ -11,11 +11,11 @@ from parsl import python_app, bash_app
 from alframework.tools.failed_tasks import releases_memory_on_failure
 from alframework.tools.task_timeline import timed
 
-from alframework.tools.tools import annealing_schedule
-from alframework.tools.tools import system_checker
-from alframework.tools.tools import load_module_from_config
+from alframework.tools.annealing import annealing_schedule
+from alframework.tools.label_validation import system_checker
+from alframework.tools.config import load_module_from_config
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator
-from alframework.tools.tools import build_input_dict
+from alframework.tools.config import build_input_dict
 from alframework.tools.gpu import sampling_device
 from ase.mep import DimerControl, MinModeAtoms, MinModeTranslate
 

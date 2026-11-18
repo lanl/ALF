@@ -14,7 +14,7 @@ from alframework.qm_interfaces.ase import generic as interface
 from alframework.tools.label_validation import screen_labels
 from alframework.tools.labeling import LabelingCoordinator, label_sequentially
 from alframework.tools.molecules_class import MoleculesObject
-from alframework.tools.tools import store_current_data
+from alframework.tools.data_shards import store_current_data
 from tests.helpers.ase_qm import EMT_CONFIG, label_with_ase
 from tests.helpers.labels import PROPERTIES, unlabeled_h2
 

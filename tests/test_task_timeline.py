@@ -8,7 +8,7 @@ import pytest
 from parsl import python_app
 
 from alframework.tools.task_timeline import ENV, read_timeline, stage_spans, timed
-from alframework.tools.tools import build_input_dict
+from alframework.tools.config import build_input_dict
 
 
 @timed("sampler")

@@ -1,6 +1,7 @@
-"""General helpers in alframework.tools.tools: schedules, config loading, HDF5 storage, and the Parsl task queue."""
+"""Shared ALF helpers for schedules, configuration, HDF5 storage, and Parsl tasks."""
 
 import json
+import pickle
 import warnings
 from pathlib import Path
 
@@ -9,18 +10,32 @@ import numpy as np
 import pytest
 from ase import Atoms
 
+from alframework.tools.annealing import annealing_schedule
+from alframework.tools.config import load_config_file, load_module_from_config, load_module_from_string
+from alframework.tools.data_shards import compute_empirical_formula, store_current_data
+from alframework.tools.geometry import random_rotation_matrix
+from alframework.tools.label_validation import system_checker
 from alframework.tools.molecules_class import MoleculesObject
-from alframework.tools.tools import (
-    annealing_schedule,
-    compute_empirical_formula,
-    is_final_task,
-    load_config_file,
-    parsl_task_queue,
-    random_rotation_matrix,
-    store_current_data,
-    system_checker,
-)
+from alframework.tools.parsl_tasks import is_final_task, parsl_task_queue
 from tests.helpers.fakes import FakeTask
+
+
+@pytest.mark.parametrize("module,name", [
+    ("annealing", "annealing_schedule"),
+    ("config", "build_input_dict"),
+    ("data_shards", "SourceCollector"),
+    ("data_shards", "store_current_data"),
+    ("geometry", "random_rotation_matrix"),
+    ("label_validation", "system_checker"),
+    ("parsl_tasks", "parsl_task_queue"),
+    ("pyanitools", "build_ANI_info"),
+    ("restarts", "write_status"),
+])
+def test_legacy_tool_paths_resolve_to_canonical_helpers(module, name):
+    old = "alframework.tools.tools"
+    canonical = load_module_from_string(f"alframework.tools.{module}.{name}")
+    assert load_module_from_config({"helper": f"{old}.{name}"}, "helper") is canonical
+    assert pickle.loads(f"c{old}\n{name}\n.".encode()) is canonical
 
 
 @pytest.mark.parametrize(
@@ -217,7 +232,7 @@ WATER_MOLECULE = Atoms("OH2", positions=[[0, 0, 0], [0.96, 0, 0], [-0.24, 0.93, 
 
 
 def test_shards_store_charge_and_spin_when_any_structure_records_them(tmp_path):
-    from alframework.tools.tools import store_current_data
+    from alframework.tools.data_shards import store_current_data
 
     store_current_data(str(tmp_path / "data-0000.h5"), [
         charged("anion", HYDROXIDE, charge=-1), charged("radical", HYDROXIDE, mult=2),
@@ -229,7 +244,7 @@ def test_shards_store_charge_and_spin_when_any_structure_records_them(tmp_path):
 
 
 def test_shards_without_charge_or_spin_metadata_are_unchanged(tmp_path):
-    from alframework.tools.tools import store_current_data
+    from alframework.tools.data_shards import store_current_data
 
     store_current_data(str(tmp_path / "data-0000.h5"), [charged("water", WATER_MOLECULE)], STATE_PROPERTIES)
     with h5py.File(tmp_path / "data-0000.h5") as handle:
@@ -239,7 +254,7 @@ def test_shards_without_charge_or_spin_metadata_are_unchanged(tmp_path):
 def test_hippynn_reads_shards_with_and_without_charge_and_spin(tmp_path):
     pytest.importorskip("hippynn")
     from alframework.ml_interfaces.hippynn_interface import ALFPyAniDirectoryDB
-    from alframework.tools.tools import store_current_data
+    from alframework.tools.data_shards import store_current_data
 
     store_current_data(str(tmp_path / "data-0000.h5"), [charged(f"w{i}", WATER_MOLECULE) for i in range(3)],
                        STATE_PROPERTIES)

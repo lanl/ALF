@@ -1,8 +1,10 @@
-"""Checks that a QM label can be stored and trained on, used when labels are held and again when they are stored."""
+"""Validate builder output and QM labels before accepting structures."""
 import re
 
 import numpy as np
 from ase import Atoms
+
+from alframework.tools.molecules_class import MoleculesObject
 
 # Energies are scalars and forces (atoms, 3), including the per-state names of excited-state labeling.
 ENERGY_NAME = re.compile(r'(?:energy|free_energy|E\d+|dE\d+)')
@@ -80,3 +82,47 @@ def reject_label(molecule, reason):
     """Mark one label unconverged, recording why."""
     molecule.set_converged_flag(False)
     molecule.update_metadata({'labeling_error': f'Invalid label: {reason}'})
+
+
+def system_checker(system, kill_on_fail=True, print_error=True):
+    """Check the geometry and numeric properties of a system.
+
+    Args:
+        system (MoleculesObject/list/tuple): A MoleculesObject or three-element sequence whose first element
+                       is a moleculeid string or a metadata dict containing a string 'moleculeid'.
+                       The second element is an ASE Atoms object. The third element is a dict that stores the
+                       desired properties from the QM calculation (e.g. forces and energies).
+        kill_on_fail (bool): Raise ``RuntimeError`` when validation fails.
+        print_error (bool): If True prints the error message if something goes wrong.
+
+    Returns:
+        (bool): True if 'system' meets all requirements and False otherwise.
+
+    """
+    try:
+        if isinstance(system, MoleculesObject):
+            moleculeid = system.get_moleculeid()
+            atoms = system.get_atoms()
+            results = system.get_results()
+        else:
+            assert isinstance(system, (list, tuple))
+            assert len(system) == 3
+            moleculeid = system[0]['moleculeid'] if isinstance(system[0], dict) else system[0]
+            atoms = system[1]
+            results = system[2]
+        assert isinstance(moleculeid, str)
+        assert isinstance(atoms, Atoms)
+        assert isinstance(results, dict)
+
+        validate_geometry(atoms)
+        validate_values(results)
+
+        return True
+
+    except Exception as e:
+        if print_error:
+            print(e)
+        if kill_on_fail:
+            raise RuntimeError('Atomic system failed to meet requirements.')
+
+        return False

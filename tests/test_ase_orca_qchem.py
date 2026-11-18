@@ -14,7 +14,7 @@ from alframework.qm_interfaces.ase import generic as interface
 from alframework.qm_interfaces.ase.orca import create_calculator as create_orca
 from alframework.qm_interfaces.ase.qchem import create_calculator as create_qchem
 from alframework.tools.molecules_class import MoleculesObject
-from alframework.tools.tools import store_current_data
+from alframework.tools.data_shards import store_current_data
 from tests.helpers.ase_qm import executable, label_with_ase, orca_command, qchem_command, qchem_output
 from tests.helpers.labels import PROPERTIES, unlabeled_h2
 

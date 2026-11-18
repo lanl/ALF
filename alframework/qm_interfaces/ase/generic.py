@@ -16,7 +16,7 @@ from parsl import python_app
 from alframework.tools.label_validation import validate_geometry, validate_label
 from alframework.tools.molecules_class import MoleculesObject
 from alframework.tools.task_timeline import timed
-from alframework.tools.tools import load_module_from_config
+from alframework.tools.config import load_module_from_config
 
 # QM_config keys that are ALF settings, never calculator options.
 ALF_SETTINGS = {'ASE_calculator', 'QM_run_command', 'batching', 'input'}

@@ -19,7 +19,7 @@ from alframework.qm_interfaces.pyscf import calculator as pc
 from alframework.qm_interfaces.pyscf.calculator import PySCFCalculator, validate_pyscf_settings
 from alframework.tools.labeling import LabelingCoordinator
 from alframework.tools.molecules_class import MoleculesObject
-from alframework.tools.tools import store_current_data
+from alframework.tools.data_shards import store_current_data
 
 WATER = Atoms("OH2", positions=[[0.0, 0.0, 0.0], [0.96, 0.0, 0.0], [-0.24, 0.93, 0.0]])
 MOLECULE = {"basis": "sto-3g", "xc": "pbe"}

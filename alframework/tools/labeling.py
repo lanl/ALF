@@ -32,7 +32,7 @@ import logging
 from parsl import python_app
 
 from alframework.tools.batching import BatchedSubmitter, StartupSettings, batching_settings, flatten_molecule_output
-from alframework.tools.tools import build_input_dict
+from alframework.tools.config import build_input_dict
 
 logger = logging.getLogger(__name__)
 

@@ -15,11 +15,11 @@ import logging
 import time
 from collections import OrderedDict
 
+from alframework.tools.config import build_input_dict
 from alframework.tools.molecules_class import MoleculesObject
-from alframework.tools.tools import (
+from alframework.tools.parsl_tasks import (
     FAILED_TASK_STATUSES,
     SUCCESSFUL_TASK_STATUSES,
-    build_input_dict,
     is_final_task,
     parsl_task_queue,
 )

@@ -40,7 +40,8 @@ from alframework.qm_interfaces.pyscf.gpu4pyscf import (
 )
 from alframework.tools.labeling import LabelingCoordinator
 from alframework.tools.molecules_class import MoleculesObject
-from alframework.tools.tools import build_input_dict, store_current_data
+from alframework.tools.config import build_input_dict
+from alframework.tools.data_shards import store_current_data
 from tests.helpers.driver import loaded_parsl
 
 

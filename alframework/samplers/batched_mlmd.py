@@ -59,7 +59,8 @@ from alframework.tools.geometry import minimum_distance
 from alframework.tools.molecules_class import MoleculesObject
 from alframework.tools.gpu import sampling_device
 from alframework.tools.sampler_coordinator import driver_settings, state_settings, resolve_selected_state
-from alframework.tools.tools import annealing_schedule, load_module_from_config
+from alframework.tools.annealing import annealing_schedule
+from alframework.tools.config import load_module_from_config
 from alframework.tools.velocities import initialize_velocities, kinetic_temperature
 
 

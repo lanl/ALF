@@ -117,7 +117,7 @@ Choosing a UMA task
 What's recorded
    Each label carries ``label_provenance``: the teacher's name, package and version, checkpoint path
    and SHA-256, task, data type, and units. ALF stores it on each HDF5 shard, as the
-   ``label_provenance`` attribute. ``alframework.tools.tools.read_label_provenance`` reads it back.
+   ``label_provenance`` attribute. ``alframework.tools.data_shards.read_label_provenance`` reads it back.
    QM shards don't have it. After each training, the ensemble directory gets ``label_sources.json``,
    listing the teachers its data came from and any shards without a recorded source.
 
@@ -220,7 +220,7 @@ must too.
 
 .. code-block:: python
 
-   from alframework.tools.tools import read_label_provenance
+   from alframework.tools.data_shards import read_label_provenance
    read_label_provenance("qm_test.h5")
 
 .. code-block:: text

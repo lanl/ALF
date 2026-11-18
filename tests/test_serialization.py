@@ -8,7 +8,7 @@ import pytest
 from ase import Atoms
 from parsl.serialize import facade
 
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 from alframework.tools.serialization import PickleSerializer, data_serializer, use_data_serializer
 
 PICKLE = PickleSerializer().identifier

@@ -16,7 +16,7 @@ from alframework.samplers import batched_mlmd
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator
 from alframework.samplers.batched_mlmd import ASEEngine, sample_trajectories
 from alframework.tools.gap_seeking import adjacent_pairs, gap_seeking_settings, gap_seeking_energy_forces, select_trigger
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 from alframework.tools.sampler_coordinator import SamplerCoordinator, state_settings
 from tests.helpers.engines import DEVICE, engine_class, require_engine
 from tests.helpers.fakes import CrossingStates

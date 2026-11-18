@@ -12,7 +12,7 @@ from alframework.tools import pyanitools as pyt
 from alframework.tools.atom_order import TOPOLOGY_ATOM_IDS, validated_atom_ids
 from alframework.tools.files import fsync_file
 from alframework.tools.label_validation import validate_label
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 
 PAIR_INDEX_METADATA_KEY = "nac_pairs"
 PAIR_INDEX_DATASET = "nac_pairs"

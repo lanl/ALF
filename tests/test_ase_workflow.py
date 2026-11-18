@@ -8,7 +8,7 @@ from ase.calculators.calculator import Calculator
 
 from alframework.qm_interfaces.ase import generic
 from alframework.qm_interfaces.ase.workflow import ase_workflow_task, label_workflow, validate_ase_workflow_config
-from alframework.tools.labeling import LabelingCoordinator, label_sequentially
+from alframework.tools.labeling_coordinator import LabelingCoordinator, label_sequentially
 from alframework.tools.data_shards import store_current_data
 from tests.helpers.labels import PROPERTIES, unlabeled_h2
 

@@ -14,7 +14,7 @@ from parsl import python_app
 from alframework.samplers import batched_mlmd
 from alframework.samplers.batched_mlmd import sample_trajectories
 from alframework.samplers.mlmd_sampling import simple_mlmd_sampling_task
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 from alframework.tools.sampler_coordinator import SamplerCoordinator
 from alframework.tools.sampling_windows import validated_windows, window_number, windowed_config
 from tests.helpers.driver import MODEL_PATTERN, run_alf_driver

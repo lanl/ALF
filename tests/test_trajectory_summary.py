@@ -14,7 +14,7 @@ from ase import Atoms
 from parsl import python_app
 
 from alframework.samplers import batched_mlmd
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 from alframework.tools.plotting import analysis_plot
 from alframework.tools.sampler_coordinator import SamplerCoordinator
 from alframework.tools.config import build_input_dict, load_config_file

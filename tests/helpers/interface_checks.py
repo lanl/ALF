@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 from ase.calculators.calculator import Calculator
 
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 
 
 def check_energy_force_results(results, natoms):

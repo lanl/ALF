@@ -15,7 +15,7 @@ from alframework.tools.config import load_config_file, load_module_from_config, 
 from alframework.tools.data_shards import compute_empirical_formula, store_current_data
 from alframework.tools.geometry import random_rotation_matrix
 from alframework.tools.label_validation import system_checker
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 from alframework.tools.parsl_tasks import is_final_task, parsl_task_queue
 from tests.helpers.fakes import FakeTask
 

@@ -202,5 +202,5 @@ Batching API Links
 ------------------
 
 * :doc:`Batching module <../api_documentation/alframework.tools.batching>`
-* :doc:`Labeling module <../api_documentation/alframework.tools.labeling>`
+* :doc:`Labeling coordinator module <../api_documentation/alframework.tools.labeling_coordinator>`
 * :doc:`Sampler coordinator module <../api_documentation/alframework.tools.sampler_coordinator>`

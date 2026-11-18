@@ -14,7 +14,7 @@ from alframework.samplers import reactive_sampler
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator, Well_Potential
 from alframework.samplers.batched_mlmd import minimum_distance, sample_trajectories
 from alframework.samplers.mlmd_sampling import mlmd_sampling
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 from alframework.tools.annealing import annealing_schedule
 from tests.helpers.fakes import FakeLangevin, FakeUncertaintyCalculator, FixedCalculator
 from tests.helpers.interface_checks import check_ase_calculator_interface, check_energy_force_results

@@ -14,7 +14,7 @@ import pytest
 from alframework.qm_interfaces.pyscf.gpu4pyscf import validate_gpu4pyscf_config
 from alframework.samplers.acquisition import acquisition_settings
 from alframework.tools.batching import batching_settings
-from alframework.tools.labeling import labeling_batch_settings
+from alframework.tools.labeling_coordinator import labeling_batch_settings
 from alframework.tools.sampler_coordinator import driver_settings
 from tests.helpers.fakes import import_neurochem_with_fake_backend
 

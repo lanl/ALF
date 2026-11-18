@@ -46,7 +46,7 @@ import time
 import numpy as np
 from ase import units
 from parsl import python_app
-from alframework.tools.failed_tasks import releases_memory_on_failure
+from alframework.tools.task_failure_cleanup import releases_memory_on_failure
 from alframework.tools.task_timeline import timed
 
 from alframework.ml_interfaces.ensemble_inference import ensemble_statistics, SelectedStateEvaluator
@@ -56,7 +56,7 @@ from alframework.samplers.engines.ase import ASEEngine, OBSERVED_PROPERTIES, _Pr
 from alframework.samplers.engines.factory import make_engine
 from alframework.tools.gap_seeking import adjacent_pairs, gap_seeking_settings, select_trigger
 from alframework.tools.geometry import minimum_distance
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 from alframework.tools.gpu import sampling_device
 from alframework.tools.sampler_coordinator import driver_settings, state_settings, resolve_selected_state
 from alframework.tools.annealing import annealing_schedule

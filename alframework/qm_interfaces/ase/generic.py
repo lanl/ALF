@@ -14,7 +14,7 @@ from ase.calculators.calculator import BaseCalculator, all_changes
 from parsl import python_app
 
 from alframework.tools.label_validation import validate_geometry, validate_label
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 from alframework.tools.task_timeline import timed
 from alframework.tools.config import load_module_from_config
 

@@ -8,7 +8,7 @@ from ase.data import atomic_masses, atomic_numbers
 from ase.io import write
 
 from alframework.builders import defect_crystal_builder as defect
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 
 
 @pytest.fixture

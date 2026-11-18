@@ -15,8 +15,8 @@ from parsl import python_app
 
 from alframework.qm_interfaces import teacher_interface as ti
 from alframework.tools import data_shards
-from alframework.tools.labeling import LabelingCoordinator
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.labeling_coordinator import LabelingCoordinator
+from alframework.tools.molecules import MoleculesObject
 from tests.helpers import teachers
 from tests.helpers.driver import MODEL_PATTERN, run_alf_driver
 from tests.helpers.molecules import WATER

@@ -29,7 +29,7 @@ from pathlib import Path
 
 import numpy as np
 from parsl import python_app
-from alframework.tools.failed_tasks import releases_memory_on_failure
+from alframework.tools.task_failure_cleanup import releases_memory_on_failure
 from alframework.tools.task_timeline import timed
 
 TEACHER_PROPERTIES = {"energy": "system", "forces": "atomic"}

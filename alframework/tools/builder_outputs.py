@@ -1,5 +1,5 @@
 """The builder return contract, checked the same way in the bootstrap, active learning and --test_builder."""
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 
 
 def builder_outputs(output, builder_name):

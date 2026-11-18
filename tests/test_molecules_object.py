@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from ase import Atoms
 
-from alframework.tools.molecules_class import MoleculesObject, compare_chemical_composition
+from alframework.tools.molecules import MoleculesObject, compare_chemical_composition
 
 
 def water():

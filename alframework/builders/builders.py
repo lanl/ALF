@@ -16,7 +16,7 @@ from ase.io import read, write
 
 from alframework.tools.geometry import random_rotation_matrix
 from alframework.tools.config import build_input_dict
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 import random
 from copy import deepcopy
 

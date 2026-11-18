@@ -24,7 +24,7 @@ from collections import Counter, deque
 from ase import Atoms
 
 from alframework.samplers.acquisition import select_candidates
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 
 TERMINAL_OUTCOMES = ("eligible", "completed", "rejected", "failed")
 # Finished-cohort summaries hold every selected frame ID, so long runs keep only the latest.

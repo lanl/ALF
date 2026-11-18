@@ -11,7 +11,7 @@ import tarfile
 
 import pytest
 
-from alframework.tools.node_setup import DONE, setup_from_environment, worker_setup
+from alframework.tools.worker_setup import DONE, setup_from_environment, worker_setup
 
 pytestmark = pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")
 

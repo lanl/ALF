@@ -13,7 +13,7 @@ from ase import Atoms
 
 from alframework.samplers import batched_mlmd
 from alframework.tools.gpu import VISIBILITY_VARIABLES, neurochem_device, sampling_device
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 
 
 @pytest.fixture(autouse=True)

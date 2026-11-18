@@ -25,7 +25,7 @@ from alframework.ml_interfaces.ensemble_inference import (
 from alframework.ml_interfaces.hippynn_interface import HIPNN_ASE_load_ensemble, load_hippynn_batched_ensemble
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator  # noqa: E402
 from alframework.samplers.batched_mlmd import sample_trajectories  # noqa: E402
-from alframework.tools.molecules_class import MoleculesObject  # noqa: E402
+from alframework.tools.molecules import MoleculesObject  # noqa: E402
 from tests.helpers.engines import DEVICE, Tether, engine_class  # noqa: E402
 from tests.helpers.fakes import (
     QuadraticStateEnsemble,

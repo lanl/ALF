@@ -17,7 +17,7 @@ from alframework.tools.batching import (
     poll_delay,
 )
 from alframework.tools.bootstrap import bootstrap_molecule_ids
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 from tests.helpers.fakes import FakeTask
 
 

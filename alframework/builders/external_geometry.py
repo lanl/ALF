@@ -17,7 +17,7 @@ from alframework.tools.task_timeline import timed
 
 from alframework.tools.atom_order import TOPOLOGY_ATOM_IDS, validated_atom_ids
 from alframework.tools.files import cached_sha256, file_key
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 
 
 def _text(value):

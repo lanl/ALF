@@ -18,7 +18,7 @@ from alframework.ml_interfaces.fine_tuning import (child_environment, fine_tune_
                                                    validate_fine_tune_config)
 from alframework.ml_interfaces.fine_tuning import shard_atoms
 from alframework.ml_interfaces.fine_tuning.mace import MaceFineTuner
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 from alframework.tools.data_shards import store_current_data
 from tests.helpers.fake_fine_tuner import trained
 from tests.helpers.molecules import WATER

@@ -22,7 +22,7 @@ import pytest
 from parsl import python_app
 
 from alframework.tools import parsl_tasks
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 from alframework.tools.parsl_tasks import cancel_blocks, release_allocations_at_exit, stop_if_executor_failed
 from tests.helpers.driver import run_alf_driver
 from tests.helpers.molecules import WATER
@@ -61,7 +61,7 @@ def trains(current_training_id): return [True, True], current_training_id
 @python_app(executors=['alf_builder_executor'])
 def water(moleculeid):
     from ase import Atoms
-    from alframework.tools.molecules_class import MoleculesObject
+    from alframework.tools.molecules import MoleculesObject
     return MoleculesObject(Atoms('OH2', positions=[[0, 0, 0], [0.96, 0, 0], [-0.24, 0.93, 0]]), moleculeid)
 
 @python_app(executors=['alf_sampler_executor'])

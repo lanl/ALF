@@ -8,7 +8,7 @@ import ase.io
 import shutil
 import re
 
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 
 class orcaGenerator():
     """ ORCA 5.0.1 interface with ALF.

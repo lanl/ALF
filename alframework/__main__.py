@@ -29,13 +29,13 @@ from alframework.tools.parsl_tasks import parsl_task_queue, release_allocations_
 from alframework.tools.serialization import data_serializer, use_data_serializer
 from alframework.tools.files import hold_lock
 from alframework.tools.pyanitools import anidataloader
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 from alframework.tools.bootstrap import bootstrap_spare_count, next_bootstrap_ids
 from alframework.tools.restarts import (
     HELD_PIECES, STORED_AT_BUDGET_STOP, HeldLabels, find_empty_directory, held_labels_directory, reconcile_status,
     write_status,
 )
-from alframework.tools.labeling import LabelingCoordinator
+from alframework.tools.labeling_coordinator import LabelingCoordinator
 from alframework.tools.label_validation import screen_labels, system_checker
 from alframework.tools.builder_outputs import builder_outputs
 from alframework.tools.sampler_coordinator import SamplerCoordinator

@@ -3,7 +3,7 @@
 import numpy as np
 from ase import Atoms
 
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 
 # ASE's units, stored as they are.
 PROPERTIES = {"energy": ["energy", "system", 1.0], "forces": ["forces", "atomic", 1.0]}

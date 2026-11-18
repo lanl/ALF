@@ -23,7 +23,7 @@ from parsl import python_app
 
 from alframework.ml_interfaces import hippynn_interface as ml
 from alframework.tools import ensemble_training
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 from tests.helpers.driver import MODEL_PATTERN, loaded_parsl, run_alf_driver
 from tests.helpers.molecules import WATER
 

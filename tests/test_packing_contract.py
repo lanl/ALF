@@ -4,7 +4,7 @@ import pytest
 from ase import Atoms
 
 from alframework.builders import builders
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 
 LIBRARY = {"C": Atoms("C"), "O": Atoms("O"), "N": Atoms("N"), "water": Atoms("H2O")}
 

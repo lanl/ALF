@@ -16,7 +16,7 @@ from alframework.samplers import batched_mlmd
 from alframework.samplers.mlmd_sampling import simple_mlmd_sampling_task
 from alframework.tools.parsl_tasks import parsl_task_queue
 from alframework.tools.config import coordinator_poll_interval
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 from alframework.tools.sampler_coordinator import SamplerCoordinator, driver_settings
 from tests.helpers.driver import MODEL_PATTERN, loaded_parsl, run_alf_driver, stored_ids
 from tests.helpers.engines import require_engine

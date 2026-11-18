@@ -15,7 +15,7 @@ import numpy as np
 from parsl import python_app
 
 from alframework.tools.label_validation import validate_geometry, validate_label
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 from alframework.tools.task_timeline import timed
 from .generic import ERROR_KEYS, _configuration, fresh_scratch_directory, label_one, molecule_directory
 

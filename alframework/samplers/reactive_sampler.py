@@ -8,7 +8,7 @@ import time
 from ase import Atoms
 import pickle as pkl
 from parsl import python_app, bash_app
-from alframework.tools.failed_tasks import releases_memory_on_failure
+from alframework.tools.task_failure_cleanup import releases_memory_on_failure
 from alframework.tools.task_timeline import timed
 
 from alframework.tools.annealing import annealing_schedule

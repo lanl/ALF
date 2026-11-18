@@ -28,14 +28,14 @@ from typing import Any
 import numpy as np
 from ase.data import chemical_symbols
 from parsl import python_app
-from alframework.tools.failed_tasks import releases_memory_on_failure
+from alframework.tools.task_failure_cleanup import releases_memory_on_failure
 from alframework.tools.task_timeline import timed
 
-from alframework.tools.excited_state_tools import (
+from alframework.tools.excited_state_schema import (
     derive_gap_property_table,
     derive_state_property_table,
 )
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 
 
 DEFAULT_GPU4PYSCF_CONFIG = {

@@ -24,7 +24,7 @@ from ase import Atoms, units
 
 from alframework.ml_interfaces import hippynn_interface as ml
 from alframework.ml_interfaces.hippynn_interface import HIPNN_ASE_calculator, HIPNN_ASE_load_ensemble
-from alframework.tools.excited_state_tools import derive_gap_property_table
+from alframework.tools.excited_state_schema import derive_gap_property_table
 from tests.helpers.fakes import fake_training_pool
 from tests.helpers.molecules import WATER
 
@@ -1421,7 +1421,7 @@ def test_separate_test_set_matches_the_training_arrays_and_leaves_them_alone(tmp
     """``h5_test_dir`` once changed the training arrays and called numpy methods on tensors."""
     torch = pytest.importorskip("torch")
     pytest.importorskip("hippynn")
-    from alframework.tools.molecules_class import MoleculesObject
+    from alframework.tools.molecules import MoleculesObject
     from alframework.tools.data_shards import store_current_data
 
     properties = {"energy": ["energy", "system", 1.0], "forces": ["forces", "atomic", 1.0]}

@@ -33,7 +33,7 @@ from alframework.tools.data_shards import (
 from alframework.tools.files import fsync_file, write_json_atomic
 from alframework.tools.geometry import random_rotation_matrix
 from alframework.tools.label_validation import system_checker, validate_geometry, validate_label, validate_values
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 from alframework.tools.parsl_tasks import (
     CLEANUP_TIMEOUT,
     FAILED_TASK_STATUSES,

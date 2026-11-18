@@ -521,7 +521,7 @@ useful. See :ref:`samplers-progress-plots`.
 Excited-State API Links
 -----------------------
 
-* :doc:`Excited-state tools module <../api_documentation/alframework.tools.excited_state_tools>`
+* :doc:`Excited-state schema module <../api_documentation/alframework.tools.excited_state_schema>`
 * :doc:`GPU4PySCF interface module <../api_documentation/alframework.qm_interfaces.pyscf.gpu4pyscf>`
 * :doc:`PySEQM interface module <../api_documentation/alframework.qm_interfaces.pyseqm_interface>`
 * :doc:`HIPPYNN interface module <../api_documentation/alframework.ml_interfaces.hippynn_interface>`

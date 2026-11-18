@@ -8,7 +8,7 @@ from alframework.samplers import batched_mlmd
 from alframework.samplers.acquisition import acquisition_settings, select_candidates, top_k
 from alframework.samplers.batched_mlmd import sample_trajectories
 from alframework.tools.cohorts import FINISHED_HISTORY, CohortPool
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 from tests.helpers.fakes import spring_ensemble
 from tests.helpers.molecules import SPRING_WATER
 

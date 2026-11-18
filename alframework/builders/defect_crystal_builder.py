@@ -13,7 +13,7 @@ from collections import Counter
 
 from alframework.tools.geometry import random_rotation_matrix
 from alframework.tools.config import build_input_dict
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 
 from parsl import python_app, bash_app
 from alframework.tools.task_timeline import timed

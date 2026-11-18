@@ -94,7 +94,7 @@ def ensemble_statistics(prediction):
             "energy": float(np.mean(energies[:, system])),
         })
     if 'state_energies' in prediction:
-        from alframework.tools.excited_state_tools import gap_key_for_pair
+        from alframework.tools.excited_state_schema import gap_key_for_pair
         state_energies = np.asarray(prediction['state_energies'], dtype=float)
         state_forces = prediction['state_forces']
         if state_energies.ndim != 3 or state_energies.shape[::2] != energies.shape:

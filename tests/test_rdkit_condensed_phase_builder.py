@@ -6,7 +6,7 @@ from ase import Atoms
 
 pytest.importorskip('rdkit')
 from alframework.builders import rdkit_condensed_phase as rdkit_builder
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 
 
 @pytest.mark.parametrize('solvents', [['O'], {'O': 0.25, 'C': 0.75}])

@@ -5,7 +5,7 @@ from ase import Atoms
 from parsl import python_app
 
 from alframework.tools.builder_outputs import builder_outputs
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 from tests.helpers.driver import MODEL_PATTERN, run_alf_driver
 
 

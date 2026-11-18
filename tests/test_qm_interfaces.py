@@ -12,7 +12,7 @@ from alframework.qm_interfaces.ase import generic as ase_calculator_interface
 from alframework.qm_interfaces.legacy import orca5_interface, qchem_DFT_interface
 from alframework.qm_interfaces.legacy.orca5_interface import orcaGenerator
 from alframework.qm_interfaces.legacy.qchem_DFT_interface import qchemGenerator
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 from tests.helpers.fakes import FakeASECalculator
 from tests.helpers.interface_checks import (
     check_energy_force_results,

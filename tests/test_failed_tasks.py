@@ -8,8 +8,8 @@ import pytest
 
 from alframework.samplers import batched_mlmd
 from alframework.samplers.batched_mlmd import ASEEngine
-from alframework.tools.failed_tasks import release_failed_task, releases_memory_on_failure
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.task_failure_cleanup import release_failed_task, releases_memory_on_failure
+from alframework.tools.molecules import MoleculesObject
 from tests.helpers.fakes import spring_ensemble as fake_ensemble
 from tests.helpers.molecules import SPRING_WATER
 

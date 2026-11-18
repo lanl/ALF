@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 
 
 @pytest.mark.parametrize("matches", [0, 1, 2])

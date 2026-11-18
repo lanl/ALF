@@ -2,7 +2,7 @@
 
 PySEQM evaluates a batch of independent molecules in one call. These tasks
 accept ``molecule_objects`` and are selected with ``"mode": "native"`` in the
-QM configuration's ``batching`` block (see :mod:`alframework.tools.labeling`).
+QM configuration's ``batching`` block (see :mod:`alframework.tools.labeling_coordinator`).
 
 PySEQM requires each molecule's atoms sorted by non-increasing atomic number,
 with zero-padding to a common length. Sorting, padding, and the restoration of
@@ -26,10 +26,10 @@ metadata are not supported by this adapter.
 
 import numpy as np
 from parsl import python_app
-from alframework.tools.failed_tasks import releases_memory_on_failure
+from alframework.tools.task_failure_cleanup import releases_memory_on_failure
 from alframework.tools.task_timeline import timed
 
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 
 DEFAULT_PARAMETERS = {"method": "AM1", "scf_eps": 1.0e-8, "scf_converger": [2]}
 
@@ -271,7 +271,7 @@ def label_pyseqm_excited_batch(molecule_objects, QM_config, properties_list,
     With only ``E0``/``F0`` requested, it runs a ground-state AM1 solve instead of CIS.
     """
     import time
-    from alframework.tools.excited_state_tools import derive_state_property_table, derive_gap_property_table
+    from alframework.tools.excited_state_schema import derive_state_property_table, derive_gap_property_table
     from alframework.tools.gpu import sampling_device
 
     molecules = list(molecule_objects)

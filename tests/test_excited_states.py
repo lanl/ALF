@@ -8,13 +8,13 @@ import pytest
 from ase import Atoms
 
 from alframework.tools.atom_order import canonical_orders, validated_atom_ids
-from alframework.tools.excited_state_tools import (
+from alframework.tools.excited_state_schema import (
     derive_gap_property_table,
     derive_state_property_table,
     gap_key_for_pair,
     parse_gap_key,
 )
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 from alframework.tools.data_shards import store_current_data
 
 

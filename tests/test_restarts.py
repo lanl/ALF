@@ -15,7 +15,7 @@ import pytest
 
 from alframework.tools import files, pyanitools, restarts
 from alframework.tools.data_shards import LABEL_PROVENANCE, store_current_data, write_label_sources
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 from alframework.tools.restarts import find_empty_directory, write_status
 from tests.helpers.driver import run_alf_driver, stored_ids
 from tests.helpers.molecules import WATER

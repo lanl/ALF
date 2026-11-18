@@ -18,7 +18,7 @@ from collections import OrderedDict
 # Keep the original paths for callers using bootstrap through this module.
 from alframework.tools.bootstrap import bootstrap_molecule_ids, bootstrap_spare_count, next_bootstrap_ids
 from alframework.tools.config import build_input_dict
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 from alframework.tools.parsl_tasks import (
     FAILED_TASK_STATUSES,
     SUCCESSFUL_TASK_STATUSES,

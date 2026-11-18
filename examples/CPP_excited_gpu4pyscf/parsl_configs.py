@@ -25,7 +25,7 @@ import shlex
 import sys
 
 import alframework
-from alframework.tools.node_setup import setup_from_environment
+from alframework.tools.worker_setup import setup_from_environment
 from parsl.addresses import address_by_hostname
 from parsl.config import Config
 from parsl.executors import HighThroughputExecutor

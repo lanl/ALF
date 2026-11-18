@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 from alframework.tools.atom_order import TOPOLOGY_ATOM_IDS, canonical_orders
 from alframework.tools import ensemble_training
-from alframework.tools.excited_state_tools import derive_state_property_table, derive_gap_property_table
+from alframework.tools.excited_state_schema import derive_state_property_table, derive_gap_property_table
 from alframework.tools.data_shards import STRUCTURE_STATE_DATASETS
 
 

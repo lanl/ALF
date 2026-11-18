@@ -30,7 +30,7 @@ from alframework.samplers.batched_mlmd import (
 )
 from alframework.samplers.mlmd_sampling import mlmd_sampling
 from alframework.tools.cohorts import CohortPool
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 from alframework.tools.annealing import annealing_schedule
 from tests.helpers.fakes import PairSpringCalculator, QuadraticStateEnsemble, QuadraticStateMember
 from tests.helpers.fakes import spring_ensemble as fake_ensemble

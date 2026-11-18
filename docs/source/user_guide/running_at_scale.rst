@@ -198,7 +198,7 @@ and the tensors of the evaluation that failed, until its cycle collector happens
 one batch of 256 trajectories ran its GPU out of memory, and its 63 GB stayed allocated: that worker then
 failed its next five tasks, four within 0.04 s each, and, being free again first, took the tasks resubmitted
 to replace the lost ones. Your own GPU tasks can do the same with
-``alframework.tools.failed_tasks.releases_memory_on_failure``, under ``@python_app`` and ``timed``.
+``alframework.tools.task_failure_cleanup.releases_memory_on_failure``, under ``@python_app`` and ``timed``.
 
 The task timeline (see :doc:`monitoring`) records each task's peak GPU memory, to find what grew.
 

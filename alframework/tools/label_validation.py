@@ -4,7 +4,7 @@ import re
 import numpy as np
 from ase import Atoms
 
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 
 # Energies are scalars and forces (atoms, 3), including the per-state names of excited-state labeling.
 ENERGY_NAME = re.compile(r'(?:energy|free_energy|E\d+|dE\d+)')

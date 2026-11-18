@@ -3,7 +3,7 @@
 import copy
 
 from parsl import python_app
-from alframework.tools.failed_tasks import releases_memory_on_failure
+from alframework.tools.task_failure_cleanup import releases_memory_on_failure
 from alframework.tools.task_timeline import timed
 from parsl.app.errors import RemoteExceptionWrapper
 

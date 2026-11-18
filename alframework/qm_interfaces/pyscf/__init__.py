@@ -26,10 +26,10 @@ from typing import Any
 
 import numpy as np
 from parsl import python_app
-from alframework.tools.failed_tasks import releases_memory_on_failure
+from alframework.tools.task_failure_cleanup import releases_memory_on_failure
 from alframework.tools.task_timeline import timed
 
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 
 STRESS_KEY = "stress"
 QM_CONFIG_EXTRAS = ("batching", "energy_offset_eV")
@@ -37,7 +37,7 @@ QM_CONFIG_EXTRAS = ("batching", "energy_offset_eV")
 
 def validate_pyscf_properties(properties_list, *, nroots):
     """Return the state rows, gap rows, and whether stress is requested, after checking them."""
-    from alframework.tools.excited_state_tools import derive_gap_property_table, derive_state_property_table
+    from alframework.tools.excited_state_schema import derive_gap_property_table, derive_state_property_table
 
     states = derive_state_property_table(properties_list)
     if len(states) != int(nroots) + 1:

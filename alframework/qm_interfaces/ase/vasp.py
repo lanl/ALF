@@ -2,7 +2,7 @@
 import re
 from parsl import python_app
 from alframework.tools.task_timeline import timed
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.molecules import MoleculesObject
 
 @python_app(executors=['alf_QM_executor'])
 @timed('QM')

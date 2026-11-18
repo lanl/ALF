@@ -13,8 +13,8 @@ import pytest
 from ase import Atoms
 
 from alframework.qm_interfaces import pyseqm_interface as pyseqm
-from alframework.tools.labeling import LabelingCoordinator
-from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.labeling_coordinator import LabelingCoordinator
+from alframework.tools.molecules import MoleculesObject
 
 # Deliberately not heaviest-first, so the adapter must sort and restore atom order.
 METHANOL = Atoms(

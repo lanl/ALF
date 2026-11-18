@@ -164,11 +164,18 @@ Other differences from ``simple_mlmd_sampling_task``:
 Initial Velocities And Temperature
 ----------------------------------
 
-Both the scalar MLMD sampler (including UDD) and the multi-trajectory sampler
-preserve their input momenta by default. A positions-only structure starts at
-rest. ASE, TorchSim and ALCHEMI use a thermostat to add random kicks and exchange
-energy with the system; setting its temperature does not immediately assign
-thermal velocities.
+``velocity_initialization`` is a top-level sampler setting for
+``simple_mlmd_sampling_task``, ``simple_udd_sampling_task``, and
+``mlmd_trajectories_task``. UDD uses the same scalar MLMD sampler. The batched
+sampler initializes velocities before creating its ASE, TorchSim or ALCHEMI
+engine, subject to that engine's hardware and constraint requirements.
+Reactive NEB and dimer searches are geometry optimizations and ignore this
+setting. Custom sampler tasks need their own support for it.
+
+The MLMD tasks preserve their input momenta by default. A positions-only
+structure starts at rest. The thermostat exchanges energy with the system
+during dynamics, so setting its temperature alone leaves the initial momenta
+unchanged.
 
 This is valid Langevin dynamics. Preserving input momenta is useful for
 continuations, directed motion, deliberately cold starts, gradual heating, and
@@ -557,6 +564,10 @@ Temperature schedule fields
         - Range for sinusoidal temperature fluctuation amplitude.
       * - ``per_temp``
         - Range for temperature fluctuation period.
+      * - ``velocity_initialization``
+        - Optional MLMD starting-momenta policy. Defaults to ``"preserve"``.
+          See :ref:`samplers-initial-velocities` for the thermal option and
+          supported tasks.
 
 Density schedule fields
    Density changes are optional. Use ``null`` for ``end_dens``, ``amp_dens``,

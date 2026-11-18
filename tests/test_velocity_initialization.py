@@ -3,10 +3,11 @@ import numpy as np
 import pytest
 from ase import Atoms, units
 from ase.constraints import FixAtoms
+from parsl.app.errors import RemoteExceptionWrapper
 
-from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator
+from alframework.samplers import mlmd_sampling as scalar_mlmd
 from alframework.samplers.batched_mlmd import sample_trajectories
-from alframework.samplers.mlmd_sampling import mlmd_sampling
+from alframework.samplers.udd_sampling import simple_udd_sampling_task
 from alframework.samplers.velocities import initialize_velocities, velocity_initialization_mode
 from alframework.tools.molecules_class import MoleculesObject
 from tests.helpers.engines import require_engine
@@ -80,23 +81,28 @@ def test_zero_temperature_draw_is_zero_and_bad_temperature_is_rejected():
             initialize_velocities(gas(),temperature,THERMAL,molecule_id='bad')
 
 
-def test_scalar_sampler_can_select_a_thermal_frame_before_equilibration():
-    atoms=gas(512);np.random.seed(1)
-    result=mlmd_sampling(MoleculesObject(atoms,'scalar'),MLMD_calculator(ensemble(len(atoms))),
-                        dt=.5,maxt=.02,Escut=.05,Fscut=.05,Ncheck=10,Tamp=0.,Tper=1.,Tsrt=400.,Tend=400.,
-                        Ramp=None,Rper=None,Rend=None,min_time=.005,distcut=.7,
-                        velocity_initialization=THERMAL,random_seed=42)
-    metadata=result.get_metadata()
-    assert metadata['velocities_initialized']
-    assert 350.<metadata['initial_kinetic_temperature_K']<450.
-    assert 350.<metadata['kinetic_temperature_K']<450.
-    assert metadata['thermostat_temperature_K']==400.
-    assert metadata['simulationtime']==.005
-
-
 CONFIG=dict(dt=.5,maxt=.02,Ncheck=10,Escut=.05,Fscut=.05,min_time=.005,distcut=.7,
             srt_temp=[400.,400.],end_temp=[400.,400.],amp_temp=[0.,0.],per_temp=[1.,1.],
             amp_dens=None,per_dens=None,end_dens=None,random_seed=42,friction_per_fs=.01)
+
+
+@pytest.mark.parametrize('task', [scalar_mlmd.simple_mlmd_sampling_task, simple_udd_sampling_task],
+                         ids=['scalar', 'udd'])
+def test_scalar_tasks_select_a_thermal_frame_before_equilibration(task, monkeypatch):
+    atoms = gas(512)
+    monkeypatch.setattr(scalar_mlmd, 'load_module_from_config',
+                        lambda *_: lambda path, device: ensemble(len(atoms)))
+    config = dict(CONFIG, device='cpu', ase_calculator='unused', MLMD_calculator_options={},
+                  velocity_initialization=THERMAL, udd_bias_weight=0.5)
+    result = task.func(MoleculesObject(atoms, 'scalar'), config, 'model-{:04d}', 0, 1)
+    if isinstance(result, RemoteExceptionWrapper):
+        result.reraise()
+    metadata = result.get_metadata()
+    assert metadata['velocities_initialized']
+    assert 350.0 < metadata['initial_kinetic_temperature_K'] < 450.0
+    assert 350.0 < metadata['kinetic_temperature_K'] < 450.0
+    assert metadata['thermostat_temperature_K'] == 400.0
+    assert metadata['simulationtime'] == 0.005
 
 
 @pytest.mark.parametrize('name',['ase','torchsim','alchemi'])

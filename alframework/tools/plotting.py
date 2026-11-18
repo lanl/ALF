@@ -1,4 +1,4 @@
-"""Progress plots: how sampling changes as the model improves, with one box per model.
+"""Plot sampling progress across successive model ensembles.
 
 Plots come from a trajectory summary (see :mod:`alframework.tools.trajectory_summary`) when
 ``trajectory_summary_path`` is set, or otherwise from the pickles in ``meta_dir``. The summary is the

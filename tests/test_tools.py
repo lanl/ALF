@@ -28,7 +28,7 @@ from tests.helpers.fakes import FakeTask
     ("geometry", "random_rotation_matrix"),
     ("label_validation", "system_checker"),
     ("parsl_tasks", "parsl_task_queue"),
-    ("pyanitools", "build_ANI_info"),
+    ("legacy_ani", "build_ANI_info"),
     ("restarts", "write_status"),
 ])
 def test_legacy_tool_paths_resolve_to_canonical_helpers(module, name):
@@ -36,6 +36,20 @@ def test_legacy_tool_paths_resolve_to_canonical_helpers(module, name):
     canonical = load_module_from_string(f"alframework.tools.{module}.{name}")
     assert load_module_from_config({"helper": f"{old}.{name}"}, "helper") is canonical
     assert pickle.loads(f"c{old}\n{name}\n.".encode()) is canonical
+
+
+@pytest.mark.parametrize("old,new,name", [
+    ("batching", "bootstrap", "bootstrap_molecule_ids"),
+    ("batching", "bootstrap", "bootstrap_spare_count"),
+    ("batching", "bootstrap", "next_bootstrap_ids"),
+    ("force_screen", "screen_audit", "RuntimeScreenAudit"),
+    ("pyanitools", "legacy_ani", "build_ANI_info"),
+])
+def test_split_modules_keep_the_old_import_paths(old, new, name):
+    old_path = f"alframework.tools.{old}"
+    canonical = load_module_from_string(f"alframework.tools.{new}.{name}")
+    assert load_module_from_string(f"{old_path}.{name}") is canonical
+    assert pickle.loads(f"c{old_path}\n{name}\n.".encode()) is canonical
 
 
 @pytest.mark.parametrize(

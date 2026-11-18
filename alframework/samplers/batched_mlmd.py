@@ -475,7 +475,8 @@ def sample_trajectories(molecule_objects, models, sampler_config, engine_class=N
     driver = driver_settings(sampler_config)
     states = state_settings(sampler_config)
     from alframework.tools.molecular_topology import load_reference_topology, validate_fixed_topology, topology_metadata
-    from alframework.tools.force_screen import RuntimeScreenAudit, validated_force_cutoff
+    from alframework.tools.force_screen import validated_force_cutoff
+    from alframework.tools.screen_audit import RuntimeScreenAudit
     topology = load_reference_topology(sampler_config)
     if sampler_config.get('max_force_cutoff') is not None:
         validated_force_cutoff(sampler_config['max_force_cutoff'])

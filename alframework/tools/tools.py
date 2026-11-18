@@ -46,5 +46,5 @@ from alframework.tools.parsl_tasks import (
     release_allocations_at_exit,
     stop_if_executor_failed,
 )
-from alframework.tools.pyanitools import build_ANI_info
+from alframework.tools.legacy_ani import build_ANI_info
 from alframework.tools.restarts import find_empty_directory, write_status

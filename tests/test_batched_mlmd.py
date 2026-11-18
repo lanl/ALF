@@ -6,8 +6,10 @@ failed trajectory leaves the others alone. Some tests skip without torch, HIPPYN
 
 import copy
 import gc
+import json
 import time
 import weakref
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -614,7 +616,18 @@ def test_force_screen_on_selected_state_ignores_well_forces():
     assert result.get_metadata()["step"] > 0, "large well forces alone must not reject the first frame"
 
 
-def test_force_screen_ignores_well_forces():
+def recorded_screen_audit(molecule, on_disk):
+    metadata = molecule.get_metadata()
+    if on_disk:
+        assert "screen_audit" not in metadata
+        records = json.loads(Path(metadata["screen_audit_path"]).read_text())
+        return records[molecule.get_moleculeid()]
+    assert "screen_audit_path" not in metadata
+    return metadata["screen_audit"]
+
+
+@pytest.mark.parametrize("on_disk", [False, True], ids=["metadata", "json"])
+def test_force_screen_ignores_well_forces(tmp_path, on_disk):
     a = Atoms("H2", positions=[[0, 0, 0], [1.2, 0, 0]])
     config = dict(
         dt=0.1,
@@ -634,14 +647,18 @@ def test_force_screen_ignores_well_forces():
         max_force_cutoff=16.0,
         MLMD_calculator_options={"well_params": {"r_start": 0.1, "force": 1000.0, "mass_weighted": False}},
     )
+    if on_disk:
+        config["screen_audit_dir"] = str(tmp_path / "audit")
     out = sample_trajectories(
         [MoleculesObject(a, "well")], [PairSpringCalculator(1.0), PairSpringCalculator(1.0)], config
     )[0]
-    assert out.get_metadata()["screen_audit"]["initial"]["diagnostics"]["Fmeanmax"] == pytest.approx(0.0)
+    audit = recorded_screen_audit(out, on_disk)
+    assert audit["initial"]["diagnostics"]["Fmeanmax"] == pytest.approx(0.0)
     assert out.get_metadata()["step"] > 0  # Large well forces alone did not reject at step zero.
 
 
-def test_earlier_candidate_survives_later_topology_rejection(tmp_path):
+@pytest.mark.parametrize("on_disk", [False, True], ids=["metadata", "json"])
+def test_earlier_candidate_survives_later_topology_rejection(tmp_path, on_disk):
     pytest.importorskip("rdkit")
     atoms = Atoms("OHH", positions=[[0, 0, 0], [0.9572, 0, 0], [-0.239, 0.927, 0]])
     reference = tmp_path / "water.xyz"
@@ -683,6 +700,8 @@ def test_earlier_candidate_survives_later_topology_rejection(tmp_path):
         ),
         acquisition=dict(trajectory_policy="continue", selection=dict(mode="cohort_top_k", cohort_size=1, k=1)),
     )
+    if on_disk:
+        config["screen_audit_dir"] = str(tmp_path / "audit")
     molecule = MoleculesObject(atoms, "late-rejection")
     pool = CohortPool(dict(cohort_size=1, k=1))
     pool.admit(molecule, 0)
@@ -694,8 +713,9 @@ def test_earlier_candidate_survives_later_topology_rejection(tmp_path):
     assert selected.get_metadata()["topology_valid"] is True
     assert selected.get_metadata()["screen_reject_reason"] is None
     assert selected.get_metadata()["step"] == 1
-    audit = result.get_metadata()["screen_audit"]
+    audit = recorded_screen_audit(result, on_disk)
     assert all(audit[k] is not None for k in ("initial", "last_valid", "rejected"))
+    assert audit["rejected"]["diagnostics"]["screen_reject_reason"] == result.get_metadata()["screen_reject_reason"]
 
 
 # Metadata for progress plots.

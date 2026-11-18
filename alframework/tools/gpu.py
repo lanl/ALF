@@ -1,4 +1,4 @@
-"""Select sampler devices within worker visibility, without changing it.
+"""Resolve worker GPU devices and handle scheduler visibility masks.
 
 The CUDA/HIP runtime owns mask interpretation and local device numbering.
 In particular, ROCr and HIP masks must not be independently reindexed here.

@@ -9,8 +9,10 @@ Use the defining modules when importing shared helpers in workflow code:
 * :doc:`Workflow configuration and task arguments <alframework.tools.config>`
 * :doc:`HDF5 training shards and label provenance <alframework.tools.data_shards>`
 * :doc:`Parsl queues and shutdown <alframework.tools.parsl_tasks>`
+* :doc:`Bootstrap seed allocation <alframework.tools.bootstrap>`
 * :doc:`Restart state and held labels <alframework.tools.restarts>`
 * :doc:`Structure and label validation <alframework.tools.label_validation>`
+* :doc:`Sampler screen audit records <alframework.tools.screen_audit>`
 * :doc:`Geometry and rotations <alframework.tools.geometry>`
 * :doc:`Annealing schedules <alframework.tools.annealing>`
 

@@ -12,11 +12,11 @@ from alframework.tools.batching import (
     BatchBuffer,
     TaskWidths,
     batching_settings,
-    bootstrap_molecule_ids,
     default_batch_key,
     flatten_molecule_output,
     poll_delay,
 )
+from alframework.tools.bootstrap import bootstrap_molecule_ids
 from alframework.tools.molecules_class import MoleculesObject
 from tests.helpers.fakes import FakeTask
 

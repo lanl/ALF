@@ -172,7 +172,7 @@ def test_cpp_training_benchmark_runs_and_projects_an_epoch(monkeypatch, tmp_path
 
 @pytest.mark.parametrize("spares, expected", [(None, 2), (0, 0), (7, 7)])
 def test_cpp_prepare_makes_spare_seeds(tmp_path, monkeypatch, spares, expected):
-    from alframework.tools.batching import bootstrap_spare_count
+    from alframework.tools.bootstrap import bootstrap_spare_count
 
     folder = ROOT / "examples" / "CPP_excited_gpu4pyscf"
     monkeypatch.syspath_prepend(str(folder))
@@ -272,7 +272,7 @@ def test_cpp_prepare_rejects_unbundled_size(tmp_path, monkeypatch):
 
 
 def test_example_masters_have_valid_bootstrap_spares():
-    from alframework.tools.batching import bootstrap_spare_count
+    from alframework.tools.bootstrap import bootstrap_spare_count
 
     for path in MASTERS:
         bootstrap_spare_count(read(path))

@@ -344,7 +344,7 @@ def test_retraining_waits_for_new_converged_labels(tmp_path, monkeypatch, failur
 
 
 def test_bootstrap_spares_need_a_finite_bootstrap_and_a_count():
-    from alframework.tools.batching import bootstrap_spare_count
+    from alframework.tools.bootstrap import bootstrap_spare_count
 
     assert bootstrap_spare_count({}) == 0
     assert bootstrap_spare_count({"finite_bootstrap": True, "bootstrap_spares": 3}) == 3
@@ -367,7 +367,7 @@ def test_held_labels_directory_defaults_beside_h5_dir_and_never_inside_it(tmp_pa
 
 
 def test_next_bootstrap_ids_skips_held_ids_and_reaches_the_end():
-    from alframework.tools.batching import bootstrap_molecule_ids, next_bootstrap_ids
+    from alframework.tools.bootstrap import bootstrap_molecule_ids, next_bootstrap_ids
 
     skip = {f"mol-boot-{index:010d}" for index in (0, 1, 3, 4, 5)}
     assert next_bootstrap_ids(0, 6, 2, True, skip) == (["mol-boot-0000000002"], 6)

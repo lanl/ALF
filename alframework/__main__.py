@@ -30,7 +30,7 @@ from alframework.tools.serialization import data_serializer, use_data_serializer
 from alframework.tools.files import hold_lock
 from alframework.tools.pyanitools import anidataloader
 from alframework.tools.molecules_class import MoleculesObject
-from alframework.tools.batching import bootstrap_spare_count, next_bootstrap_ids
+from alframework.tools.bootstrap import bootstrap_spare_count, next_bootstrap_ids
 from alframework.tools.restarts import (
     HELD_PIECES, STORED_AT_BUDGET_STOP, HeldLabels, find_empty_directory, held_labels_directory, reconcile_status,
     write_status,

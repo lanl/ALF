@@ -1,12 +1,15 @@
 """Several ASE calculations on one fixed geometry, run in order in one QM worker.
 
-Each stage is an independent single point: it starts from the molecule's original geometry and state, in its
-own scratch directory, and nothing passes from one stage to the next. ``result_mode`` picks the label:
+Each single point uses the original sampled geometry and its own scratch directory.
+``result_mode`` picks the label:
 
-- ``last``: the final stage's results. Every stage must succeed.
+- ``last``: the final stage's results. A stage can use declared files from earlier stages.
 - ``mean_if_agree``: identical stages repeated; their mean, if every pair agrees within ``agreement``.
 """
+from __future__ import annotations
+
 from copy import deepcopy
+from dataclasses import dataclass
 from itertools import combinations
 from pathlib import Path
 import re
@@ -20,7 +23,8 @@ from alframework.tools.task_timeline import timed
 from .generic import ERROR_KEYS, _configuration, fresh_scratch_directory, label_one, molecule_directory
 
 WORKFLOW_FIELDS = {'stages', 'result_mode', 'agreement', 'batching'}
-STAGE_FIELDS = {'name', 'ASE_calculator', 'QM_run_command', 'input'}
+STAGE_CONTROLS = {'name', 'properties', 'inputs_from_stages'}
+STAGE_FIELDS = STAGE_CONTROLS | {'ASE_calculator', 'QM_run_command', 'input'}
 RESULT_MODES = ('last', 'mean_if_agree')
 # Stage names become directory names.
 STAGE_NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9_.-]*')
@@ -28,8 +32,62 @@ STAGE_NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9_.-]*')
 AGREEMENT_PROPERTIES = ('energy', 'forces')
 
 
-def _stage(stage, names, properties):
-    """Check one stage; return its name, its settings and the calculator it resolves to."""
+@dataclass
+class _Stage:
+    name: str
+    settings: dict
+    properties: dict | None
+    inputs: list
+
+
+def _stage_properties(stage, properties, mode, final):
+    if 'properties' not in stage:
+        return properties
+    if mode != 'last' or final:
+        raise ValueError('Only preparatory stages in result_mode last can choose properties.')
+    requested = stage['properties']
+    if (not isinstance(requested, list) or not requested
+            or any(not isinstance(key, str) or not key for key in requested)
+            or len(set(requested)) != len(requested)):
+        raise ValueError('Stage properties must be a nonempty list of distinct property names.')
+    if properties is None:
+        return None
+    unknown = set(requested) - properties.keys()
+    if unknown:
+        raise ValueError(f'Stage properties must be in properties_list. Unknown properties: {sorted(unknown)}.')
+    return {key: properties[key] for key in requested}
+
+
+def _file_name(value):
+    return (isinstance(value, str) and value not in ('', '.', '..')
+            and not any(character in value for character in ('/', '\\', '\0')))
+
+
+def _stage_inputs(stage, names, mode):
+    if 'inputs_from_stages' not in stage:
+        return []
+    if mode != 'last':
+        raise ValueError('inputs_from_stages requires result_mode last.')
+    inputs = stage['inputs_from_stages']
+    if not isinstance(inputs, list):
+        raise ValueError('inputs_from_stages must be a list.')
+    destinations = set()
+    for entry in inputs:
+        if not isinstance(entry, dict) or entry.keys() != {'stage', 'source', 'destination'}:
+            raise ValueError('Each stage input must specify stage, source, and destination.')
+        if not isinstance(entry['stage'], str) or entry['stage'] not in names:
+            raise ValueError(f"Stage input must refer to an earlier stage: {entry['stage']!r}.")
+        if not _file_name(entry['source']) or not _file_name(entry['destination']):
+            raise ValueError('Stage input source and destination must be filenames without directories.')
+        destination = entry['destination']
+        if destination in destinations:
+            raise ValueError(f'Duplicate stage input destination: {destination!r}.')
+        destinations.add(destination)
+    return deepcopy(inputs)
+
+
+def _stage(stage, names, properties, mode, final):
+    """Check one stage and resolve its calculator identity."""
     if not isinstance(stage, dict):
         raise TypeError('Each ASE stage must be a dictionary.')
     unknown = set(stage) - STAGE_FIELDS
@@ -40,8 +98,10 @@ def _stage(stage, names, properties):
         raise ValueError('Stage name must be a safe filename starting with a letter or digit.')
     if name in names:
         raise ValueError(f'Duplicate ASE stage name: {name!r}.')
-    settings = deepcopy({key: value for key, value in stage.items() if key != 'name'})
-    return name, settings, _configuration(settings, properties)
+    selected = _stage_properties(stage, properties, mode, final)
+    inputs = _stage_inputs(stage, names, mode)
+    settings = deepcopy({key: value for key, value in stage.items() if key not in STAGE_CONTROLS})
+    return _Stage(name, settings, selected, inputs), _configuration(settings, selected)
 
 
 def _check_repeats(stages, identities, properties, tolerances):
@@ -60,7 +120,7 @@ def _check_repeats(stages, identities, properties, tolerances):
 
 
 def _settings(config, properties=None):
-    """Check a workflow configuration; return its stages as ``(name, settings)``, its mode and tolerances."""
+    """Check a workflow configuration and return its prepared stages, mode and tolerances."""
     if not isinstance(config, dict):
         raise TypeError('ASE workflow configuration must be a dictionary.')
     unknown = set(config) - WORKFLOW_FIELDS
@@ -73,10 +133,12 @@ def _settings(config, properties=None):
     if mode not in RESULT_MODES:
         raise ValueError('result_mode must be last or mean_if_agree.')
     prepared, identities = [], []
-    for stage in stages:
-        name, settings, identity = _stage(stage, {name for name, _ in prepared}, properties)
-        prepared.append((name, settings))
+    names = set()
+    for index, stage in enumerate(stages):
+        spec, identity = _stage(stage, names, properties, mode, final=index == len(stages) - 1)
+        prepared.append(spec)
         identities.append(identity)
+        names.add(spec.name)
     tolerances = config.get('agreement')
     if mode == 'mean_if_agree':
         _check_repeats(prepared, identities, properties, tolerances)
@@ -113,8 +175,8 @@ def _agreed_mean(completed, properties_list, tolerances, provenance):
 def label_workflow(molecule_object, QM_config, QM_scratch_dir, properties_list):
     """Run the stages in this process and return the molecule, labeled or with the failing stage named.
 
-    ``qm_workflow`` metadata records each stage's name, calculator, directory, convergence and electronic state,
-    and for repeats the largest deviations. A failure sets ``qm_failed_stage`` to ``<stage>:<step>``.
+    ``qm_workflow`` records stage provenance, including any file handoffs.
+    A failure sets ``qm_failed_stage`` to ``<stage>:<step>``.
     """
     if not isinstance(molecule_object, MoleculesObject):
         raise TypeError('molecule_object must be a MoleculesObject.')
@@ -130,20 +192,25 @@ def label_workflow(molecule_object, QM_config, QM_scratch_dir, properties_list):
         phase = 'scratch'
         fresh_scratch_directory(directory)
         completed = []
-        for name, settings in stages:
-            phase = name
-            stage_directory = str(Path(directory) / name)
+        for spec in stages:
+            phase = spec.name
+            stage_directory = str(Path(directory) / spec.name)
+            input_files = [(Path(directory) / entry['stage'] / entry['source'], entry['destination'])
+                           for entry in spec.inputs]
             # Every stage starts from the original geometry and metadata.
             stage = MoleculesObject(molecule_object.get_atoms().copy(), molecule_object.get_moleculeid())
             stage.metadata = deepcopy(molecule_object.metadata)
-            label_one(stage, settings, QM_scratch_dir, properties_list, directory=stage_directory)
-            record = {'name': name, 'calculator': settings['ASE_calculator'], 'directory': stage_directory,
+            label_one(stage, spec.settings, QM_scratch_dir, spec.properties, directory=stage_directory,
+                      input_files=input_files)
+            record = {'name': spec.name, 'calculator': spec.settings['ASE_calculator'], 'directory': stage_directory,
                       'converged': bool(stage.check_convergence())}
+            if spec.inputs:
+                record['inputs_from_stages'] = spec.inputs
             records.append(record)
             if not stage.check_convergence():
                 record.update({key: stage.metadata[key] for key in ERROR_KEYS if key in stage.metadata})
                 molecule_object.update_metadata({key: stage.metadata[key] for key in ('qm_error', 'qm_error_type')})
-                molecule_object.metadata['qm_failed_stage'] = name + ':' + stage.metadata['qm_failed_stage']
+                molecule_object.metadata['qm_failed_stage'] = spec.name + ':' + stage.metadata['qm_failed_stage']
                 molecule_object.metadata['qm_workflow'] = provenance
                 return molecule_object
             record['state'] = {key: deepcopy(stage.metadata[key]) for key in ('qm_backend', 'charge', 'mult')

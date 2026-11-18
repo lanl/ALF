@@ -76,6 +76,135 @@ def test_a_retried_workflow_moves_the_earlier_attempt_aside(tmp_path, controlled
     assert (tmp_path / 'h2.previous-0' / 'stage_0' / 'ran').exists()
 
 
+def dependent_settings():
+    config = settings()
+    prep, target = config['stages']
+    prep.update(ASE_calculator='example.Producer', properties=['energy'])
+    target.update(ASE_calculator='example.Consumer', inputs_from_stages=[
+        {'stage': 'stage_0', 'source': 'orbitals.bin', 'destination': 'guess.bin'},
+    ])
+    return config
+
+
+@pytest.fixture
+def dependent_calculators(monkeypatch):
+    writers, received = [], []
+
+    class Producer(Calculator):
+        implemented_properties = ['energy']
+
+        def calculate(self, atoms, properties, system_changes):
+            assert properties == ['energy']
+            writers.pop(0)(Path(self.directory) / 'orbitals.bin')
+            self.results = {'energy': 1.0}
+
+    class Consumer(Calculator):
+        implemented_properties = ['energy', 'forces']
+
+        def __init__(self, directory):
+            super().__init__(directory=directory)
+            guess = Path(directory) / 'guess.bin'
+            received.append(guess.read_bytes())
+            guess.write_bytes(b'target-updated orbitals')
+
+        def calculate(self, atoms, properties, system_changes):
+            assert properties == ['energy', 'forces']
+            self.results = {'energy': 2.0, 'forces': np.ones((len(atoms), 3))}
+
+    classes = {'example.Producer': Producer, 'example.Consumer': Consumer}
+    monkeypatch.setattr(generic, 'load_module_from_config', lambda config, key: classes[config[key]])
+    return writers, received
+
+
+def test_a_stage_reads_an_isolated_copy_before_calculator_construction(tmp_path, dependent_calculators):
+    writers, received = dependent_calculators
+    writers.append(lambda path: path.write_bytes(b'prep orbitals'))
+    config = dependent_settings()
+    validate_ase_workflow_config(config, {'properties_list': PROPERTIES})
+    molecule = unlabeled_h2()
+    positions = molecule.atoms.positions.copy()
+    result = label_workflow(molecule, config, str(tmp_path), PROPERTIES)
+    assert result.check_convergence(), result.metadata
+    assert received == [b'prep orbitals']
+    assert (tmp_path / 'h2/stage_0/orbitals.bin').read_bytes() == b'prep orbitals'
+    assert (tmp_path / 'h2/stage_1/guess.bin').read_bytes() == b'target-updated orbitals'
+    assert result.get_results()['energy'] == 2.0
+    np.testing.assert_array_equal(result.get_results()['forces'], np.ones((2, 3)))
+    np.testing.assert_array_equal(result.atoms.positions, positions)
+    assert result.metadata['qm_workflow']['stages'][1]['inputs_from_stages'] == config['stages'][1]['inputs_from_stages']
+
+
+@pytest.mark.parametrize('write_artifact', [
+    lambda path: None,
+    lambda path: path.touch(),
+    lambda path: path.mkdir(),
+    lambda path: path.symlink_to(__file__),
+], ids=['missing', 'empty', 'directory', 'symlink'])
+def test_bad_stage_input_stops_before_calculator_construction(tmp_path, dependent_calculators, write_artifact):
+    writers, received = dependent_calculators
+    writers.append(write_artifact)
+    result = label_workflow(unlabeled_h2(), dependent_settings(), str(tmp_path), PROPERTIES)
+    assert not result.check_convergence()
+    assert result.get_metadata()['qm_failed_stage'] == 'stage_1:input_files'
+    assert 'orbitals.bin' in result.get_metadata()['qm_error']
+    assert not received
+
+
+def test_a_retry_does_not_read_an_artifact_from_the_previous_attempt(tmp_path, dependent_calculators):
+    writers, received = dependent_calculators
+    writers.extend([lambda path: path.write_bytes(b'first attempt'), lambda path: None])
+    config = dependent_settings()
+    assert label_workflow(unlabeled_h2(), config, str(tmp_path), PROPERTIES).check_convergence()
+    second = label_workflow(unlabeled_h2(), config, str(tmp_path), PROPERTIES)
+    assert not second.check_convergence()
+    assert second.get_metadata()['qm_failed_stage'] == 'stage_1:input_files'
+    assert (tmp_path / 'h2.previous-0/stage_0/orbitals.bin').read_bytes() == b'first attempt'
+    assert received == [b'first attempt']
+
+
+@pytest.mark.parametrize('change,error', [
+    ({'stage': 'stage_1'}, 'earlier stage'),
+    ({'stage': 'missing'}, 'earlier stage'),
+    ({'source': '../orbitals.bin'}, 'filenames without directories'),
+    ({'destination': '/tmp/guess.bin'}, 'filenames without directories'),
+    ({'destination': r'..\guess.bin'}, 'filenames without directories'),
+])
+def test_invalid_stage_file_paths_are_rejected_at_startup(dependent_calculators, change, error):
+    config = dependent_settings()
+    config['stages'][1]['inputs_from_stages'][0].update(change)
+    with pytest.raises(ValueError, match=error):
+        validate_ase_workflow_config(config, {'properties_list': PROPERTIES})
+
+
+def test_duplicate_stage_file_destinations_are_rejected_at_startup(dependent_calculators):
+    config = dependent_settings()
+    inputs = config['stages'][1]['inputs_from_stages']
+    inputs.append(dict(inputs[0], source='other.bin'))
+    with pytest.raises(ValueError, match='Duplicate stage input destination'):
+        validate_ase_workflow_config(config, {'properties_list': PROPERTIES})
+
+
+@pytest.mark.parametrize('stage,properties,error', [
+    (0, ['dipole'], 'must be in properties_list'),
+    (0, ['energy', 'energy'], 'distinct property names'),
+    (1, ['energy'], 'Only preparatory stages'),
+])
+def test_invalid_stage_properties_are_rejected_at_startup(dependent_calculators, stage, properties, error):
+    config = dependent_settings()
+    config['stages'][stage]['properties'] = properties
+    with pytest.raises(ValueError, match=error):
+        validate_ase_workflow_config(config, {'properties_list': PROPERTIES})
+
+
+def test_mean_if_agree_rejects_stage_handoffs():
+    config = settings('mean_if_agree')
+    config['stages'][1]['inputs_from_stages'] = [
+        {'stage': 'stage_0', 'source': 'orbitals.bin', 'destination': 'guess.bin'},
+    ]
+    with pytest.raises(ValueError, match='inputs_from_stages requires result_mode last'):
+        validate_ase_workflow_config(config, {'properties_list': PROPERTIES})
+
+
 @pytest.mark.parametrize('property,difference,accepted', [
     ('energy', .5, True), ('energy', 1., False), ('energy', 1.1, False),
     ('forces', .5, True), ('forces', 1., False), ('forces', 1.1, False)])

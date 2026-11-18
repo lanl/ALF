@@ -8,6 +8,8 @@ from copy import deepcopy
 import inspect
 import os
 from pathlib import Path
+import shutil
+import stat
 
 import numpy as np
 from ase.calculators.calculator import BaseCalculator, all_changes
@@ -220,11 +222,13 @@ def _checked_results(calc, atoms, molecule_object, properties_list):
     return candidate.get_results()
 
 
-def label_one(molecule_object, QM_config, QM_scratch_dir, properties_list, *, directory=None):
+def label_one(molecule_object, QM_config, QM_scratch_dir, properties_list, *, directory=None, input_files=()):
     """Run one fresh ASE calculation in this process; the workflow task calls it once per stage.
 
     A failure at any stage leaves the molecule unconverged, with the error and the stage it happened at in
     ``qm_error``, ``qm_error_type`` and ``qm_failed_stage``.
+
+    Workflows can supply ``input_files`` as pairs of source paths and destination filenames.
     """
     if not isinstance(molecule_object, MoleculesObject):
         raise TypeError('molecule_object must be a MoleculesObject.')
@@ -238,6 +242,12 @@ def label_one(molecule_object, QM_config, QM_scratch_dir, properties_list, *, di
         directory = default_directory if directory is None else directory
         stage = 'scratch'
         fresh_scratch_directory(directory)
+        stage = 'input_files'
+        for source, destination in input_files:
+            info = source.lstat()
+            if source.parent.is_symlink() or not stat.S_ISREG(info.st_mode) or not info.st_size:
+                raise ValueError(f'Expected a nonempty regular stage input file at {source}.')
+            shutil.copyfile(source, Path(directory) / destination)
         stage = 'construction'
         calc = _calculator(calc_class, atoms, directory, options, command)
         missing = set(properties_list) - set(calc.implemented_properties)

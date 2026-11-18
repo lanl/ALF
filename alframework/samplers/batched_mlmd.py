@@ -697,7 +697,8 @@ def sample_trajectories(molecule_objects, models, sampler_config, engine_class=N
     for molecule, temperature in zip(molecule_objects, temperatures):
         molecule.update_metadata(initialize_velocities(
             molecule.get_atoms(), temperature, sampler_config.get('velocity_initialization', 'preserve'),
-            molecule_id=molecule.get_moleculeid(), random_seed=sampler_config.get('random_seed')))
+            molecule_id=molecule.get_moleculeid(), random_seed=sampler_config.get('random_seed'),
+            initial_velocity_temperature_K=sampler_config.get('initial_velocity_temperature_K')))
     engine_args = ([molecule.get_atoms() for molecule in molecule_objects], models, sampler_config['dt'],
                    temperatures, rngs, sampler_config.get('MLMD_calculator_options'))
     friction_options = {}

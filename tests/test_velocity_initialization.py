@@ -10,6 +10,7 @@ from alframework.samplers.batched_mlmd import sample_trajectories
 from alframework.samplers.udd_sampling import simple_udd_sampling_task
 from alframework.samplers.velocities import initialize_velocities, velocity_initialization_mode
 from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.sampler_coordinator import driver_settings
 from tests.helpers.engines import require_engine
 from tests.helpers.fakes import FixedCalculator
 
@@ -30,6 +31,15 @@ def test_invalid_policy_is_rejected(bad):
         velocity_initialization_mode(bad)
 
 
+@pytest.mark.parametrize('mode,temperature', [
+    ('preserve', 600), (THERMAL, -1), (THERMAL, np.nan), (THERMAL, np.inf),
+    (THERMAL, True), (THERMAL, '600'),
+])
+def test_invalid_initial_temperature_config_is_rejected(mode, temperature):
+    with pytest.raises(ValueError, match='initial_velocity_temperature_K'):
+        driver_settings(dict(velocity_initialization=mode, initial_velocity_temperature_K=temperature))
+
+
 def test_default_preserves_missing_momenta_and_random_stream():
     atoms=gas()
     np.random.seed(123); expected=np.random.random(5)
@@ -43,8 +53,10 @@ def test_default_preserves_missing_momenta_and_random_stream():
 def test_thermal_option_preserves_explicit_momenta_even_zeros(explicit_zero):
     atoms=gas();momenta=np.zeros((len(atoms),3)) if explicit_zero else np.ones((len(atoms),3))
     atoms.set_momenta(momenta)
-    metadata=initialize_velocities(atoms,400.,THERMAL,molecule_id='a',random_seed=1)
+    metadata=initialize_velocities(atoms,400.,THERMAL,molecule_id='a',random_seed=1,
+                                   initial_velocity_temperature_K=600.)
     assert not metadata['velocities_initialized']
+    assert metadata['initial_velocity_temperature_K'] is None
     np.testing.assert_array_equal(atoms.get_momenta(),momenta)
 
 
@@ -74,7 +86,8 @@ def test_velocity_draw_is_repeatable_per_id_and_does_not_consume_global_rng():
 
 def test_zero_temperature_draw_is_zero_and_bad_temperature_is_rejected():
     atoms=gas()
-    initialize_velocities(atoms,0.,THERMAL,molecule_id='zero',random_seed=1)
+    initialize_velocities(atoms,400.,THERMAL,molecule_id='zero',random_seed=1,
+                          initial_velocity_temperature_K=0.)
     np.testing.assert_array_equal(atoms.get_momenta(),0.)
     for temperature in [-1.,np.nan,np.inf]:
         with pytest.raises(ValueError,match='temperature'):
@@ -88,28 +101,35 @@ CONFIG=dict(dt=.5,maxt=.02,Ncheck=10,Escut=.05,Fscut=.05,min_time=.005,distcut=.
 
 @pytest.mark.parametrize('task', [scalar_mlmd.simple_mlmd_sampling_task, simple_udd_sampling_task],
                          ids=['scalar', 'udd'])
-def test_scalar_tasks_select_a_thermal_frame_before_equilibration(task, monkeypatch):
+@pytest.mark.parametrize('initial_temperature', [None, 600.0])
+def test_scalar_tasks_select_a_thermal_frame_before_equilibration(task, initial_temperature, monkeypatch):
     atoms = gas(512)
     monkeypatch.setattr(scalar_mlmd, 'load_module_from_config',
                         lambda *_: lambda path, device: ensemble(len(atoms)))
     config = dict(CONFIG, device='cpu', ase_calculator='unused', MLMD_calculator_options={},
                   velocity_initialization=THERMAL, udd_bias_weight=0.5)
+    if initial_temperature is not None:
+        config['initial_velocity_temperature_K'] = initial_temperature
     result = task.func(MoleculesObject(atoms, 'scalar'), config, 'model-{:04d}', 0, 1)
     if isinstance(result, RemoteExceptionWrapper):
         result.reraise()
     metadata = result.get_metadata()
     assert metadata['velocities_initialized']
-    assert 350.0 < metadata['initial_kinetic_temperature_K'] < 450.0
-    assert 350.0 < metadata['kinetic_temperature_K'] < 450.0
+    target = 400.0 if initial_temperature is None else initial_temperature
+    assert metadata['initial_velocity_temperature_K'] == target
+    assert metadata['initial_kinetic_temperature_K'] == pytest.approx(target, rel=0.12)
     assert metadata['thermostat_temperature_K'] == 400.0
     assert metadata['simulationtime'] == 0.005
 
 
 @pytest.mark.parametrize('name',['ase','torchsim','alchemi'])
-def test_thermal_starts_work_on_each_engine_and_do_not_depend_on_grouping(name):
+@pytest.mark.parametrize('initial_temperature', [None, 600.0])
+def test_thermal_starts_work_on_each_engine_and_do_not_depend_on_grouping(name, initial_temperature):
     if name!='ase':
         require_engine(name)
     config=dict(CONFIG,velocity_initialization=THERMAL,driver=dict(engine=name))
+    if initial_temperature is not None:
+        config['initial_velocity_temperature_K'] = initial_temperature
     def run(names):
         molecules=[MoleculesObject(gas(),mid) for mid in names]
         results=sample_trajectories(molecules,ensemble(128),config,device='cpu')
@@ -119,7 +139,9 @@ def test_thermal_starts_work_on_each_engine_and_do_not_depend_on_grouping(name):
     for molecule in together.values():
         meta=molecule.get_metadata()
         assert meta['velocities_initialized']
-        assert 250.<meta['kinetic_temperature_K']<550.
+        target = 400.0 if initial_temperature is None else initial_temperature
+        assert meta['initial_velocity_temperature_K'] == target
+        assert meta['initial_kinetic_temperature_K'] == pytest.approx(target, rel=0.25)
         assert meta['thermostat_temperature_K']==400.
     np.testing.assert_allclose(together['a'].get_atoms().positions,solo.get_atoms().positions,atol=1e-12)
     np.testing.assert_allclose(together['a'].get_atoms().get_momenta(),solo.get_atoms().get_momenta(),atol=1e-12)

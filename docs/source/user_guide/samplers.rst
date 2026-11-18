@@ -162,7 +162,7 @@ Other differences from ``simple_mlmd_sampling_task``:
 .. _samplers-initial-velocities:
 
 Initial Velocities And Temperature
----------------------------------
+----------------------------------
 
 Both the scalar MLMD sampler (including UDD) and the multi-trajectory sampler
 preserve their input momenta by default. A positions-only structure starts at

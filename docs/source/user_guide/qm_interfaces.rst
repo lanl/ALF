@@ -588,7 +588,7 @@ Charge, spin and units
    **Changing a legacy ORCA run's task to this one also changes its units.** The legacy task's Hartree and
    Hartree/Bohr multipliers would convert ASE's results a second time: set them to ``1.0``, drop properties
    ASE doesn't read, and start in new output directories. For quadrupoles and Hirshfeld charges, keep the
-   legacy task. See ``examples/ase_qm``.
+   legacy task. See ``examples/staged_ase_qm`` for single-point configuration fragments.
 
 PySCF and GPU4PySCF
    ``pyscf_task`` and ``gpu4pyscf_excited_state_task`` call their calculators directly, with their own state
@@ -645,7 +645,7 @@ The final stage supplies the full training label.
 ``result_mode`` picks the label:
 
 ``last`` (the default)
-   The final stage's results. See ``examples/ase_qm`` for one-structure
+   The final stage's results. See ``examples/staged_ase_qm`` for one-structure
    recipes for ORCA orbital warm starts and VASP charge-density restarts.
 
 ``mean_if_agree``

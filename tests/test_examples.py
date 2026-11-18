@@ -371,7 +371,7 @@ else:
     Path("orca.engrad").write_text("# The current gradient\\n#\\n" + "0.1\\n" * 6 + "# The atomic numbers\\n")
     print({orca_output(energy="-3.0")!r})
 """)
-    script = ROOT / "examples" / "ase_qm" / "run_workflow.py"
+    script = ROOT / "examples" / "staged_ase_qm" / "run_workflow.py"
     scratch = tmp_path / "scratch"
     monkeypatch.setattr(sys, "argv", [str(script), "orca", "--command", command, "--scratch-dir", str(scratch)])
     runpy.run_path(str(script), run_name="__main__")
@@ -405,7 +405,7 @@ def test_the_staged_vasp_example_reads_charge_density_for_the_magnetic_label(tmp
         self.converged = True
 
     monkeypatch.setattr(Vasp, "calculate", calculate)
-    script = ROOT / "examples" / "ase_qm" / "run_workflow.py"
+    script = ROOT / "examples" / "staged_ase_qm" / "run_workflow.py"
     scratch = tmp_path / "scratch"
     monkeypatch.setattr(sys, "argv", [
         str(script), "vasp", "--command", "example-vasp", "--scratch-dir", str(scratch),

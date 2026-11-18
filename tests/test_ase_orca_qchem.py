@@ -161,7 +161,7 @@ def test_unsupported_qchem_jobs_or_resources_stop_the_coordinator_at_startup(opt
 
 @pytest.mark.parametrize('backend', ['orca', 'qchem'])
 def test_the_ase_qm_example_configurations_are_valid(backend):
-    directory = Path(__file__).resolve().parents[1] / 'examples' / 'ase_qm'
+    directory = Path(__file__).resolve().parents[1] / 'examples' / 'staged_ase_qm'
     config = json.loads((directory / f'{backend}_qm_config.json').read_text())
     master = json.loads((directory / 'master_config_fragment.json').read_text())
     interface.validate_ase_config(config, master)

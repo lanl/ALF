@@ -16,8 +16,8 @@ launch your licensed QM program. ORCA uses H₂ for the smoke run. VASP uses a
 two-atom periodic bcc iron cell and needs the Fe PAW potential available to ASE.
 
 ```bash
-python examples/ase_qm/run_workflow.py orca --command /absolute/path/to/orca
-python examples/ase_qm/run_workflow.py vasp --command /absolute/path/to/vasp_std
+python examples/staged_ase_qm/run_workflow.py orca --command /absolute/path/to/orca
+python examples/staged_ase_qm/run_workflow.py vasp --command /absolute/path/to/vasp_std
 ```
 
 Use `--command` to supply the same wrapper or launch command the QM worker

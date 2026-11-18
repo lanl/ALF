@@ -211,13 +211,16 @@ def test_sampler_full_only_batch_must_be_able_to_fill(policy, capacity, rejected
 
 
 def test_reload_keeps_sampler_settings_fixed_at_startup(capsys):
-    config = dict(SAMPLER, driver={"strategy": "batched"}, batching={"batch_size": 4, "max_wait_seconds": 1.0})
+    config = dict(SAMPLER, driver={"strategy": "batched"}, batching={"batch_size": 4, "max_wait_seconds": 1.0},
+                  velocity_initialization="maxwell_boltzmann_if_missing", initial_velocity_temperature_K=600.)
     coordinator = SamplerCoordinator(batched_mlmd.mlmd_trajectories_task, "batched", config)
-    reloaded = dict(config, batching={"batch_size": 8, "max_wait_seconds": 1.0}, acquisition={"strategy": "summed"}, Escut=1.0)
+    reloaded = dict(config, batching={"batch_size": 8, "max_wait_seconds": 1.0}, acquisition={"strategy": "summed"},
+                    Escut=1.0, initial_velocity_temperature_K=800.)
 
     restored = coordinator.keep_startup_settings(reloaded)
     assert restored["batching"] == config["batching"]
     assert "acquisition" not in restored
+    assert restored["initial_velocity_temperature_K"] == 600.
     assert restored["Escut"] == 1.0, "outside cohort mode, cutoffs can still be tuned during a run"
     output = capsys.readouterr().out
     assert "'batching'" in output and "'acquisition'" in output

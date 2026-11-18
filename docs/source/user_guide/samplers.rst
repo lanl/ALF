@@ -183,12 +183,16 @@ existing workflows whose warm-up is long enough. Starting from rest can also
 give gentle local perturbations of seed structures. An active-learning sample
 need not be an equilibrium sample.
 
-For thermal velocities immediately on a fresh structure, set:
+For a 600 K initial draw with a 400 K thermostat, use these sampler settings:
 
 .. code-block:: json
 
    {
      "velocity_initialization": "maxwell_boltzmann_if_missing",
+     "initial_velocity_temperature_K": 600.0,
+     "srt_temp": [400.0, 400.0],
+     "end_temp": [400.0, 400.0],
+     "amp_temp": [0.0, 0.0],
      "random_seed": 42
    }
 
@@ -198,8 +202,12 @@ For thermal velocities immediately on a fresh structure, set:
   random numbers and retains the existing dynamics.
 * ``"maxwell_boltzmann_if_missing"``: when the input has no ``momenta`` array,
   draw Gaussian momentum components with variance :math:`m k_B T_0`, where
-  :math:`T_0` is the initial thermostat target. Explicit momenta, including an
-  array of zeros, are preserved.
+  :math:`T_0` is ``initial_velocity_temperature_K`` when supplied and the
+  initial thermostat target otherwise. The override accepts a finite,
+  nonnegative number in Kelvin and requires the thermal policy. It changes
+  the initial draw only. The temperature schedule still controls the
+  thermostat from the first step. Explicit momenta, including an array of
+  zeros, are preserved.
 
 Initialization happens in the sampler before constructing an engine. The draw
 uses an independent molecule-ID random stream, so ``random_seed`` reproduces it
@@ -234,7 +242,9 @@ Trajectory metadata and the coordinator's ``trajectory_summary_path`` record
 ``initial_kinetic_temperature_K``, ``kinetic_temperature_K`` (at the returned
 frame), and ``thermostat_temperature_K`` (the last applied target). Cohort
 candidates record their own instantaneous temperature. Metadata also records
-``velocity_initialization`` and ``velocities_initialized``. The temperature
+``velocity_initialization``, ``velocities_initialized``, and
+``initial_velocity_temperature_K`` (the draw target, or ``null`` when no draw
+was made). The temperature
 scalars survive compact returned metadata. Undefined kinetic temperatures are
 ``null``. Older trajectory-summary rows have no such measurements, and HDF5
 label shards do not automatically store momenta or these temperature fields.
@@ -568,6 +578,10 @@ Temperature schedule fields
         - Optional MLMD starting-momenta policy. Defaults to ``"preserve"``.
           See :ref:`samplers-initial-velocities` for the thermal option and
           supported tasks.
+      * - ``initial_velocity_temperature_K``
+        - Optional Kelvin target for the starting-momenta draw. Requires
+          ``"maxwell_boltzmann_if_missing"``. Defaults to the initial thermostat
+          target and leaves the thermostat schedule independent.
 
 Density schedule fields
    Density changes are optional. Use ``null`` for ``end_dens``, ``amp_dens``,

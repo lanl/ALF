@@ -40,6 +40,8 @@ from alframework.tools.molecules_class import MoleculesObject
 from alframework.tools.batching import bootstrap_spare_count, next_bootstrap_ids
 from alframework.tools.restarts import HELD_PIECES, STORED_AT_BUDGET_STOP, HeldLabels, held_labels_directory, reconcile_status
 from alframework.tools.labeling import LabelingCoordinator
+from alframework.tools.label_validation import screen_labels
+from alframework.tools.builder_outputs import builder_outputs
 from alframework.tools.sampler_coordinator import SamplerCoordinator
 #import logging
 #logging.basicConfig(level=logging.DEBUG)
@@ -187,6 +189,7 @@ spare_seeds = bootstrap_spare_count(master_config)
 def hold_finished_labels():
     """Move finished QM work out of memory, so a crash can't lose it."""
     results, failed = QM_task_queue.get_task_results()
+    screen_labels(results, master_config['properties_list'])
     lost = labeling.take_failed_structures(failed)
     status['lifetime_failed_QM_tasks'] = status['lifetime_failed_QM_tasks'] + failed
     status['lifetime_failed_QM_structures'] = status.get('lifetime_failed_QM_structures', 0) + lost
@@ -224,10 +227,10 @@ if args.test_builder or args.test_sampler or args.test_qm:
     builder_task_queue.add_task(builder_task(**task_input))
     builder_configuration = builder_task_queue.task_list[0].result()
     queue_output = builder_task_queue.get_task_results()
-    test_configuration = queue_output[0][0]
-    if not isinstance(test_configuration, MoleculesObject):
-        assert isinstance(test_configuration[0], MoleculesObject), 'test_configuration[0] must be a MoleculesObject instance'
-        test_configuration = test_configuration[0]
+    outputs = builder_outputs(queue_output[0][0], master_config['builder_task'])
+    if not outputs:
+        raise ValueError(f'Builder {master_config["builder_task"]} returned no structures for --test_builder.')
+    test_configuration = outputs[0]
     print("Builder testing returned:")
     print(test_configuration)
     testing = True
@@ -256,6 +259,7 @@ if args.test_qm:
     queue_output,failed = QM_task_queue.get_task_results()
     sys.stdout.write('Job Failed: {:d}'.format(failed))
     test_configuration = queue_output[0]
+    screen_labels([test_configuration], master_config['properties_list'])
     assert isinstance(test_configuration, MoleculesObject), 'test_configuration must be a MoleculesObject instance'
     print("Ensure the following data matches that in the QM output and test.h5 after unit conversion:")
     sys.stdout.write('Atomic Numbers: ' + np.array_str(test_configuration[1].get_atomic_numbers()) + '\n')
@@ -391,14 +395,10 @@ if status['current_h5_id'] == 0 and status['current_model_id'] < 0:
             lost_builder_seeds += sum(bootstrap_builder_seeds.get(task, 0) for task in builder_task_queue.last_failed)
             bootstrap_builder_seeds = {task: seeds for task, seeds in bootstrap_builder_seeds.items()
                                        if any(task is running for running in builder_task_queue.task_list)}
-            for structure in builder_results:
-                #If builders return a single structure:
-                if isinstance(structure, MoleculesObject):
+            for result in builder_results:
+                for structure in builder_outputs(result, master_config['builder_task']):
                     labeling.submit(structure, [{"QM_config": QM_config}, *all_configs, status])
-                elif isinstance(structure, list):
-                    for substructure in structure:
-                        assert isinstance(substructure, MoleculesObject), 'substructure must be a MoleculesObject instance'
-                        labeling.submit(substructure, [{"QM_config": QM_config}, *all_configs, status])
+            builder_results = result = structure = None
         # Once every seed is built, a partial batch can't fill, so send it ("full_only" would wait forever).
         labeling.submit_ready([{"QM_config": QM_config}, *all_configs, status], flush=bootstrap_seeds_exhausted())
         hold_finished_labels()
@@ -503,17 +503,11 @@ while True:
         structure_list, failed = builder_task_queue.get_task_results()
         status['lifetime_failed_builder_tasks'] = status['lifetime_failed_builder_tasks'] + failed
         # Douple loop to facilitate possiblitiy of multiple sctructures returned by builder
-        for structure in structure_list:
-            # If builders return a single structure:
-            if isinstance(structure, MoleculesObject):
+        for result in structure_list:
+            for structure in builder_outputs(result, master_config['builder_task']):
                 sampling.submit(structure, [{"sampler_config": sampler_config}, *all_configs, status])
-            # If builders return multiple structures
-            elif isinstance(structure, list):
-                for substructure in structure:
-                    assert isinstance(substructure, MoleculesObject), 'substructure must be a MoleculesObject instance'
-                    sampling.submit(substructure, [{"sampler_config": sampler_config}, *all_configs, status])
         # This loop runs at module level, so these names would keep the last harvest alive until the next one.
-        structure_list = structure = substructure = None
+        structure_list = result = structure = None
     if admitting:
         sampling.submit_ready([{"sampler_config": sampler_config}, *all_configs, status])
 

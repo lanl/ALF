@@ -77,6 +77,7 @@ def run_alf_driver(
     executors=EXECUTORS,
     stop_when=retrained_once,
     timeout=120,
+    arguments=(),
     **master_settings,
 ):
     """Run the coordinator in ``tmp_path`` until ``stop_when(status)`` holds.
@@ -118,7 +119,7 @@ def run_alf_driver(
     configs = {"master": master, "builder": {}, "sampler": sampler_config or {}, "qm": qm_config or {}, "ml": ml_config or {}}
     for name, values in configs.items():
         (tmp_path / f"{name}.json").write_text(json.dumps(values))
-    monkeypatch.setattr(sys, "argv", ["alframework", "--master", str(tmp_path / "master.json")])
+    monkeypatch.setattr(sys, "argv", ["alframework", "--master", str(tmp_path / "master.json"), *arguments])
 
     run = SimpleNamespace(status={}, sleeps=[], sampler_queue_sizes=[], coordinator_cleaned_up=False)
     original_sleep = time.sleep

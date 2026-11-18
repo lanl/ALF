@@ -1,0 +1,17 @@
+{
+  "QM_task": "alframework.qm_interfaces.ase.workflow.ase_workflow_task",
+  "QM_config_path": "staged_orca_qm_config.json",
+  "QM_scratch_dir": "staged_qm_scratch/",
+  "properties_list": {
+    "energy": [
+      "energy",
+      "system",
+      1.0
+    ],
+    "forces": [
+      "forces",
+      "atomic",
+      1.0
+    ]
+  }
+}

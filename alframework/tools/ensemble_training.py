@@ -124,6 +124,25 @@ def run_member_in_child(function, *args):
         return pool.submit(function, *args).result()
 
 
+def run_members_in_slots(function, parameters, devices):
+    """One supervised child at a time per device; native death cannot block a sibling's slot."""
+    if not devices:
+        raise ValueError('Training needs at least one execution slot.')
+    completed = [False] * len(parameters)
+
+    def run_slot(slot):
+        for member in range(slot, len(parameters), len(devices)):
+            params = dict(parameters[member], device_string=devices[slot])
+            try:
+                completed[member] = bool(run_member_in_child(function, params))
+            except Exception as error:
+                print(f'Training member {member} failed: {type(error).__name__}: {error}', flush=True)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(devices)) as pool:
+        list(pool.map(run_slot, range(len(devices))))
+    return completed
+
+
 def member_directory(ensemble_dir, member):
     return os.path.join(str(ensemble_dir), f'model-{member:02d}')
 

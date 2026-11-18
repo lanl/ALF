@@ -140,8 +140,10 @@ TIMED_MODULES = [
     "alframework.builders.rdkit_condensed_phase", "alframework.builders.defect_crystal_builder",
     "alframework.builders.reactive_builder", "alframework.samplers.batched_mlmd", "alframework.samplers.mlmd_sampling",
     "alframework.samplers.udd_sampling", "alframework.samplers.reactive_sampler",
-    "alframework.qm_interfaces.teacher_interface", "alframework.qm_interfaces.ase_calculator_interface",
-    "alframework.qm_interfaces.orca5_interface", "alframework.qm_interfaces.qchem_DFT_interface",
+    "alframework.qm_interfaces.teacher_interface", "alframework.qm_interfaces.ase.generic",
+    "alframework.qm_interfaces.ase.vasp",
+    "alframework.qm_interfaces.ase.workflow",
+    "alframework.qm_interfaces.legacy.orca5_interface", "alframework.qm_interfaces.legacy.qchem_DFT_interface",
     "alframework.ml_interfaces.hippynn_interface",
 ]
 

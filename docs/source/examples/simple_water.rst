@@ -64,9 +64,9 @@ Sampler stage
    for QM if energy or force uncertainty exceeds the configured cutoffs.
 
 QM stage
-   ``orca_calculator_task`` reads ``orca_config.json``, writes ORCA input files,
-   runs ORCA, parses requested properties, and returns a labeled
-   ``MoleculesObject``.
+   ``ase_calculator_task`` reads ``orca_config.json`` and labels each
+   structure with ASE's ORCA calculator, which writes the input, runs ORCA and
+   reads the output.
 
 ML stage
    ``train_HIPPYNN_ensemble_task`` reads ``hippynn_config.json`` and trains a
@@ -349,27 +349,11 @@ Sampler Configuration
 ORCA Configuration
 ------------------
 
-``orca_config.json`` controls QM labeling through ORCA.
-
-.. list-table::
-   :header-rows: 1
-   :widths: 28 72
-
-   * - Field
-     - Meaning
-   * - ``QM_run_command``
-     - ORCA executable or launch command. Replace this path for your system.
-   * - ``ncpu``
-     - CPU count passed to the ORCA interface when applicable.
-   * - ``orca_env_file``
-     - Optional shell environment file sourced before ORCA execution.
-   * - ``orcasimpleinput``
-     - ORCA method, basis, and job keywords.
-   * - ``orcablocks``
-     - Additional ORCA input blocks, such as memory, SCF, and property blocks.
-   * - ``Ediff``, ``Fdiff``
-     - Thresholds used by double-calculation checks when using the double ORCA
-       task.
+``orca_config.json`` selects ASE's ``ase.calculators.orca.ORCA``.
+``QM_run_command`` names the ORCA executable or a wrapper; ``input.orcasimpleinput``
+sets the method, basis and ``EnGrad``; ``input.orcablocks`` sets memory, SCF options
+and, with ``%pal``, cores. ``input.charge`` and ``input.mult`` apply to molecules
+whose metadata gives no charge or multiplicity.
 
 HIPPYNN Configuration
 ---------------------
@@ -416,3 +400,17 @@ and QM tests work, tune the sampler thresholds and ML architecture for the
 target chemistry. Finally, update the Parsl configuration so the QM, ML, and
 sampler tasks request resources that match the software and hardware used on
 your cluster.
+
+ASE labeling configuration
+--------------------------
+
+``orca_config.json`` labels with ASE's ORCA calculator, ``ase.calculators.orca.ORCA``,
+through ``ase_calculator_task``, with the calculator's settings under ``input``. ASE gives
+eV and eV/Angstrom, so the energy and force multipliers are ``1.0``. It doesn't read
+Hirshfeld charges or quadrupoles, so the example doesn't request them. Start this example
+in new output directories: data from its legacy ORCA version is in other units.
+The builder makes nonperiodic clusters, since ORCA labels molecules.
+
+ORCA runs on one core unless ``orcablocks`` sets ``%pal nprocs N end``; match it to the
+QM executor's CPUs. ``QM_run_command`` names the ORCA executable, or a wrapper script that
+loads its environment. See :ref:`qm-ase-orca-qchem`.

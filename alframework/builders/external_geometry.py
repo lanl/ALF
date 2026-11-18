@@ -128,6 +128,9 @@ def _h5_frame(group, index):
         if key in group:
             values = np.asarray(group[key])
             options[key] = values if values.shape == static_shape else values[index]
+    if 'cell' in options and 'pbc' not in options:
+        # Legacy ALF shards omit PBC: a stored cell denotes a periodic frame.
+        options['pbc'] = True
     atoms = Atoms(numbers=numbers, positions=positions, **options)
     if TOPOLOGY_ATOM_IDS in group:
         ids = np.asarray(group[TOPOLOGY_ATOM_IDS])

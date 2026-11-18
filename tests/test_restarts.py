@@ -376,7 +376,7 @@ def test_next_bootstrap_ids_skips_held_ids_and_reaches_the_end():
 
 
 def test_ase_task_moves_aside_a_scratch_directory_left_by_an_earlier_attempt(tmp_path):
-    from alframework.qm_interfaces.ase_calculator_interface import fresh_scratch_directory
+    from alframework.qm_interfaces.ase.generic import fresh_scratch_directory
 
     directory = tmp_path / "mol-boot-0000000003"
     directory.mkdir()
@@ -840,7 +840,7 @@ def test_the_coordinator_releases_each_harvest_once_it_is_handed_on():
     harvest: with one harvest per cycle, every sampled structure stayed alive for the rest of the run."""
     source = MAIN.read_text()
     assert "sampler_results = structure = None" in source
-    assert "structure_list = structure = substructure = None" in source
+    assert "structure_list = result = structure = None" in source
 
 
 def test_a_large_hold_is_written_as_bounded_pieces(tmp_path, monkeypatch):

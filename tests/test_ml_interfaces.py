@@ -14,10 +14,27 @@ from alframework.tools.tools import build_input_dict
 from tests.helpers.fakes import fake_training_pool, import_neurochem_with_fake_backend
 
 
+def mock_ground_state_training(monkeypatch, member_log=lambda member: "Training complete\n", record=None):
+    """Train members through the fake pool instead of supervised children; ``record`` gets each slot count."""
+    FakePool, pool = fake_training_pool(member_log=member_log)
+    monkeypatch.setattr(hippynn_interface, "_single_node_training_devices",
+                        lambda config, count: ["cpu"] * max(1, count))
+
+    def run(function, params, devices):
+        if record is not None:
+            record.append(len(devices))
+        fake = FakePool(len(devices))
+        fake.map(function, params)
+        fake.close()
+        return [hippynn_interface._ground_state_member_complete(member["model_dir"]) for member in params]
+
+    monkeypatch.setattr(ensemble_training, "run_members_in_slots", run)
+    return pool
+
+
 def test_hippynn_training_configures_each_member(tmp_path, monkeypatch):
 
-    FakePool, pool = fake_training_pool()
-    monkeypatch.setattr(hippynn_interface.multiprocessing, "Pool", FakePool)
+    pool = mock_ground_state_training(monkeypatch)
 
     completed, training_id = hippynn_interface.train_HIPPYNN_ensemble_task.func(
         ML_config={"n_models": 2, "energy_key": "energy", "species_key": "species"},
@@ -32,7 +49,7 @@ def test_hippynn_training_configures_each_member(tmp_path, monkeypatch):
     assert (tmp_path / "models" / "model-0003" / "label_sources.json").is_file()
     assert pool.processes == 2
     assert "close" in pool.calls
-    assert pool.func is hippynn_interface.train_HIPNN_model_wrapper
+    assert pool.func is hippynn_interface._ground_state_member_child
     assert pool.params_list == [
         {
             "energy_key": "energy",
@@ -54,8 +71,7 @@ def test_hippynn_training_configures_each_member(tmp_path, monkeypatch):
 def test_hippynn_training_reports_failed_members(tmp_path, monkeypatch):
 
     logs = ["Training complete\n", "Stopped before convergence\n"]
-    FakePool, _ = fake_training_pool(member_log=logs.__getitem__)
-    monkeypatch.setattr(hippynn_interface.multiprocessing, "Pool", FakePool)
+    mock_ground_state_training(monkeypatch, member_log=logs.__getitem__)
 
     completed, training_id = hippynn_interface.train_HIPPYNN_ensemble_task.func(
         ML_config={"n_models": 2},
@@ -73,14 +89,7 @@ def single_node_trainer(kind, tmp_path, monkeypatch):
     """Return a call to one single-node training task, with training replaced by a recorder."""
     trained = []
     if kind == "ground_state":
-        FakePool, _ = fake_training_pool()
-
-        class RecordingPool(FakePool):
-            def __init__(self, processes):
-                trained.append(processes)
-                super().__init__(processes)
-
-        monkeypatch.setattr(hippynn_interface.multiprocessing, "Pool", RecordingPool)
+        mock_ground_state_training(monkeypatch, record=trained)
         task, extra = hippynn_interface.train_HIPPYNN_ensemble_task.func, {}
     else:
         monkeypatch.setattr(hippynn_interface, "train_excited_state_ensemble",

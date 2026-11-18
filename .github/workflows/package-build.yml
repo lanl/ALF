@@ -34,4 +34,4 @@ jobs:
       - name: Import installed package outside checkout
         run: |
           cd /tmp
-          python -c "import alframework; import alframework.tools.tools; import alframework.builders.builders; import alframework.qm_interfaces.orca5_interface; import alframework.samplers.ASE_ensemble_constructor"
+          python -c "import alframework; import alframework.tools.tools; import alframework.builders.builders; import alframework.qm_interfaces.legacy.orca5_interface; import alframework.qm_interfaces.ase.generic; import alframework.samplers.ASE_ensemble_constructor"

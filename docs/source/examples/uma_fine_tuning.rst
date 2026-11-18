@@ -25,7 +25,7 @@ How It Runs
      - ``alframework.samplers.batched_mlmd.mlmd_trajectories_task`` on TorchSim, loading the copies
        with ``fine_tuning.uma.load_uma_batched_ensemble``
    * - QM
-     - ``alframework.qm_interfaces.orca5_interface.orca_calculator_task``
+     - ``alframework.qm_interfaces.ase.generic.ase_calculator_task``
    * - ML
      - ``alframework.ml_interfaces.fine_tuning.fine_tune_ensemble_task``, with ``UmaFineTuner``
 
@@ -70,3 +70,17 @@ recording the checkpoint's SHA-256, the settings, the shards, and each copy's se
 ``h5store/``.
 
 See :doc:`mace_fine_tuning` for the same workflow with MACE, and :doc:`fine_tuning` for HIPPYNN.
+
+ASE labeling configuration
+--------------------------
+
+``orca_config.json`` labels with ASE's ORCA calculator, ``ase.calculators.orca.ORCA``,
+through ``ase_calculator_task``, with the calculator's settings under ``input``. ASE gives
+eV and eV/Angstrom, so the energy and force multipliers are ``1.0``. It doesn't read
+Hirshfeld charges or quadrupoles, so the example doesn't request them. Start this example
+in new output directories: data from its legacy ORCA version is in other units.
+The builder makes nonperiodic clusters, since ORCA labels molecules.
+
+ORCA runs on one core unless ``orcablocks`` sets ``%pal nprocs N end``; match it to the
+QM executor's CPUs. ``QM_run_command`` names the ORCA executable, or a wrapper script that
+loads its environment. See :ref:`qm-ase-orca-qchem`.

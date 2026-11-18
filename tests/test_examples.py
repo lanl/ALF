@@ -287,3 +287,104 @@ def test_no_old_state_names_remain():
              for path in (ROOT / folder).rglob("*") if path.suffix in {".py", ".json", ".rst", ".md", ".txt"}
              and old.search(path.read_text(errors="ignore"))]
     assert found == []
+
+
+
+def orca_masters():
+    return [path for path in MASTERS if read(path)["QM_task"].startswith("alframework.qm_interfaces.ase.")
+            and "orca" in read(path)["QM_config_path"].lower()]
+
+
+@pytest.mark.parametrize("path", orca_masters(), ids=lambda path: str(path.relative_to(ROOT / "examples")))
+def test_orca_examples_use_ase_orca_with_ase_units(path):
+    master = read(path)
+    config = read(path.parent / master["QM_config_path"])
+    module, name = master["QM_task"].rsplit(".", 1)
+    getattr(importlib.import_module(module), name).func.validate_config(config, master)
+    for stage in config.get("stages", [config]):
+        assert stage["ASE_calculator"] == "ase.calculators.orca.ORCA"
+        assert not {"ncpu", "orca_env_file", "Ediff", "Fdiff"} & set(stage)
+    properties = master["properties_list"]
+    assert set(properties) <= {"energy", "forces", "dipole"}
+    assert all(spec[2] == 1.0 for spec in properties.values()), "ASE gives eV and eV/Angstrom"
+
+
+@pytest.mark.parametrize("path", orca_masters(), ids=lambda path: str(path.relative_to(ROOT / "examples")))
+def test_orca_examples_train_on_stored_datasets_of_clusters(path):
+    master = read(path)
+    stored = {spec[0] for spec in master["properties_list"].values()}
+    training = read(path.parent / master["ML_config_path"])
+    for key in ("energy_key", "force_key", "charges_key", "dipole_key", "quadrupole_key"):
+        if training.get(key) is not None:
+            assert training[key] in stored
+    assert training.get("cell_key") is None
+    builder = read(path.parent / master["builder_config_path"])
+    if "condensed_phase" in master["builder_task"] or "cfg_loader" in master["builder_task"]:
+        assert builder["periodic"] is False, "ORCA labels molecules, so the builder makes clusters"
+
+
+@pytest.mark.parametrize("path", orca_masters(), ids=lambda path: str(path.relative_to(ROOT / "examples")))
+def test_orca_examples_label_through_ase_with_a_stand_in_orca(path, tmp_path):
+    from alframework.qm_interfaces.ase.generic import label_one
+    from alframework.qm_interfaces.ase.workflow import label_workflow
+    from tests.helpers.ase_qm import orca_command
+    from tests.helpers.labels import unlabeled_h2
+
+    master = read(path)
+    config = read(path.parent / master["QM_config_path"])
+    for stage in config.get("stages", [config]):
+        stage["QM_run_command"] = orca_command(tmp_path)
+    label = label_workflow if "stages" in config else label_one
+    molecule = label(unlabeled_h2(), config, str(tmp_path / "scratch"), master["properties_list"])
+    assert molecule.check_convergence(), molecule.metadata
+    assert molecule.metadata["qm_backend"] == "orca"
+    assert set(master["properties_list"]) <= set(molecule.get_results())
+
+
+def test_the_il_example_repeats_its_orca_calculation_and_keeps_the_old_tolerances():
+    config = read(ROOT / "examples" / "IL" / "orca_config.json")
+    assert config["result_mode"] == "mean_if_agree" and len(config["stages"]) == 2
+    # The legacy double calculation compared at 1e-3 Hartree and 1e-4 Hartree/Bohr.
+    assert config["agreement"]["energy"] == pytest.approx(1e-3 * 27.211386024367243)
+    assert config["agreement"]["forces"] == pytest.approx(1e-4 * 51.422067090480645)
+    assert all("%pal nprocs 128 end" in stage["input"]["orcablocks"] for stage in config["stages"])
+
+
+def test_the_staged_orca_example_runs_each_stage_with_its_own_basis(tmp_path):
+    from alframework.qm_interfaces.ase.workflow import label_workflow
+    from tests.helpers.ase_qm import orca_command
+    from tests.helpers.labels import PROPERTIES, unlabeled_h2
+
+    config = read(ROOT / "examples" / "ase_qm" / "staged_orca_qm_config.json")
+    for stage in config["stages"]:
+        stage["QM_run_command"] = orca_command(tmp_path)
+    molecule = label_workflow(unlabeled_h2(), config, str(tmp_path / "scratch"), PROPERTIES)
+    assert molecule.check_convergence(), molecule.metadata
+    assert "def2-SVP" in (tmp_path / "scratch" / "h2" / "initial" / "orca.inp").read_text()
+    assert "def2-TZVP" in (tmp_path / "scratch" / "h2" / "target" / "orca.inp").read_text()
+
+
+@pytest.mark.parametrize("family", ["fine_tuning", "seeded_active_learning"])
+def test_cfg_seed_examples_build_clusters(family):
+    from parsl.app.errors import RemoteExceptionWrapper
+
+    from alframework.builders.builders import simple_cfg_loader_task
+
+    folder = ROOT / "examples" / family
+    config = read(folder / "builder_config.json")
+    config["molecule_library_dir"] = str(folder / config["molecule_library_dir"])
+    molecule = simple_cfg_loader_task.func("seed", config, shake=0.0)
+    if isinstance(molecule, RemoteExceptionWrapper):
+        molecule.reraise()
+    assert not molecule.atoms.pbc.any()
+
+
+@pytest.mark.parametrize("path", MASTERS, ids=lambda path: str(path.relative_to(ROOT / "examples")))
+def test_examples_name_current_module_paths(path):
+    """Moved QM modules still import from their old paths, with a FutureWarning; examples use the new ones."""
+    from alframework.qm_interfaces import MOVED_MODULES
+
+    moved = tuple(f"alframework.qm_interfaces.{name}." for name in MOVED_MODULES)
+    for field, value in read(path).items():
+        if isinstance(value, str):
+            assert not value.startswith(moved), f"{field} names a moved module: {value}"

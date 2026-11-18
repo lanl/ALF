@@ -22,6 +22,16 @@ from alframework.tools.molecules_class import MoleculesObject
 import random
 from copy import deepcopy
 
+
+def _rattle_enabled(value):
+    """``rattle`` as a boolean: True, False, or the string true or false in any case."""
+    if isinstance(value, (bool, np.bool_)):
+        return bool(value)
+    if isinstance(value, str) and value.strip().lower() in ('true', 'false'):
+        return value.strip().lower() == 'true'
+    raise ValueError('rattle must be a boolean or the string true/false.')
+
+
 @python_app(executors=['alf_sampler_executor'])
 @timed('builder')
 def load_reactive_task(moleculeid, builder_config, rattle=True):
@@ -36,6 +46,7 @@ def load_reactive_task(moleculeid, builder_config, rattle=True):
         (MoleculesObject): A MoleculesObject representing the system.
     """
 
+    rattle = _rattle_enabled(rattle)
     N = int(builder_config['N_reactions']) - 1
 
     # Finds random structure and random r/ts or product
@@ -46,7 +57,7 @@ def load_reactive_task(moleculeid, builder_config, rattle=True):
     ts = ase.io.read(builder_config['molecule_library_dir'] + '/' + builder_config['ts_files'], index_mol)
     p = ase.io.read(builder_config['molecule_library_dir'] + '/' + builder_config['p_files'], index_mol)
 
-    if rattle or rattle.lower() == 'true':
+    if rattle:
         r.rattle()
         ts.rattle()
         p.rattle()

@@ -461,7 +461,11 @@ def test_cpp_ring_builder_replays_its_seed_and_opens_it_twice_per_task(ring_pool
 
 def test_cpp_ring_builder_rejects_a_changed_reference_after_caching_it(ring_pool, fresh_caches):
     ring_pool.module.build_ring_molecules(["mol-boot-0000000000"], ring_pool.builder)
-    write(ring_pool.prepared / "reference.xyz", Atoms("H2", positions=[[0, 0, 0], [0.80, 0, 0]]))
+    reference = ring_pool.prepared / "reference.xyz"
+    before = reference.stat()
+    write(reference, Atoms("H2", positions=[[0, 0, 0], [0.80, 0, 0]]))
+    # Same-size writes can share a filesystem timestamp tick; explicitly change the cache key.
+    os.utime(reference, ns=(before.st_atime_ns, before.st_mtime_ns + 1_000_000))
     with pytest.raises(ValueError, match="Prepared ring input changed: reference.xyz"):
         ring_pool.module.build_ring_molecules(["mol-boot-0000000001"], ring_pool.builder)
 
@@ -688,3 +692,29 @@ def test_rdkit_command_line_finds_reference_next_to_config(tmp_path):
     report = json.loads((output / "provenance.json").read_text())
     assert report["selected_count"] == 6
     assert report["settings"]["reference_geometry"] == str(config_dir / "enol.xyz")
+
+
+
+@pytest.mark.parametrize("periodic", [None, False, True])
+def test_cfg_loader_keeps_the_file_s_periodicity_unless_told_otherwise(tmp_path, periodic):
+    from parsl.app.errors import RemoteExceptionWrapper
+
+    from alframework.builders.builders import simple_cfg_loader_task
+
+    write(tmp_path / "seed.cfg", Atoms("H2", positions=[[0, 0, 0], [0, 0, 0.74]], cell=[5, 5, 5], pbc=True))
+    config = {"molecule_library_dir": str(tmp_path)}
+    if periodic is not None:
+        config["periodic"] = periodic
+    result = simple_cfg_loader_task.func("seed", config, shake=0.0)
+    if isinstance(result, RemoteExceptionWrapper):
+        result.reraise()
+    assert result.atoms.pbc.tolist() == [True if periodic is None else periodic] * 3
+    np.testing.assert_allclose(result.atoms.positions, [[0, 0, 0], [0, 0, 0.74]])
+
+
+def test_cfg_loader_refuses_a_periodic_setting_that_is_not_a_boolean():
+    from alframework.builders.builders import simple_cfg_loader_task
+
+    result = simple_cfg_loader_task.func("seed", {"molecule_library_dir": "/not-read", "periodic": "false"})
+    with pytest.raises(ValueError, match="periodic"):
+        result.reraise()

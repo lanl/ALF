@@ -35,15 +35,20 @@ def simple_cfg_loader_task(moleculeid, builder_config, shake=0.05):
 
     Args:
         moleculeid (str): System unique identifier in the database.
-        builder_config (dict): Dictionary containing the builder parameters.
+        builder_config (dict): Builder parameters; optional Boolean periodic overrides file PBC.
         shake (float): Amount of random pertubation added to each atom coordinate.
 
     Returns:
         (MoleculesObject): A MoleculesObject representing the system.
     """
+    periodic = builder_config.get('periodic')
+    if periodic is not None and not isinstance(periodic, (bool, np.bool_)):
+        raise ValueError('periodic must be a boolean when specified.')
     cfg_list = glob.glob(builder_config['molecule_library_dir'] + '/*.cfg')
     cfg_choice = random.choice(cfg_list)
     ase_atoms = cfg.read_cfg(cfg_choice)
+    if periodic is not None:
+        ase_atoms.set_pbc(periodic)
     ase_atoms.rattle(shake)
 
     molecule_object = MoleculesObject(ase_atoms, moleculeid)
@@ -105,6 +110,9 @@ def condensed_phase_builder(start_system, molecule_library, solute_molecules=[],
     # ensure system adhears to formating convention
     assert isinstance(start_system, MoleculesObject), 'start_system must be an instance of MoleculesObject'
     curr_sys = start_system.get_atoms()
+    solute_molecules = list(solute_molecules)
+    if max_atoms is not None and len(curr_sys) > max_atoms:
+        raise ValueError('Starting structure exceeds max_atoms.')
 
     # Make sure we know what all of the molecules are
     for curN in solute_molecules:
@@ -128,10 +136,7 @@ def condensed_phase_builder(start_system, molecule_library, solute_molecules=[],
     attempts_total = 0
     attempts_lsucc = 0
 
-    while actual_dens < density or len(solute_molecules) > 1:
-        if max_atoms is not None:
-            if len(curr_sys) > max_atoms:
-                break
+    while actual_dens < density or solute_molecules:
         if len(solute_molecules) > 0:
             new_mol_name = solute_molecules.pop(0)
             new_mol_solute = True
@@ -141,6 +146,10 @@ def condensed_phase_builder(start_system, molecule_library, solute_molecules=[],
             new_mol_name = random.choices(solvent_list, weights=solvent_weights)[0]
             new_mol_solute = False
         new_mol = molecule_library[new_mol_name].copy()
+        if max_atoms is not None and len(curr_sys) + len(new_mol) > max_atoms:
+            if new_mol_solute:
+                raise ValueError(f'Required solute {new_mol_name!r} cannot fit within max_atoms={max_atoms}.')
+            break
 
         if center_first_molecule:
             center_first_molecule = False
@@ -182,18 +191,19 @@ def condensed_phase_builder(start_system, molecule_library, solute_molecules=[],
 
         attempts_total += 1
         attempts_lsucc += 1
-        if attempts_lsucc > max_patience:
-            break
-
         if not failed:
             attempts_lsucc = 0
             curr_sys = prop_sys.copy()
             actual_dens = 1.66054e-24 * np.sum(curr_sys.get_masses()) / (1.0e-24 * curr_sys.get_volume()) # [g/cm^3]
-            if early_stop_probability > random.random():
+            if not solute_molecules and early_stop_probability > random.random():
                 break
         elif new_mol_solute:
             # If the new molecule failed, and we are attempting to add solute (definite molecules) re add to list to try again.
             solute_molecules.append(new_mol_name)
+        if failed and attempts_lsucc >= max_patience:
+            if solute_molecules:
+                raise RuntimeError(f'Placement exhausted with required solutes still missing: {solute_molecules}.')
+            break
 
     start_system.update_metadata({'target_density': density, 'actual_density': actual_dens})
     start_system.update_atoms(curr_sys)

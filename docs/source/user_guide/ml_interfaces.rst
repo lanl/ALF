@@ -46,6 +46,15 @@ task is passed from the master configuration through ``gpus_per_node``. The
 actual cluster resources are controlled by the Parsl configuration; see
 :doc:`parsl`.
 
+``train_HIPPYNN_ensemble_task`` trains each ground-state member in its own new process,
+one member at a time on each visible GPU (one at a time in all on CPU). A member whose
+process raises an error or dies is reported failed, and ALF doesn't promote an ensemble
+with a failed member. A ``device_string`` listing GPUs numbers them within the devices the
+scheduler made visible to the worker; ALF doesn't change those masks. The task's
+``h5_test_dir`` reaches every member, and an ``h5_test_dir`` in ``ML_config`` that differs
+from it is an error. ``remove_existing=True`` isn't supported for ensemble training: give
+each training a new model directory.
+
 .. _ml-interface-extension-points:
 
 How ALF Uses ML Interfaces

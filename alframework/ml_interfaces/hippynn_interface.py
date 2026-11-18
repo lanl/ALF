@@ -837,9 +837,15 @@ def train_HIPNN_model_wrapper(arg_dict):
     return(train_HIPNN_model(**arg_dict))
 
 
-def _ground_state_member_params(ML_config, h5_dir, model_path, current_training_id, gpus_per_node):
+def _ground_state_member_params(ML_config, h5_dir, model_path, current_training_id, gpus_per_node, h5_test_dir=None):
     general_configuration = ML_config.copy()
     n_models = general_configuration.pop('n_models')
+    if isinstance(n_models, bool) or not isinstance(n_models, int) or n_models < 1:
+        raise ValueError('n_models must be a positive integer.')
+    if h5_test_dir is not None:
+        if general_configuration.get('h5_test_dir') not in (None, h5_test_dir):
+            raise ValueError('Conflicting h5_test_dir in task arguments and ML_config.')
+        general_configuration['h5_test_dir'] = h5_test_dir
     params_list = [general_configuration.copy() for i in range(n_models)]
     for i,cur_dict in enumerate(params_list):
         cur_dict['model_dir'] = model_path.format(current_training_id) + '/model-{:02d}'.format(i)
@@ -853,6 +859,32 @@ def _ground_state_member_complete(model_dir):
     return len(re.findall('Training complete', log)) == 1
 
 
+def _ground_state_member_child(params):
+    train_HIPNN_model_wrapper(params)
+    return _ground_state_member_complete(params['model_dir'])
+
+
+def _single_node_training_devices(ML_config, gpus_per_node):
+    requested = str(ML_config.get('device_string', 'from_multiprocessing'))
+    if requested.lower() == 'cpu':
+        return ['cpu']
+    import torch
+    from alframework.tools.gpu import _cuda_device
+    count = torch.cuda.device_count()
+    if count < 1:
+        raise RuntimeError('No GPU is visible for ensemble training; set device_string to cpu for CPU training.')
+    if requested in ('from_multiprocessing','cuda','None'):
+        width = min(count, int(gpus_per_node)) if gpus_per_node else count
+        if width < 1:
+            raise ValueError('Training GPU count must be positive.')
+        return [f'cuda:{i}' for i in range(width)]
+    # Explicit ordinals are relative to the scheduler's visibility; never rewrite its masks.
+    devices = [_cuda_device(value, count, None, True) for value in requested.split(',')]
+    if len(set(devices)) != len(devices):
+        raise ValueError('Training device ordinals must be distinct.')
+    return devices
+
+
 @python_app(executors=['alf_ML_executor'])
 @timed('ML')
 def train_HIPPYNN_ensemble_task(ML_config,h5_dir,model_path,current_training_id,gpus_per_node,remove_existing=False,h5_test_dir=None,
@@ -864,11 +896,12 @@ def train_HIPPYNN_ensemble_task(ML_config,h5_dir,model_path,current_training_id,
     """
     ensemble_training.single_gpu_members(ML_config)
     ensemble_training.wait_for_shards(ensemble_training.expected_shards(h5_path, current_h5_id))
-    p = multiprocessing.Pool(gpus_per_node)
-    params_list = _ground_state_member_params(ML_config, h5_dir, model_path, current_training_id, gpus_per_node)
-    out = p.map(train_HIPNN_model_wrapper,params_list)
-    p.close()
-    completed = [_ground_state_member_complete(params['model_dir']) for params in params_list]
+    if remove_existing:
+        raise ValueError('remove_existing=True is unsafe for ensemble training; use a fresh model directory.')
+    params_list = _ground_state_member_params(ML_config, h5_dir, model_path, current_training_id,
+                                            gpus_per_node, h5_test_dir)
+    devices = _single_node_training_devices(ML_config, gpus_per_node)
+    completed = ensemble_training.run_members_in_slots(_ground_state_member_child, params_list, devices)
     from alframework.tools.tools import write_label_sources
     write_label_sources(model_path.format(current_training_id), h5_dir)
     return(completed, current_training_id)

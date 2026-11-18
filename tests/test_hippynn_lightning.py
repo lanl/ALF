@@ -7,38 +7,14 @@ that a member trained this way is written and reloaded like a single-device memb
 import json
 from types import SimpleNamespace
 
-import h5py
-import numpy as np
 import pytest
 
 from alframework.ml_interfaces import hippynn_interface as ml
 from alframework.tools import ensemble_training
+from tests.helpers.hippynn import TINY_NETWORK, write_water_shard
 
 STATES = {"E0": ["E0", "system", 1.0], "F0": ["F0", "atomic", 1.0],
           "E1": ["E1", "system", 1.0], "F1": ["F1", "atomic", 1.0]}
-NETWORK = dict(possible_species=[0, 1, 8], n_features=4, n_sensitivities=4, n_interaction_layers=1,
-               n_atom_layers=1, dist_soft_min=0.4, dist_soft_max=2.0, dist_hard_max=3.0)
-
-
-def _water(directory, frames=16, excited=False):
-    rng = np.random.default_rng(3)
-    coordinates = np.array([[0.0, 0.0, 0.0], [0.96, 0.0, 0.0], [-0.24, 0.93, 0.0]])[None]
-    coordinates = coordinates + rng.normal(0.0, 0.02, (frames, 3, 3))
-    energies = (coordinates**2).sum(axis=(1, 2))
-    directory.mkdir()
-    with h5py.File(directory / "data.h5", "w") as handle:
-        group = handle.create_group("water")
-        group["species"] = np.array(["O", "H", "H"], dtype="S")
-        group["coordinates"] = coordinates
-        if excited:
-            group["_id"] = np.array([f"frame-{i}" for i in range(frames)], dtype="S")
-            group["topology_atom_ids"] = np.tile(np.arange(3), (frames, 1))
-            for state in range(2):
-                group[f"E{state}"] = energies + 0.1 * state
-                group[f"F{state}"] = -2 * coordinates
-        else:
-            group["energy"] = energies
-            group["forces"] = -2 * coordinates
 
 
 def _check_member(member, devices=2, batch_size=4):
@@ -63,12 +39,12 @@ def _check_member(member, devices=2, batch_size=4):
 def test_excited_state_member_trains_on_two_devices(tmp_path):
     pytest.importorskip("hippynn")
     pytest.importorskip("pytorch_lightning")
-    _water(tmp_path / "data", excited=True)
+    write_water_shard(tmp_path / "data", excited=True)
     member = tmp_path / "ensemble" / "model-00"
     config = dict(n_models=1, cell_key=None, train_forces=True, network_choice=0, valid_size=0.25, test_size=0.25,
                   device_string="cpu", exports={"pdf": False, "png": False, "csv": False}, max_epochs=3,
                   batch_size=4, eval_batch_size=4, termination_patience=10, torch_threads=1,
-                  fraction_train_eval=1.0, network_params=NETWORK, gpus_per_member=2)
+                  fraction_train_eval=1.0, network_params=TINY_NETWORK, gpus_per_member=2)
     ml.train_single_excited_state_model(model_id=0, model_dir=str(member), h5_train_dir=str(tmp_path / "data"),
                                         properties_list=STATES, ML_config=config)
     _check_member(member)
@@ -88,11 +64,11 @@ def test_ground_state_member_trains_on_two_devices_inside_a_slurm_step(tmp_path,
     for key, value in dict(SLURM_NTASKS="1", SLURM_PROCID="0", SLURM_LOCALID="0", SLURM_NODEID="0",
                            SLURM_JOB_NAME="alf_ml_executor", SLURM_JOB_ID="1").items():
         monkeypatch.setenv(key, value)
-    _water(tmp_path / "data")
+    write_water_shard(tmp_path / "data")
     member = tmp_path / "ensemble" / "model-00"
     member.mkdir(parents=True)
     ml.train_HIPNN_model(str(member), str(tmp_path / "data"), energy_key="energy", coordinates_key="coordinates",
-                         species_key="species", force_key="forces", network_params=dict(NETWORK),
+                         species_key="species", force_key="forces", network_params=dict(TINY_NETWORK),
                          valid_size=0.25, test_size=0.25, plot_every=1000,
                          controller_options=dict(batch_size=4, eval_batch_size=4, max_epochs=3,
                                                  termination_patience=10),
@@ -166,11 +142,11 @@ def test_the_split_final_test_reports_what_one_device_would(tmp_path, monkeypatc
         return seen["split"]
 
     monkeypatch.setattr(hl, "_final_test", recording)
-    _water(tmp_path / "data", frames=24)
+    write_water_shard(tmp_path / "data", frames=24)
     member = tmp_path / "model-00"
     member.mkdir()
     ml.train_HIPNN_model(str(member), str(tmp_path / "data"), energy_key="energy", coordinates_key="coordinates",
-                         species_key="species", force_key="forces", network_params=dict(NETWORK),
+                         species_key="species", force_key="forces", network_params=dict(TINY_NETWORK),
                          valid_size=0.25, test_size=0.25, plot_every=1000,
                          controller_options=dict(batch_size=4, eval_batch_size=4, max_epochs=2,
                                                  termination_patience=10),

@@ -43,7 +43,7 @@ This example uses:
    * - Sampler
      - ``alframework.samplers.reactive_sampler.reactive_sampling``
    * - QM
-     - ``alframework.qm_interfaces.orca5_interface.orca_calculator_task``
+     - ``alframework.qm_interfaces.ase.generic.ase_calculator_task``
    * - ML
      - ``alframework.ml_interfaces.hippynn_interface.train_HIPPYNN_ensemble_task``
 
@@ -126,3 +126,16 @@ Use this example when the active-learning target is a reaction coordinate or a
 set of related reaction pathways rather than broad molecular dynamics sampling.
 For broader sampling around a stable phase, start with
 :doc:`simple_water` or :doc:`molten_salt` instead.
+
+ASE labeling configuration
+--------------------------
+
+``orca_config.json`` labels with ASE's ORCA calculator, ``ase.calculators.orca.ORCA``,
+through ``ase_calculator_task``, with the calculator's settings under ``input``. ASE gives
+eV and eV/Angstrom, so the energy and force multipliers are ``1.0``. It doesn't read
+Hirshfeld charges or quadrupoles, so the example doesn't request them. Start this example
+in new output directories: data from its legacy ORCA version is in other units.
+
+ORCA runs on one core unless ``orcablocks`` sets ``%pal nprocs N end``; match it to the
+QM executor's CPUs. ``QM_run_command`` names the ORCA executable, or a wrapper script that
+loads its environment. See :ref:`qm-ase-orca-qchem`.

@@ -278,3 +278,15 @@ class CrossingStates:
             state_energies=energies.numpy(),
             state_forces=[forces[:, :, lo:hi].numpy() for lo, hi in zip(starts[:-1], starts[1:])],
         )
+
+
+def training_member(params):
+    """A stand-in ensemble member, run in a child process: it dies, raises, or writes the device it was given."""
+    import os
+
+    if params.get("action") == "exit":
+        os._exit(42)  # Dies as a native crash would, without Python's exception handling.
+    if params.get("action") == "raise":
+        raise RuntimeError("member failed")
+    Path(params["output"]).write_text(params["device_string"])
+    return True

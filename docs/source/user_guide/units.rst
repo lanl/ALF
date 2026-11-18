@@ -93,10 +93,10 @@ Units Each Part Of ALF Uses
    * - QM task
      - Energies and forces
      - Usual factors
-   * - ORCA
+   * - Legacy ORCA tasks
      - Hartree and Hartree/Bohr
      - ``27.211386024367243`` and ``51.422067090480645``, giving eV and eV/Å
-   * - ASE calculators, including VASP
+   * - ASE calculators, including VASP, and ORCA and Q-Chem through ASE
      - eV and eV/Å
      - ``1.0``
    * - PySEQM
@@ -109,6 +109,11 @@ Units Each Part Of ALF Uses
      - eV and eV/Å
      - Must be ``1.0``. ALF stops at startup otherwise; see
        :ref:`qm-teacher-labeling`.
+
+Through ASE, ORCA dipoles are in electron-Angstrom, unlike the legacy ORCA task's.
+Moving a legacy ORCA run to ASE's ORCA calculator therefore changes units: set the
+energy and force multipliers to ``1.0``, or the old conversion is applied a second
+time, and check every other property. See :ref:`qm-ase-orca-qchem`.
 
 **HIPPYNN models should be trained on eV and eV/Å.** ALF's HIPPYNN ASE
 calculator declares its energies to be eV, and the batched sampling engines

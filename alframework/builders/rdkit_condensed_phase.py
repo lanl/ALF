@@ -20,6 +20,8 @@ from ase import units
 from alframework.tools.tools import random_rotation_matrix
 from alframework.tools.tools import build_input_dict
 from alframework.tools.tools import system_checker
+from alframework.tools.molecules_class import MoleculesObject
+from alframework.builders.builders import condensed_phase_builder
 import random
 from copy import deepcopy
 
@@ -77,24 +79,23 @@ def rdkit_condensed_phase_builder_task(moleculeid,builder_config,cell_range,Rran
         center_first_molecule: Boolian,  if true first solute is centered in box and not rotated (useful for large molecules)
         shake: Distance to displace initial configurations
         print_attempt: Boolian,controls printing (set to False)
+
+    Returns:
+        MoleculesObject: Periodic packed geometry with its molecule id and density metadata.
     """
     
     cell_shape = [np.random.uniform(dim[0],dim[1]) for dim in cell_range]
     
-    empty_system = [{'moleculeid':moleculeid},Atoms(cell=cell_shape,pbc=True),{}]
+    empty_system = MoleculesObject(Atoms(cell=cell_shape, pbc=True), moleculeid)
         
-    solute_molecules = random.choice(solute_molecule_options)
+    # Packing consumes the list of solutes; do not mutate the reusable configuration.
+    solute_molecules = list(random.choice(solute_molecule_options))
     
     molecule_library = {}
-    for curSMILES in (solute_molecules + solvent_molecules):
+    for curSMILES in dict.fromkeys(solute_molecules + list(solvent_molecules)):
         molecule_library[curSMILES] = ASEfromSMILES(curSMILES)
-
-    feed_parameters = {}
     
-    feed_parameters['solute_molecules'] = solute_molecules
-    feed_parameters['density'] = np.random.uniform(Rrange[0],Rrange[1])
-    
-    input_parameters = build_input_dict(condensed_phase_builder,[{"start_system":empty_system,"molecule_library":molecule_library,"solute_molecules":solute_molecules,"density":np.random.uniform(Rrange[0],Rrange[1])},builder_config])
+    input_parameters = build_input_dict(condensed_phase_builder,[{"start_system":empty_system,"molecule_library":molecule_library,"solute_molecules":solute_molecules,"solvent_molecules":solvent_molecules,"density":np.random.uniform(Rrange[0],Rrange[1])},builder_config])
     system = condensed_phase_builder(**input_parameters)
     system_checker(system)
     return(system)

@@ -13,6 +13,7 @@ from pathlib import Path
 import h5py
 
 from alframework.tools.files import write_bytes_atomic
+from alframework.tools.label_validation import reject_label
 
 HELD_PIECES = 'held_pieces'
 # Marks the shard stored when a label budget stops a run. No model trained on it.
@@ -49,6 +50,7 @@ class HeldLabels:
         self._successful = None
         self._converged = None
         self._ids = None
+        self._periodic = None
 
     def pieces(self):
         return sorted(path.name for path in self.directory.glob('held-*.pkl'))
@@ -61,23 +63,45 @@ class HeldLabels:
         return piece
 
     def _scan(self):
-        self._successful, self._converged, self._ids = 0, 0, set()
+        self._successful, self._converged, self._ids, self._periodic = 0, 0, set(), {}
         for name in self.pieces():
             piece = self._read(name)
             self._successful += piece['successful']
             self._converged += sum(1 for result in piece['results'] if result.check_convergence())
             self._ids.update(result.get_moleculeid() for result in piece['results'])
+            for result in piece['results']:
+                self._keep_one_periodicity(result)
+
+    def _keep_one_periodicity(self, result):
+        """A shard's formula group holds only periodic or only nonperiodic frames, so a converged label that
+        would mix them in the next shard is held unconverged instead: storing it would fail on every restart."""
+        if not result.check_convergence():
+            return
+        from alframework.tools.tools import compute_empirical_formula
+        atoms = result.get_atoms()
+        formula = compute_empirical_formula(atoms.get_chemical_symbols())
+        periodic = bool(atoms.pbc.all())
+        held = self._periodic.setdefault(formula, periodic)
+        if held != periodic:
+            kind = 'periodic' if held else 'nonperiodic'
+            reject_label(result, f'the next shard already holds {kind} {formula} frames, and a formula group '
+                                 'cannot mix periodic and nonperiodic frames.')
 
     def hold(self, results, failed=0):
         """Write ``results`` as new pieces of at most ``PIECE_SIZE`` each, and track failures until the next store.
 
         Bounded pieces keep a store's memory bounded too: it reads one piece at a time, and when most QM tasks
-        finish together a single piece would otherwise hold nearly every label of the cycle.
+        finish together a single piece would otherwise hold nearly every label of the cycle. A converged label
+        whose periodicity conflicts with held labels of its formula is held unconverged.
         """
         self.failed_since_store += failed
         if not results:
             return
         results = list(results)
+        if self._periodic is None:
+            self._scan()
+        for result in results:
+            self._keep_one_periodicity(result)
         existing = self.pieces()
         number = int(existing[-1][len('held-'):-len('.pkl')]) + 1 if existing else 0
         for start in range(0, len(results), self.PIECE_SIZE):
@@ -85,10 +109,9 @@ class HeldLabels:
             piece = dict(format=FORMAT, successful=len(chunk), results=chunk)
             write_bytes_atomic(self.directory / f'held-{number:08d}.pkl', pickle.dumps(piece, pickle.HIGHEST_PROTOCOL))
             number += 1
-        if self._successful is not None:
-            self._successful += len(results)
-            self._converged += sum(1 for result in results if result.check_convergence())
-            self._ids.update(result.get_moleculeid() for result in results)
+        self._successful += len(results)
+        self._converged += sum(1 for result in results if result.check_convergence())
+        self._ids.update(result.get_moleculeid() for result in results)
 
     def successful(self):
         """Held results, converged or not: the tasks that returned."""
@@ -127,7 +150,7 @@ class HeldLabels:
             if path.exists():
                 path.unlink()
         self.failed_since_store = 0
-        self._successful = self._converged = self._ids = None
+        self._successful = self._converged = self._ids = self._periodic = None
 
 
 def shard_frames(h5path):

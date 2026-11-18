@@ -5,6 +5,12 @@ Builders construct the initial structures that enter an ALF active-learning
 loop. A builder task typically returns a ``MoleculesObject`` containing an
 ``ase.Atoms`` object, a molecule id, and any metadata the sampler needs later.
 
+A builder task returns one ``MoleculesObject`` or a list of them. The bootstrap, active
+learning and ``--test_builder`` check this the same way: anything else, such as an older
+``[id, atoms, results]`` record or a tuple, stops the coordinator with an error naming the
+builder. A builder may return an empty list during a run, but ``--test_builder`` needs a
+structure to test.
+
 In a master configuration, the selected builder is specified with the
 ``builder_task`` import string:
 
@@ -139,7 +145,8 @@ Fragment and condensed-phase builders
       * - ``center_first_molecule``
         - Whether to center the first solute without random rotation.
       * - ``max_atoms``
-        - Optional atom-count cap for generated systems.
+        - Optional atom-count cap for generated systems. A fragment is added only if the
+          structure stays within it, so solvent filling stops at the cap.
       * - ``shake``
         - Random coordinate perturbation applied during placement or loading.
       * - ``periodic``
@@ -147,6 +154,11 @@ Fragment and condensed-phase builders
           for labelers and models that treat structures as non-periodic. ORCA ignores the cell, so
           use ``false`` whenever a teacher or a fine-tuned model must see the same structure that
           ORCA labels. The two simple condensed-phase builder tasks take this setting.
+
+   Every solute in the chosen set is placed, even once the target density is reached, and
+   an ``early_stop_probability`` can end only the solvent filling. A solute that can't fit
+   within ``max_atoms``, or can't be placed within ``max_patience`` attempts, fails the
+   build. The packing tasks don't change the solute sets in their configuration.
 
 Atomic-system builders
    These fields are used by ``atomic_system_task`` and related atomic box
@@ -188,6 +200,9 @@ Reactive builders
         - Product structure file or file pattern read by ASE.
       * - ``N_reactions``
         - Number of reaction entries available in the files.
+      * - ``rattle``
+        - Whether to randomly displace the reactant, transition state and product: a boolean,
+          or the string ``"true"`` or ``"false"``. The default is ``true``.
 
 External geometry builder
    These fields are used by ``external_geometry_builder_task``.
@@ -210,7 +225,8 @@ External geometry builder
         - Required list of ``.xyz``, ``.extxyz``, ``.h5``, or ``.hdf5`` files.
           Relative paths start from ``master_directory``. HDF5 groups need
           ``coordinates`` shaped ``[frames, atoms, 3]`` and ``species``, and can also
-          provide ``cell`` and ``pbc``.
+          provide ``cell`` and ``pbc``. A frame with a ``cell`` but no ``pbc``, as in ALF's
+          own shards, is fully periodic.
       * - ``selection_mode``
         - ``"deterministic_hash"`` (default) picks a frame from the molecule ID and
           seed, and can pick the same frame more than once. ``"sequential"`` uses the
@@ -246,12 +262,25 @@ Defect crystal builder
         - Lists of element types for interstitials and replacements.
       * - ``rattle``, ``cRattle``
         - Standard deviations of random atom displacements and random changes to the
-          cell lengths, in Angstroms. The defaults are ``0.0``.
+          cell lengths, in Angstroms. The defaults are ``0.0``. Atoms move with the cell, so
+          a cell change keeps their fractional coordinates.
       * - ``cScaleRange``
         - Range from which a cell scaling factor is drawn.
       * - ``maxAt``
         - The structure is repeated into a supercell with fewer than this many atoms.
           The default is ``100``.
+
+   Replacements choose distinct sites of the host element. Vacancies are then
+   selected from the host sites remaining after replacement and removed together.
+   A request for more replacements or vacancies than the available host sites
+   raises an error; choose the maximum counts to fit the starting structure.
+
+CFG loader
+   ``simple_cfg_loader_task`` loads a random ``.cfg`` file from ``molecule_library_dir``.
+   Its optional ``periodic`` setting overrides the file's periodicity: leave it out to keep
+   the file's, or set it to ``false`` to label the structure as a molecule, as ORCA and
+   Q-Chem do. The cell is kept either way. The ORCA examples that start from CFG seeds set
+   ``false``.
 
 Batched builders
    ``maximum_builder_structures`` belongs in the master configuration, not the

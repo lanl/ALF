@@ -5,7 +5,7 @@
 	"builder_task": "alframework.builders.builders.atomic_system_task",
 	"builder_config_path": "builder_config.json",
 	"QM_scratch_dir": "vasp_calculations",
-	"QM_task": "alframework.qm_interfaces.ase_calculator_interface.VASP_ase_calculator_task",
+	"QM_task": "alframework.qm_interfaces.ase.vasp.VASP_ase_calculator_task",
 	"QM_config_path": "vasp_config.json",
 	"sampler_task": "alframework.samplers.mlmd_sampling.simple_mlmd_sampling_task",
 	"sampler_config_path": "mlmd_config.json",

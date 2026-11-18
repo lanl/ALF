@@ -16,6 +16,7 @@ from ase import Atoms
 from alframework.tools import pyanitools as pyt
 from alframework.tools.files import fsync_file, write_json_atomic
 from alframework.tools.molecules_class import MoleculesObject
+from alframework.tools.label_validation import validate_geometry, validate_values, validate_label
 import inspect
 
 logger = logging.getLogger(__name__)
@@ -233,6 +234,10 @@ def store_current_data(h5path, system_data, properties, attributes=None):
         
         # Ensure system converged before saving
         if system.check_convergence():
+            # Labels are checked when they're held; this catches callers that store directly.
+            validate_label(system, properties)
+            if molkey in data_dict and (('cell' in data_dict[molkey]) != bool(cur_atoms.pbc.all())):
+                raise ValueError(f'{molkey}: cannot mix periodic and nonperiodic frames in one formula group.')
             saved_number += 1
             sources.add(system)
             # Main's species contract: every row in a formula group is sorted.
@@ -313,6 +318,10 @@ def store_current_data(h5path, system_data, properties, attributes=None):
             data_dict[isokey][STRUCTURE_STATE_DATASETS[0]] = [charge for charge, _ in rows]
             data_dict[isokey][STRUCTURE_STATE_DATASETS[1]] = [mult for _, mult in rows]
     for isokey in data_dict:
+        frames = len(data_dict[isokey]['_id'])
+        for key, values in data_dict[isokey].items():
+            if key not in ('species', PAIR_INDEX_DATASET) and len(values) != frames:
+                raise ValueError(f'{isokey}:{key} is not aligned with the {frames} stored frames.')
         # print('isokeys:',isokey)
         for propkey in data_dict[isokey]:
             if propkey.lower() in ['species','_id']:
@@ -759,18 +768,8 @@ def system_checker(system, kill_on_fail=True, print_error=True):
         assert isinstance(atoms, Atoms)
         assert isinstance(results, dict)
         
-        no_nan = True
-        if np.sum(np.isnan(atoms.get_positions())) > 0:
-            no_nan = False
-        if any(atoms.get_pbc()):
-            if np.sum(np.isnan(atoms.get_cell())) > 0:
-                no_nan = False
-        for prop in results:
-            if isinstance(results[prop], np.ndarray):
-                if np.sum(np.isnan(results[prop])) > 0:
-                    no_nan = False
-        if not no_nan:
-            raise RuntimeError('NAN in system')
+        validate_geometry(atoms)
+        validate_values(results)
         
         return True
         

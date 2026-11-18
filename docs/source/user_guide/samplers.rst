@@ -159,6 +159,86 @@ Other differences from ``simple_mlmd_sampling_task``:
   ``batching``, or ``acquisition.selection``.
 * For excited-state sampling, see :doc:`excited_states`.
 
+.. _samplers-initial-velocities:
+
+Initial Velocities And Temperature
+----------------------------------
+
+``velocity_initialization`` is a top-level sampler setting for
+``simple_mlmd_sampling_task``, ``simple_udd_sampling_task``, and
+``mlmd_trajectories_task``. UDD uses the same scalar MLMD sampler. The batched
+sampler initializes velocities before creating its ASE, TorchSim or ALCHEMI
+engine, subject to that engine's hardware and constraint requirements.
+Reactive NEB and dimer searches are geometry optimizations and ignore this
+setting. Custom sampler tasks need their own support for it.
+
+The MLMD tasks preserve their input momenta by default. A positions-only
+structure starts at rest. The thermostat exchanges energy with the system
+during dynamics, so setting its temperature alone leaves the initial momenta
+unchanged.
+
+This is valid Langevin dynamics. Preserving input momenta is useful for
+continuations, directed motion, deliberately cold starts, gradual heating, and
+existing workflows whose warm-up is long enough. Starting from rest can also
+give gentle local perturbations of seed structures. An active-learning sample
+need not be an equilibrium sample.
+
+For thermal velocities immediately on a fresh structure, set:
+
+.. code-block:: json
+
+   {
+     "velocity_initialization": "maxwell_boltzmann_if_missing",
+     "random_seed": 42
+   }
+
+``velocity_initialization`` accepts two values:
+
+* ``"preserve"`` (default): never change the input momenta. This consumes no
+  random numbers and retains the existing dynamics.
+* ``"maxwell_boltzmann_if_missing"``: when the input has no ``momenta`` array,
+  draw Gaussian momentum components with variance :math:`m k_B T_0`, where
+  :math:`T_0` is the initial thermostat target. Explicit momenta, including an
+  array of zeros, are preserved.
+
+Initialization happens in the sampler before constructing an engine. The draw
+uses an independent molecule-ID random stream, so ``random_seed`` reproduces it
+without changing the temperature-schedule or Langevin noise streams. Without a
+seed, its generated seed is recorded as ``initial_velocity_seed``. The scalar
+sampler still uses its legacy global random stream for Langevin noise; this
+option alone does not seed its entire trajectory.
+
+The draw does not rescale to an exact kinetic temperature or remove center-of-mass
+or angular momentum. This retains the Maxwell distribution and its finite-system
+temperature fluctuations. ASE constraints are applied when momenta are assigned;
+the packed engines' existing constraint restrictions still apply. For prescribed
+translation or rotation, supply the desired momenta instead. Thermal velocities
+alone do not equilibrate the starting positions.
+
+Short sampling runs can end well before a cold start heats to its target. For a
+free particle in a constant bath, the estimate is
+
+.. math::
+
+   \langle T_{\mathrm{kin}}(t)\rangle
+      = T_{\mathrm{bath}}\left(1-\exp(-2\gamma t)\right).
+
+At ``friction_per_fs=0.01``, a cold start in a 400 K bath reaches about 42 K
+after 5.5 fs by this estimate. Molecular forces also affect the transient.
+For degrees of freedom that the thermostat equilibrates, cold and thermal starts
+approach the same stationary distribution, but explore differently before then. Temperature
+cycling is useful only if trajectories last long enough for the intended
+heating and cooling to act.
+
+Trajectory metadata and the coordinator's ``trajectory_summary_path`` record
+``initial_kinetic_temperature_K``, ``kinetic_temperature_K`` (at the returned
+frame), and ``thermostat_temperature_K`` (the last applied target). Cohort
+candidates record their own instantaneous temperature. Metadata also records
+``velocity_initialization`` and ``velocities_initialized``. The temperature
+scalars survive compact returned metadata. Undefined kinetic temperatures are
+``null``. Older trajectory-summary rows have no such measurements, and HDF5
+label shards do not automatically store momenta or these temperature fields.
+
 .. _samplers-runtime-screens:
 
 Runtime Screens
@@ -484,6 +564,10 @@ Temperature schedule fields
         - Range for sinusoidal temperature fluctuation amplitude.
       * - ``per_temp``
         - Range for temperature fluctuation period.
+      * - ``velocity_initialization``
+        - Optional MLMD starting-momenta policy. Defaults to ``"preserve"``.
+          See :ref:`samplers-initial-velocities` for the thermal option and
+          supported tasks.
 
 Density schedule fields
    Density changes are optional. Use ``null`` for ``end_dens``, ``amp_dens``,

@@ -31,12 +31,13 @@ from alframework.ml_interfaces.ensemble_inference import ADJACENT_GAPS
 from alframework.tools.gap_seeking import gap_seeking_settings
 from alframework.tools.sampling_windows import validated_windows, window_number, windowed_config
 from alframework.tools.trajectory_summary import TrajectorySummary
+from alframework.samplers.velocities import velocity_initialization_mode
 
 STRATEGIES = ("single", "batched")
 ENGINES = ("ase", "torchsim", "alchemi")
 # Read once at startup. Cutoffs set what a cohort's scores mean, so they stay fixed only in cohort mode.
 FIXED_SETTINGS = ("driver", "batching", "acquisition", "model_mode", "state_selection", "gap_uncertainty",
-                  "gap_seeking", "sampling_windows")
+                  "gap_seeking", "sampling_windows", "velocity_initialization")
 FIXED_COHORT_SETTINGS = ("Escut", "Fscut", "gap_std_cut")
 
 
@@ -117,6 +118,7 @@ def resolve_selected_state(molecule, settings, ordinal=None):
 
 def driver_settings(sampler_config):
     """Return validated ``driver`` settings for a multi-trajectory sampler."""
+    velocity_initialization_mode(sampler_config.get('velocity_initialization', 'preserve'))
     block = sampler_config.get("driver") or {}
     if not isinstance(block, dict):
         raise ValueError("driver must be a dictionary.")
@@ -153,6 +155,7 @@ class SamplerCoordinator(BatchedSubmitter):
     """
 
     def __init__(self, sampler_task, sampler_task_path, sampler_config, master_config=None):
+        velocity_initialization_mode(sampler_config.get('velocity_initialization', 'preserve'))
         parameters = inspect.signature(sampler_task.func).parameters
         if sampler_config.get('returned_metadata', 'full') != 'full':
             # Checked here, before any task runs, rather than as failed sampler tasks.

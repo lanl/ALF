@@ -61,6 +61,7 @@ from alframework.tools.molecules_class import MoleculesObject
 from alframework.tools.gpu import sampling_device
 from alframework.tools.sampler_coordinator import driver_settings, state_settings, resolve_selected_state
 from alframework.tools.tools import annealing_schedule, load_module_from_config
+from alframework.samplers.velocities import initialize_velocities, kinetic_temperature
 
 OBSERVED_PROPERTIES = ['energy', 'forces', 'energy_stdev', 'forces_stdev_mean', 'forces_stdev_max']
 
@@ -390,7 +391,8 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
                         entry['peaks'][key] = max(signals[key], entry['peaks'].get(key, signals[key]))
                 if cohort and decision['outcome'] == 'eligible':
                     entry['candidates'].append(_candidate(molecule_objects[index], engine, index, signals,
-                                                          decision, time_ps))
+                                                          decision, time_ps,
+                                                          entry['temps'][-1] if entry['temps'] else schedule['Tsrt']))
                     # A frame outside this trajectory's best can never be selected, so don't hold its geometry.
                     entry['candidates'] = _prune(entry['candidates'], settings['selection'])
                     if keep_running:
@@ -488,6 +490,8 @@ def _record(molecule, entry, schedule, sampler_config, settings, engine, index, 
     if entry['error'] is not None:
         meta_dict['sampling_error'] = entry['error']
     meta_dict.update(molecule.get_metadata())
+    meta_dict.update(kinetic_temperature_K=kinetic_temperature(atoms),
+                     thermostat_temperature_K=entry['temps'][-1] if entry['temps'] else schedule['Tsrt'])
     meta_dict.update(signals)
     for key in ('acquisition_trigger_flags', 'acquisition_cutoffs', 'acquisition_score_terms'):
         if key in decision:
@@ -504,7 +508,7 @@ def _record(molecule, entry, schedule, sampler_config, settings, engine, index, 
     return meta_dict
 
 
-def _candidate(molecule, engine, index, signals, decision, time_ps):
+def _candidate(molecule, engine, index, signals, decision, time_ps, thermostat_temperature_K=None):
     atoms = engine.atoms(index)
     step = engine.steps[index]
     return {"trajectory_id": molecule.get_moleculeid(), "step": int(step),
@@ -515,6 +519,8 @@ def _candidate(molecule, engine, index, signals, decision, time_ps):
             "numbers": atoms.get_atomic_numbers().copy(), "positions": atoms.get_positions().copy(),
             "cell": np.array(atoms.get_cell()), "pbc": atoms.get_pbc().copy(),
             "metadata": {**copy.deepcopy(molecule.get_metadata()),
+                         "kinetic_temperature_K": kinetic_temperature(atoms),
+                         "thermostat_temperature_K": thermostat_temperature_K,
                          **{key: decision[key] for key in ('acquisition_trigger_flags', 'acquisition_cutoffs',
                                                           'acquisition_score_terms') if key in decision}},
             "topology_atom_ids": None if 'topology_atom_ids' not in atoms.arrays else
@@ -688,6 +694,10 @@ def sample_trajectories(molecule_objects, models, sampler_config, engine_class=N
 
     maxt = sampler_config['maxt']
     temperatures = [annealing_schedule(0.0, maxt, s['Tamp'], s['Tper'], s['Tsrt'], s['Tend']) for s in schedules]
+    for molecule, temperature in zip(molecule_objects, temperatures):
+        molecule.update_metadata(initialize_velocities(
+            molecule.get_atoms(), temperature, sampler_config.get('velocity_initialization', 'preserve'),
+            molecule_id=molecule.get_moleculeid(), random_seed=sampler_config.get('random_seed')))
     engine_args = ([molecule.get_atoms() for molecule in molecule_objects], models, sampler_config['dt'],
                    temperatures, rngs, sampler_config.get('MLMD_calculator_options'))
     friction_options = {}

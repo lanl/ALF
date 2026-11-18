@@ -33,6 +33,13 @@ tune uncertainty cutoffs from: if almost every trajectory triggers at once, the 
 the current model; if most run to the end without triggering, QM runs short of work. The progress plots
 in :ref:`samplers-progress-plots` are drawn from the same data.
 
+The scalar and multi-trajectory MLMD samplers also record the initial and final
+kinetic temperatures and the last thermostat target as
+``initial_kinetic_temperature_K``, ``kinetic_temperature_K`` and
+``thermostat_temperature_K``. Compare these when short trajectories stop before
+warming up; the target is not a measurement of the actual kinetic temperature.
+See :ref:`samplers-initial-velocities` for optional thermal starts.
+
 Labels And Data
 ---------------
 

@@ -24,7 +24,9 @@ from tests.helpers.molecules import WATER
 
 BATCHED = dict(trajectory_outcome="rejected", screen_reject_reason="physical_force", selected_state=np.int64(1),
                sampling_window=2, simulationtime=0.5, realtime_simulation=np.float64(3.0), Es=0.1, Fs=0.2, Fsmax=0.3,
-               peak_Es=0.4, peak_Fs=0.5, peak_Fsmax=0.6, gap_std=0.7, peak_gap_std=0.8, gap_std_lower_state=np.int64(1), positions=np.zeros((3, 3)), acquisition_candidates=[{"big": 1}])
+               peak_Es=0.4, peak_Fs=0.5, peak_Fsmax=0.6, gap_std=0.7, peak_gap_std=0.8, gap_std_lower_state=np.int64(1),
+               initial_kinetic_temperature_K=390.,kinetic_temperature_K=410.,thermostat_temperature_K=400.,
+               positions=np.zeros((3, 3)), acquisition_candidates=[{"big": 1}])
 
 
 def molecule(moleculeid="mol-0003-0000000012", **metadata):
@@ -37,7 +39,8 @@ def test_trajectory_row_keeps_only_what_plots_need():
     row = trajectory_row("mol-0003-0000000012", BATCHED)
     assert row == {"id": "mol-0003-0000000012", "model": 3, "outcome": "rejected", "reason": "physical_force", "state": 1,
                    "window": 2, "gap_lower_state": 1, "simtime": 0.5, "realtime": 3.0, "Es": 0.1, "Fs": 0.2, "Fsmax": 0.3, "peak_Es": 0.4,
-                   "peak_Fs": 0.5, "peak_Fsmax": 0.6, "gap_std": 0.7, "peak_gap_std": 0.8}
+                   "peak_Fs": 0.5, "peak_Fsmax": 0.6, "gap_std": 0.7, "peak_gap_std": 0.8,
+                   "initial_kinetic_temperature_K":390.,"kinetic_temperature_K":410.,"thermostat_temperature_K":400.}
     json.dumps(row)
 
 
@@ -46,6 +49,7 @@ def test_trajectory_row_for_legacy_metadata_has_no_outcome():
     assert row["outcome"] is None and row["state"] is None and row["peak_Es"] is None
     assert row["peak_gap_std"] is None
     assert row["Es"] == 0.1
+    assert row['kinetic_temperature_K'] is None and row['thermostat_temperature_K'] is None
 
 
 def test_trajectory_row_for_a_rejection_before_dynamics_has_only_what_is_known():

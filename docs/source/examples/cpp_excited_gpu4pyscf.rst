@@ -241,14 +241,17 @@ Sampling Settings
        from the start, including before ``min_time``.
    * - ``srt_temp``, ``end_temp``
      - Each trajectory draws a start and an end temperature between 300 and 500 K and
-       changes linearly between them. Higher temperatures cross the barriers between
-       phenyl twists more often, at the cost of some labels in regions that matter less at
-       300 K and more trajectories ended by the topology check.
+       changes the thermostat target linearly between them. These are bath targets,
+       not measured kinetic temperatures. With the default velocity preservation,
+       positions-only replay starts at rest and a 5 fs selection can occur before
+       the molecule heats appreciably. Set ``velocity_initialization`` to
+       ``"maxwell_boltzmann_if_missing"`` for thermal starts; see
+       :ref:`samplers-initial-velocities`.
    * - ``friction_per_fs``
-     - 0.01 per fs. The thermostat still holds the temperature within about 100 fs, but
-       slow motions such as phenyl twisting and ring deformations aren't damped out. At
-       0.1, the slowest ring motions would take several picoseconds to move, longer than
-       a trajectory.
+     - 0.01 per fs, corresponding to a 100 fs momentum damping time. This does not
+       guarantee equilibration before an early selection. Weaker coupling perturbs
+       slow phenyl twists and ring deformations less strongly than a larger friction;
+       heating still depends on the starting momenta and trajectory length.
    * - ``save_h5_threshold``
      - 499: write a new HDF5 batch and retrain after at least 500 new converged
        labels. ALF uses a strict ``>`` comparison; failed and unconverged QM

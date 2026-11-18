@@ -18,12 +18,14 @@ from alframework.samplers.geometry import minimum_distance
 from alframework.tools.tools import build_input_dict
 from alframework.tools.molecules_class import MoleculesObject
 from alframework.tools.gpu import sampling_device, neurochem_device
+from alframework.samplers.velocities import initialize_velocities, kinetic_temperature, velocity_initialization_mode
     
 
 #For now I will take a dictionary with all sample parameters.
 #We may want to make this explicit. Ying Wai, what do you think? 
 def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Escut, Fscut, Ncheck, Tamp, Tper, Tsrt, Tend, Ramp, Rper,
-                  Rend, meta_dir=None, use_potential_specific_code=None, trajectory_interval=None, distcut=1.2, min_time=0):
+                  Rend, meta_dir=None, use_potential_specific_code=None, trajectory_interval=None, distcut=1.2, min_time=0,
+                  velocity_initialization='preserve', random_seed=None):
     """Uncertainty based MD sampling.
 
     The idea is that if the MD fails because the NNPs didn't agree on the energies and forces, then this function
@@ -51,6 +53,8 @@ def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Escut, Fscut, Nchec
         trajectory_interval (int): Write the trajectory at every 'trajectory_interval' steps.
         distcut (float): Minimum allowed distance between two atoms in [Angstrom]
         min_time (float): Minimum simulation time before checking for uncertanties in [ps]
+        velocity_initialization (str): Preserve momenta (default), or draw thermal momenta only when missing.
+        random_seed: Optional seed for the independent initial-velocity draw; scalar Langevin keeps its legacy RNG.
 
     Returns:
         (MoleculesObject): A MoleculesObject containing the results of the QM calculations. If the std deviation of
@@ -61,6 +65,9 @@ def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Escut, Fscut, Nchec
 
     ase_atoms = molecule_object.get_atoms()
     T = annealing_schedule(0.0, maxt, Tamp, Tper, Tsrt, Tend)
+    molecule_object.update_metadata(initialize_velocities(ase_atoms, T, velocity_initialization,
+                                                        molecule_id=molecule_object.get_moleculeid(),
+                                                        random_seed=random_seed))
 
     # Setup Rho
     if Rend is None:
@@ -162,6 +169,8 @@ def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Escut, Fscut, Nchec
                 }
 
     meta_dict.update(molecule_object.get_metadata())
+    meta_dict.update(kinetic_temperature_K=kinetic_temperature(ase_atoms),
+                     thermostat_temperature_K=temps[-1] if temps else T)
 
     if meta_dir is not None:
         pkl.dump(meta_dict, open(meta_dir + "/metadata-" + molecule_object.get_moleculeid() + '.p', "wb"))
@@ -215,6 +224,7 @@ def simple_mlmd_sampling_task(molecule_object, sampler_config, model_path, curre
     """
     assert isinstance(molecule_object, MoleculesObject), 'molecule_object must be an instance of MoleculesObject'
 
+    velocity_initialization_mode(sampler_config.get('velocity_initialization', 'preserve'))
     feed_parameters = {}
 
     # Setup T

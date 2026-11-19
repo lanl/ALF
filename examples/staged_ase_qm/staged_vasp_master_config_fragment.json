@@ -3,7 +3,8 @@
   "QM_config_path": "staged_vasp_qm_config.json",
   "QM_scratch_dir": "staged_vasp_qm_scratch/",
   "properties_list": {
-    "energy": ["energy", "system", 1.0],
+    "energy": ["energyNonDiff", "system", 1.0],
+    "free_energy": ["energy", "system", 1.0],
     "forces": ["forces", "atomic", 1.0]
   }
 }

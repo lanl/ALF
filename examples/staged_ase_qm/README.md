@@ -48,6 +48,9 @@ with `LWAVE` enabled at the source and `ISTART=1` at the target. Confirm that VA
 file. [VASP magnetic initialization](https://vasp.at/wiki/MAGMOM),
 [VASP restart output](https://vasp.at/wiki/Restart_and_output_files_cheat_sheet)
 
+The master fragment trains on VASP's free energy, which the forces are derivatives of: it stores ASE's
+`free_energy` as the `energy` dataset and the σ→0 `energy` as `energyNonDiff`.
+
 ## Use in an ALF run
 
 Merge the selected master fragment into your run's master configuration and copy the QM

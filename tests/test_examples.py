@@ -406,7 +406,8 @@ def test_the_staged_vasp_example_labels_iron_cells_of_any_size(tmp_path, monkeyp
         return 0, ""
 
     def read_results(self):
-        self.results = {"energy": -1.0, "forces": np.ones((len(self.atoms), 3))}
+        # With smearing, VASP's free energy and its sigma -> 0 energy differ.
+        self.results = {"energy": -1.0, "free_energy": -1.1, "forces": np.ones((len(self.atoms), 3))}
         self.converged = True
 
     monkeypatch.setattr(Vasp, "_run", run)
@@ -418,6 +419,26 @@ def test_the_staged_vasp_example_labels_iron_cells_of_any_size(tmp_path, monkeyp
                               master["properties_list"])
     assert molecule.check_convergence(), molecule.metadata
     assert [stage["name"] for stage in molecule.metadata["qm_workflow"]["stages"]] == ["charge_density", "magnetic"]
+    assert molecule.get_results()["free_energy"] == -1.1
+
+
+def vasp_masters():
+    """Master configurations, and fragments, whose QM task or QM configuration runs VASP."""
+    found = []
+    for path in sorted((ROOT / "examples").glob("*/*master_config*.json")):
+        master = read(path)
+        config = path.parent / master.get("QM_config_path", "")
+        text = master.get("QM_task", "") + (config.read_text() if config.is_file() else "")
+        if "vasp" in text.lower():
+            found.append(path)
+    return found
+
+
+@pytest.mark.parametrize("path", vasp_masters(), ids=lambda path: str(path.relative_to(ROOT / "examples")))
+def test_vasp_examples_train_on_the_free_energy_their_forces_match(path):
+    properties = read(path)["properties_list"]
+    assert properties["free_energy"][0] == "energy"
+    assert properties["energy"][0] != "energy"
 
 
 @pytest.mark.parametrize("family", ["fine_tuning", "seeded_active_learning"])

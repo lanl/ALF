@@ -194,6 +194,21 @@ QM configuration
    VASP calculator behavior. The deprecated legacy VASP helper is the exception
    with ALF compatibility defaults documented further below.
 
+   With smearing, VASP's forces are derivatives of the free energy (``TOTEN``),
+   which ASE reports as ``free_energy``; ASE's ``energy`` is the σ→0
+   extrapolation, which the forces don't match. Train on the free energy: map
+   ``free_energy`` to the ``energy`` dataset and keep ASE's ``energy`` as
+   ``energyNonDiff`` for reference, as the UO2, molten-salt and staged VASP
+   examples do:
+
+   .. code-block:: json
+
+      {
+        "energy": ["energyNonDiff", "system", 1.0],
+        "free_energy": ["energy", "system", 1.0],
+        "forces": ["forces", "atomic", 1.0]
+      }
+
 For HPC runs, the QM command and Parsl resource configuration must agree. For
 example, an MPI VASP command such as ``srun -n 128 vasp_std`` should be paired
 with an ``alf_QM_executor`` configuration that requests the matching nodes,

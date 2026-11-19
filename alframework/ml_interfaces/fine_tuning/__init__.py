@@ -235,7 +235,7 @@ def fine_tune_ensemble(ML_config, h5_dir, model_path, current_training_id, gpus_
     with concurrent.futures.ThreadPoolExecutor(max_workers=free.qsize()) as pool:
         completed = list(pool.map(run, range(settings['n_models'])))
     write_lineage(ensemble_dir, settings, shards, completed)
-    from alframework.tools.data_shards import write_label_sources
+    from alframework.tools.label_sources import write_label_sources
     write_label_sources(ensemble_dir, h5_dir)
     return completed, int(current_training_id)
 
@@ -293,7 +293,7 @@ def fine_tune_ensemble_multinode_task(ML_config, h5_dir, model_path, current_tra
         pass
 
     def finish():
-        from alframework.tools.data_shards import write_label_sources
+        from alframework.tools.label_sources import write_label_sources
         # Placement is written by the actual member child before its app
         # returns. Use the last attempt, including failed attempts, rather
         # than treating the mere existence of a checkpoint as success.

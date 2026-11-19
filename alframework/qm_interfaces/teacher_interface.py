@@ -16,8 +16,8 @@ A loader is called as ``loader(settings, device)`` and returns a teacher: an obj
 ``evaluate(atoms_list)`` returning energies in eV and forces in eV/Å, in input order, plus
 ``package``, ``supported_numbers`` (or ``None``), ``supports_charge_spin``, and optionally
 ``supports_periodic`` (``True`` if absent). Labels count as
-converged when they are finite. Every labeled molecule records the teacher in
-``label_provenance``, which storage writes onto the HDF5 shard.
+converged when they are finite. Every labeled molecule records the teacher as its
+``label_source``, which storage writes onto the HDF5 shard; see :mod:`alframework.tools.label_sources`.
 """
 import hashlib
 import json
@@ -29,6 +29,7 @@ from pathlib import Path
 
 import numpy as np
 from parsl import python_app
+from alframework.tools.label_sources import LABEL_SOURCE
 from alframework.tools.task_failure_cleanup import releases_memory_on_failure
 from alframework.tools.task_timeline import timed
 
@@ -81,9 +82,9 @@ def file_sha256(path):
     return digest.hexdigest()
 
 
-def _identity(provenance):
+def _identity(source):
     """What must match for two labels to come from the same teacher."""
-    return (provenance.get("checkpoint_sha256"), provenance.get("task"), provenance.get("loader"))
+    return (source.get("checkpoint_sha256"), source.get("task"), source.get("loader"))
 
 
 def validate_teacher_config(QM_config, master_config=None):
@@ -124,13 +125,14 @@ def _validate_properties(properties):
 
 
 def _refuse_mixed_labels(settings, h5_dir):
-    from alframework.tools.data_shards import read_label_provenance
+    from alframework.tools.label_sources import read_label_sources
 
     expected = (file_sha256(settings["checkpoint"]), settings.get("task"), settings["loader"])
     for path in sorted(Path(h5_dir).glob("*.h5")):
-        sources = read_label_provenance(path)
+        sources = read_label_sources(path)
         if not sources or any(_identity(source) != expected for source in sources):
-            found = "labels with no teacher recorded, such as QM labels" if not sources else "labels from another teacher"
+            found = ("labels with no source recorded, such as legacy QM labels" if not sources
+                     else "labels from another source, such as QM or another teacher")
             raise ValueError(f"{path} holds {found}, so a student would train on mixed reference levels. "
                              "Use a new h5_dir, or set teacher.allow_mixed_labels to true.")
 
@@ -148,7 +150,7 @@ def load_teacher(settings, device):
     if key not in _TEACHERS:
         _TEACHERS.clear()  # Hold one teacher per worker, so a changed setting frees the old one's memory.
         teacher = _load_function(settings["loader"])(settings, device)
-        teacher.provenance = {
+        teacher.label_source = {
             "teacher": settings["name"], "loader": settings["loader"], "package": teacher.package,
             "package_version": _version(teacher.package), "checkpoint": settings["checkpoint"],
             "checkpoint_sha256": file_sha256(settings["checkpoint"]), "task": settings.get("task"),
@@ -333,7 +335,7 @@ def label_with_teacher(molecule_objects, QM_config, properties_list=None, gpus_p
         teacher = load_teacher(settings, _device(settings, gpus_per_node))
         groups = {}
         for molecule in molecule_objects:
-            molecule.update_metadata({"label_provenance": teacher.provenance})
+            molecule.update_metadata({LABEL_SOURCE: teacher.label_source})
             reason = _unsupported(teacher, molecule, settings)
             if reason is not None:
                 _fail(molecule, reason)

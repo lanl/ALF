@@ -14,7 +14,8 @@ import numpy as np
 import pytest
 
 from alframework.tools import files, pyanitools, restarts
-from alframework.tools.data_shards import LABEL_PROVENANCE, store_current_data, write_label_sources
+from alframework.tools.data_shards import store_current_data
+from alframework.tools.label_sources import LABEL_SOURCE, write_label_sources
 from alframework.tools.molecules import MoleculesObject
 from alframework.tools.restarts import find_empty_directory, write_status
 from tests.helpers.driver import run_alf_driver, stored_ids
@@ -111,7 +112,7 @@ def test_readers_ignore_a_partial_shard(tmp_path):
     assert find_empty_directory(str(h5 / "data-{:04d}.h5")) == 1
     write_label_sources(str(tmp_path / "model"), str(h5))
     assert json.loads((tmp_path / "model" / "label_sources.json").read_text()) == {
-        "teachers": [], "shards_without_label_provenance": ["data-0000.h5"], "shards": 1}
+        "label_sources": [], "shards_without_label_sources": ["data-0000.h5"], "shards": 1}
 
     pytest.importorskip("hippynn")
     from alframework.ml_interfaces.hippynn_interface import ALFPyAniDirectoryDB, _h5_shards
@@ -810,7 +811,7 @@ def test_a_shard_stored_from_a_generator_matches_one_stored_from_a_list(tmp_path
     def structures():
         for i in range(4):
             molecule = labeled(f"water-{i}", energy=-1.0 - i)
-            molecule.update_metadata({LABEL_PROVENANCE: {"teacher": "test", "level": i % 2}})
+            molecule.update_metadata({LABEL_SOURCE: {"teacher": "test", "level": i % 2}})
             molecule.set_converged_flag(i != 2)
             yield molecule
 

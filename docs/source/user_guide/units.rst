@@ -135,8 +135,8 @@ in the training units, usually eV and eV/Å.
 What ALF Does Not Check
 -----------------------
 
-* Shards don't record their units. The one exception is teacher provenance,
-  which records eV and eV/Å with the teacher.
+* Shards don't record their units. The one exception is a teacher's label
+  source, which records eV and eV/Å with the teacher.
 * A seeded run trains on whatever shards are in ``h5_dir``. Seed shards must
   already be in the run's units, or the model trains on mixed units with no
   warning.

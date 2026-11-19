@@ -1,4 +1,4 @@
-"""Foundation-model teacher labeling: batches, failures, provenance, startup checks, and the real loop.
+"""Foundation-model teacher labeling: batches, failures, label sources, startup checks, and the real loop.
 
 Uses a real TorchSim Lennard-Jones model for batching, which needs torch and TorchSim, and an ASE
 calculator or scripted teacher otherwise. Real MACE and UMA aren't installed in CI. They were checked
@@ -14,7 +14,7 @@ from ase import Atoms
 from parsl import python_app
 
 from alframework.qm_interfaces import teacher_interface as ti
-from alframework.tools import data_shards
+from alframework.tools import data_shards, label_sources
 from alframework.tools.labeling_coordinator import LabelingCoordinator
 from alframework.tools.molecules import MoleculesObject
 from tests.helpers import teachers
@@ -192,7 +192,7 @@ def test_non_periodic_teacher_labels_periodic_structures_when_allowed(checkpoint
     qm_config["teacher"]["allow_periodic"] = True
     molecules = label(structures(4, periodic={1, 2}), qm_config)
     assert all(m.check_convergence() for m in molecules)
-    assert molecules[1].get_metadata()["label_provenance"]["allow_periodic"] is True
+    assert molecules[1].get_metadata()["label_source"]["allow_periodic"] is True
 
 
 def test_teacher_that_does_not_say_labels_periodic_structures(checkpoint):
@@ -220,7 +220,7 @@ def test_teacher_is_named_after_its_checkpoint_by_default(checkpoint):
     qm_config = config(checkpoint)
     qm_config["teacher"].pop("name")
     molecule = label(structures(1), qm_config)[0]
-    assert molecule.get_metadata()["label_provenance"]["teacher"] == "teacher"
+    assert molecule.get_metadata()["label_source"]["teacher"] == "teacher"
 
 
 def test_teacher_checks_properties_again_when_labeling(checkpoint):
@@ -232,19 +232,19 @@ def test_teacher_checks_properties_again_when_labeling(checkpoint):
 
 def test_teacher_labels_record_the_teacher(checkpoint):
     molecule = label(structures(1), config(checkpoint))[0]
-    provenance = molecule.get_metadata()["label_provenance"]
-    assert provenance["teacher"] == "scripted-teacher"
-    assert provenance["checkpoint_sha256"] == ti.file_sha256(checkpoint)
-    assert provenance["units"] == {"energy": "eV", "forces": "eV/Å"}
-    assert provenance["loader"] == LOADER.format("scripted")
-    assert provenance["allow_periodic"] is False
+    source = molecule.get_metadata()["label_source"]
+    assert source["teacher"] == "scripted-teacher"
+    assert source["checkpoint_sha256"] == ti.file_sha256(checkpoint)
+    assert source["units"] == {"energy": "eV", "forces": "eV/Å"}
+    assert source["loader"] == LOADER.format("scripted")
+    assert source["allow_periodic"] is False
 
 
-def test_store_writes_teacher_provenance_onto_the_shard(checkpoint, tmp_path):
+def test_store_writes_the_teacher_onto_the_shard_as_its_label_source(checkpoint, tmp_path):
     molecules = label(structures(4, periodic=set()), config(checkpoint, fail_on_size=4))
     path = tmp_path / "data-0000.h5"
     data_shards.store_current_data(str(path), molecules, PROPERTIES)
-    (source,) = data_shards.read_label_provenance(path)
+    (source,) = label_sources.read_label_sources(path)
     assert source["checkpoint_sha256"] == ti.file_sha256(checkpoint)
     with h5py.File(path) as handle:
         assert sum(len(group["energy"]) for group in handle.values()) == sum(m.check_convergence() for m in molecules)
@@ -254,7 +254,7 @@ def test_shard_without_converged_teacher_labels_records_no_teacher(checkpoint, t
     molecules = label(structures(2), config(checkpoint, energy=float("nan")))
     path = tmp_path / "data-0000.h5"
     data_shards.store_current_data(str(path), molecules, PROPERTIES)
-    assert data_shards.read_label_provenance(path) == []
+    assert label_sources.read_label_sources(path) == []
 
 
 def test_qm_shards_are_unchanged(tmp_path):
@@ -264,11 +264,11 @@ def test_qm_shards_are_unchanged(tmp_path):
     path = tmp_path / "data-0000.h5"
     data_shards.store_current_data(str(path), [molecule], PROPERTIES)
     with h5py.File(path) as handle:
-        assert "label_provenance" not in handle.attrs
-    assert data_shards.read_label_provenance(path) == []
+        assert "label_sources" not in handle.attrs
+    assert label_sources.read_label_sources(path) == []
 
 
-def test_hippynn_reads_a_shard_that_has_provenance(checkpoint, tmp_path):
+def test_hippynn_reads_a_shard_that_records_label_sources(checkpoint, tmp_path):
     pytest.importorskip("hippynn")
     from alframework.ml_interfaces.hippynn_interface import ALFPyAniDirectoryDB
 
@@ -286,15 +286,15 @@ def test_label_sources_record_what_a_model_learned_from(checkpoint, tmp_path):
     qm.store_results({"energy": -1.0, "forces": np.zeros((2, 3))})
     qm.set_converged_flag(True)
     data_shards.store_current_data(str(h5 / "data-0001.h5"), [qm], PROPERTIES)
-    data_shards.write_label_sources(tmp_path / "models/model-0001", h5)
+    label_sources.write_label_sources(tmp_path / "models/model-0001", h5)
     record = json.loads((tmp_path / "models/model-0001/label_sources.json").read_text())
-    assert [teacher["teacher"] for teacher in record["teachers"]] == ["scripted-teacher"]
-    assert record["shards_without_label_provenance"] == ["data-0001.h5"] and record["shards"] == 2
+    assert [source["teacher"] for source in record["label_sources"]] == ["scripted-teacher"]
+    assert record["shards_without_label_sources"] == ["data-0001.h5"] and record["shards"] == 2
 
 
 def test_label_sources_failure_is_reported_not_raised(tmp_path, capsys):
     (tmp_path / "file").write_text("")
-    data_shards.write_label_sources(tmp_path / "file" / "ensemble", tmp_path)
+    label_sources.write_label_sources(tmp_path / "file" / "ensemble", tmp_path)
     assert "Could not record label sources" in capsys.readouterr().out
 
 
@@ -368,7 +368,7 @@ def test_teacher_refuses_an_h5_dir_with_qm_labels(checkpoint, tmp_path):
     qm.store_results({"energy": -1.0, "forces": np.zeros((2, 3))})
     qm.set_converged_flag(True)
     shard(h5 / "data-0000.h5", [qm])
-    with pytest.raises(ValueError, match="no teacher recorded"):
+    with pytest.raises(ValueError, match="no source recorded"):
         ti.validate_teacher_config(config(checkpoint), master(tmp_path, h5_dir=str(h5)))
     allowed = config(checkpoint)
     allowed["teacher"]["allow_mixed_labels"] = True
@@ -381,7 +381,7 @@ def test_teacher_refuses_labels_from_another_teacher(checkpoint, tmp_path):
     other = tmp_path / "other.model"
     other.write_bytes(b"other weights")
     shard(h5 / "data-0000.h5", label(structures(1), config(other)))
-    with pytest.raises(ValueError, match="another teacher"):
+    with pytest.raises(ValueError, match="another source"):
         ti.validate_teacher_config(config(checkpoint), master(tmp_path, h5_dir=str(h5)))
 
 
@@ -437,7 +437,7 @@ def test_teacher_labels_a_full_training_cycle(tmp_path, monkeypatch, task, batch
     def ml(current_training_id, h5_dir):
         trained.append(current_training_id)
         (tmp_path / MODEL_PATTERN.format(current_training_id)).mkdir(parents=True)
-        data_shards.write_label_sources(tmp_path / MODEL_PATTERN.format(current_training_id), h5_dir)
+        label_sources.write_label_sources(tmp_path / MODEL_PATTERN.format(current_training_id), h5_dir)
         return [True] * 4, current_training_id
 
     qm_config = config(checkpoint, "spring")
@@ -450,10 +450,10 @@ def test_teacher_labels_a_full_training_cycle(tmp_path, monkeypatch, task, batch
     shards = sorted((tmp_path / "h5").glob("data-*.h5"))
     assert len(shards) >= 2
     for path in shards:
-        (source,) = data_shards.read_label_provenance(path)
+        (source,) = label_sources.read_label_sources(path)
         assert source["teacher"] == "spring-teacher" and source["adapter"] == "AseTeacher"
     record = json.loads((tmp_path / MODEL_PATTERN.format(1) / "label_sources.json").read_text())
-    assert [t["teacher"] for t in record["teachers"]] == ["spring-teacher"]
+    assert [source["teacher"] for source in record["label_sources"]] == ["spring-teacher"]
 
 
 def test_teacher_is_used_from_one_thread_at_a_time(checkpoint):

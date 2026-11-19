@@ -23,7 +23,6 @@ from tests.helpers.fakes import FakeTask
 @pytest.mark.parametrize("module,name", [
     ("annealing", "annealing_schedule"),
     ("config", "build_input_dict"),
-    ("data_shards", "SourceCollector"),
     ("data_shards", "store_current_data"),
     ("geometry", "random_rotation_matrix"),
     ("label_validation", "system_checker"),

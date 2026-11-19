@@ -1,9 +1,6 @@
-"""Store labeled structures and provenance in ALF's HDF5 training shards."""
+"""Store labeled structures, and the sources of their labels, in ALF's HDF5 training shards."""
 
-import glob
-import json
 import os
-from pathlib import Path
 
 import numpy as np
 from ase.geometry import complete_cell
@@ -11,6 +8,7 @@ from ase.geometry import complete_cell
 from alframework.tools import pyanitools as pyt
 from alframework.tools.atom_order import TOPOLOGY_ATOM_IDS, validated_atom_ids
 from alframework.tools.files import fsync_file
+from alframework.tools.label_sources import LabelSourceCollector, write_shard_label_sources
 from alframework.tools.label_validation import validate_label
 from alframework.tools.molecules import MoleculesObject
 
@@ -20,7 +18,6 @@ PARTIAL_SUFFIX = '.partial'
 # Molecule metadata keys and the shard datasets they're stored in.
 STATE_METADATA = ('charge', 'mult')
 STRUCTURE_STATE_DATASETS = ('total_charge', 'spin_multiplicity')
-LABEL_PROVENANCE = 'label_provenance'
 
 
 def compute_empirical_formula(S):
@@ -135,7 +132,7 @@ def store_current_data(h5path, system_data, properties, attributes=None):
     states, has_state = {}, False
     print("Saving h5 file: " + h5path)
     total_number = 0
-    sources = SourceCollector()
+    sources = LabelSourceCollector()
     saved_number = 0
     nan_number = 0
     unconverged_number = 0
@@ -259,8 +256,7 @@ def store_current_data(h5path, system_data, properties, attributes=None):
         try:
             for key in data_dict:
                 dpack.store_data(key, **data_dict[key])
-            if sources.sources:
-                dpack.store.attrs[LABEL_PROVENANCE] = json.dumps(sources.sources)
+            write_shard_label_sources(dpack.store, sources.sources)
             for name, value in (attributes or {}).items():
                 dpack.store.attrs[name] = value
         finally:
@@ -272,65 +268,3 @@ def store_current_data(h5path, system_data, properties, attributes=None):
             os.remove(partial)
         raise
     return saved_number
-
-
-class SourceCollector:
-    """The distinct ``label_provenance`` records of labeled structures, in first-seen order, added one at a time."""
-
-    def __init__(self):
-        self.sources, self._seen = [], set()
-
-    def add(self, structure):
-        provenance = structure.get_metadata().get(LABEL_PROVENANCE)
-        if provenance is None:
-            return
-        key = json.dumps(provenance, sort_keys=True, default=str)
-        if key not in self._seen:
-            self._seen.add(key)
-            self.sources.append(json.loads(key))
-
-
-def label_sources(structures):
-    """Return the distinct ``label_provenance`` records of labeled structures, in first-seen order."""
-    collector = SourceCollector()
-    for structure in structures:
-        collector.add(structure)
-    return collector.sources
-
-
-def read_label_provenance(h5path):
-    """Return the label sources recorded on an HDF5 shard, or an empty list if none were recorded.
-
-    QM labelers record nothing; foundation-model teachers record themselves. Reads only the
-    shard's attributes, not its data.
-    """
-    import h5py
-    with h5py.File(h5path, 'r') as handle:
-        value = handle.attrs.get(LABEL_PROVENANCE)
-    if value is None:
-        return []
-    return json.loads(value.decode() if isinstance(value, bytes) else value)
-
-
-def write_label_sources(ensemble_dir, h5_dir):
-    """Record which label sources a trained ensemble learned from, as ``label_sources.json``.
-
-    A failure here is reported, never raised, so it can't cost a finished training.
-    """
-    try:
-        shards = sorted(glob.glob(os.path.join(str(h5_dir), '*.h5')))
-        teachers, seen, unrecorded = [], set(), []
-        for shard in shards:
-            sources = read_label_provenance(shard)
-            if not sources:
-                unrecorded.append(os.path.basename(shard))
-            for source in sources:
-                key = json.dumps(source, sort_keys=True)
-                if key not in seen:
-                    seen.add(key)
-                    teachers.append(source)
-        Path(ensemble_dir).mkdir(parents=True, exist_ok=True)
-        (Path(ensemble_dir) / 'label_sources.json').write_text(json.dumps(
-            {'teachers': teachers, 'shards_without_label_provenance': unrecorded, 'shards': len(shards)}, indent=2) + '\n')
-    except Exception as exc:
-        print('Could not record label sources in {}: {}: {}'.format(ensemble_dir, type(exc).__name__, exc), flush=True)

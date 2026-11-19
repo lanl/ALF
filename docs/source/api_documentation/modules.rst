@@ -7,7 +7,8 @@ Shared Tools
 Use the defining modules when importing shared helpers in workflow code:
 
 * :doc:`Workflow configuration and task arguments <alframework.tools.config>`
-* :doc:`HDF5 training shards and label provenance <alframework.tools.data_shards>`
+* :doc:`HDF5 training shards <alframework.tools.data_shards>`
+* :doc:`Label sources <alframework.tools.label_sources>`
 * :doc:`Parsl queues and shutdown <alframework.tools.parsl_tasks>`
 * :doc:`Bootstrap seed allocation <alframework.tools.bootstrap>`
 * :doc:`Restart state and held labels <alframework.tools.restarts>`

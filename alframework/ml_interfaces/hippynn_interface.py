@@ -902,7 +902,7 @@ def train_HIPPYNN_ensemble_task(ML_config,h5_dir,model_path,current_training_id,
                                             gpus_per_node, h5_test_dir)
     devices = _single_node_training_devices(ML_config, gpus_per_node)
     completed = ensemble_training.run_members_in_slots(_ground_state_member_child, params_list, devices)
-    from alframework.tools.data_shards import write_label_sources
+    from alframework.tools.label_sources import write_label_sources
     write_label_sources(model_path.format(current_training_id), h5_dir)
     return(completed, current_training_id)
 
@@ -2557,7 +2557,7 @@ def train_excited_state_ensemble(
         pool.join()
 
     completed = [_excited_state_member_complete(result) for result in raw_results]
-    from alframework.tools.data_shards import write_label_sources
+    from alframework.tools.label_sources import write_label_sources
     write_label_sources(ensemble_dir, h5_dir)
 
     if all(completed):
@@ -2718,7 +2718,7 @@ def train_HIPPYNN_ensemble_multinode_task(ML_config, h5_dir, model_path, current
     """
     params_list = _ground_state_member_params(ML_config, h5_dir, model_path, current_training_id, gpus_per_node)
     shards = _h5_shards(h5_dir)
-    from alframework.tools.data_shards import write_label_sources
+    from alframework.tools.label_sources import write_label_sources
     return ensemble_training.train_ensemble_across_nodes(
         lambda member, attempt: _ground_state_member_task(params_list[member], shards, attempt),
         len(params_list), model_path.format(current_training_id), current_training_id, gpus_per_node,
@@ -2747,7 +2747,7 @@ def train_excited_state_HIPPYNN_ensemble_multinode_task(ML_config, h5_dir, model
         raise FileExistsError(f'Refusing to overwrite nonempty ensemble directory {root}')
     params_list = _excited_state_member_params(config, h5_dir, ensemble_dir, gpus_per_node, properties_list)
     shards = _h5_shards(h5_dir)
-    from alframework.tools.data_shards import write_label_sources
+    from alframework.tools.label_sources import write_label_sources
     return ensemble_training.train_ensemble_across_nodes(
         lambda member, attempt: _excited_state_member_task(params_list[member], shards, attempt),
         len(params_list), ensemble_dir, int(current_training_id), gpus_per_node,

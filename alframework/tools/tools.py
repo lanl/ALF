@@ -15,20 +15,15 @@ from alframework.tools.config import (
     stored_label_budget,
 )
 from alframework.tools.data_shards import (
-    LABEL_PROVENANCE,
     PAIR_INDEX_DATASET,
     PAIR_INDEX_METADATA_KEY,
     PARTIAL_SUFFIX,
     STATE_METADATA,
     STRUCTURE_STATE_DATASETS,
-    SourceCollector,
     compute_empirical_formula,
-    label_sources,
     pair_atomic_property,
-    read_label_provenance,
     store_current_data,
     store_pair_index,
-    write_label_sources,
 )
 from alframework.tools.files import fsync_file, write_json_atomic
 from alframework.tools.geometry import random_rotation_matrix
@@ -46,5 +41,9 @@ from alframework.tools.parsl_tasks import (
     release_allocations_at_exit,
     stop_if_executor_failed,
 )
+from alframework.tools.label_sources import LEGACY_LABEL_PROVENANCE as LABEL_PROVENANCE
+from alframework.tools.label_sources import LabelSourceCollector as SourceCollector
+from alframework.tools.label_sources import label_sources, write_label_sources
+from alframework.tools.label_sources import read_label_sources as read_label_provenance
 from alframework.tools.legacy_ani import build_ANI_info
 from alframework.tools.restarts import find_empty_directory, write_status

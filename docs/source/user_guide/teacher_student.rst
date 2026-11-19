@@ -115,11 +115,12 @@ Choosing a UMA task
    :doc:`builders`.
 
 What's recorded
-   Each label carries ``label_provenance``: the teacher's name, package and version, checkpoint path
-   and SHA-256, task, data type, and units. ALF stores it on each HDF5 shard, as the
-   ``label_provenance`` attribute. ``alframework.tools.data_shards.read_label_provenance`` reads it back.
-   QM shards don't have it. After each training, the ensemble directory gets ``label_sources.json``,
-   listing the teachers its data came from and any shards without a recorded source.
+   Each label carries its ``label_source``: the teacher's name, package and version, checkpoint path
+   and SHA-256, task, data type, and units. ALF stores the distinct sources on each HDF5 shard, as its
+   ``label_sources`` attribute, and ``alframework.tools.label_sources.read_label_sources`` reads them back.
+   After each training, the ensemble directory gets ``label_sources.json``, listing the sources its data
+   came from and any shards without a recorded source. Shards from before ALF used these names record
+   ``label_provenance`` instead, and are still read.
 
 Practical notes
    * Teacher labels are cheap, so sampling and training become the slow steps. Larger
@@ -220,8 +221,8 @@ must too.
 
 .. code-block:: python
 
-   from alframework.tools.data_shards import read_label_provenance
-   read_label_provenance("qm_test.h5")
+   from alframework.tools.label_sources import read_label_sources
+   read_label_sources("qm_test.h5")
 
 .. code-block:: text
 
@@ -252,7 +253,7 @@ The run writes to its own paths, so it can share the directory with the ORCA con
    * - Path
      - Contents
    * - ``h5store_teacher/data-*.h5``
-     - Teacher labels, each shard with its ``label_provenance``.
+     - Teacher labels, each shard with its ``label_sources``.
    * - ``h5store_teacher_held/``
      - Labels waiting for the next store; see :ref:`configuration-restarts`.
    * - ``models_teacher/model-*/``

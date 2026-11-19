@@ -189,6 +189,7 @@ def train_data_parallel(training_modules, database, controller, *, n_devices, ac
         raise RuntimeError(f'gpus_per_member is {n_devices} on {nodes} node(s), {local_devices} per node, but this '
                            f'worker sees {torch.cuda.device_count()} GPUs. Give each ML worker that many GPUs; '
                            'see the Parsl guide.')
+    started = time.perf_counter()
     serialization.create_structure_file(training_modules, database, controller)
     _split_batches(controller, n_devices)
     training_modules, controller, metric_tracker = setup_training(
@@ -201,6 +202,8 @@ def train_data_parallel(training_modules, database, controller, *, n_devices, ac
     where = f' on {nodes} nodes, {local_devices} each' if nodes > 1 else ''
     print(f'Training with PyTorch Lightning on {n_devices} {accelerator} devices{where}: batch size '
           f'{controller.batch_size} per device, {controller.batch_size * n_devices} in total.')
+    print(f'Preparation: structure file and training setup took {time.perf_counter() - started:.1f} s')
+    started = time.perf_counter()
     sys.stdout.flush()
     # The ranks read the setup from a file. Passing it as process arguments would share its tensors
     # through shared memory, which fails on Linux for empty tensors and can exhaust /dev/shm.
@@ -211,6 +214,8 @@ def train_data_parallel(training_modules, database, controller, *, n_devices, ac
     finally:
         if splits is not None:
             database.splits = splits
+    print(f'Preparation: writing the ranks\' setup{" and shared arrays" if splits is not None else ""} took '
+          f'{time.perf_counter() - started:.1f} s ({Path(PAYLOAD).stat().st_size / 2**30:.1f} GiB setup file)', flush=True)
     Path(RECORD).unlink(missing_ok=True)  # the ranks' final test waits for this run's record
     try:
         if nodes == 1:

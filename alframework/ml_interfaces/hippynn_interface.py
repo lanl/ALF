@@ -253,6 +253,20 @@ def training_minimum_distances(arrays, species_key, coordinates_key, cell_key, d
     return found.to(positions.dtype)
 
 
+class _PreparationTimer:
+    """Prints how long each step of preparing a member's data took, to the member's training log."""
+
+    def __init__(self):
+        import time
+        self.clock = time.perf_counter
+        self.start = self.last = self.clock()
+
+    def __call__(self, step):
+        now = self.clock()
+        print(f'Preparation: {step} took {now - self.last:.1f} s ({now - self.start:.1f} s so far)', flush=True)
+        self.last = now
+
+
 def train_HIPNN_model(model_dir,
                       h5_train_dir,
                       energy_key,
@@ -642,7 +656,9 @@ def train_HIPNN_model(model_dir,
         
             database_schema = dict(species_key=species_key, coordinates_key=coordinates_key,
                                    atom_keys=(coordinates_key, force_key, charges_key))
+            prepared = _PreparationTimer()
             database = ALFPyAniDirectoryDB(directory=h5_train_dir,allow_unfound=True,quiet=False,seed=np.random.randint(1e9),inputs=None,targets=None,**database_schema)
+            prepared('reading the HDF5 data')
             
             #Ensure that species array is int64 for indexing
             arrays = database.arr_dict
@@ -654,6 +670,7 @@ def train_HIPNN_model(model_dir,
             min_dists_flag = min_dists>network_params["dist_soft_min"]
             for curK in database.arr_dict.keys():
                 database.arr_dict[curK] = database.arr_dict[curK][min_dists_flag]
+            prepared('screening close atoms')
                 
             n_atoms = (
               arrays[species_key]          # tensor
@@ -691,6 +708,7 @@ def train_HIPNN_model(model_dir,
             database.remove_high_property(energy_key, False, species_key=species_key, cut=remove_high_energy_cut, std_factor=remove_high_energy_std)
 
 
+            prepared('converting and removing outliers')
             print("Array Shapes After Cleaning")
             prettyprint_arrays(database.arr_dict)
                         
@@ -702,6 +720,7 @@ def train_HIPNN_model(model_dir,
                 database.make_random_split("test",test_size)
                 database.split_the_rest("train")
             
+            prepared('splitting')
             #Compute E0 values based on linear regression and remove from system energies
             if henergy.module_kwargs["first_is_interacting"]:
                 from hippynn.networks.hipnn import compute_hipnn_e0
@@ -753,6 +772,7 @@ def train_HIPNN_model(model_dir,
                 training_modules.model.to(database.splits['train'][sys_energy.db_name].device)
                 set_e0_values(henergy, database, peratom=False, energy_name=energy_key, decay_factor=1e-2)
             
+            prepared('E0 values and float32 splits')
             optimizer = torch.optim.Adam(training_modules.model.parameters(), lr=learning_rate)
             
             scheduler = RaiseBatchSizeOnPlateau(

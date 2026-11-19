@@ -206,7 +206,7 @@ def test_members_load_concurrently_without_changing_directory(tmp_path, monkeypa
 
 def test_concurrent_loading_matches_legacy_predictions(monkeypatch, trained_ensemble):
     import torch
-    from alframework.ml_interfaces._hippynn_compat import checkpoints
+    from alframework.ml_interfaces._hippynn_compat import checkpoints, node_from_name
     serialization = checkpoints()
     from hippynn.interfaces.ase_interface import HippynnCalculator
     from hippynn.tools import active_directory
@@ -218,7 +218,7 @@ def test_concurrent_loading_matches_legacy_predictions(monkeypatch, trained_ense
     for member in members:
         with active_directory(str(member)):
             bundle = serialization.load_checkpoint_from_cwd(map_location="cpu")
-        calc = HippynnCalculator(bundle["training_modules"].model.node_from_name("energy"), en_unit=units.eV)
+        calc = HippynnCalculator(node_from_name(bundle["training_modules"].model, "energy"), en_unit=units.eV)
         calc.to(torch.float32)
         calc.to(torch.device("cpu"))
         atoms = WATER.copy()

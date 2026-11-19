@@ -76,7 +76,7 @@ def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Escut, Fscut, Nchec
         str_Rvalue = (1.66054e-24/1.0e-24) * (np.sum(ase_atoms.get_masses())/ase_atoms.get_volume())
 
     # Set the ASE Calculator
-    ase_atoms.set_calculator(ase_calculator)
+    ase_atoms.calc = ase_calculator
 
     # Compute energies
     # ase_atoms.calc.get_potential_energy()

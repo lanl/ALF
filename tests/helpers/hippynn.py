@@ -13,6 +13,7 @@ def train_cpu_ensemble(directory, members=2, *, periodic=False):
     from hippynn.graphs import inputs, loss, networks, physics, targets
     from hippynn.tools import active_directory
 
+    from alframework.ml_interfaces._hippynn_compat import system_energy
     from alframework.ml_interfaces.hippynn_interface import ALFPyAniDirectoryDB
 
     directory = Path(directory).resolve()
@@ -55,7 +56,7 @@ def train_cpu_ensemble(directory, members=2, *, periodic=False):
                 resnet=True,
             ),
         )
-        energy = targets.HEnergyNode("henergy", network).mol_energy
+        energy = system_energy(targets.HEnergyNode("henergy", network))
         energy.db_name = "energy"
         forces = physics.GradientNode("forces", (energy, positions), sign=-1)
         forces.db_name = "forces"

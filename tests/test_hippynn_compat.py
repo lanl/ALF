@@ -63,3 +63,28 @@ def test_installed_hippynn_has_one_of_them():
     assert module.__name__ in CHECKPOINT_MODULES
     for function in ("load_checkpoint", "load_saved_tensors", "create_state", "create_structure_file"):
         assert callable(getattr(module, function))
+
+
+def test_node_and_energy_names_work_with_both_hippynn_spellings():
+    """Current hippynn has unique_node_from_name and system_energy; release 0.1.3 only the older names."""
+    from alframework.ml_interfaces._hippynn_compat import node_from_name, system_energy
+
+    class Current:
+        output_names = ("system_energy", "atom_energies")
+        system_energy = "current"
+
+    class Released:
+        _output_names = ("mol_energy", "atom_energies")
+        mol_energy = "released"
+
+    class CurrentGraph:
+        def unique_node_from_name(self, name):
+            return ("unique", name)
+
+    class ReleasedGraph:
+        def node_from_name(self, name):
+            return ("released", name)
+
+    assert system_energy(Current()) == "current" and system_energy(Released()) == "released"
+    assert node_from_name(CurrentGraph(), "energy") == ("unique", "energy")
+    assert node_from_name(ReleasedGraph(), "energy") == ("released", "energy")

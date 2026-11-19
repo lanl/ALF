@@ -243,10 +243,10 @@ def fine_tune_hippynn_member(arguments):
                 database.split_the_rest('train')
 
             if settings['E0s'] == 'average':
-                from hippynn.pretraining import set_e0_values
+                from hippynn.pretraining import hierarchical_energy_initialization
                 henergy = find_unique_relative(training_modules.model.nodes_to_compute, HEnergyNode,
                                                why_desc='Refitting E0s')
-                set_e0_values(henergy, database, peratom=False, energy_name=settings['energy_key'], decay_factor=1e-2)
+                hierarchical_energy_initialization(henergy, database, peratom=False, energy_name=settings['energy_key'], decay_factor=1e-2)
                 print('Refit atomic energies (E0s) to the labels.')
 
             frozen = set(frozen_parameters(training_modules.model, settings['freeze']))

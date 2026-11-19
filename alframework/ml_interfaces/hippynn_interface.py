@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 from alframework.tools.atom_order import TOPOLOGY_ATOM_IDS, canonical_orders
 from alframework.tools import ensemble_training
+from alframework.ml_interfaces._hippynn_compat import node_from_name, system_energy
 from alframework.tools.excited_state_schema import derive_state_property_table, derive_gap_property_table
 from alframework.tools.data_shards import STRUCTURE_STATE_DATASETS
 
@@ -455,7 +456,7 @@ def train_HIPNN_model(model_dir,
     from hippynn.graphs import inputs, networks, targets, physics, loss
     from alframework.ml_interfaces.hippynn_interface import ALFPyAniDirectoryDB
     from hippynn.experiment.assembly import assemble_for_training
-    from hippynn.pretraining import set_e0_values
+    from hippynn.pretraining import hierarchical_energy_initialization
     from hippynn.experiment.controllers import RaiseBatchSizeOnPlateau, PatienceController
     from hippynn.experiment import SetupParams, setup_and_train
     from hippynn.databases.database import  prettyprint_arrays
@@ -491,7 +492,7 @@ def train_HIPNN_model(model_dir,
             print(electrostatics_flag)
             if not(electrostatics_flag): # Just the energy Nodes, i.e. standard HIPNN. 
                 henergy = targets.HEnergyNode("node_HEnergy",network,first_is_interacting)
-                sys_energy = henergy.mol_energy
+                sys_energy = system_energy(henergy)
                 sys_energy.db_name = energy_key
                 
                 en_peratom = physics.PerAtom("node_EperAtom", sys_energy)
@@ -592,7 +593,7 @@ def train_HIPNN_model(model_dir,
             
                 
                 henergy = targets.HEnergyNode("node_HEnergy", network_energy,first_is_interacting)
-                sys_energy = henergy.mol_energy + coulomb_energy 
+                sys_energy = system_energy(henergy) + coulomb_energy 
                 sys_energy.db_name = energy_key
                 
                 en_peratom = physics.PerAtom("node_EperAtom", sys_energy)
@@ -833,7 +834,7 @@ def train_HIPNN_model(model_dir,
                         database.splits[data_split][force_key] = database.splits[data_split][force_key].to(torch.float32)
 
                 training_modules.model.to(database.splits['train'][sys_energy.db_name].device)
-                set_e0_values(henergy, database, peratom=False, energy_name=energy_key, decay_factor=1e-2)
+                hierarchical_energy_initialization(henergy, database, peratom=False, energy_name=energy_key, decay_factor=1e-2)
             
             prepared('E0 values and float32 splits')
             optimizer = torch.optim.Adam(training_modules.model.parameters(), lr=learning_rate)
@@ -1013,7 +1014,7 @@ def HIPNN_ASE_calculator(HIPNN_model_directory,energy_key='energy',device="cuda:
                              os.path.join(member_directory, 'best_checkpoint.pt'), map_location="cpu")
 
     model = bundle["training_modules"].model
-    energy_node = model.node_from_name(energy_key)
+    energy_node = node_from_name(model, energy_key)
     calc = HippynnCalculator(energy_node, en_unit=units.eV)
     calc.to(torch.float32)
     calc.to(torch.device(device))
@@ -2054,7 +2055,7 @@ def build_excited_state_training_graph(
             network,
             first_is_interacting=bool(first_is_interacting),
         )
-        energy_output = energy_head.mol_energy
+        energy_output = system_energy(energy_head)
         energy_output.db_name = str(row["energy_db_name"])
         force_output = physics.GradientNode(
             f"state_{state}_force_gradient",

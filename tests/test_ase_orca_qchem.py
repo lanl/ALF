@@ -1,7 +1,5 @@
 """ORCA and Q-Chem through ASE's own calculators, run against stand-in programs."""
 from copy import deepcopy
-import json
-from pathlib import Path
 
 import h5py
 import numpy as np
@@ -157,15 +155,6 @@ def test_unsupported_qchem_jobs_or_resources_stop_the_coordinator_at_startup(opt
     with pytest.raises(ValueError):
         interface.validate_ase_config({'ASE_calculator': 'ase.calculators.qchem.QChem', 'input': options},
                                       {'properties_list': PROPERTIES})
-
-
-@pytest.mark.parametrize('backend', ['orca', 'qchem'])
-def test_the_ase_qm_example_configurations_are_valid(backend):
-    directory = Path(__file__).resolve().parents[1] / 'examples' / 'staged_ase_qm'
-    config = json.loads((directory / f'{backend}_qm_config.json').read_text())
-    master = json.loads((directory / 'master_config_fragment.json').read_text())
-    interface.validate_ase_config(config, master)
-    assert all(schema[2] == 1.0 for schema in master['properties_list'].values())
 
 
 @pytest.mark.parametrize('backend', ['orca', 'qchem'])

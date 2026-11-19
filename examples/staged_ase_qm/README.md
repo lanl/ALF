@@ -65,15 +65,10 @@ add `"remove_scratch_on_success": true` beside `stages` to delete each
 molecule's directory once its label passes ALF's checks; a failed label's
 directory is kept for inspection.
 
-The ORCA integration test runs ASE's input writer and output parser against
-a stand-in executable. The VASP test uses ASE's Vasp calculator settings
-with a stand-in for the calculation. The commands above run the licensed
-backends for local qualification.
+ALF's tests run both recipes through ASE's own input writers with stand-ins
+for the licensed programs: a stand-in ORCA executable, and a stand-in for the
+VASP run on iron cells of 2 and 16 atoms. The commands above run the real
+programs for local qualification.
 
-For a single ORCA or Q-Chem calculation, use `master_config_fragment.json`
-with `orca_qm_config.json` or set `QM_config_path` to `qchem_qm_config.json`.
-ASE appends ORCA's input filename to the command. Set its core count with
-`%pal nprocs N end`. For Q-Chem, `QM_run_command` is the complete command
-including `PREFIX.inp` and `PREFIX.out`. Supply your Q-Chem wrapper's thread
-flags in that command, or omit it and let ASE construct the command from
-`np` and `nt`.
+For a single ORCA calculation, see `examples/simple_water`; the QM interface
+guide describes single ORCA and Q-Chem configurations.

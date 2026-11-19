@@ -351,9 +351,26 @@ ORCA Configuration
 
 ``orca_config.json`` selects ASE's ``ase.calculators.orca.ORCA``.
 ``QM_run_command`` names the ORCA executable or a wrapper; ``input.orcasimpleinput``
-sets the method, basis and ``EnGrad``; ``input.orcablocks`` sets memory, SCF options
-and, with ``%pal``, cores. ``input.charge`` and ``input.mult`` apply to molecules
-whose metadata gives no charge or multiplicity.
+sets the method, basis and ``EnGrad``; ``input.orcablocks`` sets memory and SCF
+options. ``input.charge`` and ``input.mult`` apply to molecules whose metadata
+gives no charge or multiplicity.
+
+ASE adds the input file name to ``QM_run_command`` and captures ORCA's output.
+When ORCA needs its environment loaded, point ``QM_run_command`` at a wrapper:
+
+.. code-block:: bash
+
+   #!/bin/bash
+   set -e
+   source /path/to/orca-environment.sh
+   exec /path/to/orca "$@"
+
+The template runs ORCA on one core. To use more, add ``%pal nprocs N end`` to
+``orcablocks`` with ``N`` matching the cores each QM worker has. Keep the
+energy and force multipliers in ``master_config.json`` at ``1.0``: ASE gives
+eV and eV/Angstrom. Label one structure with ``--test_qm`` before a full run.
+See :ref:`qm-ase-orca-qchem` for the checks ALF applies, and
+:ref:`qm-ase-workflows` for several calculations on one geometry.
 
 HIPPYNN Configuration
 ---------------------

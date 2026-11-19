@@ -605,7 +605,7 @@ Charge, spin and units
    **Changing a legacy ORCA run's task to this one also changes its units.** The legacy task's Hartree and
    Hartree/Bohr multipliers would convert ASE's results a second time: set them to ``1.0``, drop properties
    ASE doesn't read, and start in new output directories. For quadrupoles and Hirshfeld charges, keep the
-   legacy task. See ``examples/staged_ase_qm`` for single-point configuration fragments.
+   legacy task. ``examples/simple_water`` labels with this configuration.
 
 PySCF and GPU4PySCF
    ``pyscf_task`` and ``gpu4pyscf_excited_state_task`` call their calculators directly, with their own state

@@ -18,7 +18,7 @@ from alframework.samplers.batched_mlmd import ASEEngine, sample_trajectories
 from alframework.tools.gap_seeking import adjacent_pairs, gap_seeking_settings, gap_seeking_energy_forces, select_trigger
 from alframework.tools.molecules import MoleculesObject
 from alframework.tools.sampler_coordinator import SamplerCoordinator, state_settings
-from tests.helpers.engines import DEVICE, engine_class, require_engine
+from tests.helpers.engines import DEVICE, engine_class, require_engine, without_net_force
 from tests.helpers.fakes import CrossingStates
 
 BLOCK = {"enabled": True, "trigger_gap_threshold_eV": 0.05, "sigma": 3.5, "alpha_eV": 0.05}
@@ -257,11 +257,16 @@ def build_engine(kind, positions, options=None):
 
 
 def propagation_forces(engine, index):
-    """The forces the integrator will use next for this trajectory."""
+    """The forces the integrator will use next for this trajectory, less their center-of-mass part."""
     if isinstance(engine, ASEEngine):
-        return engine.atoms(index).get_forces()
+        atoms = engine.atoms(index)
+        return without_net_force(atoms, atoms.get_forces(apply_constraint=False))
     engine.observe(index)
     return engine.state.forces[engine._slices[index]].cpu().numpy()
+
+
+def net_free(positions, forces):
+    return without_net_force(water_like(positions), forces)
 
 
 def expected_surface(positions, pair):
@@ -276,7 +281,8 @@ def test_gap_seeking_forces_match_the_formula_after_a_switch(engine_kind):
     engine, _ = build_engine(engine_kind, [NEAR_FIRST_PAIR])
     propagation_forces(engine, 0)  # Forces already computed on the selected state must not be reused.
     engine.set_gap_seeking(0, (0, 1), 3.5, 0.05)
-    np.testing.assert_allclose(propagation_forces(engine, 0), expected_surface(NEAR_FIRST_PAIR, (0, 1))[1], atol=1e-10)
+    expected = net_free(NEAR_FIRST_PAIR, expected_surface(NEAR_FIRST_PAIR, (0, 1))[1])
+    np.testing.assert_allclose(propagation_forces(engine, 0), expected, atol=1e-10)
 
 
 def test_gap_seeking_well_adds_on_top_of_the_surface(engine_kind):
@@ -289,7 +295,7 @@ def test_gap_seeking_well_adds_on_top_of_the_surface(engine_kind):
     reference.calculate(atoms, properties=["energy", "forces"])
     selected_mean = CrossingStates().predict_states([atoms])["state_forces"][0].mean(0)[1]
     expected = reference.results["forces"] - selected_mean + expected_surface(positions, (0, 1))[1]
-    np.testing.assert_allclose(propagation_forces(engine, 0), expected, atol=1e-10)
+    np.testing.assert_allclose(propagation_forces(engine, 0), net_free(positions, expected), atol=1e-10)
 
 
 def test_gap_seeking_leaves_observations_unbiased(engine_kind):
@@ -306,8 +312,9 @@ def test_gap_seeking_applies_only_to_the_switched_replica(engine_kind):
     engine, models = build_engine(engine_kind, [FAR_FROM_BOTH, NEAR_FIRST_PAIR])
     engine.set_gap_seeking(1, (0, 1), 3.5, 0.05)
     unswitched = models.predict([water_like(FAR_FROM_BOTH)])["forces"][0].mean(0)
-    np.testing.assert_allclose(propagation_forces(engine, 0), unswitched, atol=1e-10)
-    np.testing.assert_allclose(propagation_forces(engine, 1), expected_surface(NEAR_FIRST_PAIR, (0, 1))[1], atol=1e-10)
+    np.testing.assert_allclose(propagation_forces(engine, 0), net_free(FAR_FROM_BOTH, unswitched), atol=1e-10)
+    switched = net_free(NEAR_FIRST_PAIR, expected_surface(NEAR_FIRST_PAIR, (0, 1))[1])
+    np.testing.assert_allclose(propagation_forces(engine, 1), switched, atol=1e-10)
 
 
 def test_gap_seeking_survives_another_replica_leaving_the_packed_state(engine_name):
@@ -317,7 +324,7 @@ def test_gap_seeking_survives_another_replica_leaving_the_packed_state(engine_na
     assert not engine.step([1], 2)
     positions = engine.atoms(1).get_positions()
     forces = engine.state.forces.cpu().numpy()
-    np.testing.assert_allclose(forces, expected_surface(positions, (0, 1))[1], atol=1e-10)
+    np.testing.assert_allclose(forces, net_free(positions, expected_surface(positions, (0, 1))[1]), atol=1e-10)
 
 
 def test_gap_seeking_replica_can_leave_the_packed_state(engine_name):
@@ -325,7 +332,7 @@ def test_gap_seeking_replica_can_leave_the_packed_state(engine_name):
     engine.set_gap_seeking(0, (0, 1), 3.5, 0.05)
     engine.finish(0)
     assert not engine.step([1], 2)
-    unswitched = models.predict([engine.atoms(1)])["forces"][0].mean(0)
+    unswitched = without_net_force(engine.atoms(1), models.predict([engine.atoms(1)])["forces"][0].mean(0))
     np.testing.assert_allclose(engine.state.forces.cpu().numpy(), unswitched, atol=1e-10)
 
 

@@ -26,7 +26,7 @@ from alframework.ml_interfaces.hippynn_interface import HIPNN_ASE_load_ensemble,
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator  # noqa: E402
 from alframework.samplers.batched_mlmd import sample_trajectories  # noqa: E402
 from alframework.tools.molecules import MoleculesObject  # noqa: E402
-from tests.helpers.engines import DEVICE, Tether, engine_class  # noqa: E402
+from tests.helpers.engines import DEVICE, Tether, engine_class, without_net_force  # noqa: E402
 from tests.helpers.fakes import (
     QuadraticStateEnsemble,
     QuadraticStateMember,
@@ -167,7 +167,8 @@ def test_well_udd_forces_match_mlmd_calculator(engine_name):
     )
     calculator = MLMD_calculator(spring_ensemble(), **copy.deepcopy(options))
     calculator.calculate(atoms, properties=["energy", "forces"])
-    np.testing.assert_allclose(engine.state.forces.cpu().numpy(), calculator.results["forces"], atol=1e-12)
+    np.testing.assert_allclose(engine.state.forces.cpu().numpy(), without_net_force(atoms, calculator.results["forces"]),
+                               atol=1e-12)
     assert float(engine.state.energy[0]) == pytest.approx(calculator.results["energy"])
 
 
@@ -180,7 +181,8 @@ def test_selected_state_well_udd_forces_match_mlmd_calculator(engine_name):
     )
     reference = MLMD_calculator([QuadraticStateMember(member, 1) for member in range(2)], **copy.deepcopy(options))
     reference.calculate(atoms, properties=["energy", "forces"])
-    np.testing.assert_allclose(engine.state.forces.cpu().numpy(), reference.results["forces"], atol=1e-10)
+    np.testing.assert_allclose(engine.state.forces.cpu().numpy(), without_net_force(atoms, reference.results["forces"]),
+                               atol=1e-10)
     assert float(engine.state.energy[0]) == pytest.approx(reference.results["energy"])
 
 
@@ -213,8 +215,8 @@ def test_langevin_holds_the_target_temperature(engine_name):
         engine.step(list(range(32)), 10)
         if block >= 20:
             temperatures.append(np.mean([engine.atoms(i).get_temperature() for i in range(32)]))
-    # As in ASE's Langevin (fixcm), the zero-net-momentum noise is rescaled by sqrt(N/(N-1)),
-    # so the kinetic temperature over all 3N degrees of freedom is the target.
+    # Each system's center of mass is at rest (ASE's FixCom), so the 3N-3 remaining degrees of freedom,
+    # which the running engine's Atoms count, are at the target.
     initial = float(np.mean(temperatures))
     assert initial == pytest.approx(300.0, rel=0.03)
     targets = np.array([200.0, 400.0] * 16)
@@ -643,3 +645,30 @@ def test_batched_distance_screen_falls_back_without_a_batched_search(engine_name
     for index in range(3):
         assert engine.observe(index)["min_distance"] == pytest.approx(minimum_distance(engine.atoms(index)),
                                                                       rel=1e-12, abs=1e-12)
+
+
+
+def _center_of_mass_motion(atoms):
+    masses = atoms.get_masses()
+    return atoms.get_center_of_mass(), (atoms.get_momenta() * 1.0).sum(axis=0) / masses.sum()
+
+
+def test_packed_engines_hold_each_center_of_mass_at_rest(engine_name):
+    """Momenta start, and stay, without center-of-mass motion even under a force with a net component (the
+    tether), and finished systems return without the FixCom the engine counted their temperature with."""
+    rng = np.random.default_rng(1)
+    systems = [Atoms("H4O", positions=rng.normal(size=(5, 3)) + 2.0) for _ in range(4)]
+    for atoms in systems:
+        atoms.set_momenta(rng.normal(size=(5, 3)))  # with a net momentum, which the engine removes
+    engine = engine_class(engine_name)(systems, [Tether(3.0), Tether(4.0)], 0.5, [300.0] * 4,
+                                       [np.random.RandomState(i) for i in range(4)], friction=0.2)
+    start = [engine.atoms(i).get_center_of_mass() for i in range(4)]
+    for _ in range(5):
+        assert not engine.step(list(range(4)), 10)
+        for index in range(4):
+            center, velocity = _center_of_mass_motion(engine.atoms(index))
+            np.testing.assert_allclose(velocity, 0.0, atol=1e-9)
+            np.testing.assert_allclose(center, start[index], atol=1e-8)
+            assert engine.atoms(index).get_number_of_degrees_of_freedom() == 3 * 5 - 3
+    engine.finish(0)
+    assert engine.atoms(0).constraints == []

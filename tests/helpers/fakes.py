@@ -76,8 +76,9 @@ class FakeUncertaintyCalculator(Calculator):
 
 
 class FakeLangevin:
-    def __init__(self, atoms, timestep, friction, temperature_K):
+    def __init__(self, atoms, timestep, friction, temperature_K, fixcm=True):
         self.atoms = atoms
+        self.fixcm = fixcm
         self.timestep = timestep
         self.friction = friction
         self.temperature_K = temperature_K

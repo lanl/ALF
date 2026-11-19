@@ -29,6 +29,16 @@ def require_engine(name):
             pytest.skip(f"nvalchemi-toolkit {installed} is not one of {SUPPORTED_VERSIONS}")
 
 
+def without_net_force(atoms, forces):
+    """``forces`` less their mass-weighted center-of-mass part: the forces that move the atoms under ``FixCom``.
+
+    The packed engines propagate with these. ASE's ``FixCom.adjust_forces`` projects differently, but
+    its integrators also remove the center-of-mass momentum every step, so both give these momenta.
+    """
+    masses = atoms.get_masses()[:, None]
+    return forces - masses * forces.sum(axis=0) / masses.sum()
+
+
 def engine_class(name):
     if name == "torchsim":
         from alframework.samplers.engines.torchsim import TorchSimEngine

@@ -481,7 +481,7 @@ def test_excited_ase_sampling_follows_the_selected_state(gap):
     models = SelectedStateEvaluator(QuadraticStateEnsemble(), 1, [1, 2])
     engine = ASEEngine([a], models, 0.25, [0.0], [np.random.RandomState(1)])
     expected = models.predict([a])
-    np.testing.assert_allclose(a.get_forces(), expected["forces"][0].mean(0))
+    np.testing.assert_allclose(a.get_forces(apply_constraint=False), expected["forces"][0].mean(0))
     assert ensemble_statistics(engine.observe(0)["prediction"]) == ensemble_statistics(expected)
     molecule = MoleculesObject(a.copy(), "excited")
     molecule.update_metadata(dict(selected_state=1, source="fixture"))
@@ -538,7 +538,7 @@ def test_ase_selected_state_bias_matches_mlmd_calculator(options):
     ASEEngine([atoms], models, 0.25, [0.0], [np.random.RandomState(1)], calculator_options=options)
     reference = MLMD_calculator([QuadraticStateMember(member, 1) for member in range(2)], **copy.deepcopy(options))
     reference.calculate(atoms, properties=["energy", "forces"])
-    np.testing.assert_allclose(atoms.get_forces(), reference.results["forces"], atol=1e-10)
+    np.testing.assert_allclose(atoms.get_forces(apply_constraint=False), reference.results["forces"], atol=1e-10)
     assert atoms.get_potential_energy() == pytest.approx(reference.results["energy"])
 
 
@@ -549,7 +549,7 @@ def test_ase_selected_state_bias_leaves_observations_unbiased():
     options = SELECTED_STATE_BIAS["well_and_udd"]
     engine = ASEEngine([atoms], models, 0.25, [0.0], [np.random.RandomState(1)], calculator_options=options)
     unbiased = models.predict([atoms])
-    assert not np.allclose(atoms.get_forces(), unbiased["forces"][0].mean(0))
+    assert not np.allclose(atoms.get_forces(apply_constraint=False), unbiased["forces"][0].mean(0))
     observed = engine.observe(0)["prediction"]
     np.testing.assert_allclose(observed["forces"][0], unbiased["forces"][0])
     assert ensemble_statistics(observed) == ensemble_statistics(unbiased)
@@ -921,3 +921,30 @@ def test_returned_momenta_is_checked_before_any_task_runs(tmp_path):
         SamplerCoordinator(batched_mlmd.mlmd_trajectories_task, "batched", {"returned_momenta": "no"})
     with pytest.raises(ValueError, match="batched_mlmd sampler tasks only"):
         SamplerCoordinator(simple_mlmd_sampling_task, "mlmd", {"returned_momenta": False})
+
+
+
+def test_the_ase_engine_holds_the_center_of_mass_and_returns_the_original_constraints():
+    from ase.constraints import FixAtoms, FixCom
+    atoms = SPRING_WATER.copy()
+    atoms.set_constraint(FixAtoms(indices=[0]))
+    atoms.set_momenta(np.random.default_rng(2).normal(size=(len(atoms), 3)))
+    engine = ASEEngine([atoms], fake_ensemble(), 0.5, [300.0], [np.random.RandomState(3)])
+    assert any(isinstance(c, FixCom) for c in engine.atoms(0).constraints)
+    assert not engine.step([0], 20)
+    momentum = engine.atoms(0).get_momenta().sum(axis=0)
+    np.testing.assert_allclose(momentum, 0.0, atol=1e-9)
+    engine.finish(0)
+    kept = engine.atoms(0).constraints
+    assert len(kept) == 1 and isinstance(kept[0], FixAtoms), "only the structure's own constraint comes back"
+
+
+def test_the_scalar_sampler_returns_the_original_constraints():
+    from ase.constraints import FixCom
+    from ase.constraints import FixAtoms
+    config, schedule = CASES["trigger_at_start"]  # a case that returns its structure for labeling
+    start = SPRING_WATER.copy()
+    start.set_constraint(FixAtoms(indices=[0]))
+    atoms = run_legacy(start, config, schedule, seed=5).get_atoms()
+    assert atoms is not None
+    assert [type(c) for c in atoms.constraints] == [FixAtoms], "only the structure's own constraint comes back"

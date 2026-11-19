@@ -1,4 +1,5 @@
 import numpy as np
+from ase.constraints import FixCom
 from ase.md.langevin import Langevin
 from ase import units
 from ase.io.trajectory import Trajectory
@@ -81,8 +82,12 @@ def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Escut, Fscut, Nchec
     # Compute energies
     # ase_atoms.calc.get_potential_energy()
 
-    # Define thermostat
-    dyn = Langevin(ase_atoms, dt * units.fs, friction=0.02, temperature_K=T)
+    # Define thermostat. The center of mass stays fixed with ASE's FixCom (Langevin's own fixcm is
+    # deprecated and doesn't sample NVT correctly); the original constraints come back before return.
+    constraints = list(ase_atoms.constraints)
+    if not any(isinstance(constraint, FixCom) for constraint in constraints):
+        ase_atoms.set_constraint(constraints + [FixCom()])
+    dyn = Langevin(ase_atoms, dt * units.fs, friction=0.02, temperature_K=T, fixcm=False)
     if trajectory_interval is not None:
         trajob = Trajectory(meta_dir + "/metadata-" + molecule_object.get_moleculeid() + '.traj', mode='w', atoms=ase_atoms)
         dyn.attach(trajob.write, interval=trajectory_interval)
@@ -176,6 +181,8 @@ def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Escut, Fscut, Nchec
         pkl.dump(meta_dict, open(meta_dir + "/metadata-" + molecule_object.get_moleculeid() + '.p', "wb"))
     
     ase_atoms.calc = None  # replace calculator for return
+    # A FixCom left on would remove the net force from any labels read through these Atoms.
+    ase_atoms.set_constraint(constraints)
 
     molecule_object.update_metadata(meta_dict)
 

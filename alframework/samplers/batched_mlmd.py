@@ -132,6 +132,8 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
         # tensors, which would stay allocated for the rest of the task.
         state[index]['error'] = None if error is None else "{}: {}".format(type(error).__name__, error)
         state[index]['finished_atoms'] = engine.atoms(index)
+        # While the engine still holds the center of mass fixed, so it counts the same degrees of freedom.
+        state[index]['finished_kinetic_temperature_K'] = kinetic_temperature(state[index]['finished_atoms'])
         state[index]['finished_at'] = time.time()
         engine.finish(index)
         active.remove(index)
@@ -359,7 +361,7 @@ def _record(molecule, entry, schedule, sampler_config, settings, engine, index, 
     if entry['error'] is not None:
         meta_dict['sampling_error'] = entry['error']
     meta_dict.update(molecule.get_metadata())
-    meta_dict.update(kinetic_temperature_K=kinetic_temperature(atoms),
+    meta_dict.update(kinetic_temperature_K=entry.get('finished_kinetic_temperature_K'),
                      thermostat_temperature_K=entry['temps'][-1] if entry['temps'] else schedule['Tsrt'])
     meta_dict.update(signals)
     for key in ('acquisition_trigger_flags', 'acquisition_cutoffs', 'acquisition_score_terms'):

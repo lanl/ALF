@@ -34,6 +34,7 @@ class PackedState:
 
 import numpy as np
 from ase import units
+from ase.constraints import FixCom
 from ase.io.trajectory import Trajectory
 
 from alframework.ml_interfaces.ensemble_inference import ASEEnsembleEvaluator
@@ -84,6 +85,10 @@ class PackedMLMDEngine:
             raise ValueError(f"{self.engine_name} batches must share one periodic boundary condition.")
         if any(atoms.constraints for atoms in self._atoms):
             raise NotImplementedError(f"The {self.engine_name} engine does not support ASE constraints.")
+        # Each system's center of mass stays fixed (the 3N-3 degrees of freedom ASE's FixCom leaves), and the
+        # host Atoms say so while they run, so their temperature counts the same degrees of freedom.
+        for atoms in self._atoms:
+            atoms.set_constraint(FixCom())
         self._options = _calculator_options(calculator_options)
         self._rngs = list(rngs)
         self._temperatures = [float(value) for value in temperatures_K]
@@ -111,6 +116,7 @@ class PackedMLMDEngine:
             forces=torch.zeros((sum(counts), 3), dtype=self.dtype, device=self.device))
         self._rows = list(range(len(self._atoms)))
         self._layout()
+        self.state.momenta = self._without_center_of_mass(self.state.momenta)
         # Find every fully periodic system's minimum distance in one batched search on the device
         # (see geometry.batched_minimum_distances); on the CPU, ASE's per-system search is as fast.
         self.batched_distance_screen = self.device.type != "cpu"
@@ -131,6 +137,7 @@ class PackedMLMDEngine:
         """Copy members back to their Atoms, then remove them from the packed state."""
         for index in indices:
             self._sync(index)
+            self._atoms[index].set_constraint()  # finished Atoms go on to labeling without it
         keep = [row for row, index in enumerate(self._rows) if index not in set(indices)]
         self._rows = [self._rows[row] for row in keep]
         if self._rows:
@@ -163,8 +170,9 @@ class PackedMLMDEngine:
         host, atoms = self._host_arrays(), self._atoms[index]
         selection = self._slices[index]
         atoms.set_cell(host["cell"][self._position[index]], scale_atoms=False)
-        atoms.set_positions(host["positions"][selection])
-        atoms.set_momenta(host["momenta"][selection])
+        # The state already holds the center of mass fixed; FixCom on the host Atoms only counts it.
+        atoms.set_positions(host["positions"][selection], apply_constraint=False)
+        atoms.set_momenta(host["momenta"][selection], apply_constraint=False)
 
     # -- forces ----------------------------------------------------------------------------------
 
@@ -194,7 +202,7 @@ class PackedMLMDEngine:
                                 torch.zeros_like(spread))
             energy = energy + weight * spread
             force = force + bias * scale[state.system_idx, None]
-        state.energy, state.forces = energy, force
+        state.energy, state.forces = energy, self._without_center_of_mass(force)
         bad_atoms = (~torch.isfinite(force)).any(1).to(self.dtype)
         bad = ~torch.isfinite(energy) | (torch.zeros_like(energy).index_add_(0, state.system_idx, bad_atoms) > 0)
         return [self._rows[row] for row in torch.nonzero(bad).flatten().tolist()]
@@ -239,20 +247,27 @@ class PackedMLMDEngine:
         draws = [self._rngs[index].standard_normal(size=(len(self._atoms[index]), 3)) for index in self._rows]
         return self._torch.as_tensor(np.concatenate(draws), dtype=self.dtype, device=self.device)
 
+    def _without_center_of_mass(self, values):
+        """Per-atom momenta or forces less each system's center-of-mass part,
+        ``values_i - m_i * sum(values) / sum(m)``, so they sum to zero over each system.
+
+        This is ASE FixCom's momentum projection. FixCom projects forces with another multiplier, but ASE's
+        integrators then remove the center-of-mass momentum, so each step changes the momenta as here."""
+        torch, state = self._torch, self.state
+        rows = len(self._rows)
+        total = torch.zeros((rows, 3), dtype=values.dtype, device=values.device).index_add_(0, state.system_idx, values)
+        mass = torch.zeros(rows, dtype=values.dtype, device=values.device).index_add_(0, state.system_idx, state.masses)
+        return values - state.masses[:, None] * (total / mass[:, None])[state.system_idx]
+
     def _ou(self):
-        """Ornstein-Uhlenbeck momentum update; the kick carries no net momentum per system (fixcm)."""
+        """Ornstein-Uhlenbeck momentum update, with each system's center of mass held at rest (ASE FixCom)."""
         torch, state = self._torch, self.state
         kT = torch.as_tensor([self._temperatures[index] * KB_EV_PER_K for index in self._rows],
                              dtype=self.dtype, device=self.device)
         c1 = float(np.exp(-self._friction * self._dt))
         kick = torch.sqrt(kT * (1 - c1 * c1))[state.system_idx, None] * torch.sqrt(state.masses)[:, None] \
             * self._noise()
-        counts = torch.as_tensor(self._counts, dtype=self.dtype, device=self.device)
-        net = torch.zeros((len(self._rows), 3), dtype=self.dtype, device=self.device).index_add_(
-            0, state.system_idx, kick)
-        factor = torch.where(counts > 1, torch.sqrt(counts / (counts - 1).clamp(min=1)), torch.ones_like(counts))
-        kick = (kick - (net / counts[:, None])[state.system_idx]) * factor[state.system_idx, None]
-        state.momenta = c1 * state.momenta + kick
+        state.momenta = c1 * state.momenta + self._without_center_of_mass(kick)
 
     def _baoab(self):
         raise NotImplementedError("The numerical engine must supply its BAOAB step.")

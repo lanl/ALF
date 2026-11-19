@@ -6,6 +6,7 @@ import numpy as np
 from ase import units
 from ase.calculators.calculator import Calculator, all_changes
 from ase.io.trajectory import Trajectory
+from ase.constraints import FixCom
 from ase.md.langevin import Langevin
 
 from alframework.ml_interfaces.ensemble_inference import SelectedStateEvaluator
@@ -91,6 +92,12 @@ class ASEEngine:
         self._states = isinstance(models, SelectedStateEvaluator)
         self.n_models = models.n_models if self._states else len(models)
         self._atoms = list(atoms_list)
+        # Each system's center of mass stays fixed during MD with ASE's FixCom (Langevin's own fixcm is
+        # deprecated and doesn't sample NVT correctly); finish() gives back the constraints it came with.
+        self._constraints = [list(atoms.constraints) for atoms in self._atoms]
+        for atoms, constraints in zip(self._atoms, self._constraints):
+            if not any(isinstance(constraint, FixCom) for constraint in constraints):
+                atoms.set_constraint(constraints + [FixCom()])
         self._dynamics = []
         self._writers = {}
         self.steps = [0] * len(self._atoms)
@@ -99,7 +106,7 @@ class ASEEngine:
             atoms.calc = _StateMeanCalculator(models, calculator_options) if self._states else \
                 MLMD_calculator(list(models), **copy.deepcopy(calculator_options or {}))
             self._dynamics.append(Langevin(atoms, dt * units.fs, friction=friction,
-                                           temperature_K=temperature, rng=rng))
+                                           temperature_K=temperature, rng=rng, fixcm=False))
 
     def set_gap_seeking(self, index, pair, sigma, alpha_eV):
         self._atoms[index].calc.set_gap_seeking(pair, sigma, alpha_eV)
@@ -145,3 +152,5 @@ class ASEEngine:
         if writer is not None:
             writer.close()
         self._atoms[index].calc = None
+        # A FixCom left on would remove the net force from any labels read through these Atoms.
+        self._atoms[index].set_constraint(self._constraints[index])

@@ -151,6 +151,14 @@ Dynamics engines
    constraints, and their ``MLMD_calculator_options`` are limited to
    ``well_params``, ``udd_bias_weight``, ``udd_bias_eps``, and ``debug_print``.
 
+   The ``ase`` engine and ``simple_mlmd_sampling_task`` integrate with ASE's ``Langevin``; ``torchsim`` and
+   ``alchemi`` with a BAOAB splitting (Leimkuhler and Matthews, 2013). All of them sample the same canonical
+   distribution with each system's center of mass at rest, as ASE's ``FixCom`` constraint holds it: the 3N-3
+   remaining degrees of freedom are at the thermostat's temperature, and the recorded
+   ``kinetic_temperature_K`` counts them. The ASE integrators run with ``fixcm=False`` and ``FixCom`` attached
+   only during dynamics; a structure returns with the constraints it came with, so labels computed through
+   it keep their net force.
+
    ``examples/simple_water`` includes ``mlmd_config_torchsim.json`` and
    ``mlmd_config_alchemi.json``; see :doc:`../examples/simple_water`.
 
@@ -181,7 +189,8 @@ during dynamics, so setting its temperature alone leaves the initial momenta
 unchanged.
 
 This is valid Langevin dynamics. Preserving input momenta is useful for
-continuations, directed motion, deliberately cold starts, gradual heating, and
+continuations, directed motion within a system (motion of the whole system is
+removed, since its center of mass stays at rest), deliberately cold starts, gradual heating, and
 existing workflows whose warm-up is long enough. Starting from rest can also
 give gentle local perturbations of seed structures. An active-learning sample
 need not be an equilibrium sample.

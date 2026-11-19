@@ -12,8 +12,9 @@ trajectory's noise from that trajectory's own random stream (seeded from its
 molecule ID, as in the ASE engine). With exact inference a trajectory's result
 therefore does not depend on which other trajectories share its task.
 Finished trajectories are removed from the packed state rather than frozen.
-As in ASE's ``Langevin`` (``fixcm=True``) the noise carries no net momentum,
-and the friction is the legacy MLMD value of 0.02 inverse ASE time units.
+Each system's center of mass stays at rest, as with ASE's ``FixCom``: momenta, the
+noise and the propagation force lose their center-of-mass part. The friction is
+the legacy MLMD value of 0.02 inverse ASE time units.
 
 Units are those of ASE: Angstrom, eV, amu, and ASE time; ``dt`` is in fs.
 

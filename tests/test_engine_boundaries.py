@@ -26,6 +26,8 @@ def test_starting_state_survives_the_engine(engine_name):
         pbc=True,
     )
     velocities = np.array([[0.01, -0.02, 0.03], [-0.04, 0.01, 0.02], [0.02, 0.03, -0.01]])
+    masses = atoms.get_masses()[:, None]
+    velocities -= (masses * velocities).sum(axis=0) / masses.sum()  # The engines hold the center of mass at rest.
     atoms.set_velocities(velocities)
     energy = atoms.get_kinetic_energy()
     engine = engine_class(engine_name)(

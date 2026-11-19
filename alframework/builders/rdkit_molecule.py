@@ -339,7 +339,7 @@ def _write_geometry_h5(path, coordinates, numbers, ids, pool_indices, strata, ra
 
 
 def prepare_rdkit_seed(config, output_dir, *, config_directory=None):
-    """Prepare and atomically publish a geometry pool, FPS seeds and provenance."""
+    """Prepare and atomically publish a geometry pool, FPS seeds and their manifest."""
     output = Path(output_dir).expanduser().resolve()
     if output.exists():
         raise FileExistsError(f'Refusing to overwrite seed preparation output: {output}')
@@ -357,7 +357,7 @@ def prepare_rdkit_seed(config, output_dir, *, config_directory=None):
     pool_ranks[selected] = ranks
     if _sha256(settings['reference_geometry']) != reference_hash:
         raise RuntimeError('Reference geometry changed during preparation.')
-    builder = {'seed_manifest_path': str(output / 'provenance.json'), 'selection_seed': settings['seed']}
+    builder = {'seed_manifest_path': str(output / 'seed_manifest.json'), 'selection_seed': settings['seed']}
     screen = settings['geometry_screen']
     reference_name = 'reference' + Path(settings['reference_geometry']).suffix.lower()
     topology_config = {'enabled': True, 'reference_conformer_path': str(output / reference_name),
@@ -391,7 +391,7 @@ def prepare_rdkit_seed(config, output_dir, *, config_directory=None):
         _write_geometry_h5(temporary / 'seed.h5', coordinates[selected], numbers, ids, selected, strata[selected], ranks)
         (temporary / 'builder_config.json').write_text(json.dumps(builder, indent=2) + '\n')
         report['artifacts_sha256'] = {name: _sha256(temporary / name) for name in ('pool.h5', 'seed.h5', 'builder_config.json', reference_name)}
-        (temporary / 'provenance.json').write_text(json.dumps(report, indent=2, allow_nan=False) + '\n')
+        (temporary / 'seed_manifest.json').write_text(json.dumps(report, indent=2, allow_nan=False) + '\n')
         temporary.rename(output)
     except BaseException:
         shutil.rmtree(temporary, ignore_errors=True)

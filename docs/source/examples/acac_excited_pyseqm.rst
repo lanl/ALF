@@ -173,7 +173,7 @@ Expected Outputs
    * - ``status.json``
      - Restart state, including current HDF5 and model ids.
    * - ``seeds/``
-     - The geometry pool, selected seeds, reference, and provenance.
+     - The geometry pool, selected seeds, reference, and seed manifest.
    * - ``h5store/data-*.h5``
      - Labeled batches.
    * - ``models/model-*``

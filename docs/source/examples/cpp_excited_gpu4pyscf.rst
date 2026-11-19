@@ -369,7 +369,7 @@ Expected Outputs
    * - ``status.json``
      - Restart state, including current HDF5 and model ids.
    * - ``seeds/``
-     - Selected seeds, reference, and provenance.
+     - Selected seeds, reference, and seed manifest.
    * - ``preparation.json``
      - The ring size, solvent, model, and energy offset used to prepare this run.
    * - ``h5store/data-*.h5``

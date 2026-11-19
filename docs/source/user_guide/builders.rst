@@ -354,7 +354,7 @@ overwrite an existing directory.
        ``connectivity_scale`` (``1.25``), and ``min_distance_A`` (``0.7``).
 
 The output directory holds ``pool.h5``, ``seed.h5``, a copy of the reference,
-``builder_config.json``, and ``provenance.json``. The last file records every setting
+``builder_config.json``, and ``seed_manifest.json``. The last file records every setting
 and file fingerprint, and suggests the matching settings under ``alf_configuration``.
 Add them to your run:
 
@@ -370,7 +370,9 @@ Add them to your run:
 Set ``bootstrap_set`` to ``seed_size``. To replace seeds whose labels fail, set it lower
 and set ``bootstrap_spares`` to the rest of ``seed_size``; see
 :doc:`configuration`. The builder config needs ``seed_manifest_path``,
-pointing at ``provenance.json``, and can set ``selection_seed`` (default ``42``).
+pointing at ``seed_manifest.json``, and can set ``selection_seed`` (default ``42``). Seed directories
+prepared before the manifest had this name hold ``provenance.json`` instead; their own
+``builder_config.json`` already points at it.
 
 The builder stops if the prepared files have changed. It labels ``seed.h5`` in order
 during the bootstrap. After that, it picks geometries from the stored label files,

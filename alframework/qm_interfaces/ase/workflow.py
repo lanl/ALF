@@ -178,7 +178,7 @@ def validate_ase_workflow_config(QM_config, master_config=None):
     _settings(QM_config, (master_config or {}).get('properties_list'))
 
 
-def _agreed_mean(completed, properties_list, tolerances, provenance):
+def _agreed_mean(completed, properties_list, tolerances, workflow_record):
     """The mean of the repeats' results, if every pair agrees within the tolerances; else ``ValueError``."""
     deviations = {key: 0.0 for key in AGREEMENT_PROPERTIES}
     for left, right in combinations(completed, 2):
@@ -190,9 +190,9 @@ def _agreed_mean(completed, properties_list, tolerances, provenance):
                 difference = np.max(np.abs(np.asarray(left.get_results()[key]) - right.get_results()[key]))
             deviations[key] = max(deviations[key], float(difference))
             if not np.isfinite(difference) or difference >= tolerances[key]:
-                provenance['max_deviation'] = deviations
+                workflow_record['max_deviation'] = deviations
                 raise ValueError(f'ASE stages disagree on {key}: {difference} >= {tolerances[key]}.')
-    provenance.update(agreement=deepcopy(tolerances), max_deviation=deviations)
+    workflow_record.update(agreement=deepcopy(tolerances), max_deviation=deviations)
     # Divide before summing, so large labels that agree can't overflow.
     return {key: sum(np.asarray(stage.get_results()[key]) / len(completed) for stage in completed)
             for key in properties_list}
@@ -231,7 +231,7 @@ def label_workflow(molecule_object, QM_config, QM_scratch_dir, properties_list):
     records = []
     phase = 'configuration'
     mode = QM_config.get('result_mode', 'last') if isinstance(QM_config, dict) else None
-    provenance = {'stages': records, 'result_mode': mode}
+    workflow_record = {'stages': records, 'result_mode': mode}
     try:
         stages, mode, tolerances = _settings(QM_config, properties_list)
         validate_geometry(molecule_object.get_atoms())
@@ -258,14 +258,14 @@ def label_workflow(molecule_object, QM_config, QM_scratch_dir, properties_list):
                 record.update({key: stage.metadata[key] for key in ERROR_KEYS if key in stage.metadata})
                 molecule_object.update_metadata({key: stage.metadata[key] for key in ('qm_error', 'qm_error_type')})
                 molecule_object.metadata['qm_failed_stage'] = spec.name + ':' + stage.metadata['qm_failed_stage']
-                molecule_object.metadata['qm_workflow'] = provenance
+                molecule_object.metadata['qm_workflow'] = workflow_record
                 return molecule_object
             record['state'] = {key: deepcopy(stage.metadata[key]) for key in ('qm_backend', 'charge', 'mult')
                                if key in stage.metadata}
             completed.append(stage)
         phase = 'agreement'
         if mode == 'mean_if_agree':
-            results = _agreed_mean(completed, properties_list, tolerances, provenance)
+            results = _agreed_mean(completed, properties_list, tolerances, workflow_record)
         else:
             results = {key: deepcopy(completed[-1].get_results()[key]) for key in properties_list}
         phase = 'validation'
@@ -275,11 +275,11 @@ def label_workflow(molecule_object, QM_config, QM_scratch_dir, properties_list):
     except Exception as error:
         molecule_object.update_metadata({'qm_error': f'{type(error).__name__}: {error}',
                                          'qm_error_type': type(error).__name__, 'qm_failed_stage': phase,
-                                         'qm_workflow': provenance})
+                                         'qm_workflow': workflow_record})
         return molecule_object
     molecule_object.store_results(results)
     molecule_object.update_metadata(deepcopy(completed[-1].metadata))
-    molecule_object.metadata['qm_workflow'] = provenance
+    molecule_object.metadata['qm_workflow'] = workflow_record
     molecule_object.metadata[LABEL_SOURCE] = _workflow_label_source(stages, mode, tolerances)
     molecule_object.set_converged_flag(True)
     for key in ERROR_KEYS:

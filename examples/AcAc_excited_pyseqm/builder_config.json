@@ -1,4 +1,4 @@
 {
-  "seed_manifest_path": "seeds/provenance.json",
+  "seed_manifest_path": "seeds/seed_manifest.json",
   "selection_seed": 42
 }

@@ -57,8 +57,8 @@ def prepare(output_dir, *, model='hiphop145', pool_size=None, seed_size=None, ge
             # paths from the library's generated configuration suggestions.
             import hashlib
             builder = temporary/'seeds/builder_config.json'
-            builder.write_text(json.dumps(dict(seed_manifest_path='seeds/provenance.json', selection_seed=seed['seed']), indent=2)+'\n')
-            path = temporary/'seeds/provenance.json'
+            builder.write_text(json.dumps(dict(seed_manifest_path='seeds/seed_manifest.json', selection_seed=seed['seed']), indent=2)+'\n')
+            path = temporary/'seeds/seed_manifest.json'
             manifest = json.loads(path.read_text())
             manifest['settings']['reference_geometry'] = 'reference.xyz'
             manifest['configuration_sha256'] = hashlib.sha256(json.dumps(manifest['settings'], sort_keys=True, allow_nan=False).encode()).hexdigest()

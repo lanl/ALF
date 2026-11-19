@@ -392,7 +392,7 @@ def test_rdkit_builder_rejects_a_changed_seed_after_caching_it(prepared_seed, tm
     copy = tmp_path / "prepared"
     shutil.copytree(prepared_seed.output, copy)
     builder = dict(json.loads((copy / "builder_config.json").read_text()),
-                   seed_manifest_path=str(copy / "provenance.json"))
+                   seed_manifest_path=str(copy / "seed_manifest.json"))
     seed.build_rdkit_molecules(["mol-boot-0000000000"], builder)
     with h5py.File(copy / "seed.h5", "a") as handle:
         handle.attrs["edited"] = 1
@@ -420,7 +420,7 @@ def test_rdkit_builder_opens_the_seed_twice_per_task(prepared_seed, monkeypatch,
     monkeypatch.setattr(seed, "_sha256", lambda path: hashed.append(Path(path).name) or "digest")
     molecules = seed.build_rdkit_molecules([f"mol-boot-{i:010d}" for i in range(4)], builder)
     assert sum(opened) == 2  # Once for the frames and once for their metadata, however many molecules.
-    assert hashed == ["provenance.json"]  # The seed and reference hashes are cached.
+    assert hashed == ["seed_manifest.json"]  # The seed and reference hashes are cached.
     assert len({m.get_metadata()["rdkit_manifest_sha256"] for m in molecules}) == 1
 
 
@@ -584,7 +584,7 @@ def prepared_seed(request, tmp_path_factory):
     return SimpleNamespace(report=report, output=output, repeated=repeated)
 
 
-def test_rdkit_seed_preparation_records_provenance(prepared_seed):
+def test_rdkit_seed_preparation_records_a_seed_manifest(prepared_seed):
     report = prepared_seed.report
     assert report["pool_count"] == 24 and report["selected_count"] == 12
     assert report["embedding_settings"]["useBasicKnowledge"] is True
@@ -690,7 +690,7 @@ def test_rdkit_command_line_finds_reference_next_to_config(tmp_path):
         timeout=60,
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    report = json.loads((output / "provenance.json").read_text())
+    report = json.loads((output / "seed_manifest.json").read_text())
     assert report["selected_count"] == 6
     assert report["settings"]["reference_geometry"] == str(config_dir / "enol.xyz")
 

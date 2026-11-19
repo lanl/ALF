@@ -161,6 +161,22 @@ The master config controls the workflow wiring. Common fields include:
      - Optional. Where finished labels wait until they're stored; see
        :ref:`configuration-restarts`. The default is ``h5_dir`` with ``_held``
        added, such as ``h5store_held/``. It must be outside ``h5_dir``.
+   * - ``label_storage_batch_size``
+     - Optional positive integer. Hold finished QM results in HDF5 parts with
+       at most this many structures per part. A single completed task can exceed
+       the harvest limit and is then written to several parts. At each training
+       boundary ALF publishes one virtual HDF5 shard under the usual name. Keep
+       its sources in ``.alf-label-parts/`` alongside it when copying or moving the
+       dataset. Keep the storage mode fixed until the current generation is
+       published. Omitting this setting uses the pickle-based held store.
+   * - ``label_h5_layout``
+     - Optional. How stored label datasets are compressed and chunked, as a dictionary
+       with ``compression`` (``"gzip"``, ``"lzf"`` or ``null``), ``level`` (gzip's,
+       0 to 9), ``shuffle`` (HDF5's byte-shuffle filter) and ``frame_chunk`` (frames
+       per chunk). For example ``{"compression": "lzf", "shuffle": true,
+       "frame_chunk": 1024}``. Every choice is lossless: the shards stay HDF5 with the
+       same datasets, dtypes and values, and read as before. The default is gzip level 6
+       with h5py's chunks. See :ref:`running-at-scale-storing-labels`.
    * - ``plotting_utility``, ``plot_dir``, ``update_plots_every``
      - Optional progress plots. ``plotting_utility`` is an import string such as
        ``alframework.tools.plotting.analysis_plot``, and ``plot_dir`` is where it
@@ -273,11 +289,10 @@ Restarting After A Crash
 To continue a run that stopped, run the same command again. No files need
 editing.
 
-* **Finished labels are kept.** ALF stores labels into ``h5_dir`` only between
+* **Finished labels are kept.** ALF publishes a new shard in ``h5_dir`` only between
   trainings, so that every ensemble member trains on the same data. Until then,
-  each finished label is written to ``held_labels_dir``. A restart stores those
-  labels with the next shard, including labels that finished during a bootstrap
-  or during training.
+  finished labels are held in ``held_labels_dir`` or private HDF5 parts, depending
+  on the storage mode. A restart includes those labels in the next shard.
 * **Status catches up with disk.** A shard stored just before the crash is
   counted and kept, a model ID that started training is never reused, and
   molecule IDs skip ahead past any used after status was last saved. ALF prints

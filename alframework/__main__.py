@@ -32,8 +32,7 @@ from alframework.tools.pyanitools import anidataloader
 from alframework.tools.molecules import MoleculesObject
 from alframework.tools.bootstrap import bootstrap_spare_count, next_bootstrap_ids
 from alframework.tools.restarts import (
-    HELD_PIECES, STORED_AT_BUDGET_STOP, HeldLabels, find_empty_directory, held_labels_directory, reconcile_status,
-    write_status,
+    STORED_AT_BUDGET_STOP, find_empty_directory, open_held_labels, reconcile_status, write_status,
 )
 from alframework.tools.labeling_coordinator import LabelingCoordinator
 from alframework.tools.label_validation import screen_labels, system_checker
@@ -149,13 +148,10 @@ if validate_ml_config is not None:
 ##########################################
 ## Step 3: Evaluate restart possibilites #
 ##########################################
-# Finished labels wait here, outside h5_dir, until they're stored; see alframework/tools/restarts.py.
-held = HeldLabels(held_labels_directory(master_config))
-if os.path.exists(master_config['status_path']):
+restarting = os.path.exists(master_config['status_path'])
+if restarting:
     with open(master_config['status_path'],'r') as input_file:
         status = json.load(input_file)
-    for change in reconcile_status(status, master_config, held):
-        print('Restart: ' + change)
 else:
     status = {}
     status['current_training_id'] = find_empty_directory(master_config['model_path'])
@@ -175,37 +171,44 @@ else:
     status['lifetime_failed_ML_tasks'] = 0
     status['lifetime_failed_QM_tasks'] = 0
 
+held = open_held_labels(master_config, status['current_h5_id'])
+if restarting:
+    for change in reconcile_status(status, master_config, held):
+        print('Restart: ' + change)
+
 write_status(master_config['status_path'], status)
 
 # Read once, so that a mistaken edit can't stop or crash a long run.
 label_budget = stored_label_budget(master_config)
 spare_seeds = bootstrap_spare_count(master_config)
+storage_batch_size = master_config.get('label_storage_batch_size')
 
 
-def hold_finished_labels():
+def hold_finished_labels(*, drain=False):
     """Move finished QM work out of memory, so a crash can't lose it."""
-    results, failed = QM_task_queue.get_task_results()
-    screen_labels(results, master_config['properties_list'])
-    lost = labeling.take_failed_structures(failed)
-    status['lifetime_failed_QM_tasks'] = status['lifetime_failed_QM_tasks'] + failed
-    status['lifetime_failed_QM_structures'] = status.get('lifetime_failed_QM_structures', 0) + lost
-    held.hold(results, lost)
+    properties = held.properties if storage_batch_size is not None else master_config['properties_list']
+    while True:
+        results, failed = QM_task_queue.get_task_results(max_items=storage_batch_size)
+        screen_labels(results, properties)
+        lost = labeling.take_failed_structures(failed)
+        status['lifetime_failed_QM_tasks'] = status['lifetime_failed_QM_tasks'] + failed
+        status['lifetime_failed_QM_structures'] = status.get('lifetime_failed_QM_structures', 0) + lost
+        held.hold(results, lost)
+        if not drain or storage_batch_size is None or not QM_task_queue.get_completed_number():
+            return
 
 
 def store_held_labels(**attributes):
     """Store every held label as the next shard. The caller saves status afterwards.
 
-    Order matters for restarts: the shard is renamed into place first, recording the pieces it
-    holds, then the pieces are removed. A restart that finds the shard ahead of status moves past it.
+    Publish the shard before advancing status. A restart that finds it ahead of status moves past it.
     """
-    hold_finished_labels()
-    # One held piece in memory at a time, not every held label at once.
-    pieces = held.pieces()
-    stored = store_current_data(master_config['h5_path'].format(status['current_h5_id']), held.iter_results(pieces),
-                                master_config['properties_list'], attributes={HELD_PIECES: json.dumps(pieces), **attributes})
+    hold_finished_labels(drain=True)
+    stored = held.commit(master_config['h5_path'].format(status['current_h5_id']),
+                         master_config['properties_list'], attributes)
     status['lifetime_stored_labels'] = status.get('lifetime_stored_labels', 0) + stored
-    held.discard(pieces)
     status['current_h5_id'] = status['current_h5_id'] + 1
+    held.select_snapshot(master_config['h5_path'].format(status['current_h5_id']))
     return stored
 
 ######################################

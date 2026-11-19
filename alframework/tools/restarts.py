@@ -14,6 +14,7 @@ import h5py
 
 from alframework.tools.files import write_bytes_atomic, write_json_atomic
 from alframework.tools.label_validation import reject_label
+from alframework.tools.pyanitools import validate_label_parts
 
 HELD_PIECES = 'held_pieces'
 # Marks the shard stored when a label budget stops a run. No model trained on it.
@@ -32,6 +33,52 @@ def held_labels_directory(master_config):
     return directory
 
 
+LABEL_LAYOUT_KEYS = {'compression': 'complib', 'level': 'complevel', 'shuffle': 'shuffle', 'frame_chunk': 'frame_chunk'}
+
+
+def label_h5_options(master_config):
+    """``datapacker`` options from the optional ``label_h5_layout``: how stored label datasets are compressed
+    and chunked. All choices are lossless; without it labels are written with gzip level 6, as always."""
+    layout = master_config.get('label_h5_layout')
+    if layout is None:
+        return {}
+    if not isinstance(layout, dict) or set(layout) - set(LABEL_LAYOUT_KEYS):
+        raise ValueError(f'label_h5_layout must be a dictionary with keys from {sorted(LABEL_LAYOUT_KEYS)}.')
+    compression = layout.get('compression', 'gzip')
+    if compression not in ('gzip', 'lzf', None):
+        raise ValueError("label_h5_layout compression must be 'gzip', 'lzf' or null.")
+    level = layout.get('level', 6)
+    if compression == 'gzip' and (isinstance(level, bool) or not isinstance(level, int) or not 0 <= level <= 9):
+        raise ValueError('label_h5_layout level must be an integer from 0 to 9 for gzip.')
+    chunk = layout.get('frame_chunk')
+    if chunk is not None and (isinstance(chunk, bool) or not isinstance(chunk, int) or chunk < 1):
+        raise ValueError('label_h5_layout frame_chunk must be a positive integer.')
+    if not isinstance(layout.get('shuffle', False), bool):
+        raise ValueError('label_h5_layout shuffle must be true or false.')
+    return {LABEL_LAYOUT_KEYS[key]: value for key, value in dict(layout, compression=compression, level=level).items()}
+
+
+def open_held_labels(master_config, current_h5_id):
+    from alframework.tools.label_parts import HDF5HeldLabels, part_directory
+
+    size = master_config.get('label_storage_batch_size')
+    if size is not None and (isinstance(size, bool) or not isinstance(size, int) or size < 1):
+        raise ValueError('label_storage_batch_size must be a positive integer.')
+    legacy = held_labels_directory(master_config)
+    pattern = master_config['h5_path']
+    snapshot = Path(pattern.format(current_h5_id))
+    while snapshot.exists():
+        current_h5_id += 1
+        snapshot = Path(pattern.format(current_h5_id))
+    if size is None:
+        if any(part_directory(snapshot).glob('part-*.h5')):
+            raise ValueError('An unfinished HDF5 generation exists. Resume with label_storage_batch_size set.')
+        return HeldLabels(legacy, h5_options=label_h5_options(master_config))
+    if any(legacy.glob('held-*.pkl')):
+        raise ValueError('Held pickle files exist. Resume with the original storage mode to commit them first.')
+    return HDF5HeldLabels(snapshot, master_config['properties_list'], size, h5_options=label_h5_options(master_config))
+
+
 class HeldLabels:
     """Finished QM results that aren't stored yet, kept as atomically written pieces.
 
@@ -43,8 +90,9 @@ class HeldLabels:
 
     PIECE_SIZE = 1000
 
-    def __init__(self, directory):
+    def __init__(self, directory, h5_options=None):
         self.directory = Path(directory)
+        self.h5_options = dict(h5_options or {})
         self.directory.mkdir(parents=True, exist_ok=True)
         self.failed_since_store = 0
         self._successful = None
@@ -152,10 +200,29 @@ class HeldLabels:
         self.failed_since_store = 0
         self._successful = self._converged = self._ids = self._periodic = None
 
+    def commit(self, snapshot, properties, attributes):
+        from alframework.tools.tools import store_current_data
+
+        pieces = self.pieces()
+        stored = store_current_data(snapshot, self.iter_results(pieces), properties,
+                                    attributes={HELD_PIECES: json.dumps(pieces), **attributes},
+                                    h5_options=getattr(self, 'h5_options', None))
+        self.discard(pieces)
+        return stored
+
+    def recover_snapshot(self, snapshot):
+        frames = shard_frames(snapshot)
+        self.discard(shard_held_pieces(snapshot))
+        return frames
+
+    def select_snapshot(self, snapshot):
+        """Legacy held pieces use the same directory for each generation."""
+
 
 def shard_frames(h5path):
     """The number of stored structures in a shard."""
     with h5py.File(h5path, 'r') as handle:
+        validate_label_parts(handle)
         return sum(int(group['_id'].shape[0]) for group in handle.values()
                    if isinstance(group, h5py.Group) and '_id' in group)
 
@@ -186,8 +253,7 @@ def reconcile_status(status, master_config, held):
     changes = []
     while os.path.exists(master_config['h5_path'].format(status['current_h5_id'])):
         shard = master_config['h5_path'].format(status['current_h5_id'])
-        frames = shard_frames(shard)
-        held.discard(shard_held_pieces(shard))
+        frames = held.recover_snapshot(shard)
         status['lifetime_stored_labels'] = status.get('lifetime_stored_labels', 0) + frames
         status['current_h5_id'] += 1
         changes.append(f'{os.path.basename(shard)} was stored before the crash ({frames} labels); continuing after it')

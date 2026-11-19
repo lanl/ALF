@@ -173,6 +173,51 @@ main thread, and then submits the training. The time grows with the number of la
 
 Plan for this pause between the end of labeling and the start of training in large runs.
 
+``label_storage_batch_size`` (see :doc:`configuration`) removes most of it: finished labels are written as
+HDF5 parts of at most that many structures while QM runs, and at the training boundary ALF publishes one
+virtual shard over them. ``label_h5_layout`` chooses a lossless layout for those writes: lzf or a lower gzip
+level, HDF5's byte-shuffle filter, and chunks of whole frames instead of h5py's guess, which for 201-atom
+structures was 1,376 frames by 7 atoms by 1 coordinate. Replaying the 2,097,152 labels of a large run on one
+node, with transparent huge pages off and every arm giving the same stored values:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Storage
+     - Writing while QM runs
+     - At the training boundary
+     - Peak memory
+     - Size
+     - Read back
+   * - Held pickles, then one shard (the default)
+     - 414 s
+     - 1,605 s
+     - 39.3 GiB
+     - 22.7 GiB held
+     - 95 s
+   * - Parts of 8,192, gzip level 6
+     - 1,328 s
+     - 7 s
+     - 1.4 GiB
+     - 14.5 GiB
+     - 183 s
+   * - Parts of 8,192, lzf, shuffle, chunks of 1,024 frames
+     - 578 s
+     - 7 s
+     - 1.3 GiB
+     - 14.0 GiB
+     - 47 s
+   * - Parts of 8,192, gzip level 1, shuffle, chunks of 1,024 frames
+     - 821 s
+     - 7 s
+     - 1.3 GiB
+     - 12.6 GiB
+     - 64 s
+
+The shards stay HDF5 with the same datasets, dtypes and values, so trainers and other readers read them
+unchanged. Writing parts happens on the coordinator as results arrive, so choose a layout whose writing keeps
+pace with your QM wave; keep the default where other tools expect gzip level 6.
+
 .. _running-at-scale-training:
 
 Training With Many Labels

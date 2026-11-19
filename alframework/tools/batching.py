@@ -274,11 +274,11 @@ class BatchedTaskQueue(ParslTaskQueue):
     def get_failed_number(self):
         return int(self._count('failed', lambda task: task.task_status() in FAILED_TASK_STATUSES))
 
-    def get_task_results(self):
+    def get_task_results(self, max_items=None):
         results_list = []
         failed_number = 0
         self.last_failed = []
-        for task, status in self._take_finished():
+        for task, status in self._take_finished(max_items=max_items):
             if status in SUCCESSFUL_TASK_STATUSES:
                 try:
                     results_list.extend(flatten_molecule_output(task.result()))

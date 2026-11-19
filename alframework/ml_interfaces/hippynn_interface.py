@@ -79,8 +79,13 @@ def __getattr__(name):
             return batches, n_atoms_max, (max(counter.values()) if counter else 0)
 
         def extract_full_file(self, file, species_key='species', permit_only=None):
+            import h5py
+            from alframework.tools.pyanitools import validate_label_parts
+
             # Newer HIPPYNN passes permit_only; older releases do not accept it.
             if self.excited_state_properties is None:
+                with h5py.File(file, 'r') as handle:
+                    validate_label_parts(handle)
                 extra = {} if permit_only is None else {'permit_only': permit_only}
                 batches, n_atoms_max, count = (self._extract_in_parallel(file, species_key, permit_only)
                                                if species_key is not None else None) or \
@@ -98,13 +103,13 @@ def __getattr__(name):
             gaps = derive_gap_property_table(self.excited_state_properties)
             # Select datasets before reading: pair indices/NACs and optics may
             # have unrelated axes and can be much larger than training targets.
-            import h5py
             from ase.data import atomic_numbers
             keys = {self.coordinates_key, species_key, TOPOLOGY_ATOM_IDS, '_id', 'pbc'}
             keys.update(row[key] for row in states for key in ('energy_db_name', 'force_db_name'))
             keys.update(row['gap_db_name'] for row in gaps)
             batches, paths = [], []
             with h5py.File(file, 'r') as handle:
+                validate_label_parts(handle)
                 names = []
                 if self.coordinates_key in handle or species_key in handle:
                     names.append('/')

@@ -90,20 +90,25 @@ class ParslTaskQueue:
             tracked = self._sums[kind]
         return tracked + sum(self._weight(task) for task in list(self._untracked.values()) if check(task))
 
-    def _take_finished(self, reverse=False):
-        """Remove the finished tasks from the queue and return ``(task, final state)`` in queue order."""
+    def _take_finished(self, reverse=False, max_items=None):
+        """Remove finished tasks in queue order, allowing one oversized task to make progress."""
         with self._lock:
             finished = dict(self._finished)
         untracked = {key for key, task in self._untracked.items() if is_final_task(task)}
         if not finished and not untracked:
             return []
         taken = []
+        items = 0
         for task in (reversed(self.task_list) if reverse else self.task_list):
             key = id(task)
-            if key in finished:
-                taken.append((task, finished[key]))
-            elif key in untracked:
-                taken.append((task, task.task_status()))
+            if key not in finished and key not in untracked:
+                continue
+            weight = self._weight(task)
+            if max_items is not None and taken and items + weight > max_items:
+                break
+            status = finished[key] if key in finished else task.task_status()
+            taken.append((task, status))
+            items += weight
         gone = {id(task) for task, _ in taken}
         self.task_list = [task for task in self.task_list if id(task) not in gone]
         with self._lock:
@@ -147,7 +152,7 @@ class ParslTaskQueue:
     def get_failed_number(self):
         return int(self._count('failed', lambda task: task.task_status() in FAILED_TASK_STATUSES))
 
-    def get_task_results(self):
+    def get_task_results(self, max_items=None):
         """Get the reults of the tasks
 
         Returns:
@@ -157,7 +162,7 @@ class ParslTaskQueue:
         results_list = []
         failed_number = 0
         self.last_failed = []
-        for task, task_status in self._take_finished(reverse=True):
+        for task, task_status in self._take_finished(reverse=True, max_items=max_items):
             if task_status in SUCCESSFUL_TASK_STATUSES:
                 try:
                     results_list.append(task.result())

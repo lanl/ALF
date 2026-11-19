@@ -101,7 +101,7 @@ def store_pair_index(group, system, properties):
         )
 
 
-def store_current_data(h5path, system_data, properties, attributes=None):
+def store_current_data(h5path, system_data, properties, attributes=None, *, h5_options=None):
     """Stores the key results of the QM calculations in the database.
 
     Args:
@@ -110,6 +110,7 @@ def store_current_data(h5path, system_data, properties, attributes=None):
         properties (dict): Dictionary defined in master.json whose keys are the properties that we want to retrieve
                            from the QM calculations and store in the database.
         attributes (dict): Optional strings to record as attributes on the shard.
+        h5_options (dict): Optional HDF5 file creation settings.
 
     When any converged structure has ``charge`` or ``mult`` metadata, every structure in the shard
     gets ``total_charge`` and ``spin_multiplicity`` datasets, which default to 0 and 1.
@@ -252,7 +253,7 @@ def store_current_data(h5path, system_data, properties, attributes=None):
     partial = h5path + PARTIAL_SUFFIX
     try:
         # Mode 'w' overwrites a .partial left by a crash.
-        dpack = pyt.datapacker(partial, mode='w')
+        dpack = pyt.datapacker(partial, mode='w', **(h5_options or {}))
         try:
             for key in data_dict:
                 dpack.store_data(key, **data_dict[key])

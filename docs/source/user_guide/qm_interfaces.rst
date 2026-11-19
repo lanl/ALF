@@ -491,9 +491,9 @@ Preferred ASE route
       }
 
    Put the calculator's options in ``input``. Older configurations that list them beside the ALF settings
-   still work, but a configuration can't mix the two. ``ASE_calculator``, ``QM_run_command``, ``batching``
-   and ``initial_magnetic_moments`` are ALF settings, never calculator options, and ALF sets ``atoms``,
-   ``directory``, ``command`` and ``profile`` itself, so ``input`` can't contain them. ``label`` may be a file name, without a directory.
+   still work, but a configuration can't mix the two. ``ASE_calculator``, ``QM_run_command``, ``batching``,
+   ``initial_magnetic_moments`` and ``remove_scratch_on_success`` are ALF settings, never calculator options,
+   and ALF sets ``atoms``, ``directory``, ``command`` and ``profile`` itself, so ``input`` can't contain them. ``label`` may be a file name, without a directory.
    Calculators that run in ALF's process, such as EMT, need no ``QM_run_command``.
 
    ALF checks the configuration when the coordinator starts. For each label it then creates a fresh
@@ -507,6 +507,11 @@ Preferred ASE route
 
    A failed label records what went wrong in ``qm_error`` and ``qm_error_type``, and the step it happened
    at in ``qm_failed_stage``. In a sequential batch the other structures keep their labels.
+
+   Scratch directories are kept by default. With ``"remove_scratch_on_success": true``, ALF deletes a
+   molecule's scratch directory once its label has passed every check; a failed label's directory is always
+   kept for inspection. Turn it on for production runs whose calculators leave large files, such as VASP's
+   ``CHGCAR`` and ``WAVECAR``.
 
    ``initial_magnetic_moments`` gives a starting moment, in Bohr magnetons, for each element:
 
@@ -642,15 +647,19 @@ Every stage runs on the original sampled geometry with a fresh calculator in
 ``<scratch>/<molecule>/<stage name>``. Stage names must be unique and usable
 as directory names. ALF validates the workflow when the coordinator starts.
 
-In ``last`` mode, ``inputs_from_stages`` declares files to copy from earlier
+In ``last`` mode, ``inputs_from_stages`` declares files to pass on from earlier
 successful stages of the same attempt. Give the source and destination as
 single filenames and use each destination once per receiving stage. ALF
-copies nonempty regular files before constructing the receiving calculator.
-Configure the receiving backend to read those files and check its output
-to confirm it did so. A missing or unreadable artifact fails the label at
+places nonempty regular files before constructing the receiving calculator.
+The last stage to read a file gets the file itself, moved without copying,
+so a large ``WAVECAR`` or ``CHGCAR`` isn't duplicated; earlier readers get
+copies. Configure the receiving backend to read those files and check its
+output to confirm it did so. A missing or unreadable file fails the label at
 ``<stage>:input_files``.
 
-Each stage may set its own ``initial_magnetic_moments``.
+Each stage may set its own ``initial_magnetic_moments``. ``remove_scratch_on_success``
+belongs to the workflow, beside ``stages``, and removes the molecule's whole
+directory, with every stage, after a good label.
 
 Every stage must succeed. Stages use the full ``properties_list`` by default.
 In ``last`` mode a preparatory stage may request a subset via ``properties``.

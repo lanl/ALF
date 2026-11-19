@@ -9,7 +9,7 @@ Each single point uses the original sampled geometry and its own scratch directo
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from itertools import combinations
 from pathlib import Path
 import re
@@ -20,9 +20,10 @@ from parsl import python_app
 from alframework.tools.label_validation import validate_geometry, validate_label
 from alframework.tools.molecules import MoleculesObject
 from alframework.tools.task_timeline import timed
-from .generic import ERROR_KEYS, _configuration, fresh_scratch_directory, label_one, molecule_directory
+from .generic import (ERROR_KEYS, _configuration, _remove_scratch, fresh_scratch_directory, label_one,
+                      molecule_directory, remove_scratch_directory)
 
-WORKFLOW_FIELDS = {'stages', 'result_mode', 'agreement', 'batching'}
+WORKFLOW_FIELDS = {'stages', 'result_mode', 'agreement', 'batching', 'remove_scratch_on_success'}
 STAGE_CONTROLS = {'name', 'properties', 'inputs_from_stages'}
 STAGE_FIELDS = STAGE_CONTROLS | {'ASE_calculator', 'QM_run_command', 'input', 'initial_magnetic_moments'}
 RESULT_MODES = ('last', 'mean_if_agree')
@@ -38,6 +39,8 @@ class _Stage:
     settings: dict
     properties: dict | None
     inputs: list
+    # Parallel to ``inputs``: whether this is the file's last use, so it can be moved rather than copied.
+    moves: list = field(default_factory=list)
 
 
 def _stage_properties(stage, properties, mode, final):
@@ -144,7 +147,20 @@ def _settings(config, properties=None):
         _check_repeats(prepared, identities, properties, tolerances)
     elif tolerances is not None:
         raise ValueError('agreement is only valid with mean_if_agree.')
+    _remove_scratch(config)
+    _mark_last_uses(prepared)
     return prepared, mode, tolerances
+
+
+def _mark_last_uses(stages):
+    """Mark each declared input that is the last to read its source file, so ALF can move that file."""
+    last = {}
+    for stage_index, spec in enumerate(stages):
+        for entry_index, entry in enumerate(spec.inputs):
+            last[(entry['stage'], entry['source'])] = (stage_index, entry_index)
+    for stage_index, spec in enumerate(stages):
+        spec.moves = [last[(entry['stage'], entry['source'])] == (stage_index, entry_index)
+                      for entry_index, entry in enumerate(spec.inputs)]
 
 
 def validate_ase_workflow_config(QM_config, master_config=None):
@@ -195,8 +211,8 @@ def label_workflow(molecule_object, QM_config, QM_scratch_dir, properties_list):
         for spec in stages:
             phase = spec.name
             stage_directory = str(Path(directory) / spec.name)
-            input_files = [(Path(directory) / entry['stage'] / entry['source'], entry['destination'])
-                           for entry in spec.inputs]
+            input_files = [(Path(directory) / entry['stage'] / entry['source'], entry['destination'], move)
+                           for entry, move in zip(spec.inputs, spec.moves)]
             # Every stage starts from the original geometry and metadata.
             stage = MoleculesObject(molecule_object.get_atoms().copy(), molecule_object.get_moleculeid())
             stage.metadata = deepcopy(molecule_object.metadata)
@@ -236,6 +252,8 @@ def label_workflow(molecule_object, QM_config, QM_scratch_dir, properties_list):
     molecule_object.set_converged_flag(True)
     for key in ERROR_KEYS:
         molecule_object.metadata.pop(key, None)
+    if _remove_scratch(QM_config):
+        remove_scratch_directory(directory)
     return molecule_object
 
 

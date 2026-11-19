@@ -27,7 +27,7 @@ to choose another location.
 
 ## ORCA orbital warm start
 
-The `guess` stage converges a smaller-basis calculation. ALF copies its
+The `guess` stage converges a smaller-basis calculation. ALF moves its
 `orca.gbw` to `guess.gbw` in the `target` directory. The target reads the
 guess with `MORead` and `%moinp`, then computes the larger-basis energy and
 gradient on the sampled geometry. Check `target/orca.out` for the SCF startup
@@ -41,13 +41,13 @@ target-only calculation before adopting the warm start. [ORCA initial guess and 
 ## VASP spin-polarized label
 
 The `charge_density` stage runs with `ISPIN=1` and writes `CHGCAR`. The
-`magnetic` stage reads the copied charge density with `ICHARG=1` and
+`magnetic` stage reads that charge density with `ICHARG=1` and
 initializes its wavefunctions with `ISTART=0`. Its `initial_magnetic_moments`
 setting gives every Fe atom 2.2 μB, so ASE writes a `MAGMOM` that fits a cell
-of any size; VASP uses it because the copied `CHGCAR` has no magnetization.
+of any size; VASP uses it because the `CHGCAR` has no magnetization.
 Check `magnetic/vasp.out` for a report that VASP read `CHGCAR`, and check the
 electronic convergence and final magnetization in `magnetic/OUTCAR`.
-For a compatible wavefunction restart, the same handoff can copy `WAVECAR`
+For a compatible wavefunction restart, the same handoff can pass on `WAVECAR`
 with `LWAVE` enabled at the source and `ISTART=1` at the target. Confirm
 that VASP read the supplied file. [VASP magnetic initialization](https://vasp.at/wiki/MAGMOM), [VASP restart output](https://vasp.at/wiki/Restart_and_output_files_cheat_sheet)
 
@@ -59,6 +59,11 @@ and match resources to the QM executor. Keep ASE energy and force multipliers
 at 1.0 for eV and eV/Angstrom. Run
 `python -m alframework --master master_config.json --test_qm` on your
 installation before starting an active-learning run.
+
+Stage files stay in the QM scratch directory after a label. For production,
+add `"remove_scratch_on_success": true` beside `stages` to delete each
+molecule's directory once its label passes ALF's checks; a failed label's
+directory is kept for inspection.
 
 The ORCA integration test runs ASE's input writer and output parser against
 a stand-in executable. The VASP test uses ASE's Vasp calculator settings

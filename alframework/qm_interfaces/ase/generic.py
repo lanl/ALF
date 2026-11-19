@@ -22,7 +22,8 @@ from alframework.tools.task_timeline import timed
 from alframework.tools.config import load_module_from_config
 
 # QM_config keys that are ALF settings, never calculator options.
-ALF_SETTINGS = {'ASE_calculator', 'QM_run_command', 'batching', 'input', 'initial_magnetic_moments'}
+ALF_SETTINGS = {'ASE_calculator', 'QM_run_command', 'batching', 'input', 'initial_magnetic_moments',
+                'remove_scratch_on_success'}
 # Calculator options ALF sets itself for every label.
 RESERVED_OPTIONS = ALF_SETTINGS | {'atoms', 'directory', 'command', 'profile'}
 PROPERTY_SCOPES = ('system', 'atomic', 'pair_atomic')
@@ -113,6 +114,14 @@ def _magnetic_moments(config):
     return {symbol: float(moment) for symbol, moment in moments.items()}
 
 
+def _remove_scratch(config):
+    """``remove_scratch_on_success``: delete a molecule's scratch directory once its label is good."""
+    remove = config.get('remove_scratch_on_success', False)
+    if not isinstance(remove, bool):
+        raise ValueError('remove_scratch_on_success must be true or false.')
+    return remove
+
+
 def _check_properties(properties, calculator_class):
     """Each property needs ``[dataset, scope, multiplier]``, and the calculator must say it computes it."""
     if not isinstance(properties, dict) or not properties:
@@ -141,6 +150,7 @@ def _configuration(QM_config, properties=None):
     options = _calculator_options(config)
     command = _run_command(config)
     moments = _magnetic_moments(config)
+    _remove_scratch(config)
     if moments is not None and 'magmom' in options:
         raise ValueError('Give initial magnetic moments per element in initial_magnetic_moments, '
                          'or per atom in input magmom, not both.')
@@ -220,6 +230,28 @@ def _working_atoms(molecule_object, moments=None):
     return atoms
 
 
+def _place_input_files(input_files, directory):
+    """Put earlier stages' files in this stage's directory: moved on their last use, copied before that."""
+    for source, destination, move in input_files:
+        info = source.lstat()
+        if source.parent.is_symlink() or not stat.S_ISREG(info.st_mode) or not info.st_size:
+            raise ValueError(f'Expected a nonempty regular stage input file at {source}.')
+        target = Path(directory) / destination
+        if move:
+            # Stages share the molecule's directory, so this is a rename on one file system, not a copy.
+            os.replace(source, target)
+        else:
+            shutil.copyfile(source, target)
+
+
+def remove_scratch_directory(directory):
+    """Delete a finished label's scratch directory; a failure to delete leaves the label as it is."""
+    try:
+        shutil.rmtree(directory)
+    except OSError as error:
+        print(f'Warning: could not remove scratch directory {directory}: {error}', flush=True)
+
+
 def _check_converged(calc):
     """A calculator that reports convergence must report exactly True."""
     if hasattr(calc, 'converged'):
@@ -256,7 +288,7 @@ def label_one(molecule_object, QM_config, QM_scratch_dir, properties_list, *, di
     A failure at any stage leaves the molecule unconverged, with the error and the stage it happened at in
     ``qm_error``, ``qm_error_type`` and ``qm_failed_stage``.
 
-    Workflows can supply ``input_files`` as pairs of source paths and destination filenames.
+    The workflow task supplies ``input_files`` as ``(source path, destination filename, move)``.
     """
     if not isinstance(molecule_object, MoleculesObject):
         raise TypeError('molecule_object must be a MoleculesObject.')
@@ -271,11 +303,7 @@ def label_one(molecule_object, QM_config, QM_scratch_dir, properties_list, *, di
         stage = 'scratch'
         fresh_scratch_directory(directory)
         stage = 'input_files'
-        for source, destination in input_files:
-            info = source.lstat()
-            if source.parent.is_symlink() or not stat.S_ISREG(info.st_mode) or not info.st_size:
-                raise ValueError(f'Expected a nonempty regular stage input file at {source}.')
-            shutil.copyfile(source, Path(directory) / destination)
+        _place_input_files(input_files, directory)
         stage = 'construction'
         calc = _calculator(calc_class, atoms, directory, options, command)
         missing = set(properties_list) - set(calc.implemented_properties)
@@ -302,6 +330,8 @@ def label_one(molecule_object, QM_config, QM_scratch_dir, properties_list, *, di
     molecule_object.set_converged_flag(True)
     for key in ERROR_KEYS:
         molecule_object.metadata.pop(key, None)
+    if _remove_scratch(QM_config):
+        remove_scratch_directory(directory)
     return molecule_object
 
 

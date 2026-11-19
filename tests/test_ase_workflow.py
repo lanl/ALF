@@ -116,7 +116,7 @@ def dependent_calculators(monkeypatch):
     return writers, received
 
 
-def test_a_stage_reads_an_isolated_copy_before_calculator_construction(tmp_path, dependent_calculators):
+def test_a_stage_reads_its_input_before_calculator_construction(tmp_path, dependent_calculators):
     writers, received = dependent_calculators
     writers.append(lambda path: path.write_bytes(b'prep orbitals'))
     config = dependent_settings()
@@ -126,7 +126,6 @@ def test_a_stage_reads_an_isolated_copy_before_calculator_construction(tmp_path,
     result = label_workflow(molecule, config, str(tmp_path), PROPERTIES)
     assert result.check_convergence(), result.metadata
     assert received == [b'prep orbitals']
-    assert (tmp_path / 'h2/stage_0/orbitals.bin').read_bytes() == b'prep orbitals'
     assert (tmp_path / 'h2/stage_1/guess.bin').read_bytes() == b'target-updated orbitals'
     assert result.get_results()['energy'] == 2.0
     np.testing.assert_array_equal(result.get_results()['forces'], np.ones((2, 3)))
@@ -158,8 +157,41 @@ def test_a_retry_does_not_read_an_artifact_from_the_previous_attempt(tmp_path, d
     second = label_workflow(unlabeled_h2(), config, str(tmp_path), PROPERTIES)
     assert not second.check_convergence()
     assert second.get_metadata()['qm_failed_stage'] == 'stage_1:input_files'
-    assert (tmp_path / 'h2.previous-0/stage_0/orbitals.bin').read_bytes() == b'first attempt'
+    assert (tmp_path / 'h2.previous-0/stage_1/guess.bin').read_bytes() == b'target-updated orbitals'
     assert received == [b'first attempt']
+
+
+def test_a_file_s_last_reader_moves_it_and_earlier_readers_copy_it(tmp_path, dependent_calculators):
+    writers, received = dependent_calculators
+    writers.append(lambda path: path.write_bytes(b'prep orbitals'))
+    config = dependent_settings()
+    config['stages'].append(dict(deepcopy(config['stages'][1]), name='stage_2'))
+    assert label_workflow(unlabeled_h2(), config, str(tmp_path), PROPERTIES).check_convergence()
+    assert received == [b'prep orbitals', b'prep orbitals']
+    assert not (tmp_path / 'h2/stage_0/orbitals.bin').exists()
+
+
+def test_a_workflow_removes_its_scratch_after_a_good_label_when_asked(tmp_path, dependent_calculators):
+    writers, _ = dependent_calculators
+    writers.append(lambda path: path.write_bytes(b'prep orbitals'))
+    config = dict(dependent_settings(), remove_scratch_on_success=True)
+    assert label_workflow(unlabeled_h2(), config, str(tmp_path), PROPERTIES).check_convergence()
+    assert not (tmp_path / 'h2').exists()
+
+
+def test_a_failed_workflow_keeps_its_scratch(tmp_path, dependent_calculators):
+    writers, _ = dependent_calculators
+    writers.append(lambda path: None)
+    config = dict(dependent_settings(), remove_scratch_on_success=True)
+    assert not label_workflow(unlabeled_h2(), config, str(tmp_path), PROPERTIES).check_convergence()
+    assert (tmp_path / 'h2/stage_0').is_dir()
+
+
+def test_scratch_removal_is_a_workflow_setting_not_a_stage_setting(dependent_calculators):
+    config = dependent_settings()
+    config['stages'][0]['remove_scratch_on_success'] = True
+    with pytest.raises(ValueError, match='Unknown ASE stage fields'):
+        validate_ase_workflow_config(config, {'properties_list': PROPERTIES})
 
 
 def test_each_stage_can_set_its_own_initial_magnetic_moments(dependent_calculators):

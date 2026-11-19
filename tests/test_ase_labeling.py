@@ -288,3 +288,30 @@ def test_orca_and_qchem_refuse_initial_magnetic_moments():
                   'initial_magnetic_moments': {'O': 1.0}}
         with pytest.raises(ValueError, match='multiplicity'):
             interface.validate_ase_config(config)
+
+
+def test_scratch_is_removed_after_a_good_label_when_asked(tmp_path):
+    config = dict(EMT_CONFIG, remove_scratch_on_success=True)
+    molecule = label_with_ase(unlabeled_h2(), config, str(tmp_path), PROPERTIES)
+    assert molecule.check_convergence(), molecule.metadata
+    assert not (tmp_path / 'h2').exists()
+
+
+def test_scratch_is_kept_after_a_failed_label(tmp_path, monkeypatch):
+    class Unconverged(EMT):
+        converged = False
+    monkeypatch.setattr(interface, 'load_module_from_config', lambda *_: Unconverged)
+    config = dict(EMT_CONFIG, remove_scratch_on_success=True)
+    assert not label_with_ase(unlabeled_h2(), config, str(tmp_path), PROPERTIES).check_convergence()
+    assert (tmp_path / 'h2').is_dir()
+
+
+def test_scratch_is_kept_by_default(tmp_path):
+    assert label_with_ase(unlabeled_h2(), EMT_CONFIG, str(tmp_path), PROPERTIES).check_convergence()
+    assert (tmp_path / 'h2').is_dir()
+
+
+@pytest.mark.parametrize('value', [1, 'yes', None])
+def test_remove_scratch_on_success_must_be_true_or_false(value):
+    with pytest.raises(ValueError, match='remove_scratch_on_success'):
+        interface.validate_ase_config(dict(EMT_CONFIG, remove_scratch_on_success=value))

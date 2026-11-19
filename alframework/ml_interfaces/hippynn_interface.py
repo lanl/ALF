@@ -2650,6 +2650,8 @@ def train_excited_state_HIPPYNN_ensemble_task(
 
 def _train_ground_state_member(arg_dict, attempt):
     """Run in a fresh child process: choose this worker's GPU, then train one member."""
+    from alframework.tools.memory import disable_transparent_huge_pages_if_requested
+    disable_transparent_huge_pages_if_requested()
     arg_dict = dict(arg_dict)
     device = ensemble_training.member_device(arg_dict.get('device_string', 'from_multiprocessing'),
                                              arg_dict.get('from_multiprocessing_nGPU'),
@@ -2663,6 +2665,8 @@ def _train_ground_state_member(arg_dict, attempt):
 
 def _train_excited_state_member(arg_dict, attempt):
     """Run in a fresh child process: choose this worker's GPU, train one member, then reload it."""
+    from alframework.tools.memory import disable_transparent_huge_pages_if_requested
+    disable_transparent_huge_pages_if_requested()
     config = dict(arg_dict['ML_config'])
     device = ensemble_training.member_device(config.get('device_string', 'from_multiprocessing'),
                                              arg_dict.get('from_multiprocessing_nGPU'),

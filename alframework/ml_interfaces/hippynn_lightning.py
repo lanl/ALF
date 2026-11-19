@@ -620,6 +620,9 @@ def _node_main(argv=None):
     # this node's device processes stop too instead of waiting on the others.
     import signal
     signal.signal(signal.SIGTERM, lambda signum, frame: sys.exit(128 + signum))
+    # Launched by srun, not by the member's process, so apply its huge-page setting here too.
+    from alframework.tools.memory import disable_transparent_huge_pages_if_requested
+    disable_transparent_huge_pages_if_requested()
     node = node_rank()
     if not 0 <= node < args.nodes:
         raise RuntimeError(f'node number {node} is outside 0..{args.nodes - 1}: the launcher must start exactly one '

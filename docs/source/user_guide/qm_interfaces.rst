@@ -702,13 +702,15 @@ stage may request a subset via ``properties``. The final stage supplies the full
    tell whether the electronic state is the right one. The ionic-liquid example uses it.
 
 A failed stage stops the workflow and leaves the molecule unconverged. ``qm_failed_stage`` names the stage and
-step, such as ``target:calculation``. ``qm_workflow`` records each stage's name, calculator, directory,
-convergence, electronic state and declared inputs. For ``mean_if_agree`` it also records the largest
-deviations. A retried structure's directory, with all its stages, moves to ``.previous-N``. Sequential QM
-batching applies to whole workflows.
+step, such as ``target:calculation``, and ``qm_workflow`` records each stage that ran: its name, calculator,
+directory, convergence, declared inputs, and its electronic state or error. A retried structure's directory,
+with all its stages, moves to ``.previous-N``. Sequential QM batching applies to whole workflows.
 
-A good workflow label's ``label_source`` records the mode and each stage's name, calculator, settings,
-properties and declared inputs, and for ``mean_if_agree`` the tolerances.
+A good workflow label carries only what differs from label to label. Its ``label_source`` records the mode and
+each stage's name, calculator, settings, properties and declared inputs, and for ``mean_if_agree`` the
+tolerances; it is the same for every label, so each shard stores it once. For ``mean_if_agree``,
+``qm_agreement_max_deviation`` gives the label's largest energy and force differences between repeats. Stage
+directories follow from the stage names, ``<scratch>/<molecule>/<stage name>``.
 
 Engines Without An ASE Calculator
 ---------------------------------

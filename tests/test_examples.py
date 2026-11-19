@@ -418,7 +418,7 @@ def test_the_staged_vasp_example_labels_iron_cells_of_any_size(tmp_path, monkeyp
     molecule = label_workflow(MoleculesObject(atoms, "fe"), config, str(tmp_path / "scratch"),
                               master["properties_list"])
     assert molecule.check_convergence(), molecule.metadata
-    assert [stage["name"] for stage in molecule.metadata["qm_workflow"]["stages"]] == ["charge_density", "magnetic"]
+    assert [stage["name"] for stage in molecule.metadata["label_source"]["stages"]] == ["charge_density", "magnetic"]
     assert molecule.get_results()["free_energy"] == -1.1
 
 

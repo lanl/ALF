@@ -221,9 +221,10 @@ def _workflow_label_source(stages, mode, tolerances):
 def label_workflow(molecule_object, QM_config, QM_scratch_dir, properties_list):
     """Run the stages in this process and return the molecule, labeled or with the failing stage named.
 
-    ``qm_workflow`` metadata records each stage's name, calculator, directory, convergence, electronic state and
-    declared input files, and for repeats the largest deviations. A failure sets ``qm_failed_stage`` to
-    ``<stage>:<step>``.
+    A good label records the workflow in its ``label_source``, the same for every label, and for repeats its
+    largest deviations in ``qm_agreement_max_deviation``. A failed label instead records ``qm_workflow``: each
+    stage that ran, with its directory, convergence and electronic state or error, so the failure can be
+    inspected; ``qm_failed_stage`` is ``<stage>:<step>``.
     """
     if not isinstance(molecule_object, MoleculesObject):
         raise TypeError('molecule_object must be a MoleculesObject.')
@@ -279,7 +280,11 @@ def label_workflow(molecule_object, QM_config, QM_scratch_dir, properties_list):
         return molecule_object
     molecule_object.store_results(results)
     molecule_object.update_metadata(deepcopy(completed[-1].metadata))
-    molecule_object.metadata['qm_workflow'] = workflow_record
+    # The stages' settings are in the label source, and their directories follow from the stage names, so a
+    # good label carries only what differs from label to label.
+    molecule_object.metadata.pop('qm_workflow', None)
+    if mode == 'mean_if_agree':
+        molecule_object.metadata['qm_agreement_max_deviation'] = workflow_record['max_deviation']
     molecule_object.metadata[LABEL_SOURCE] = _workflow_label_source(stages, mode, tolerances)
     molecule_object.set_converged_flag(True)
     for key in ERROR_KEYS:

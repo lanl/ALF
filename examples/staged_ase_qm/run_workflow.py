@@ -38,8 +38,8 @@ def main():
     scratch = args.scratch_dir or master["QM_scratch_dir"]
     result = label_workflow(molecule, config, scratch, master["properties_list"])
     metadata = result.get_metadata()
-    for stage in metadata["qm_workflow"]["stages"]:
-        print(f"{stage['name']}: {stage['directory']}")
+    for stage in config["stages"]:
+        print(f"{stage['name']}: {Path(scratch) / molecule_id / stage['name']}")
     if not result.check_convergence():
         raise SystemExit(f"Label failed in {metadata['qm_failed_stage']}: {metadata['qm_error']}")
 

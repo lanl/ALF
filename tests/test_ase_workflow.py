@@ -66,7 +66,29 @@ def test_stages_run_in_order_from_the_same_geometry_and_the_last_one_gives_the_l
     assert calls[1][2] == {'method': 'target'}
     assert obj.atoms.info == {} and config == before
     assert obj.metadata['custom_state'] == 'kept'
-    assert [item['converged'] for item in obj.metadata['qm_workflow']['stages']] == [True, True]
+    assert [stage['name'] for stage in obj.metadata['label_source']['stages']] == ['stage_0', 'stage_1']
+
+
+def test_a_good_label_carries_no_per_stage_record_and_a_failed_one_does(tmp_path, controlled):
+    _, responses = controlled
+    good = label_workflow(unlabeled_h2('good'), settings(), str(tmp_path), PROPERTIES)
+    assert good.check_convergence()
+    assert 'qm_workflow' not in good.metadata and 'qm_agreement_max_deviation' not in good.metadata
+    responses.extend([{}, RuntimeError('controlled failure')])
+    failed = label_workflow(unlabeled_h2('failed'), settings(), str(tmp_path), PROPERTIES)
+    assert not failed.check_convergence()
+    stages = failed.metadata['qm_workflow']['stages']
+    assert [(stage['name'], stage['converged']) for stage in stages] == [('stage_0', True), ('stage_1', False)]
+    assert stages[0]['directory'] == str(tmp_path / 'failed' / 'stage_0')
+
+
+def test_retrying_a_failed_label_drops_its_old_per_stage_record(tmp_path, controlled):
+    _, responses = controlled
+    responses.append(RuntimeError('controlled failure'))
+    molecule = label_workflow(unlabeled_h2(), settings(), str(tmp_path), PROPERTIES)
+    assert 'qm_workflow' in molecule.metadata
+    assert label_workflow(molecule, settings(), str(tmp_path), PROPERTIES).check_convergence()
+    assert 'qm_workflow' not in molecule.metadata
 
 
 def test_a_retried_workflow_moves_the_earlier_attempt_aside(tmp_path, controlled):
@@ -130,7 +152,7 @@ def test_a_stage_reads_its_input_before_calculator_construction(tmp_path, depend
     assert result.get_results()['energy'] == 2.0
     np.testing.assert_array_equal(result.get_results()['forces'], np.ones((2, 3)))
     np.testing.assert_array_equal(result.atoms.positions, positions)
-    assert result.metadata['qm_workflow']['stages'][1]['inputs_from_stages'] == config['stages'][1]['inputs_from_stages']
+    assert result.metadata['label_source']['stages'][1]['inputs_from_stages'] == config['stages'][1]['inputs_from_stages']
 
 
 @pytest.mark.parametrize('write_artifact', [
@@ -260,6 +282,7 @@ def test_repeats_are_averaged_only_when_they_agree_within_the_tolerances(tmp_pat
     if accepted:
         np.testing.assert_allclose(obj.get_results()[property], value / 2)
         np.testing.assert_allclose(obj.get_results()['dipole'], np.ones(3))
+        assert obj.metadata['qm_agreement_max_deviation'][property] == pytest.approx(difference)
     else:
         assert obj.metadata['qm_failed_stage'] == 'agreement'
 

@@ -13,7 +13,7 @@ MODES = ('preserve', 'maxwell_boltzmann_if_missing')
 def velocity_initialization_mode(value='preserve'):
     """Validate a policy without importing a model or a dynamics engine."""
     if not isinstance(value, str) or value not in MODES:
-        raise ValueError(f'velocity_initialization must be one of {MODES}, not {value!r}')
+        raise ValueError(f'velocity_initialization must be one of {MODES}, not {value!r}.')
     return value
 
 
@@ -23,8 +23,8 @@ def validate_velocity_initialization(mode, temperature):
     if temperature is None:
         return mode, None
     if mode == 'preserve':
-        raise ValueError('initial_velocity_temperature_K requires maxwell_boltzmann_if_missing')
-    error = 'initial_velocity_temperature_K must be a finite nonnegative number'
+        raise ValueError('initial_velocity_temperature_K needs velocity_initialization maxwell_boltzmann_if_missing.')
+    error = 'initial_velocity_temperature_K must be a finite, nonnegative number of Kelvin.'
     if isinstance(temperature, bool) or not isinstance(temperature, Real):
         raise ValueError(error)
     try:
@@ -37,6 +37,7 @@ def validate_velocity_initialization(mode, temperature):
 
 
 def velocity_initialization_settings(sampler_config):
+    """Check a sampler configuration's velocity settings; return the policy and the optional temperature."""
     return validate_velocity_initialization(sampler_config.get('velocity_initialization', 'preserve'),
                                             sampler_config.get('initial_velocity_temperature_K'))
 
@@ -70,9 +71,9 @@ def initialize_velocities(atoms, temperature_K, mode='preserve', *, molecule_id,
         temperature = float(temperature_K) if override is None else override
         masses = atoms.get_masses()
         if not math.isfinite(temperature) or temperature < 0:
-            raise ValueError('Velocity initialization requires a finite nonnegative temperature_K')
+            raise ValueError('Drawing initial velocities needs a finite, nonnegative temperature.')
         if not np.isfinite(masses).all() or np.any(masses <= 0):
-            raise ValueError('Velocity initialization requires finite positive atomic masses')
+            raise ValueError('Drawing initial velocities needs finite, positive atomic masses.')
         material = (os.urandom(32) if random_seed is None else
                     repr(('alf.initial_velocities.v1', random_seed, str(molecule_id))).encode())
         seed = hashlib.sha256(material).hexdigest()

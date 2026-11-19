@@ -1,9 +1,10 @@
 """Several ASE calculations on one fixed geometry, run in order in one QM worker.
 
-Each single point uses the original sampled geometry and its own scratch directory.
-``result_mode`` picks the label:
+Each stage is a single point on the molecule's original geometry and state, with a fresh calculator in its own
+scratch directory. Nothing passes between stages except files a stage declares in ``inputs_from_stages``, such
+as orbitals or a charge density to start from. ``result_mode`` picks the label:
 
-- ``last``: the final stage's results. A stage can use declared files from earlier stages.
+- ``last``: the final stage's results. Every stage must succeed; earlier stages may compute fewer properties.
 - ``mean_if_agree``: identical stages repeated; their mean, if every pair agrees within ``agreement``.
 """
 from __future__ import annotations
@@ -35,6 +36,7 @@ AGREEMENT_PROPERTIES = ('energy', 'forces')
 
 @dataclass
 class _Stage:
+    """One checked stage: its calculator settings, the properties it computes, and the files it reads."""
     name: str
     settings: dict
     properties: dict | None
@@ -44,6 +46,10 @@ class _Stage:
 
 
 def _stage_properties(stage, properties, mode, final):
+    """The properties a stage computes: all of them, or the subset a preparatory stage names.
+
+    Only stages before the last in ``last`` mode may compute fewer, since only the last stage gives the label.
+    """
     if 'properties' not in stage:
         return properties
     if mode != 'last' or final:
@@ -62,11 +68,13 @@ def _stage_properties(stage, properties, mode, final):
 
 
 def _file_name(value):
+    """Whether ``value`` is a bare file name, so a handoff can't read or write outside its stage directory."""
     return (isinstance(value, str) and value not in ('', '.', '..')
             and not any(character in value for character in ('/', '\\', '\0')))
 
 
 def _stage_inputs(stage, names, mode):
+    """Check a stage's ``inputs_from_stages``: each names an earlier stage, a file there, and a new name here."""
     if 'inputs_from_stages' not in stage:
         return []
     if mode != 'last':
@@ -191,8 +199,9 @@ def _agreed_mean(completed, properties_list, tolerances, provenance):
 def label_workflow(molecule_object, QM_config, QM_scratch_dir, properties_list):
     """Run the stages in this process and return the molecule, labeled or with the failing stage named.
 
-    ``qm_workflow`` records stage provenance, including any file handoffs.
-    A failure sets ``qm_failed_stage`` to ``<stage>:<step>``.
+    ``qm_workflow`` metadata records each stage's name, calculator, directory, convergence, electronic state and
+    declared input files, and for repeats the largest deviations. A failure sets ``qm_failed_stage`` to
+    ``<stage>:<step>``.
     """
     if not isinstance(molecule_object, MoleculesObject):
         raise TypeError('molecule_object must be a MoleculesObject.')

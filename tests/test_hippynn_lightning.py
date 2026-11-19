@@ -270,3 +270,41 @@ def test_member_nodes_need_several_gpus_per_member(tmp_path):
     with pytest.raises(ValueError, match="member_nodes is 2, but gpus_per_member is 1"):
         ml.train_HIPNN_model(str(tmp_path), str(tmp_path), energy_key="energy", coordinates_key="coordinates",
                              species_key="species", device_string="cpu", member_nodes=2)
+
+
+def test_shared_split_arrays_come_back_unchanged(tmp_path, monkeypatch):
+    """The ranks map exactly the arrays the parent wrote: same values, dtypes and shapes, for every split."""
+    pytest.importorskip("pytorch_lightning")
+    import torch
+    from alframework.ml_interfaces import hippynn_lightning as hl
+
+    monkeypatch.chdir(tmp_path)
+    splits = {"train": {"coordinates": torch.randn(5, 3, 3), "species": torch.tensor([[1, 8, 1]] * 5),
+                        "mask": torch.tensor([True, False, True, True, False])},
+              "valid": {"coordinates": torch.randn(2, 3, 3), "species": torch.tensor([[1, 8, 1]] * 2),
+                        "mask": torch.tensor([True, True])}}
+    database = SimpleNamespace(splits={name: dict(split) for name, split in splits.items()})
+    returned = hl._share_splits(database)
+    assert database.splits == {} and returned.keys() == splits.keys()
+    reader = SimpleNamespace()
+    hl._attach_splits(reader, tmp_path / hl.SHARED)
+    for name, split in splits.items():
+        for key, tensor in split.items():
+            mapped = reader.splits[name][key]
+            assert mapped.dtype == tensor.dtype and torch.equal(mapped, tensor), (name, key)
+
+
+def test_a_two_node_member_trains_on_shared_node_local_arrays(tmp_path, monkeypatch):
+    """With ALF_LIGHTNING_SHARED_DATA the split arrays go to files that every node copies to its local
+    directory and every rank maps; the member is written as usual and both copies are removed afterwards."""
+    pytest.importorskip("hippynn")
+    pytest.importorskip("pytorch_lightning")
+    local = tmp_path / "node-local"
+    local.mkdir()
+    monkeypatch.setenv("ALF_LIGHTNING_SHARED_DATA", "1")
+    monkeypatch.setenv("ALF_NODE_LOCAL_DIR", str(local))
+    member = _train_on_two_nodes(tmp_path)
+    _check_member(member, devices=4, batch_size=8)
+    assert not (member / "lightning_data").exists()
+    assert list(local.iterdir()) == []
+    ml.HIPNN_ASE_calculator(str(member), energy_key="energy", device="cpu")

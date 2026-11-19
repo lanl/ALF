@@ -27,6 +27,7 @@ import contextlib
 import copy
 import json
 import os
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -203,8 +204,13 @@ def train_data_parallel(training_modules, database, controller, *, n_devices, ac
     sys.stdout.flush()
     # The ranks read the setup from a file. Passing it as process arguments would share its tensors
     # through shared memory, which fails on Linux for empty tensors and can exhaust /dev/shm.
-    torch.save(dict(training_modules=training_modules, database=database, controller=controller,
-                    metric_tracker=metric_tracker, settings=settings), PAYLOAD)
+    splits = _share_splits(database) if os.environ.get('ALF_LIGHTNING_SHARED_DATA', '') not in ('', '0') else None
+    try:
+        torch.save(dict(training_modules=training_modules, database=database, controller=controller,
+                        metric_tracker=metric_tracker, settings=settings), PAYLOAD)
+    finally:
+        if splits is not None:
+            database.splits = splits
     Path(RECORD).unlink(missing_ok=True)  # the ranks' final test waits for this run's record
     try:
         if nodes == 1:
@@ -213,6 +219,7 @@ def train_data_parallel(training_modules, database, controller, *, n_devices, ac
             _launch_nodes(launcher, nodes, local_devices)
     finally:
         Path(PAYLOAD).unlink(missing_ok=True)
+        shutil.rmtree(SHARED, ignore_errors=True)
     if Path(RANK_LOG).exists():
         print(Path(RANK_LOG).read_text(), end='')
         Path(RANK_LOG).unlink()
@@ -244,6 +251,11 @@ RENDEZVOUS = 'lightning_rendezvous.json'
 # Variables that can give a launched node process its node number, first found wins: ALF's own, then those
 # set by srun, MPI launchers and torchrun. The launcher must start exactly one process per node.
 NODE_RANK_VARIABLES = ('ALF_NODE_RANK', 'SLURM_PROCID', 'PMI_RANK', 'OMPI_COMM_WORLD_RANK', 'GROUP_RANK')
+# With ALF_LIGHTNING_SHARED_DATA=1 the parent writes the database's split arrays here, one .npy file each,
+# instead of into the setup file, and every rank maps them read-only: one copy in each node's memory, not
+# one per rank, and the same arrays and sampling as before. With ALF_NODE_LOCAL_DIR set, each node first
+# copies them there.
+SHARED = 'lightning_data'
 # Opt-in per-rank timing and memory records, written to this directory: set ALF_LIGHTNING_STATS=1.
 STATS = 'lightning_stats'
 
@@ -344,6 +356,53 @@ def _local_devices(n_devices, nodes, launcher):
     return n_devices // nodes
 
 
+def _share_splits(database):
+    """Write the database's split arrays to ``SHARED``, leave the database without them, and return them."""
+    import numpy as np
+    shutil.rmtree(SHARED, ignore_errors=True)
+    Path(SHARED).mkdir()
+    layout = {}
+    for name, split in database.splits.items():
+        layout[name] = {}
+        for key, tensor in split.items():
+            layout[name][key] = file = f'{name}.{key}.npy'
+            np.save(Path(SHARED) / file, tensor.detach().cpu().numpy())
+    (Path(SHARED) / 'layout.json').write_text(json.dumps(layout))
+    splits, database.splits = database.splits, {}
+    return splits
+
+
+def _attach_splits(database, directory):
+    """Map the split arrays ``_share_splits`` wrote into ``database``, copy-on-write so they stay shared."""
+    import numpy as np
+    import torch
+    layout = json.loads((Path(directory) / 'layout.json').read_text())
+    database.splits = {name: {key: torch.from_numpy(np.load(Path(directory) / file, mmap_mode='c'))
+                              for key, file in split.items()} for name, split in layout.items()}
+
+
+@contextlib.contextmanager
+def _node_data(payload):
+    """The directory this node's ranks read shared split arrays from, or None if the setup holds them;
+    a node-local copy, removed afterwards, when ALF_NODE_LOCAL_DIR is set."""
+    shared = Path(payload).parent / SHARED
+    local_root = os.environ.get('ALF_NODE_LOCAL_DIR')
+    if not shared.exists():
+        yield None
+    elif not local_root:
+        yield str(shared)
+    else:
+        local = Path(local_root) / f'alf-lightning-data-{os.getpid()}'
+        try:
+            started = time.perf_counter()
+            shutil.copytree(shared, local)
+            print(f'Copied the training arrays to {local} in {time.perf_counter() - started:.1f} s')
+            sys.stdout.flush()
+            yield str(local)
+        finally:
+            shutil.rmtree(local, ignore_errors=True)
+
+
 def _free_port(host='127.0.0.1'):
     import socket
     with socket.socket() as probe:
@@ -412,8 +471,13 @@ def _run_ranks(local_devices, node=0, nodes=1, address='127.0.0.1', port=None):
     import multiprocessing
     context = multiprocessing.get_context('spawn')
     port = _free_port() if port is None else port
+    with _node_data(os.path.abspath(PAYLOAD)) as data:
+        _start_and_wait(context, local_devices, node, nodes, address, port, data)
+
+
+def _start_and_wait(context, local_devices, node, nodes, address, port, data):
     ranks = [context.Process(target=_rank_main,
-                             args=(os.path.abspath(PAYLOAD), local, local_devices, node, nodes, address, port),
+                             args=(os.path.abspath(PAYLOAD), local, local_devices, node, nodes, address, port, data),
                              name=f'alf-lightning-rank-{node * local_devices + local}')
              for local in range(local_devices)]
     for process in ranks:
@@ -435,6 +499,16 @@ def _run_ranks(local_devices, node=0, nodes=1, address='127.0.0.1', port=None):
         codes = ', '.join(f'rank {rank} exit code {code}' for rank, code in failed.items())
         raise RuntimeError(f'Lightning training failed ({codes}); the failing rank printed its error to the '
                            'worker output above.')
+
+
+def _pss_gib():
+    """This process's proportional set size (shared pages split among the processes sharing them), if Linux
+    reports it."""
+    with contextlib.suppress(OSError, ValueError):
+        for line in Path('/proc/self/smaps_rollup').read_text().splitlines():
+            if line.startswith('Pss:'):
+                return int(line.split()[1]) / 2**20
+    return None
 
 
 class _RankStats:
@@ -470,6 +544,7 @@ class _RankStats:
         self.record.update(host=socket.gethostname(), step_count=len(steps), step_total=sum(steps),
                            step_median=pick(0.5), step_p90=pick(0.9), step_max=steps[-1] if steps else None,
                            peak_rss_gib=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 2**20,
+                           final_pss_gib=_pss_gib(),
                            gpu_peak_gib=(torch.cuda.max_memory_allocated(device) / 2**30
                                          if device.type == 'cuda' else None))
         folder = Path(directory) / STATS
@@ -477,7 +552,7 @@ class _RankStats:
         (folder / f'rank-{self.record["rank"]:04d}.json').write_text(json.dumps(self.record, indent=1) + '\n')
 
 
-def _rank_main(payload, local_rank, local_devices, node, nodes, address, port):
+def _rank_main(payload, local_rank, local_devices, node, nodes, address, port, data=None):
     """One device's training process. The rank variables make Lightning treat it as launched externally."""
     world, rank = local_devices * nodes, node * local_devices + local_rank
     os.environ.update(MASTER_ADDR=address, MASTER_PORT=str(port), WORLD_SIZE=str(world), RANK=str(rank),
@@ -485,6 +560,8 @@ def _rank_main(payload, local_rank, local_devices, node, nodes, address, port):
     stats = _RankStats(rank, local_rank, node, world)
     import torch
     setup = torch.load(payload, weights_only=False)
+    if data is not None:
+        _attach_splits(setup['database'], data)
     stats.phase('payload_loaded')
     settings = setup['settings']
     module, datamodule = AlfLightningModule.from_train_setup(setup['training_modules'], setup['database'],

@@ -595,6 +595,10 @@ def _rank_main(payload, local_rank, local_devices, node, nodes, address, port, d
     stats.phase('final_share_written')
     device = torch.device('cuda', local_rank) if accelerator == 'gpu' else torch.device('cpu')
     stats.write(settings['directory'], device)
+    # Rank 0 hosts the process group's store: leave together, so no rank still finishing its share loses it.
+    if torch.distributed.is_available() and torch.distributed.is_initialized():
+        torch.distributed.barrier()
+        torch.distributed.destroy_process_group()
 
 
 def _node_main(argv=None):

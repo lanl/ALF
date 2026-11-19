@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from parsl import python_app, bash_app, join_app
 from alframework.tools.task_timeline import timed
+import contextlib
 import sys
 import multiprocessing
 import re
@@ -206,7 +207,7 @@ def __getattr__(name):
 
 
 def training_minimum_distances(arrays, species_key, coordinates_key, cell_key, device, dist_hard_max=6.0,
-                               batch_size=256):
+                               batch_size=256, devices=None):
     """Each structure's minimum interatomic distance, for the low-distance filter before training.
 
     hippynn's ``calculate_min_dists`` builds every pair within ``dist_hard_max``: about 0.35 s per batch of 256
@@ -218,6 +219,9 @@ def training_minimum_distances(arrays, species_key, coordinates_key, cell_key, d
     structures in the batch, but a filter below the search radius keeps it either way.) Non-periodic data and
     environments without a batched search use hippynn's function as before. Returns a CPU tensor in the
     positions' dtype, as hippynn's does.
+
+    ``devices``, a list, shares the periodic batches among several devices, one thread each, such as the
+    GPUs of a member's node. Each structure's value doesn't depend on its batch, so the result is the same.
     """
     import torch
     from ase import Atoms
@@ -235,17 +239,35 @@ def training_minimum_distances(arrays, species_key, coordinates_key, cell_key, d
     species = torch.as_tensor(arrays[species_key])
     positions = torch.as_tensor(arrays[coordinates_key])
     cells = torch.as_tensor(arrays[cell_key])
-    target = torch.device(device) if device is not None else torch.device('cpu')
+    targets = [torch.device(d) for d in devices] if devices else \
+        [torch.device(device) if device is not None else torch.device('cpu')]
     found = torch.empty(len(species), dtype=torch.float64)
-    for start in range(0, len(species), batch_size):
-        real = species[start:start + batch_size] != 0  # padding atoms have species 0
-        system_idx = torch.arange(real.shape[0]).unsqueeze(1).expand_as(real)[real]
-        batch = batched_minimum_distances(positions[start:start + batch_size][real].to(target),
-                                          cells[start:start + batch_size].to(target), system_idx.to(target),
-                                          real.shape[0])
-        if batch is None:
-            return by_hippynn(arrays)
-        found[start:start + batch_size] = batch.cpu()
+    starts = list(range(0, len(species), batch_size))
+    unavailable = []
+
+    def screen(worker):
+        target = targets[worker]
+        context = torch.cuda.device(target) if target.type == 'cuda' else contextlib.nullcontext()
+        with context:
+            for start in starts[worker::len(targets)]:
+                chunk = slice(start, start + batch_size)
+                real = species[chunk].to(target) != 0  # padding atoms have species 0
+                system_idx = torch.arange(real.shape[0], device=target).unsqueeze(1).expand_as(real)[real]
+                batch = batched_minimum_distances(positions[chunk].to(target)[real], cells[chunk].to(target),
+                                                  system_idx, real.shape[0])
+                if batch is None:
+                    unavailable.append(worker)
+                    return
+                found[chunk] = batch.cpu()
+
+    if len(targets) == 1:
+        screen(0)
+    else:
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(targets)) as pool:
+            list(pool.map(screen, range(len(targets))))
+    if unavailable:
+        return by_hippynn(arrays)
     for i in (~torch.isfinite(found)).nonzero().squeeze(1).tolist():
         real = species[i] != 0
         found[i] = minimum_distance(Atoms(numbers=species[i][real].numpy(), positions=positions[i][real].numpy(),
@@ -665,8 +687,12 @@ def train_HIPNN_model(model_dir,
 
             arrays[species_key] = arrays[species_key].to(torch.int64)   # or .long()
 
+            # A member with several GPUs on this node screens on all of them; one with a single GPU uses its own.
+            local_gpus = gpus_per_member // member_nodes if device_cuda != 'cpu' else 1
+            screen_devices = ([f'cuda:{index}' for index in range(min(local_gpus, torch.cuda.device_count()))]
+                              if local_gpus > 1 else None)
             min_dists = training_minimum_distances(database.arr_dict, species_key, coordinates_key, cell_key,
-                                                   device_cuda)
+                                                   device_cuda, devices=screen_devices)
             min_dists_flag = min_dists>network_params["dist_soft_min"]
             for curK in database.arr_dict.keys():
                 database.arr_dict[curK] = database.arr_dict[curK][min_dists_flag]

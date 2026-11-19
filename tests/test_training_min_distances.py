@@ -76,3 +76,11 @@ def test_nonperiodic_data_and_no_batched_search_use_hippynn(monkeypatch):
     monkeypatch.setattr(geometry, "_batched_neighbor_search", lambda: None)
     assert torch.equal(training_minimum_distances(arrays, "Z", "R", "cell", "cpu", batch_size=16),
                        hippynn_reference(arrays))
+
+
+def test_screening_shared_among_devices_gives_the_same_distances():
+    """Batches shared among several devices, as a member's GPUs share them, give exactly the same values."""
+    arrays = periodic_arrays(seed=3, systems=53)
+    one = training_minimum_distances(arrays, "Z", "R", "cell", "cpu", batch_size=8)
+    three = training_minimum_distances(arrays, "Z", "R", "cell", "cpu", batch_size=8, devices=["cpu"] * 3)
+    assert torch.equal(one, three)

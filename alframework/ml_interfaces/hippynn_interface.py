@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from parsl import python_app, bash_app, join_app
 from alframework.tools.task_timeline import timed
+import contextlib
 import sys
 import multiprocessing
 import re
@@ -46,11 +47,44 @@ def __getattr__(name):
                 self.restarter.kwargs.update(excited_state_properties=excited_state_properties,
                                             retained_indices=retained_indices)
 
+        def _extract_in_parallel(self, file, species_key, permit_only):
+            """hippynn's ``extract_full_file`` with each group read by its own process, or None to read the
+            file serially (small files, one group, or ALF_H5_READ_WORKERS=1). The same batches, in the same order."""
+            import collections
+            from hippynn.databases.h5_pyanitools import numpy_map_elements
+            from alframework.tools import h5_parallel
+            paths = h5_parallel.group_paths(file)
+            workers = h5_parallel.workers_for(file, len(paths))
+            if workers < 2:
+                return None
+            print(f'Reading {len(paths)} groups of {file} with {workers} processes', flush=True)
+            n_atoms_max, batches, counter = 0, [], collections.Counter()
+            for group in h5_parallel.read_groups(file, paths, workers):
+                if species_key not in group:
+                    raise ValueError(f"Species key '{species_key}' not found' in file {file}!\n"
+                                     f"\tFound keys: {set(group.keys())}")
+                batch = {}
+                for key, value in group.items():
+                    if key in self._IGNORE_KEYS or (permit_only and key not in permit_only):
+                        continue
+                    value = value if np.isscalar(value) else np.asarray(value)
+                    if key == species_key:
+                        value = np.expand_dims(value, 0)
+                        if (not isinstance(value.dtype, type)) and issubclass(value.dtype.type, np.str_):
+                            value = numpy_map_elements(value)
+                        n_atoms_max = max(n_atoms_max, value.shape[1])
+                    counter[key] += value.shape[0]
+                    batch[key] = value
+                batches.append(batch)
+            return batches, n_atoms_max, (max(counter.values()) if counter else 0)
+
         def extract_full_file(self, file, species_key='species', permit_only=None):
             # Newer HIPPYNN passes permit_only; older releases do not accept it.
             if self.excited_state_properties is None:
                 extra = {} if permit_only is None else {'permit_only': permit_only}
-                batches, n_atoms_max, count = super().extract_full_file(file, species_key=species_key, **extra)
+                batches, n_atoms_max, count = (self._extract_in_parallel(file, species_key, permit_only)
+                                               if species_key is not None else None) or \
+                    super().extract_full_file(file, species_key=species_key, **extra)
                 # Charge and spin describe a structure, not a target, and only some shards have them. Kept,
                 # they would make shards with and without them disagree on their keys.
                 wanted = set(self.inputs or ()) | set(self.targets or ())
@@ -206,7 +240,7 @@ def __getattr__(name):
 
 
 def training_minimum_distances(arrays, species_key, coordinates_key, cell_key, device, dist_hard_max=6.0,
-                               batch_size=256):
+                               batch_size=256, devices=None):
     """Each structure's minimum interatomic distance, for the low-distance filter before training.
 
     hippynn's ``calculate_min_dists`` builds every pair within ``dist_hard_max``: about 0.35 s per batch of 256
@@ -218,6 +252,9 @@ def training_minimum_distances(arrays, species_key, coordinates_key, cell_key, d
     structures in the batch, but a filter below the search radius keeps it either way.) Non-periodic data and
     environments without a batched search use hippynn's function as before. Returns a CPU tensor in the
     positions' dtype, as hippynn's does.
+
+    ``devices``, a list, shares the periodic batches among several devices, one thread each, such as the
+    GPUs of a member's node. Each structure's value doesn't depend on its batch, so the result is the same.
     """
     import torch
     from ase import Atoms
@@ -235,22 +272,54 @@ def training_minimum_distances(arrays, species_key, coordinates_key, cell_key, d
     species = torch.as_tensor(arrays[species_key])
     positions = torch.as_tensor(arrays[coordinates_key])
     cells = torch.as_tensor(arrays[cell_key])
-    target = torch.device(device) if device is not None else torch.device('cpu')
+    targets = [torch.device(d) for d in devices] if devices else \
+        [torch.device(device) if device is not None else torch.device('cpu')]
     found = torch.empty(len(species), dtype=torch.float64)
-    for start in range(0, len(species), batch_size):
-        real = species[start:start + batch_size] != 0  # padding atoms have species 0
-        system_idx = torch.arange(real.shape[0]).unsqueeze(1).expand_as(real)[real]
-        batch = batched_minimum_distances(positions[start:start + batch_size][real].to(target),
-                                          cells[start:start + batch_size].to(target), system_idx.to(target),
-                                          real.shape[0])
-        if batch is None:
-            return by_hippynn(arrays)
-        found[start:start + batch_size] = batch.cpu()
+    starts = list(range(0, len(species), batch_size))
+    unavailable = []
+
+    def screen(worker):
+        target = targets[worker]
+        context = torch.cuda.device(target) if target.type == 'cuda' else contextlib.nullcontext()
+        with context:
+            for start in starts[worker::len(targets)]:
+                chunk = slice(start, start + batch_size)
+                real = species[chunk].to(target) != 0  # padding atoms have species 0
+                system_idx = torch.arange(real.shape[0], device=target).unsqueeze(1).expand_as(real)[real]
+                batch = batched_minimum_distances(positions[chunk].to(target)[real], cells[chunk].to(target),
+                                                  system_idx, real.shape[0])
+                if batch is None:
+                    unavailable.append(worker)
+                    return
+                found[chunk] = batch.cpu()
+
+    if len(targets) == 1:
+        screen(0)
+    else:
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(targets)) as pool:
+            list(pool.map(screen, range(len(targets))))
+    if unavailable:
+        return by_hippynn(arrays)
     for i in (~torch.isfinite(found)).nonzero().squeeze(1).tolist():
         real = species[i] != 0
         found[i] = minimum_distance(Atoms(numbers=species[i][real].numpy(), positions=positions[i][real].numpy(),
                                           cell=cells[i].numpy(), pbc=True))
     return found.to(positions.dtype)
+
+
+class _PreparationTimer:
+    """Prints how long each step of preparing a member's data took, to the member's training log."""
+
+    def __init__(self):
+        import time
+        self.clock = time.perf_counter
+        self.start = self.last = self.clock()
+
+    def __call__(self, step):
+        now = self.clock()
+        print(f'Preparation: {step} took {now - self.last:.1f} s ({now - self.start:.1f} s so far)', flush=True)
+        self.last = now
 
 
 def train_HIPNN_model(model_dir,
@@ -298,7 +367,9 @@ def train_HIPNN_model(model_dir,
                       remove_high_energy_std = None,
                       remove_high_forces_cut = None, 
                       remove_high_forces_std = None,
-                      gpus_per_member = 1
+                      gpus_per_member = 1,
+                      member_nodes = 1,
+                      member_launcher = None
                       ):
     """Train one HIPPYNN model on the HDF5 data in a directory.
 
@@ -350,6 +421,10 @@ def train_HIPNN_model(model_dir,
         from_multiprocessing_nGPU (int): Number of GPUs to distribute over with ``'from_multiprocessing'``.
         gpus_per_member (int): GPUs this model trains on, with PyTorch Lightning data parallelism when
             above 1. The batch sizes are totals across them. Only the multi-node task supports more than 1.
+        member_nodes (int): Nodes those GPUs are on, sharing them evenly. Above 1 needs ``member_launcher``.
+        member_launcher (list): Command, as a list of words, that starts one process on each of the
+            member's nodes, each seeing that node's GPUs, such as ``srun`` with one task per node. Each
+            process gets its node number from the launcher; see ``hippynn_lightning.NODE_RANK_VARIABLES``.
         build_lammps_pickle (bool): Whether to build a pickle file for loading the network into LAMMPS
             MLIAP. Requires the LAMMPS Python interface.
         remove_high_energy_cut (float): Remove structures whose energy is farther than this from the mean.
@@ -361,6 +436,9 @@ def train_HIPNN_model(model_dir,
         remove_high_forces_std (float): Remove structures with a force this many standard deviations or
             more above the mean. If None, this step is skipped.
     """
+    if ensemble_training.validated_gpus_per_member(gpus_per_member) == 1 and member_nodes != 1:
+        raise ValueError(f'member_nodes is {member_nodes!r}, but gpus_per_member is 1: a member on several nodes '
+                         'trains on all of their GPUs, so gpus_per_member counts them.')
     #Import Torch and configure GPU. 
     #This must occur after the subprocess fork!!!
     import torch
@@ -633,18 +711,25 @@ def train_HIPNN_model(model_dir,
         
             database_schema = dict(species_key=species_key, coordinates_key=coordinates_key,
                                    atom_keys=(coordinates_key, force_key, charges_key))
+            prepared = _PreparationTimer()
             database = ALFPyAniDirectoryDB(directory=h5_train_dir,allow_unfound=True,quiet=False,seed=np.random.randint(1e9),inputs=None,targets=None,**database_schema)
+            prepared('reading the HDF5 data')
             
             #Ensure that species array is int64 for indexing
             arrays = database.arr_dict
 
             arrays[species_key] = arrays[species_key].to(torch.int64)   # or .long()
 
+            # A member with several GPUs on this node screens on all of them; one with a single GPU uses its own.
+            local_gpus = gpus_per_member // member_nodes if device_cuda != 'cpu' else 1
+            screen_devices = ([f'cuda:{index}' for index in range(min(local_gpus, torch.cuda.device_count()))]
+                              if local_gpus > 1 else None)
             min_dists = training_minimum_distances(database.arr_dict, species_key, coordinates_key, cell_key,
-                                                   device_cuda)
+                                                   device_cuda, devices=screen_devices)
             min_dists_flag = min_dists>network_params["dist_soft_min"]
             for curK in database.arr_dict.keys():
                 database.arr_dict[curK] = database.arr_dict[curK][min_dists_flag]
+            prepared('screening close atoms')
                 
             n_atoms = (
               arrays[species_key]          # tensor
@@ -682,6 +767,7 @@ def train_HIPNN_model(model_dir,
             database.remove_high_property(energy_key, False, species_key=species_key, cut=remove_high_energy_cut, std_factor=remove_high_energy_std)
 
 
+            prepared('converting and removing outliers')
             print("Array Shapes After Cleaning")
             prettyprint_arrays(database.arr_dict)
                         
@@ -693,6 +779,7 @@ def train_HIPNN_model(model_dir,
                 database.make_random_split("test",test_size)
                 database.split_the_rest("train")
             
+            prepared('splitting')
             #Compute E0 values based on linear regression and remove from system energies
             if henergy.module_kwargs["first_is_interacting"]:
                 from hippynn.networks.hipnn import compute_hipnn_e0
@@ -744,6 +831,7 @@ def train_HIPNN_model(model_dir,
                 training_modules.model.to(database.splits['train'][sys_energy.db_name].device)
                 set_e0_values(henergy, database, peratom=False, energy_name=energy_key, decay_factor=1e-2)
             
+            prepared('E0 values and float32 splits')
             optimizer = torch.optim.Adam(training_modules.model.parameters(), lr=learning_rate)
             
             scheduler = RaiseBatchSizeOnPlateau(
@@ -770,7 +858,8 @@ def train_HIPNN_model(model_dir,
                 from alframework.ml_interfaces.hippynn_lightning import train_data_parallel
                 train_data_parallel(training_modules, database, controller, n_devices=gpus_per_member,
                                     accelerator='cpu' if device_cuda == 'cpu' else 'gpu',
-                                    seed=int(np.random.randint(2**31 - 1)))
+                                    seed=int(np.random.randint(2**31 - 1)), nodes=member_nodes,
+                                    launcher=member_launcher)
             else:
                 setup_and_train(
                     training_modules=training_modules,
@@ -2332,7 +2421,9 @@ def train_single_excited_state_model(
                 from alframework.ml_interfaces.hippynn_lightning import train_data_parallel
                 metric_tracker = train_data_parallel(training_modules, database, controller,
                                                      n_devices=gpus_per_member, seed=seed,
-                                                     accelerator='cpu' if device.type == 'cpu' else 'gpu')
+                                                     accelerator='cpu' if device.type == 'cpu' else 'gpu',
+                                                     nodes=config.get('member_nodes', 1),
+                                                     launcher=config.get('member_launcher'))
             else:
                 setup_params = SetupParams(
                     controller=controller,
@@ -2651,6 +2742,8 @@ def train_excited_state_HIPPYNN_ensemble_task(
 
 def _train_ground_state_member(arg_dict, attempt):
     """Run in a fresh child process: choose this worker's GPU, then train one member."""
+    from alframework.tools.memory import disable_transparent_huge_pages_if_requested
+    disable_transparent_huge_pages_if_requested()
     arg_dict = dict(arg_dict)
     device = ensemble_training.member_device(arg_dict.get('device_string', 'from_multiprocessing'),
                                              arg_dict.get('from_multiprocessing_nGPU'),
@@ -2664,6 +2757,8 @@ def _train_ground_state_member(arg_dict, attempt):
 
 def _train_excited_state_member(arg_dict, attempt):
     """Run in a fresh child process: choose this worker's GPU, train one member, then reload it."""
+    from alframework.tools.memory import disable_transparent_huge_pages_if_requested
+    disable_transparent_huge_pages_if_requested()
     config = dict(arg_dict['ML_config'])
     device = ensemble_training.member_device(config.get('device_string', 'from_multiprocessing'),
                                              arg_dict.get('from_multiprocessing_nGPU'),
@@ -2724,7 +2819,8 @@ def train_HIPPYNN_ensemble_multinode_task(ML_config, h5_dir, model_path, current
         len(params_list), model_path.format(current_training_id), current_training_id, gpus_per_node,
         ML_config.get('device_string', 'from_multiprocessing'), member_retries, _ml_executor(),
         finish=lambda: write_label_sources(model_path.format(current_training_id), h5_dir),
-        gpus_per_member=ML_config.get('gpus_per_member', 1))
+        gpus_per_member=ML_config.get('gpus_per_member', 1),
+        member_nodes=ML_config.get('member_nodes', 1))
 
 
 @join_app
@@ -2753,4 +2849,5 @@ def train_excited_state_HIPPYNN_ensemble_multinode_task(ML_config, h5_dir, model
         len(params_list), ensemble_dir, int(current_training_id), gpus_per_node,
         config.get('device_string', 'from_multiprocessing'), member_retries, _ml_executor(),
         finish=lambda: write_label_sources(ensemble_dir, h5_dir),
-        gpus_per_member=config.get('gpus_per_member', 1))
+        gpus_per_member=config.get('gpus_per_member', 1),
+        member_nodes=config.get('member_nodes', 1))

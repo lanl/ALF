@@ -58,8 +58,25 @@ def member_device(device_string, gpus_per_node, gpus_per_member=1):
     return sampling_device({'device': 'cuda'}, gpus_per_node or None)
 
 
-def check_capacity(n_models, gpus_per_node, device_string, executor, gpus_per_member=1):
-    """Refuse members sharing a GPU, and warn when members will have to wait for a slot."""
+def validated_member_nodes(member_nodes, gpus_per_member=1):
+    """``member_nodes`` after checking it, and that it shares ``gpus_per_member`` evenly."""
+    if isinstance(member_nodes, bool) or not isinstance(member_nodes, int) or member_nodes < 1:
+        raise ValueError(f'member_nodes must be a positive integer, not {member_nodes!r}.')
+    if member_nodes > 1 and (validated_gpus_per_member(gpus_per_member) == 1 or gpus_per_member % member_nodes):
+        raise ValueError(f'gpus_per_member {gpus_per_member} is a total over member_nodes {member_nodes}, so it must '
+                         'be above 1 and divide evenly by it.')
+    return member_nodes
+
+
+def check_capacity(n_models, gpus_per_node, device_string, executor, gpus_per_member=1, member_nodes=1):
+    """Refuse members sharing a GPU, and warn when members will have to wait for a slot.
+
+    A member on ``member_nodes`` nodes uses ``gpus_per_member / member_nodes`` GPUs of each, and its
+    worker starts it on the others with ``member_launcher``, so each such member takes one worker and
+    ``member_nodes`` nodes of the executor's blocks.
+    """
+    validated_member_nodes(member_nodes, gpus_per_member)
+    gpus_per_member //= member_nodes
     workers = getattr(executor, 'workers_per_node', None)
     provider = getattr(executor, 'provider', None)
     if provider is None or workers is None or not math.isfinite(workers):
@@ -81,7 +98,7 @@ def check_capacity(n_models, gpus_per_node, device_string, executor, gpus_per_me
         raise ValueError(f'alf_ML_executor has {workers} workers per node with {gpus_per_member} GPU(s) each, but '
                          f'gpus_per_node is {gpus_per_node}, so members would share a GPU. Lower '
                          'max_workers_per_node, or set available_accelerators if each worker has its own GPUs.')
-    slots = workers * provider.nodes_per_block * provider.max_blocks
+    slots = workers * provider.nodes_per_block * provider.max_blocks // member_nodes
     if slots < n_models:
         print(f'Warning: alf_ML_executor has {slots} slots for {n_models} ensemble members, so some members will '
               'wait for others to finish. Check max_workers_per_node and max_blocks.', flush=True)
@@ -220,7 +237,7 @@ def train_members(submit, n_models, ensemble_dir, training_id, member_retries=1)
 
 
 def train_ensemble_across_nodes(submit, n_models, ensemble_dir, training_id, gpus_per_node, device_string,
-                                member_retries, executor, finish=None, gpus_per_member=1):
+                                member_retries, executor, finish=None, gpus_per_member=1, member_nodes=1):
     """Start the body of a multi-node ML task, returning the future that a ``join_app`` waits on.
 
     The control loop runs on a daemon thread. Python waits for Parsl's internal threads before it runs
@@ -229,7 +246,7 @@ def train_ensemble_across_nodes(submit, n_models, ensemble_dir, training_id, gpu
     # Before the thread starts, so that these errors reach the coordinator as they are.
     validated_retries(member_retries)
     validated_gpus_per_member(gpus_per_member)
-    check_capacity(n_models, gpus_per_node, device_string, executor, gpus_per_member)
+    check_capacity(n_models, gpus_per_node, device_string, executor, gpus_per_member, member_nodes)
     outcome = concurrent.futures.Future()
 
     def control_loop():

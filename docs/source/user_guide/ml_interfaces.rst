@@ -183,6 +183,10 @@ Important HIPPYNN configuration fields include:
    * - ``gpus_per_member``
      - Optional, for the multi-node training tasks. How many GPUs each ensemble member
        trains on. The default is ``1``. See :ref:`ml-multigpu-members`.
+   * - ``member_nodes``, ``member_launcher``
+     - Optional. Train each member on ``member_nodes`` nodes, sharing ``gpus_per_member``
+       evenly. ``member_launcher`` is the command, as a list of words, that starts one
+       process on each of them. See :ref:`ml-multigpu-members`.
    * - ``remove_high_energy_*``, ``remove_high_forces_*``
      - Optional filters for removing high-energy or high-force structures from
        the training set.
@@ -309,7 +313,37 @@ Several GPUs per member
      made during training. The final evaluation and plots still run on the full splits: each GPU
      predicts every n-th evaluation batch, and the metrics are computed over all of them, so they are
      the ones a single GPU would report.
-   - A member uses one node; a member can't span several nodes.
+   - By default a member uses one node. ``member_nodes`` spreads it over several, below.
+
+   To train a member on several nodes, set ``member_nodes`` and ``member_launcher``; ``gpus_per_member``
+   is then the total, and each node uses ``gpus_per_member / member_nodes`` of its GPUs. The member's
+   worker runs ``member_launcher`` followed by ALF's own command. The launcher must start exactly one
+   process on each of the member's nodes, each seeing that node's GPUs, give each its node number
+   (``ALF_NODE_RANK``, or ``SLURM_PROCID``, ``PMI_RANK``, ``OMPI_COMM_WORLD_RANK`` or ``GROUP_RANK``), and
+   stop the others if one fails. With Slurm, for example, on nodes of 8 GPUs and ``member_nodes`` 2:
+
+   .. code-block:: json
+
+      {
+        "gpus_per_member": 16,
+        "member_nodes": 2,
+        "member_launcher": ["srun", "--overlap", "-N", "2", "-n", "2", "--ntasks-per-node=1",
+                            "--gpus-per-task=8", "--kill-on-bad-exit=1", "--nodelist=<the member's nodes>"]
+      }
+
+   Each node process starts that node's ranks, and they find node 0's address in a small file in the
+   member's directory, which must be on storage all its nodes share. The node processes import the same
+   ALF as the worker. Each member still takes one Parsl worker, so choosing each worker's group of nodes,
+   and giving it a launcher that reaches them, belongs to the site's Parsl configuration;
+   ``check_capacity`` counts one worker per ``member_nodes`` nodes when it warns about members that will
+   wait. :ref:`running-at-scale-training` has measured epoch times on 1, 2 and 4 nodes.
+
+   Two environment variables help at this size. ``ALF_LIGHTNING_SHARED_DATA=1`` writes the split arrays
+   once, as ``.npy`` files, instead of into the setup file every rank loads, and each rank maps them, so
+   a node holds one copy instead of one per GPU; with ``ALF_NODE_LOCAL_DIR`` set, each node copies them
+   there first. The ranks train on the same arrays with the same sampling. ``ALF_LIGHTNING_STATS=1``
+   writes each rank's node, step and epoch times and peak memory to ``lightning_stats/`` in the member's
+   directory; steps are synchronized when it is on, so their times include the gradient all-reduce.
 
 More members cost more than training time:
 

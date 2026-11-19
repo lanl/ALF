@@ -135,6 +135,13 @@ A process can opt out for itself and every process it starts, without administra
 started as ``python thp_off.py python -m alframework --master master_config.json``. ``grep THP_enabled
 /proc/<pid>/status`` shows ``0`` for the coordinator and its children once it applies.
 
+Training members allocate the same way: reading the database pads every group into arrays of the full
+dataset, then converts them, and the ranks load their setup. Members are started by Parsl workers, not by
+the coordinator, so they don't inherit its setting. Set ``ALF_THP_DISABLE=1`` in the ML workers'
+environment (``worker_init``): each member's process, and each node process of a member on several nodes,
+then opts out for itself and its ranks. On the shared login node above, reading 2,097,352 structures of
+up to 201 atoms (a 15 GB shard) took 823 s with huge pages and 133 s without.
+
 .. _running-at-scale-batched-builders:
 
 Batched Builders
@@ -179,10 +186,61 @@ had its data loaded, screened and set up for training 70 s after it started, and
 saving took 1.6 minutes; it trained in 6.75 minutes with 2 epochs. Before these changes the screen ran twice, about 6
 minutes each, and the final test ran on one GPU, so the same member took 23.5 minutes.
 
+The training log reports how long each step of this preparation took, in lines starting with
+``Preparation:``: reading the HDF5 data, screening close atoms, conversion and outlier removal, splitting,
+E0 values, and the setup written for the ranks. Reading a large shard decompresses each dataset on one
+thread, so ALF reads the groups of files of 256 MiB or more in parallel processes, one per available core
+up to one per group; the batches are the same, in the same order. ``ALF_H5_READ_WORKERS`` sets the number
+(``1`` reads serially). For the 15 GB shard above, with huge pages off, 8 processes took 93 s and one 133 s,
+and every array was identical. Turning off huge pages (see :ref:`running-at-scale-huge-pages`) mattered
+more.
+
 Data parallelism (see :ref:`ml-multigpu-members`) keeps the time per epoch flat only while a member's GPUs
-grow with the labels. A member's ranks start on one node, so a member uses at most one node's GPUs; beyond
-that, each epoch takes longer in proportion to the labels per GPU (four times the labels per GPU, four times
-the epoch). Size the ML job's walltime for both.
+grow with the labels. On one node, each epoch takes longer in proportion to the labels per GPU (four times
+the labels per GPU, four times the epoch). ``member_nodes`` spreads a member over several nodes. For one
+member with 1,468,385 training structures of up to 201 atoms, on nodes of 8 GPUs:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Nodes
+     - GPUs
+     - Batch, total (per GPU)
+     - Steps per epoch
+     - Epoch
+   * - 1
+     - 8
+     - 512 (64)
+     - 2,868
+     - 721 s
+   * - 2
+     - 16
+     - 1,024 (64)
+     - 1,434
+     - 371 s
+   * - 4
+     - 32
+     - 2,048 (64)
+     - 717
+     - 191 s
+   * - 2
+     - 16
+     - 512 (32)
+     - 2,868
+     - 421 s
+   * - 4
+     - 32
+     - 512 (16)
+     - 2,868
+     - 275 s
+
+Keeping the batch per GPU gave 97% and 94% of a linear speedup; keeping the total batch, 86% and 66%,
+because each GPU processed fewer structures per second at smaller batches (270, 233 and 180 per GPU per
+second). Every rank's median step time agreed within 0.3%, so no rank held the others back, and the
+gradient all-reduce wasn't the limit. A larger total batch means fewer optimizer steps per epoch, so check
+accuracy before changing it. Reading and preparing the data (about 7.5 minutes here, with huge pages on) and the final test and
+plots (about 6 to 11 minutes) don't get faster with more GPUs, and each rank held a full copy of the data
+(about 24 GB) unless ``ALF_LIGHTNING_SHARED_DATA`` is set. Size the ML job's walltime for all of these.
 
 .. _running-at-scale-failed-gpu-tasks:
 

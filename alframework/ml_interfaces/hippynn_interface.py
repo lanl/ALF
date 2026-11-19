@@ -298,7 +298,9 @@ def train_HIPNN_model(model_dir,
                       remove_high_energy_std = None,
                       remove_high_forces_cut = None, 
                       remove_high_forces_std = None,
-                      gpus_per_member = 1
+                      gpus_per_member = 1,
+                      member_nodes = 1,
+                      member_launcher = None
                       ):
     """Train one HIPPYNN model on the HDF5 data in a directory.
 
@@ -350,6 +352,10 @@ def train_HIPNN_model(model_dir,
         from_multiprocessing_nGPU (int): Number of GPUs to distribute over with ``'from_multiprocessing'``.
         gpus_per_member (int): GPUs this model trains on, with PyTorch Lightning data parallelism when
             above 1. The batch sizes are totals across them. Only the multi-node task supports more than 1.
+        member_nodes (int): Nodes those GPUs are on, sharing them evenly. Above 1 needs ``member_launcher``.
+        member_launcher (list): Command, as a list of words, that starts one process on each of the
+            member's nodes, each seeing that node's GPUs, such as ``srun`` with one task per node. Each
+            process gets its node number from the launcher; see ``hippynn_lightning.NODE_RANK_VARIABLES``.
         build_lammps_pickle (bool): Whether to build a pickle file for loading the network into LAMMPS
             MLIAP. Requires the LAMMPS Python interface.
         remove_high_energy_cut (float): Remove structures whose energy is farther than this from the mean.
@@ -361,6 +367,9 @@ def train_HIPNN_model(model_dir,
         remove_high_forces_std (float): Remove structures with a force this many standard deviations or
             more above the mean. If None, this step is skipped.
     """
+    if ensemble_training.validated_gpus_per_member(gpus_per_member) == 1 and member_nodes != 1:
+        raise ValueError(f'member_nodes is {member_nodes!r}, but gpus_per_member is 1: a member on several nodes '
+                         'trains on all of their GPUs, so gpus_per_member counts them.')
     #Import Torch and configure GPU. 
     #This must occur after the subprocess fork!!!
     import torch
@@ -770,7 +779,8 @@ def train_HIPNN_model(model_dir,
                 from alframework.ml_interfaces.hippynn_lightning import train_data_parallel
                 train_data_parallel(training_modules, database, controller, n_devices=gpus_per_member,
                                     accelerator='cpu' if device_cuda == 'cpu' else 'gpu',
-                                    seed=int(np.random.randint(2**31 - 1)))
+                                    seed=int(np.random.randint(2**31 - 1)), nodes=member_nodes,
+                                    launcher=member_launcher)
             else:
                 setup_and_train(
                     training_modules=training_modules,
@@ -2299,7 +2309,9 @@ def train_single_excited_state_model(
                 from alframework.ml_interfaces.hippynn_lightning import train_data_parallel
                 metric_tracker = train_data_parallel(training_modules, database, controller,
                                                      n_devices=gpus_per_member, seed=seed,
-                                                     accelerator='cpu' if device.type == 'cpu' else 'gpu')
+                                                     accelerator='cpu' if device.type == 'cpu' else 'gpu',
+                                                     nodes=config.get('member_nodes', 1),
+                                                     launcher=config.get('member_launcher'))
             else:
                 setup_params = SetupParams(
                     controller=controller,

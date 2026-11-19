@@ -187,3 +187,86 @@ def test_the_split_final_test_reports_what_one_device_would(tmp_path, monkeypatc
     for name in reference:
         for key, value in reference[name].items():
             assert seen["split"][name][key] == pytest.approx(value, rel=1e-5, abs=1e-8), (name, key)
+
+
+NODE_LAUNCHER = str(__import__("pathlib").Path(__file__).parent / "helpers" / "node_launcher.py")
+
+
+def _train_on_two_nodes(tmp_path, launcher_options=()):
+    """A ground-state member on two stand-in nodes of two CPU devices each, started as srun would start them."""
+    import sys
+    _water(tmp_path / "data", frames=32)
+    member = tmp_path / "ensemble" / "model-00"
+    member.mkdir(parents=True)
+    ml.train_HIPNN_model(str(member), str(tmp_path / "data"), energy_key="energy", coordinates_key="coordinates",
+                         species_key="species", force_key="forces", network_params=dict(NETWORK),
+                         valid_size=0.25, test_size=0.25, plot_every=1000,
+                         controller_options=dict(batch_size=8, eval_batch_size=8, max_epochs=2,
+                                                 termination_patience=10),
+                         scheduler_options=dict(max_batch_size=16, patience=5, factor=0.5),
+                         device_string="cpu", gpus_per_member=4, member_nodes=2,
+                         member_launcher=[sys.executable, NODE_LAUNCHER, "2", *launcher_options, "--"])
+    return member
+
+
+def test_a_member_trains_across_two_nodes(tmp_path, monkeypatch):
+    """Two node processes, each starting its own two ranks, train one model as a world of four, and the member
+    is written like any other. With ALF_LIGHTNING_STATS every rank records its node, steps and peak memory."""
+    pytest.importorskip("hippynn")
+    pytest.importorskip("pytorch_lightning")
+    monkeypatch.setenv("ALF_LIGHTNING_STATS", "1")
+    member = _train_on_two_nodes(tmp_path)
+    _check_member(member, devices=4, batch_size=8)
+    record = json.loads((member / "lightning_training.json").read_text())
+    assert record["nodes"] == 2
+    assert "on 2 nodes, 2 each" in (member / "training_log.txt").read_text()
+    assert not (member / "lightning_rendezvous.json").exists()
+    stats = [json.loads(path.read_text()) for path in sorted((member / "lightning_stats").glob("rank-*.json"))]
+    assert [(entry["rank"], entry["node"], entry["local_rank"]) for entry in stats] == \
+        [(0, 0, 0), (1, 0, 1), (2, 1, 0), (3, 1, 1)]
+    for entry in stats:
+        assert entry["world"] == 4 and entry["step_count"] >= 2 and entry["peak_rss_gib"] > 0
+        assert len(entry["epoch_seconds"]) == record["epochs"]
+    ml.HIPNN_ASE_calculator(str(member), energy_key="energy", device="cpu")
+
+
+def test_a_failed_node_fails_the_member(tmp_path):
+    """When one node's process fails, the launcher stops the others, and the member reports the failure
+    rather than waiting for the missing node's ranks."""
+    pytest.importorskip("hippynn")
+    pytest.importorskip("pytorch_lightning")
+    with pytest.raises(RuntimeError, match="on 2 nodes failed"):
+        _train_on_two_nodes(tmp_path, ["--fail-node", "1"])
+    assert not (tmp_path / "ensemble" / "model-00" / "lightning_rendezvous.json").exists()
+
+
+def test_node_rank_comes_from_the_first_variable_set():
+    from alframework.ml_interfaces.hippynn_lightning import node_rank
+
+    assert node_rank({"SLURM_PROCID": "3"}) == 3
+    assert node_rank({"ALF_NODE_RANK": "1", "SLURM_PROCID": "3"}) == 1
+    assert node_rank({"ALF_NODE_RANK": "", "PMI_RANK": "2"}) == 2
+    with pytest.raises(RuntimeError, match="ALF_NODE_RANK"):
+        node_rank({})
+
+
+def test_member_nodes_must_share_the_gpus_and_have_a_launcher():
+    pytest.importorskip("pytorch_lightning")
+    from alframework.ml_interfaces.hippynn_lightning import _local_devices
+
+    assert _local_devices(16, 2, ["srun"]) == 8
+    assert _local_devices(8, 1, None) == 8
+    with pytest.raises(ValueError, match="divide evenly"):
+        _local_devices(12, 8, ["srun"])
+    with pytest.raises(ValueError, match="member_launcher"):
+        _local_devices(16, 2, None)
+    with pytest.raises(ValueError, match="list of words"):
+        _local_devices(16, 2, "srun -N2")
+    with pytest.raises(ValueError, match="member_nodes"):
+        _local_devices(16, 0, ["srun"])
+
+
+def test_member_nodes_need_several_gpus_per_member(tmp_path):
+    with pytest.raises(ValueError, match="member_nodes is 2, but gpus_per_member is 1"):
+        ml.train_HIPNN_model(str(tmp_path), str(tmp_path), energy_key="energy", coordinates_key="coordinates",
+                             species_key="species", device_string="cpu", member_nodes=2)

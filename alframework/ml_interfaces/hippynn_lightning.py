@@ -1,4 +1,4 @@
-"""Train one HIPPYNN model on several devices of one node, with PyTorch Lightning data parallelism.
+"""Train one HIPPYNN model on several devices, on one node or several, with PyTorch Lightning data parallelism.
 
 ``train_data_parallel`` stands in for HIPPYNN's ``setup_and_train``, or ``setup_training`` followed by
 ``train_model``, when an ensemble member uses more than one GPU. It writes the files those write, so
@@ -15,7 +15,10 @@ each device predicts every n-th batch, and the parent computes the metrics over 
 are the ones a single device would report.
 
 ALF starts one process per device itself, with ``spawn``, and sets the rank variables so Lightning
-treats them as launched externally. Lightning's own launchers either rerun ``sys.argv``, which inside a
+treats them as launched externally. A member on several nodes (``nodes`` above 1) runs a launcher
+command, such as ``srun``, that starts one process on each node, ``python -m
+alframework.ml_interfaces.hippynn_lightning``; each starts its node's device processes, and they meet
+through a small file in the member's directory, which must be on storage every node shares. Lightning's own launchers either rerun ``sys.argv``, which inside a
 Parsl worker would start another worker, or pass the model and data to each process through shared
 memory, which fails on Linux for empty tensors. Each process reads the setup from a file instead. Import this
 module only after the member has chosen its devices, since it imports Torch.
@@ -132,13 +135,30 @@ class AlfLightningModule(HippynnLightningModule):
     def on_train_epoch_end(self):
         self.metric_tracker.epoch_times.append(time.perf_counter() - self._epoch_started)
         self.print('Total epoch time:', round(self.metric_tracker.epoch_times[-1], 2), 's')
+        stats = getattr(self, 'rank_stats', None)
+        if stats is not None and stats.enabled:
+            stats.record.setdefault('epoch_seconds', []).append(self.metric_tracker.epoch_times[-1])
+
+    # With ALF_LIGHTNING_STATS=1, time each optimizer step on every rank, synchronizing the device so the
+    # time includes the gradient all-reduce; ranks that wait on a slower one show it here.
+    def on_train_batch_start(self, batch, batch_idx):
+        stats = getattr(self, 'rank_stats', None)
+        if stats is not None:
+            stats.step_start()
+
+    def on_train_batch_end(self, outputs, batch, batch_idx):
+        stats = getattr(self, 'rank_stats', None)
+        if stats is not None and stats.enabled:
+            import torch
+            stats.step_end(torch.cuda.synchronize if self.device.type == 'cuda' else lambda: None)
 
     def on_train_end(self):
         if self.global_rank != 0:
             return
         import torch
         torch.save(self.metric_tracker, 'training_metrics.pt')
-        record = dict(devices=self.n_devices, accelerator=self.parent_settings['accelerator'],
+        record = dict(devices=self.n_devices, nodes=self.parent_settings.get('nodes', 1),
+                      accelerator=self.parent_settings['accelerator'],
                       epochs=int(self.controller.current_epoch),
                       batch_size_per_device=int(self.controller.batch_size),
                       batch_size=int(self.controller.batch_size) * self.n_devices,
@@ -147,10 +167,14 @@ class AlfLightningModule(HippynnLightningModule):
         Path(RECORD).write_text(json.dumps(record, indent=2) + '\n')
 
 
-def train_data_parallel(training_modules, database, controller, *, n_devices, accelerator, seed):
+def train_data_parallel(training_modules, database, controller, *, n_devices, accelerator, seed, nodes=1,
+                        launcher=None):
     """Train ``training_modules`` on ``n_devices`` devices, in the current directory; return the metric tracker.
 
     ``accelerator`` is ``'gpu'`` or ``'cpu'``; CPU runs use the gloo backend and exist for testing.
+    ``n_devices`` is the total over ``nodes`` nodes, which share it evenly. With ``nodes`` above 1,
+    ``launcher`` is the command, as a list of words, that starts one process on each of those nodes,
+    each seeing its node's share of the devices (see ``node_rank``).
     """
     require_lightning()
     import hippynn
@@ -159,9 +183,11 @@ def train_data_parallel(training_modules, database, controller, *, n_devices, ac
     from alframework.ml_interfaces._hippynn_compat import checkpoints
     serialization = checkpoints()
 
-    if accelerator == 'gpu' and torch.cuda.device_count() < n_devices:
-        raise RuntimeError(f'gpus_per_member is {n_devices}, but this worker sees {torch.cuda.device_count()} GPUs. '
-                           'Give each ML worker that many GPUs; see the Parsl guide.')
+    local_devices = _local_devices(n_devices, nodes, launcher)
+    if accelerator == 'gpu' and torch.cuda.device_count() < local_devices:
+        raise RuntimeError(f'gpus_per_member is {n_devices} on {nodes} node(s), {local_devices} per node, but this '
+                           f'worker sees {torch.cuda.device_count()} GPUs. Give each ML worker that many GPUs; '
+                           'see the Parsl guide.')
     serialization.create_structure_file(training_modules, database, controller)
     _split_batches(controller, n_devices)
     training_modules, controller, metric_tracker = setup_training(
@@ -170,8 +196,9 @@ def train_data_parallel(training_modules, database, controller, *, n_devices, ac
         custom_kernels=hippynn.custom_kernels.CUSTOM_KERNELS_ACTIVE or False,
         warn_low_distances=hippynn.settings.WARN_LOW_DISTANCES,
         matmul_tf32=torch.backends.cuda.matmul.allow_tf32, cudnn_tf32=torch.backends.cudnn.allow_tf32,
-        directory=os.getcwd(), accelerator=accelerator, n_devices=n_devices, seed=seed)
-    print(f'Training with PyTorch Lightning on {n_devices} {accelerator} devices: batch size '
+        directory=os.getcwd(), accelerator=accelerator, n_devices=n_devices, nodes=nodes, seed=seed)
+    where = f' on {nodes} nodes, {local_devices} each' if nodes > 1 else ''
+    print(f'Training with PyTorch Lightning on {n_devices} {accelerator} devices{where}: batch size '
           f'{controller.batch_size} per device, {controller.batch_size * n_devices} in total.')
     sys.stdout.flush()
     # The ranks read the setup from a file. Passing it as process arguments would share its tensors
@@ -180,7 +207,10 @@ def train_data_parallel(training_modules, database, controller, *, n_devices, ac
                     metric_tracker=metric_tracker, settings=settings), PAYLOAD)
     Path(RECORD).unlink(missing_ok=True)  # the ranks' final test waits for this run's record
     try:
-        _run_ranks(n_devices)
+        if nodes == 1:
+            _run_ranks(n_devices)
+        else:
+            _launch_nodes(launcher, nodes, local_devices)
     finally:
         Path(PAYLOAD).unlink(missing_ok=True)
     if Path(RANK_LOG).exists():
@@ -209,6 +239,13 @@ def train_data_parallel(training_modules, database, controller, *, n_devices, ac
 
 
 PAYLOAD = 'lightning_setup.pt'
+# Where the nodes of a multi-node member find the first node's address and port.
+RENDEZVOUS = 'lightning_rendezvous.json'
+# Variables that can give a launched node process its node number, first found wins: ALF's own, then those
+# set by srun, MPI launchers and torchrun. The launcher must start exactly one process per node.
+NODE_RANK_VARIABLES = ('ALF_NODE_RANK', 'SLURM_PROCID', 'PMI_RANK', 'OMPI_COMM_WORLD_RANK', 'GROUP_RANK')
+# Opt-in per-rank timing and memory records, written to this directory: set ALF_LIGHTNING_STATS=1.
+STATS = 'lightning_stats'
 
 
 # Each rank's share of the final test, read back and removed by the parent.
@@ -239,7 +276,7 @@ def _final_splits(database, evaluator):
     return basic + [name for name in names if name not in basic]
 
 
-def _evaluate_share(module, database, evaluator, rank, n_devices, accelerator):
+def _evaluate_share(module, database, evaluator, rank, n_devices, accelerator, local_rank=None):
     """This rank's share of the final test: the best model's predictions for every ``n_devices``-th batch of
     hippynn's evaluation batches, numbered so the parent can put them back in order. On the rank's own device,
     the one it trained on (Lightning may have moved the model back to the CPU at the end of training)."""
@@ -250,7 +287,8 @@ def _evaluate_share(module, database, evaluator, rank, n_devices, accelerator):
     else:
         while not Path(RECORD).exists():
             time.sleep(0.5)
-    device = torch.device('cuda', rank) if accelerator == 'gpu' else torch.device('cpu')
+    local_rank = rank if local_rank is None else local_rank
+    device = torch.device('cuda', local_rank) if accelerator == 'gpu' else torch.device('cpu')
     model = module.model.to(device)
     model.load_state_dict(torch.load('best_model.pt', map_location=device, weights_only=True))
     model.eval()
@@ -293,20 +331,91 @@ def _final_test(evaluator, database, n_devices, metric_tracker, when='FinalTrain
     return metrics
 
 
-def _free_port():
+def _local_devices(n_devices, nodes, launcher):
+    """Each node's share of a member's ``n_devices``, after checking ``nodes`` and ``launcher``."""
+    if isinstance(nodes, bool) or not isinstance(nodes, int) or nodes < 1:
+        raise ValueError(f'member_nodes must be a positive integer, not {nodes!r}.')
+    if n_devices % nodes:
+        raise ValueError(f'gpus_per_member {n_devices} is a total over member_nodes {nodes}, so it must divide '
+                         'evenly by it.')
+    if nodes > 1 and (not launcher or isinstance(launcher, str)):
+        raise ValueError('A member on several nodes needs member_launcher: the command, as a list of words, that '
+                         'starts one process on each of its nodes, such as srun with one task per node.')
+    return n_devices // nodes
+
+
+def _free_port(host='127.0.0.1'):
     import socket
     with socket.socket() as probe:
-        probe.bind(('127.0.0.1', 0))
+        probe.bind((host, 0))
         return probe.getsockname()[1]
 
 
-def _run_ranks(n_devices):
-    """Start one process per device and wait for all of them; if one fails, stop the rest."""
+def node_rank(environ=None):
+    """This node's number among a member's nodes, from the first of ``NODE_RANK_VARIABLES`` that is set."""
+    environ = os.environ if environ is None else environ
+    for name in NODE_RANK_VARIABLES:
+        if environ.get(name, '') != '':
+            return int(environ[name])
+    raise RuntimeError('A multi-node member process needs its node number: the launcher must set one of '
+                       + ', '.join(NODE_RANK_VARIABLES) + '.')
+
+
+def _launch_nodes(launcher, nodes, local_devices):
+    """Run ``launcher`` to start one node process on each of the member's nodes; wait for all of them."""
+    import secrets
+    import subprocess
+    rendezvous = os.path.abspath(RENDEZVOUS)
+    Path(rendezvous).unlink(missing_ok=True)
+    command = [str(word) for word in launcher] + [
+        sys.executable, '-m', 'alframework.ml_interfaces.hippynn_lightning', '--payload', os.path.abspath(PAYLOAD),
+        '--nodes', str(nodes), '--local-devices', str(local_devices), '--rendezvous', rendezvous,
+        '--token', secrets.token_hex(8)]
+    # The node processes import the ALF this process runs, wherever the environment's own copy is.
+    environment = dict(os.environ)
+    source = str(Path(__file__).resolve().parents[2])
+    environment['PYTHONPATH'] = os.pathsep.join(filter(None, [source, environment.get('PYTHONPATH')]))
+    print('Starting the member on', nodes, 'nodes:', ' '.join(command))
+    sys.stdout.flush()
+    try:
+        finished = subprocess.run(command, env=environment)
+    finally:
+        Path(rendezvous).unlink(missing_ok=True)
+    if finished.returncode != 0:
+        raise RuntimeError(f'Lightning training on {nodes} nodes failed (launcher exit code {finished.returncode}); '
+                           'the failing rank printed its error to the worker output above.')
+
+
+def _meet(rendezvous, token, rank, timeout=None):
+    """The first node's address and port: node 0 chooses and publishes them, the other nodes wait for them."""
+    import socket
+    timeout = float(os.environ.get('ALF_RENDEZVOUS_TIMEOUT', 900)) if timeout is None else timeout
+    if rank == 0:
+        address = os.environ.get('ALF_MASTER_ADDR') or socket.gethostname()
+        found = dict(token=token, address=address, port=_free_port(''))
+        temporary = f'{rendezvous}.{os.getpid()}'
+        Path(temporary).write_text(json.dumps(found))
+        os.replace(temporary, rendezvous)
+        return found['address'], found['port']
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        with contextlib.suppress(FileNotFoundError, ValueError):
+            found = json.loads(Path(rendezvous).read_text())
+            if found.get('token') == token:
+                return found['address'], int(found['port'])
+        time.sleep(0.5)
+    raise TimeoutError(f'node {rank} waited {timeout:.0f} s for node 0 to write {rendezvous}')
+
+
+def _run_ranks(local_devices, node=0, nodes=1, address='127.0.0.1', port=None):
+    """Start one process per device of this node and wait for all of them; if one fails, stop the rest."""
     import multiprocessing
     context = multiprocessing.get_context('spawn')
-    port = _free_port()
-    ranks = [context.Process(target=_rank_main, args=(os.path.abspath(PAYLOAD), rank, n_devices, port),
-                             name=f'alf-lightning-rank-{rank}') for rank in range(n_devices)]
+    port = _free_port() if port is None else port
+    ranks = [context.Process(target=_rank_main,
+                             args=(os.path.abspath(PAYLOAD), local, local_devices, node, nodes, address, port),
+                             name=f'alf-lightning-rank-{node * local_devices + local}')
+             for local in range(local_devices)]
     for process in ranks:
         process.start()
     try:
@@ -319,7 +428,8 @@ def _run_ranks(n_devices):
             if process.is_alive():
                 process.terminate()
             process.join()
-    failed = {rank: process.exitcode for rank, process in enumerate(ranks) if process.exitcode != 0}
+    failed = {node * local_devices + local: process.exitcode for local, process in enumerate(ranks)
+              if process.exitcode != 0}
     if failed:
         # A negative exit code is the signal that ended the rank (-15: stopped here after another rank failed).
         codes = ', '.join(f'rank {rank} exit code {code}' for rank, code in failed.items())
@@ -327,25 +437,100 @@ def _run_ranks(n_devices):
                            'worker output above.')
 
 
-def _rank_main(payload, rank, n_devices, port):
+class _RankStats:
+    """With ALF_LIGHTNING_STATS=1, one rank's timings and peak memory, written as JSON when it finishes."""
+
+    def __init__(self, rank, local_rank, node, world):
+        self.enabled = os.environ.get('ALF_LIGHTNING_STATS', '') not in ('', '0')
+        self.started = time.perf_counter()
+        self.record = dict(rank=rank, local_rank=local_rank, node=node, world=world, steps=[], seconds={})
+        self._mark = None
+
+    def phase(self, name):
+        if self.enabled:
+            self.record['seconds'][name] = time.perf_counter() - self.started
+
+    def step_start(self):
+        if self.enabled:
+            self._mark = time.perf_counter()
+
+    def step_end(self, synchronize):
+        if self.enabled and self._mark is not None:
+            synchronize()
+            self.record['steps'].append(time.perf_counter() - self._mark)
+
+    def write(self, directory, device):
+        if not self.enabled:
+            return
+        import resource
+        import socket
+        import torch
+        steps = sorted(self.record.pop('steps'))
+        pick = lambda q: steps[min(len(steps) - 1, int(q * len(steps)))] if steps else None
+        self.record.update(host=socket.gethostname(), step_count=len(steps), step_total=sum(steps),
+                           step_median=pick(0.5), step_p90=pick(0.9), step_max=steps[-1] if steps else None,
+                           peak_rss_gib=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 2**20,
+                           gpu_peak_gib=(torch.cuda.max_memory_allocated(device) / 2**30
+                                         if device.type == 'cuda' else None))
+        folder = Path(directory) / STATS
+        folder.mkdir(exist_ok=True)
+        (folder / f'rank-{self.record["rank"]:04d}.json').write_text(json.dumps(self.record, indent=1) + '\n')
+
+
+def _rank_main(payload, local_rank, local_devices, node, nodes, address, port):
     """One device's training process. The rank variables make Lightning treat it as launched externally."""
-    os.environ.update(MASTER_ADDR='127.0.0.1', MASTER_PORT=str(port), WORLD_SIZE=str(n_devices),
-                      RANK=str(rank), LOCAL_RANK=str(rank), NODE_RANK='0')
+    world, rank = local_devices * nodes, node * local_devices + local_rank
+    os.environ.update(MASTER_ADDR=address, MASTER_PORT=str(port), WORLD_SIZE=str(world), RANK=str(rank),
+                      LOCAL_RANK=str(local_rank), NODE_RANK=str(node))
+    stats = _RankStats(rank, local_rank, node, world)
     import torch
     setup = torch.load(payload, weights_only=False)
+    stats.phase('payload_loaded')
     settings = setup['settings']
     module, datamodule = AlfLightningModule.from_train_setup(setup['training_modules'], setup['database'],
                                                              setup['controller'], setup['metric_tracker'])
-    module.n_devices, module.parent_settings = n_devices, settings
+    module.n_devices, module.parent_settings, module.rank_stats = world, settings, stats
     pl.seed_everything(settings['seed'], workers=True, verbose=False)
     accelerator = settings['accelerator']
     # Name the environment: inside a Slurm step (Parsl's SrunLauncher), Lightning would otherwise pick its
     # Slurm environment, read every rank as SLURM_PROCID 0, and have all of them bind MASTER_PORT.
     from pytorch_lightning.plugins.environments import LightningEnvironment
-    trainer = pl.Trainer(accelerator=accelerator, devices=n_devices, plugins=[LightningEnvironment()],
+    trainer = pl.Trainer(accelerator=accelerator, devices=local_devices, num_nodes=nodes,
+                         plugins=[LightningEnvironment()],
                          strategy=DDPStrategy(process_group_backend='nccl' if accelerator == 'gpu' else 'gloo'),
                          max_epochs=setup['controller'].max_epochs, use_distributed_sampler=True,
                          num_sanity_val_steps=0, logger=False, enable_checkpointing=False,
                          enable_progress_bar=False, enable_model_summary=False, default_root_dir=settings['directory'])
     trainer.fit(module, datamodule=datamodule)
-    _evaluate_share(module, setup['database'], setup['training_modules'].evaluator, rank, n_devices, accelerator)
+    stats.phase('trained')
+    _evaluate_share(module, setup['database'], setup['training_modules'].evaluator, rank, world, accelerator,
+                    local_rank)
+    stats.phase('final_share_written')
+    device = torch.device('cuda', local_rank) if accelerator == 'gpu' else torch.device('cpu')
+    stats.write(settings['directory'], device)
+
+
+def _node_main(argv=None):
+    """One node's process of a multi-node member: meet the other nodes, then train on this node's devices."""
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument('--payload', required=True)
+    parser.add_argument('--nodes', type=int, required=True)
+    parser.add_argument('--local-devices', type=int, required=True)
+    parser.add_argument('--rendezvous', required=True)
+    parser.add_argument('--token', required=True)
+    args = parser.parse_args(argv)
+    # A launcher stopping this node after another failed sends SIGTERM: exit through _run_ranks's cleanup, so
+    # this node's device processes stop too instead of waiting on the others.
+    import signal
+    signal.signal(signal.SIGTERM, lambda signum, frame: sys.exit(128 + signum))
+    node = node_rank()
+    if not 0 <= node < args.nodes:
+        raise RuntimeError(f'node number {node} is outside 0..{args.nodes - 1}: the launcher must start exactly one '
+                           'process per node.')
+    address, port = _meet(args.rendezvous, args.token, node)
+    _run_ranks(args.local_devices, node, args.nodes, address, port)
+
+
+if __name__ == '__main__':
+    _node_main()

@@ -47,11 +47,44 @@ def __getattr__(name):
                 self.restarter.kwargs.update(excited_state_properties=excited_state_properties,
                                             retained_indices=retained_indices)
 
+        def _extract_in_parallel(self, file, species_key, permit_only):
+            """hippynn's ``extract_full_file`` with each group read by its own process, or None to read the
+            file serially (small files, one group, or ALF_H5_READ_WORKERS=1). The same batches, in the same order."""
+            import collections
+            from hippynn.databases.h5_pyanitools import numpy_map_elements
+            from alframework.tools import h5_parallel
+            paths = h5_parallel.group_paths(file)
+            workers = h5_parallel.workers_for(file, len(paths))
+            if workers < 2:
+                return None
+            print(f'Reading {len(paths)} groups of {file} with {workers} processes', flush=True)
+            n_atoms_max, batches, counter = 0, [], collections.Counter()
+            for group in h5_parallel.read_groups(file, paths, workers):
+                if species_key not in group:
+                    raise ValueError(f"Species key '{species_key}' not found' in file {file}!\n"
+                                     f"\tFound keys: {set(group.keys())}")
+                batch = {}
+                for key, value in group.items():
+                    if key in self._IGNORE_KEYS or (permit_only and key not in permit_only):
+                        continue
+                    value = value if np.isscalar(value) else np.asarray(value)
+                    if key == species_key:
+                        value = np.expand_dims(value, 0)
+                        if (not isinstance(value.dtype, type)) and issubclass(value.dtype.type, np.str_):
+                            value = numpy_map_elements(value)
+                        n_atoms_max = max(n_atoms_max, value.shape[1])
+                    counter[key] += value.shape[0]
+                    batch[key] = value
+                batches.append(batch)
+            return batches, n_atoms_max, (max(counter.values()) if counter else 0)
+
         def extract_full_file(self, file, species_key='species', permit_only=None):
             # Newer HIPPYNN passes permit_only; older releases do not accept it.
             if self.excited_state_properties is None:
                 extra = {} if permit_only is None else {'permit_only': permit_only}
-                batches, n_atoms_max, count = super().extract_full_file(file, species_key=species_key, **extra)
+                batches, n_atoms_max, count = (self._extract_in_parallel(file, species_key, permit_only)
+                                               if species_key is not None else None) or \
+                    super().extract_full_file(file, species_key=species_key, **extra)
                 # Charge and spin describe a structure, not a target, and only some shards have them. Kept,
                 # they would make shards with and without them disagree on their keys.
                 wanted = set(self.inputs or ()) | set(self.targets or ())

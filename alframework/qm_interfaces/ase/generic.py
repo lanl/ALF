@@ -11,11 +11,13 @@ from pathlib import Path
 import shutil
 import stat
 
+import ase
 import numpy as np
 from ase.calculators.calculator import BaseCalculator, all_changes
 from ase.data import chemical_symbols
 from parsl import python_app
 
+from alframework.tools.label_sources import LABEL_SOURCE
 from alframework.tools.label_validation import validate_geometry, validate_label
 from alframework.tools.molecules import MoleculesObject
 from alframework.tools.task_timeline import timed
@@ -167,6 +169,19 @@ def _configuration(QM_config, properties=None):
     if validate is not None:
         validate(options, command, properties)
     return calculator_class, options, command, moments
+
+
+def ase_label_source(labeler, calculator, options, moments=None):
+    """The label source an ASE task records: the task, the calculator and its method settings.
+
+    Only settings that are the same for every label go in, so a shard records one source per configuration;
+    the command, which names a machine's paths, is left out.
+    """
+    source = {'labeler': labeler, 'calculator': calculator, 'ase_version': ase.__version__,
+              'input': deepcopy(options)}
+    if moments is not None:
+        source['initial_magnetic_moments'] = deepcopy(moments)
+    return source
 
 
 def validate_ase_config(QM_config, master_config=None):
@@ -327,6 +342,8 @@ def label_one(molecule_object, QM_config, QM_scratch_dir, properties_list, *, di
     metadata = getattr(calc, 'metadata', None)
     if isinstance(metadata, dict):
         molecule_object.update_metadata(deepcopy(metadata))
+    molecule_object.update_metadata({LABEL_SOURCE: ase_label_source(
+        'ase_calculator_task', QM_config['ASE_calculator'], options, moments)})
     molecule_object.set_converged_flag(True)
     for key in ERROR_KEYS:
         molecule_object.metadata.pop(key, None)

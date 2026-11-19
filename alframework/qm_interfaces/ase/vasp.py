@@ -1,8 +1,10 @@
 """Labeling with ASE's VASP calculator."""
 import re
 from parsl import python_app
+from alframework.tools.label_sources import LABEL_SOURCE
 from alframework.tools.task_timeline import timed
 from alframework.tools.molecules import MoleculesObject
+from .generic import ase_label_source
 
 @python_app(executors=['alf_QM_executor'])
 @timed('QM')
@@ -42,6 +44,8 @@ def VASP_ase_calculator_task(molecule_object, QM_config, QM_scratch_dir, propert
     convergedre = re.compile('aborting loop because EDIFF is reached')
     txt = open(directory + '/OUTCAR','r').read()
     if len(convergedre.findall(txt)) == 1:
+        molecule_object.update_metadata({LABEL_SOURCE: ase_label_source(
+            'VASP_ase_calculator_task', 'ase.calculators.vasp.Vasp', QM_config['input'])})
         molecule_object.set_converged_flag(True)
     else:
         molecule_object.set_converged_flag(False)

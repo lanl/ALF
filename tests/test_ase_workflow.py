@@ -372,3 +372,24 @@ def test_repeats_with_different_label_shapes_do_not_agree(tmp_path, controlled):
                          dict(PROPERTIES, extra=['extra', 'atomic', 1.]))
     assert not obj.check_convergence() and obj.metadata['qm_failed_stage'] == 'agreement'
     assert 'different shapes' in obj.metadata['qm_error']
+
+
+def test_a_workflow_label_records_every_stage_as_its_source(tmp_path, dependent_calculators):
+    writers, _ = dependent_calculators
+    writers.append(lambda path: path.write_bytes(b'prep orbitals'))
+    config = dependent_settings()
+    config['stages'][1]['initial_magnetic_moments'] = {'H': 1.0}
+    molecule = label_workflow(unlabeled_h2(), config, str(tmp_path), PROPERTIES)
+    source = molecule.get_metadata()['label_source']
+    assert source['labeler'] == 'ase_workflow_task' and source['result_mode'] == 'last'
+    first, second = source['stages']
+    assert (first['name'], first['calculator'], first['properties']) == ('stage_0', 'example.Producer', ['energy'])
+    assert second['properties'] == ['energy', 'forces']
+    assert second['inputs_from_stages'] == config['stages'][1]['inputs_from_stages']
+    assert second['initial_magnetic_moments'] == {'H': 1.0}
+
+
+def test_repeated_stages_record_their_agreement_tolerances_in_the_source(tmp_path, controlled):
+    molecule = label_workflow(unlabeled_h2(), settings('mean_if_agree'), str(tmp_path), PROPERTIES)
+    assert molecule.check_convergence(), molecule.metadata
+    assert molecule.get_metadata()['label_source']['agreement'] == settings('mean_if_agree')['agreement']

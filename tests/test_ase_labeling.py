@@ -315,3 +315,33 @@ def test_scratch_is_kept_by_default(tmp_path):
 def test_remove_scratch_on_success_must_be_true_or_false(value):
     with pytest.raises(ValueError, match='remove_scratch_on_success'):
         interface.validate_ase_config(dict(EMT_CONFIG, remove_scratch_on_success=value))
+
+
+def test_a_label_records_its_calculator_and_settings_as_its_source(tmp_path):
+    config = dict(EMT_CONFIG, QM_run_command=None, input={'asap_cutoff': True},
+                  initial_magnetic_moments={'H': 0.5})
+    molecule = label_with_ase(unlabeled_h2(), config, str(tmp_path), PROPERTIES)
+    source = molecule.get_metadata()['label_source']
+    assert source['labeler'] == 'ase_calculator_task'
+    assert source['calculator'] == 'ase.calculators.emt.EMT'
+    assert source['input'] == {'asap_cutoff': True}
+    assert source['initial_magnetic_moments'] == {'H': 0.5}
+    assert 'QM_run_command' not in source and 'command' not in source
+
+
+def test_a_failed_label_records_no_source(tmp_path, monkeypatch):
+    class Unconverged(EMT):
+        converged = False
+    monkeypatch.setattr(interface, 'load_module_from_config', lambda *_: Unconverged)
+    molecule = label_with_ase(unlabeled_h2(), EMT_CONFIG, str(tmp_path), PROPERTIES)
+    assert 'label_source' not in molecule.get_metadata()
+
+
+def test_a_shard_of_labels_from_one_configuration_records_one_source(tmp_path):
+    from alframework.tools.label_sources import read_label_sources
+
+    molecules = [label_with_ase(unlabeled_h2(f'h2-{i}'), EMT_CONFIG, str(tmp_path / 'scratch'), PROPERTIES)
+                 for i in range(3)]
+    store_current_data(str(tmp_path / 'data.h5'), molecules, PROPERTIES)
+    (source,) = read_label_sources(tmp_path / 'data.h5')
+    assert source['calculator'] == 'ase.calculators.emt.EMT'

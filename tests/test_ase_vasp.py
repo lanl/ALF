@@ -11,6 +11,7 @@ from alframework.tools.molecules import MoleculesObject
 @pytest.mark.parametrize("matches", [0, 1, 2])
 def test_vasp_labels_converge_only_on_one_ediff_message_and_use_the_molecule_s_kpoints(
         tmp_path, monkeypatch, h2_atoms, matches):
+    import ase
     import ase.calculators.vasp
 
     from alframework.qm_interfaces.ase.vasp import VASP_ase_calculator_task
@@ -36,3 +37,10 @@ def test_vasp_labels_converge_only_on_one_ediff_message_and_use_the_molecule_s_k
     assert result is molecule and result.check_convergence() is (matches == 1)
     assert calls == [("controlled-vasp", {"encut": 400, "kpts": [2, 2, 2]})]
     assert config["input"]["kpts"] == [1, 1, 1], "the configuration is not changed"
+    if matches == 1:
+        # The source is the configuration, the same for every label, not the molecule's own k-points.
+        assert result.get_metadata()["label_source"] == {
+            "labeler": "VASP_ase_calculator_task", "calculator": "ase.calculators.vasp.Vasp",
+            "ase_version": ase.__version__, "input": {"encut": 400, "kpts": [1, 1, 1]}}
+    else:
+        assert "label_source" not in result.get_metadata()

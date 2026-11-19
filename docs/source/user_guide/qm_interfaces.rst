@@ -523,6 +523,12 @@ Preferred ASE route
    A failed label records what went wrong in ``qm_error`` and ``qm_error_type``, and the step it happened
    at in ``qm_failed_stage``. In a sequential batch the other structures keep their labels.
 
+   A good label records its ``label_source``: the task, the calculator, the ASE version, ``input`` and any
+   ``initial_magnetic_moments``, but not ``QM_run_command``, which names a machine's paths. Storage writes
+   each distinct source onto the HDF5 shard, and training lists them in ``label_sources.json`` beside the
+   ensemble, so a shard or a model says which method labeled it. ``VASP_ase_calculator_task`` records the
+   same; see :doc:`teacher_student` for how a teacher uses these sources.
+
    Scratch directories are kept by default. With ``"remove_scratch_on_success": true``, ALF deletes a
    molecule's scratch directory once its label has passed every check; a failed label's directory is always
    kept for inspection. Turn it on for production runs whose calculators leave large files, such as VASP's
@@ -700,6 +706,9 @@ step, such as ``target:calculation``. ``qm_workflow`` records each stage's name,
 convergence, electronic state and declared inputs. For ``mean_if_agree`` it also records the largest
 deviations. A retried structure's directory, with all its stages, moves to ``.previous-N``. Sequential QM
 batching applies to whole workflows.
+
+A good workflow label's ``label_source`` records the mode and each stage's name, calculator, settings,
+properties and declared inputs, and for ``mean_if_agree`` the tolerances.
 
 Engines Without An ASE Calculator
 ---------------------------------

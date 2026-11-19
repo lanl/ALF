@@ -385,6 +385,19 @@ def test_teacher_refuses_labels_from_another_teacher(checkpoint, tmp_path):
         ti.validate_teacher_config(config(checkpoint), master(tmp_path, h5_dir=str(h5)))
 
 
+def test_teacher_refuses_labels_from_an_ase_calculator(checkpoint, tmp_path):
+    from alframework.qm_interfaces.ase.generic import ase_calculator_task
+
+    h5 = tmp_path / "h5"
+    h5.mkdir()
+    qm = ase_calculator_task.func(structures(1)[0], {"ASE_calculator": "ase.calculators.emt.EMT"},
+                                  str(tmp_path / "scratch"), PROPERTIES)
+    assert qm.check_convergence(), qm.metadata
+    shard(h5 / "data-0000.h5", [qm])
+    with pytest.raises(ValueError, match="another source"):
+        ti.validate_teacher_config(config(checkpoint), master(tmp_path, h5_dir=str(h5)))
+
+
 def test_teacher_accepts_its_own_earlier_labels(checkpoint, tmp_path):
     h5 = tmp_path / "h5"
     h5.mkdir()

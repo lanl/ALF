@@ -15,14 +15,16 @@ from itertools import combinations
 from pathlib import Path
 import re
 
+import ase
 import numpy as np
 from parsl import python_app
 
 from alframework.tools.label_validation import validate_geometry, validate_label
 from alframework.tools.molecules import MoleculesObject
 from alframework.tools.task_timeline import timed
-from .generic import (ERROR_KEYS, _configuration, _remove_scratch, fresh_scratch_directory, label_one,
-                      molecule_directory, remove_scratch_directory)
+from alframework.tools.label_sources import LABEL_SOURCE
+from .generic import (ERROR_KEYS, _calculator_options, _configuration, _remove_scratch, fresh_scratch_directory,
+                      label_one, molecule_directory, remove_scratch_directory)
 
 WORKFLOW_FIELDS = {'stages', 'result_mode', 'agreement', 'batching', 'remove_scratch_on_success'}
 STAGE_CONTROLS = {'name', 'properties', 'inputs_from_stages'}
@@ -196,6 +198,26 @@ def _agreed_mean(completed, properties_list, tolerances, provenance):
             for key in properties_list}
 
 
+def _workflow_label_source(stages, mode, tolerances):
+    """The label source of a workflow label: the mode, and each stage's calculator, settings and inputs."""
+    records = []
+    for spec in stages:
+        record = {'name': spec.name, 'calculator': spec.settings['ASE_calculator'],
+                  'input': deepcopy(_calculator_options(spec.settings))}
+        if 'initial_magnetic_moments' in spec.settings:
+            record['initial_magnetic_moments'] = deepcopy(spec.settings['initial_magnetic_moments'])
+        if spec.properties is not None:
+            record['properties'] = list(spec.properties)
+        if spec.inputs:
+            record['inputs_from_stages'] = deepcopy(spec.inputs)
+        records.append(record)
+    source = {'labeler': 'ase_workflow_task', 'ase_version': ase.__version__, 'result_mode': mode,
+              'stages': records}
+    if tolerances is not None:
+        source['agreement'] = deepcopy(tolerances)
+    return source
+
+
 def label_workflow(molecule_object, QM_config, QM_scratch_dir, properties_list):
     """Run the stages in this process and return the molecule, labeled or with the failing stage named.
 
@@ -258,6 +280,7 @@ def label_workflow(molecule_object, QM_config, QM_scratch_dir, properties_list):
     molecule_object.store_results(results)
     molecule_object.update_metadata(deepcopy(completed[-1].metadata))
     molecule_object.metadata['qm_workflow'] = provenance
+    molecule_object.metadata[LABEL_SOURCE] = _workflow_label_source(stages, mode, tolerances)
     molecule_object.set_converged_flag(True)
     for key in ERROR_KEYS:
         molecule_object.metadata.pop(key, None)

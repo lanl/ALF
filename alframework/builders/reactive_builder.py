@@ -1,26 +1,13 @@
 # The builder code goes here
-import glob
 import random
-import os
 import numpy as np
-from parsl import python_app, bash_app
+from parsl import python_app
 from alframework.tools.task_timeline import timed
-import json
 
 import ase
-from ase import Atoms
-from ase import neighborlist
-from ase.geometry.cell import complete_cell
-from ase.io import cfg
-from ase.io import read, write
 
-from alframework.tools.geometry import random_rotation_matrix
-from alframework.tools.label_validation import system_checker
-from alframework.tools.config import build_input_dict
 from alframework.tools.molecules import MoleculesObject
 
-import random
-from copy import deepcopy
 
 
 def _rattle_enabled(value):

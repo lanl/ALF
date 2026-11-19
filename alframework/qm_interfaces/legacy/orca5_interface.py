@@ -1,9 +1,7 @@
-from parsl import python_app, bash_app
+from parsl import python_app
 from alframework.tools.task_timeline import timed
 import os
 import numpy as np
-import json
-from ase.atoms import Atoms
 import ase.io
 import shutil
 import re

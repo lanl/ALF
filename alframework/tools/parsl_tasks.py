@@ -166,7 +166,7 @@ class ParslTaskQueue:
             if task_status in SUCCESSFUL_TASK_STATUSES:
                 try:
                     results_list.append(task.result())
-                except Exception as e:
+                except Exception:
                     logger.error("Task marked as done but raised", exc_info=True)
                     failed_number += 1
                     self.last_failed.append(task)
@@ -174,7 +174,7 @@ class ParslTaskQueue:
                 try:
                     task.result()
                     logger.warning("Task marked as %s returned a result; discarding it", task_status)
-                except Exception as e:
+                except Exception:
                     logger.warning("Task failed", exc_info=True)
                 failed_number += 1
                 self.last_failed.append(task)

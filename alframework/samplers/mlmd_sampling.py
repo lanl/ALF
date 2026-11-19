@@ -1,13 +1,10 @@
-import os
 import numpy as np
-import ase
 from ase.md.langevin import Langevin
 from ase import units
 from ase.io.trajectory import Trajectory
 import time
-from ase import Atoms
 import pickle as pkl
-from parsl import python_app, bash_app
+from parsl import python_app
 from alframework.tools.task_failure_cleanup import releases_memory_on_failure
 from alframework.tools.task_timeline import timed
 

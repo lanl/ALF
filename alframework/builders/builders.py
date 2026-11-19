@@ -3,22 +3,19 @@ import glob
 import random
 import os
 import numpy as np
-from parsl import python_app, bash_app
+from parsl import python_app
 from alframework.tools.task_timeline import timed
-import json
 
 import ase
 from ase import Atoms
 from ase import neighborlist
 from ase.geometry.cell import complete_cell
 from ase.io import cfg
-from ase.io import read, write
+from ase.io import read
 
 from alframework.tools.geometry import random_rotation_matrix
 from alframework.tools.config import build_input_dict
 from alframework.tools.molecules import MoleculesObject
-import random
-from copy import deepcopy
 
 
 # def cfg_loader(model_string,start_molecule_index,cfg_directory,number=1):
@@ -325,7 +322,6 @@ def simple_multi_condensed_phase_builder_task(moleculeids, builder_config, molec
     return system_list
 
 #####################################################################################################
-from collections import Counter
 from ase.data import atomic_masses, atomic_numbers
 from itertools import product
 

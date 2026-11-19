@@ -1,31 +1,17 @@
 # The builder code goes here
-import glob
 import random
-import os
 import numpy as np
-from parsl import python_app, bash_app
+from parsl import python_app
 from alframework.tools.task_timeline import timed
-import json
-from pathlib import Path
 
-import ase
 from ase import Atoms
-from ase import neighborlist
-from ase.geometry.cell import complete_cell
-from ase.io import cfg
-from ase.io import read, write
 from ase.data import chemical_symbols
-from ase import units
 
-from alframework.tools.geometry import random_rotation_matrix
 from alframework.tools.config import build_input_dict
 from alframework.tools.label_validation import system_checker
 from alframework.tools.molecules import MoleculesObject
 from alframework.builders.builders import condensed_phase_builder
-import random
-from copy import deepcopy
 
-import subprocess
 
 from rdkit import Chem
 from rdkit.Chem import AllChem

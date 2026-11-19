@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from parsl import python_app, bash_app, join_app
+from parsl import python_app, join_app
 from alframework.tools.task_timeline import timed
 import contextlib
-import sys
 import multiprocessing
 import re
 import numpy as np
@@ -906,6 +905,7 @@ def use_separate_test_set(database, h5_test_dir, db_info, database_schema, speci
     aren't filtered, so the test set is measured as it is.
     """
     import torch
+    from alframework.ml_interfaces.hippynn_interface import ALFPyAniDirectoryDB
     database_test = ALFPyAniDirectoryDB(directory=h5_test_dir, allow_unfound=True, quiet=False,
                                         seed=np.random.randint(1e9), **db_info, **database_schema)
     arrays = database_test.arr_dict

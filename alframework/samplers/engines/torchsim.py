@@ -28,7 +28,7 @@ by the sampler's ``batched_calculator``. Without one, the ``ase_calculator``
 ensemble is evaluated one structure at a time.
 """
 
-from alframework.samplers.engines.packed import PackedMLMDEngine, ASECalculatorBatch, _calculator_options
+from alframework.samplers.engines.packed import PackedMLMDEngine
 
 
 def require_torchsim():

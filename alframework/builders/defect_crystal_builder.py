@@ -1,21 +1,14 @@
-import os
-import sys
 import numpy as np
-import math as m
 import ase
-from ase import io
-from ase import build
 from ase.data import atomic_masses, atomic_numbers
 from ase import geometry
 import random as r
 from time import time
 from collections import Counter
 
-from alframework.tools.geometry import random_rotation_matrix
-from alframework.tools.config import build_input_dict
 from alframework.tools.molecules import MoleculesObject
 
-from parsl import python_app, bash_app
+from parsl import python_app
 from alframework.tools.task_timeline import timed
 
 from glob import glob
@@ -93,7 +86,6 @@ def builder(StructFile,Rattle=0.0,repAtMax=0,CScale=1.0,CRat=0.0,tInt=[],nVac=0,
 
     ## Insert Interstitials of a Type
     if len(tInt) > 0:
-        from ase import Atoms
         from ase import Atom
         i = 0
         while i < len(tInt):

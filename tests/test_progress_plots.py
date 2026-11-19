@@ -1,8 +1,6 @@
 """Progress plots run in their own process, one update at a time, with the coordinator's arguments."""
 
 import json
-import sys
-import time
 
 from alframework.tools.progress_plots import ProgressPlots
 

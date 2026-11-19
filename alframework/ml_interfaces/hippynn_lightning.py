@@ -97,7 +97,6 @@ class AlfLightningModule(HippynnLightningModule):
             self._save_best()
 
     def _save_best(self):
-        import copy
         import torch
         from alframework.ml_interfaces._hippynn_compat import checkpoints
         serialization = checkpoints()

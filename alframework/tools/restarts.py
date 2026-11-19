@@ -201,7 +201,7 @@ class HeldLabels:
         self._successful = self._converged = self._ids = self._periodic = None
 
     def commit(self, snapshot, properties, attributes):
-        from alframework.tools.tools import store_current_data
+        from alframework.tools.data_shards import store_current_data
 
         pieces = self.pieces()
         stored = store_current_data(snapshot, self.iter_results(pieces), properties,

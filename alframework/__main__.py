@@ -4,23 +4,14 @@
 
 import os
 import json
-import pickle
 import time
 import sys
-from alframework.tools.progress_plots import ProgressPlots
 from pathlib import Path
 import numpy as np
 import argparse
 np.set_printoptions(threshold=np.inf)
 
-# Load ASE library
-import ase
-from ase import Atoms
-
 import parsl
-# Check to see if parsl is available
-import alframework
-#from alframework.parsl_resource_configs.darwin import config_atdm_ml
 from alframework.tools.config import (
     build_input_dict, coordinator_poll_interval, load_config_file, load_module_from_string, stored_label_budget,
 )
@@ -28,6 +19,7 @@ from alframework.tools.data_shards import store_current_data
 from alframework.tools.parsl_tasks import ParslTaskQueue, release_allocations_at_exit, stop_if_executor_failed
 from alframework.tools.serialization import data_serializer, use_data_serializer
 from alframework.tools.files import hold_lock
+from alframework.tools.progress_plots import ProgressPlots
 from alframework.tools.pyanitools import anidataloader
 from alframework.tools.molecules import MoleculesObject
 from alframework.tools.bootstrap import bootstrap_spare_count, next_bootstrap_ids
@@ -35,7 +27,7 @@ from alframework.tools.restarts import (
     STORED_AT_BUDGET_STOP, find_empty_directory, open_held_labels, reconcile_status, write_status,
 )
 from alframework.tools.labeling_coordinator import LabelingCoordinator
-from alframework.tools.label_validation import screen_labels, system_checker
+from alframework.tools.label_validation import screen_labels
 from alframework.tools.builder_outputs import builder_outputs
 from alframework.tools.sampler_coordinator import SamplerCoordinator
 #import logging

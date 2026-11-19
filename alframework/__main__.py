@@ -7,7 +7,7 @@ import json
 import pickle
 import time
 import sys
-from multiprocessing import Process
+from alframework.tools.progress_plots import ProgressPlots
 from pathlib import Path
 import numpy as np
 import argparse
@@ -95,7 +95,9 @@ use_data_serializer(data_serializer(master_config))
 release_allocations_at_exit(parsl.load(parsl_configuration))
 
 if master_config.get('plotting_utility', None) is not None:
+    # Loaded here for its parameters; each update runs in its own process (alframework.tools.progress_plots).
     analysis_plot = load_module_from_string(master_config['plotting_utility'])
+    progress_plots = ProgressPlots(master_config['plotting_utility'])
 else:
     analysis_plot = None
 
@@ -550,7 +552,7 @@ while True:
     # Construct analysis plots
     if (master_loop_iter % master_config.get('update_plots_every', 1000) == 0) and (analysis_plot is not None):
         analysis_input = build_input_dict(analysis_plot, all_configs)
-        Process(target=analysis_plot, kwargs=analysis_input).start()
+        progress_plots.update(analysis_input)
                 
     print("### Active Learning Status at: " + time.ctime() + " ###")
     print("builder status:")

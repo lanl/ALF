@@ -290,3 +290,13 @@ def training_member(params):
         raise RuntimeError("member failed")
     Path(params["output"]).write_text(params["device_string"])
     return True
+
+
+def write_plot_marker(plot_dir, meta_n_cols, sleep=0):
+    """A progress-plot utility for tests: records its arguments and process in plot_dir/marker.json."""
+    import json
+    import os
+    import time
+    time.sleep(sleep)
+    with open(os.path.join(plot_dir, 'marker.json'), 'w') as handle:
+        json.dump({'meta_n_cols': meta_n_cols, 'pid': os.getpid()}, handle)

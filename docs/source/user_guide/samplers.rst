@@ -676,6 +676,11 @@ Output and trajectory fields
           thirds of a trajectory's metadata in the coordinator's memory. Compact needs ``meta_dir`` and
           ``metadata_files`` ``"per_trajectory"`` or ``"per_task"``; the coordinator refuses it otherwise,
           and for other sampler tasks. See :ref:`running-at-scale-coordinator-memory`.
+      * - ``returned_momenta``
+        - Multi-trajectory sampler only. ``false`` returns each structure's final positions and cell without
+          its MD momenta, which labeling and storage don't read; the default ``true`` keeps them. For
+          201-atom structures they are about 40% of what each returned structure costs the coordinator and
+          Parsl's interchange. The coordinator refuses it for other sampler tasks.
       * - ``meta_dir_layout``
         - Multi-trajectory sampler only. Where per-trajectory files (metadata and trajectories) go:
           ``"per_task"`` (default) gives each task its own subdirectory,

@@ -90,6 +90,9 @@ reads them back one held piece, at most 1,000 labels, at a time.
 - Set the sampler's ``returned_metadata`` to ``"compact"`` with ``metadata_files`` ``"per_task"``:
   structures return without the per-trajectory arrays the metadata file already keeps (see
   :doc:`samplers`).
+- Set the sampler's ``returned_momenta`` to ``false``: structures return without their MD momenta.
+  Serialized for a QM task, a returned 201-atom structure with compact metadata took 12.0 KiB, 4.7 KiB of
+  it momenta; Parsl's interchange holds a serialized copy of every queued QM task.
 - Watch the coordinator's resident memory over a smaller run and scale it by the number of
   structures per cycle before going larger.
 

@@ -296,11 +296,13 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
 
     files, _ = metadata_settings(sampler_config)
     compact = returned_metadata(sampler_config) == 'compact'
+    momenta = returned_momenta(sampler_config)
     records = []
     for index, molecule in enumerate(molecule_objects):
         records.append(_record(molecule, state[index], schedules[index], sampler_config, settings, engine, index,
                                started, None if seeds is None else seeds[index],
-                               meta_dir if files == 'per_trajectory' else None, compact=compact))
+                               meta_dir if files == 'per_trajectory' else None, compact=compact,
+                               momenta=momenta))
     bundle_dir = meta_dir if bundle_dir is None else bundle_dir
     if files == 'per_task' and bundle_dir is not None and molecule_objects:
         # One file for the whole task: the same dicts as the per-trajectory files, each with its molecule id.
@@ -321,7 +323,7 @@ STEP_TIMING_INTERVAL = 100
 
 
 def _record(molecule, entry, schedule, sampler_config, settings, engine, index, started, seed, meta_dir,
-            compact=False):
+            compact=False, momenta=True):
     atoms = entry['finished_atoms']
     signals = entry['signals'] or {}
     decision = entry['decision'] or {}
@@ -371,6 +373,9 @@ def _record(molecule, entry, schedule, sampler_config, settings, engine, index, 
             pkl.dump(meta_dict, handle)
     molecule.update_metadata({k: v for k, v in meta_dict.items() if k not in COMPACT_DROPPED} if compact else meta_dict)
     # In cohort mode frames travel as candidates; nothing is labeled until the cohort selects.
+    if entry['outcome'] == 'eligible' and not cohort and not momenta and atoms.has('momenta'):
+        atoms = atoms.copy()  # the engine keeps its own
+        del atoms.arrays['momenta']
     molecule.update_atoms(atoms if entry['outcome'] == 'eligible' and not cohort else None)
     return meta_dict
 
@@ -445,6 +450,19 @@ def returned_metadata(sampler_config):
                              'metadata files must keep them: set meta_dir and metadata_files "per_trajectory" or '
                              '"per_task".')
     return mode
+
+
+def returned_momenta(sampler_config):
+    """Whether each returned structure keeps its MD momenta (default True), checked.
+
+    Labeling and storage don't read them, and for 201-atom structures they are about 40% of what each
+    returned structure costs the coordinator, and Parsl's interchange, until its labels are stored.
+    False returns the final positions and cell without them; the engine's own atoms keep theirs.
+    """
+    keep = sampler_config.get('returned_momenta', True)
+    if not isinstance(keep, bool):
+        raise ValueError(f'returned_momenta must be true or false, not {keep!r}')
+    return keep
 
 
 def task_meta_dir(sampler_config, molecule_objects):

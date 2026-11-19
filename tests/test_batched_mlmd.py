@@ -893,3 +893,31 @@ def test_the_coordinator_checks_returned_metadata_before_any_task_runs(tmp_path)
                            {"returned_metadata": "compact", "metadata_files": "none", "meta_dir": str(tmp_path)})
     with pytest.raises(ValueError, match="batched_mlmd sampler tasks only"):
         SamplerCoordinator(simple_mlmd_sampling_task, "mlmd", {"returned_metadata": "compact", "meta_dir": str(tmp_path)})
+
+
+def test_returned_momenta_false_drops_only_the_momenta(tmp_path):
+    """Without momenta a returned structure keeps the same positions, cell, numbers and metadata."""
+    results = {}
+    for keep in (True, False):
+        molecules = [MoleculesObject(m.get_atoms().copy(), m.get_moleculeid()) for m in mixed_inputs()[:2]]
+        results[keep] = sample_trajectories(molecules, fake_ensemble(), dict(GROUP_CONFIG, returned_momenta=keep))
+    assert any(m.get_atoms() is not None for m in results[True]), "at least one structure returns for labeling"
+    for kept, dropped in zip(results[True], results[False]):
+        assert (kept.get_atoms() is None) == (dropped.get_atoms() is None)
+        if kept.get_atoms() is None:
+            continue
+        assert kept.get_atoms().has("momenta") and not dropped.get_atoms().has("momenta")
+        np.testing.assert_array_equal(kept.get_atoms().get_positions(), dropped.get_atoms().get_positions())
+        np.testing.assert_array_equal(kept.get_atoms().numbers, dropped.get_atoms().numbers)
+        np.testing.assert_array_equal(kept.get_atoms().cell[:], dropped.get_atoms().cell[:])
+        assert set(kept.get_metadata()) == set(dropped.get_metadata())
+
+
+def test_returned_momenta_is_checked_before_any_task_runs(tmp_path):
+    from alframework.samplers.mlmd_sampling import simple_mlmd_sampling_task
+    from alframework.tools.sampler_coordinator import SamplerCoordinator
+
+    with pytest.raises(ValueError, match="returned_momenta must be true or false"):
+        SamplerCoordinator(batched_mlmd.mlmd_trajectories_task, "batched", {"returned_momenta": "no"})
+    with pytest.raises(ValueError, match="batched_mlmd sampler tasks only"):
+        SamplerCoordinator(simple_mlmd_sampling_task, "mlmd", {"returned_momenta": False})

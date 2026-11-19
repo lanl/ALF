@@ -157,14 +157,16 @@ class SamplerCoordinator(BatchedSubmitter):
     def __init__(self, sampler_task, sampler_task_path, sampler_config, master_config=None):
         velocity_initialization_settings(sampler_config)
         parameters = inspect.signature(sampler_task.func).parameters
-        if sampler_config.get('returned_metadata', 'full') != 'full':
+        for setting, default in (('returned_metadata', 'full'), ('returned_momenta', True)):
+            if sampler_config.get(setting, default) == default:
+                continue
             # Checked here, before any task runs, rather than as failed sampler tasks.
             module = getattr(getattr(sampler_task, 'func', sampler_task), '__module__', None)
             if module != 'alframework.samplers.batched_mlmd':
-                raise ValueError('returned_metadata is supported by the alframework.samplers.batched_mlmd sampler '
+                raise ValueError(f'{setting} is supported by the alframework.samplers.batched_mlmd sampler '
                                  f'tasks only, not {sampler_task_path} ({module}).')
-            from alframework.samplers.batched_mlmd import returned_metadata
-            returned_metadata(sampler_config)
+            from alframework.samplers import batched_mlmd
+            getattr(batched_mlmd, setting)(sampler_config)
         self._states = state_settings(sampler_config)
         self._admission_ordinal = 0
         self.multi_trajectory = "molecule_objects" in parameters

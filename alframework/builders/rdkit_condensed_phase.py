@@ -29,6 +29,7 @@ import subprocess
 
 from rdkit import Chem
 from rdkit.Chem import AllChem
+from rdkit import Geometry
 
 #def ASEfromSMILES(SMILES):
 #    ps = AllChem.ETKDGv2()

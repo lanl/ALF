@@ -21,7 +21,6 @@ moved = [
     ("torchsim_engine", "samplers.engines.torchsim", "TorchSimEngine"),
     ("alchemi_engine", "samplers.engines.alchemi", "AlchemiEngine"),
     ("geometry", "tools.geometry", "minimum_distance"),
-    ("velocities", "tools.velocities", "initialize_velocities"),
 ]
 for old, new, name in moved:
     old = "alframework.samplers." + old

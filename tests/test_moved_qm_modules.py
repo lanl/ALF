@@ -52,6 +52,16 @@ def test_an_object_pickled_by_its_old_path_still_loads(old, new, name):
     assert loaded is load_module_from_string(f"{PREFIX}{new}.{name}")
 
 
+def test_importing_an_old_path_leaves_the_new_module_s_identity_alone():
+    run_fresh(f"""
+import importlib
+old = importlib.import_module("{PREFIX}orca5_interface")
+new = importlib.import_module("{PREFIX}legacy.orca5_interface")
+assert old is new
+assert new.__name__ == new.__spec__.name == "{PREFIX}legacy.orca5_interface"
+""")
+
+
 def test_a_name_the_old_module_never_had_is_still_an_error():
     with pytest.raises(AttributeError, match="no attribute 'not_a_task'"):
         load_module_from_string(f"{PREFIX}ase_calculator_interface.not_a_task")

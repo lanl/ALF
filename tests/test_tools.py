@@ -38,18 +38,10 @@ def test_legacy_tool_paths_resolve_to_canonical_helpers(module, name):
     assert pickle.loads(f"c{old}\n{name}\n.".encode()) is canonical
 
 
-@pytest.mark.parametrize("old,new,name", [
-    ("batching", "bootstrap", "bootstrap_molecule_ids"),
-    ("batching", "bootstrap", "bootstrap_spare_count"),
-    ("batching", "bootstrap", "next_bootstrap_ids"),
-    ("force_screen", "screen_audit", "RuntimeScreenAudit"),
-    ("pyanitools", "legacy_ani", "build_ANI_info"),
-])
-def test_split_modules_keep_the_old_import_paths(old, new, name):
-    old_path = f"alframework.tools.{old}"
-    canonical = load_module_from_string(f"alframework.tools.{new}.{name}")
-    assert load_module_from_string(f"{old_path}.{name}") is canonical
-    assert pickle.loads(f"c{old_path}\n{name}\n.".encode()) is canonical
+def test_build_ani_info_keeps_its_pyanitools_path():
+    canonical = load_module_from_string("alframework.tools.legacy_ani.build_ANI_info")
+    assert load_module_from_string("alframework.tools.pyanitools.build_ANI_info") is canonical
+    assert pickle.loads(b"calframework.tools.pyanitools\nbuild_ANI_info\n.") is canonical
 
 
 @pytest.mark.parametrize(

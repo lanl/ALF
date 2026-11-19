@@ -2,9 +2,6 @@
 
 import numpy as np
 
-# Preserve the previous import path.
-from alframework.tools.screen_audit import RuntimeScreenAudit
-
 SCHEMA = 'alf.physical_force_screen.v1'
 SOURCE = 'physical_ensemble_mean'
 

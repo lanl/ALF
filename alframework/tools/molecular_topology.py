@@ -497,7 +497,7 @@ def validate_fixed_topology(
 def topology_metadata(
     result: TopologyValidationResult,
 ) -> dict[str, Any]:
-    """Return JSON-safe candidate provenance for a topology result."""
+    """The topology check's result, as JSON-safe metadata for the frame it checked."""
 
     return {
         **dict(result.metrics),

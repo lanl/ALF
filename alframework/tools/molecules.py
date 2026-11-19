@@ -1,9 +1,10 @@
+"""The record of one structure as it moves through ALF, from builder to sampler to QM to storage."""
 from ase import Atoms
 import numpy as np
 import warnings
 
 class MoleculesObject:
-    """Class to create molecule objects"""
+    """One structure: its atoms and ID, its labels once computed, whether they converged, and its metadata."""
     def __init__(self, atoms, moleculeid):
         """
         Args:

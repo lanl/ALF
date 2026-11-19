@@ -1,3 +1,10 @@
+"""Read and write ALF's HDF5 training shards, in the ANI data format.
+
+Every shard ALF stores is written with ``datapacker`` and read with ``anidataloader``: one HDF5 group per
+empirical formula, holding that formula's frames as arrays. The module keeps the name of the ANI tools it
+comes from, which scripts and training code import; it is not legacy code. The legacy ANI model helper is
+:mod:`alframework.tools.legacy_ani`.
+"""
 import h5py
 import numpy as np
 import platform

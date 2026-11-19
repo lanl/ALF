@@ -1,4 +1,8 @@
-"""Explicit topology identity; never infer same-element atom identities."""
+"""Topology atom IDs: which atom is which, given explicitly, and the canonical atom order they define.
+
+Two atoms of the same element are never matched by guessing; a structure says which atom is which in its
+``topology_atom_ids`` array, and frames are compared in the order those IDs give.
+"""
 
 import numpy as np
 

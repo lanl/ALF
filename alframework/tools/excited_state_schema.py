@@ -1,4 +1,8 @@
-"""Small, dependency-free contracts shared by excited-state components."""
+"""Property names for excited states, shared by the samplers, QM interfaces and training.
+
+State energies are ``E<n>`` and forces ``F<n>``, and gaps between two states ``dE<i><j>`` (or ``dE<i>_<j>``).
+These functions check a ``properties_list`` against those names and describe each state and gap it holds.
+"""
 
 from __future__ import annotations
 

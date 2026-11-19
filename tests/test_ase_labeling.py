@@ -223,3 +223,68 @@ from alframework.qm_interfaces.ase.workflow import ase_workflow_task
 assert callable(ase_calculator_task.validate_config)
 assert callable(ase_workflow_task.validate_config)
 '''], check=True)
+
+
+class MomentRecorder(EMT):
+    """EMT that records the initial magnetic moments on the atoms it was asked to calculate."""
+    seen = []
+
+    def calculate(self, atoms=None, properties=('energy',), system_changes=all_changes):
+        MomentRecorder.seen.append(atoms.get_initial_magnetic_moments().copy())
+        super().calculate(atoms, properties, system_changes)
+
+
+@pytest.fixture
+def moment_recorder(monkeypatch):
+    MomentRecorder.seen = []
+    monkeypatch.setattr(interface, 'load_module_from_config', lambda *_: MomentRecorder)
+    return MomentRecorder.seen
+
+
+def water():
+    return MoleculesObject(Atoms('OH2', positions=[[0, 0, 0], [0.96, 0, 0], [-0.24, 0.93, 0]]), 'water')
+
+
+def test_initial_magnetic_moments_are_set_per_element_for_any_structure_size(tmp_path, moment_recorder):
+    config = dict(EMT_CONFIG, initial_magnetic_moments={'O': 1.5})
+    for molecule in (water(), MoleculesObject(Atoms('O2H4', positions=np.arange(18.).reshape(6, 3) * 1.3), 'dimer')):
+        assert label_with_ase(molecule, config, str(tmp_path), PROPERTIES).check_convergence(), molecule.metadata
+        assert not molecule.atoms.get_initial_magnetic_moments().any()
+    np.testing.assert_array_equal(moment_recorder[0], [1.5, 0.0, 0.0])
+    np.testing.assert_array_equal(moment_recorder[1], [1.5, 1.5, 0.0, 0.0, 0.0, 0.0])
+
+
+def test_without_initial_magnetic_moments_the_atoms_keep_their_own(tmp_path, moment_recorder):
+    molecule = water()
+    molecule.atoms.set_initial_magnetic_moments([0.5, 0.0, 0.0])
+    assert label_with_ase(molecule, EMT_CONFIG, str(tmp_path), PROPERTIES).check_convergence()
+    np.testing.assert_array_equal(moment_recorder[0], [0.5, 0.0, 0.0])
+
+
+@pytest.mark.parametrize('moments,message', [
+    ({}, 'map element symbols'),
+    (['O', 1.0], 'map element symbols'),
+    ({'Xx': 1.0}, 'unknown element'),
+    ({'X': 1.0}, 'unknown element'),
+    ({'O': True}, 'finite number'),
+    ({'O': float('nan')}, 'finite number'),
+    ({'O': '1.0'}, 'finite number'),
+])
+def test_invalid_initial_magnetic_moments_stop_the_coordinator_at_startup(moments, message):
+    with pytest.raises(ValueError, match=message):
+        interface.validate_ase_config(dict(EMT_CONFIG, initial_magnetic_moments=moments))
+
+
+def test_moments_per_element_and_per_atom_cannot_be_combined():
+    config = dict(EMT_CONFIG, initial_magnetic_moments={'Fe': 2.2}, input={'magmom': [2.2, 2.2]})
+    with pytest.raises(ValueError, match='not both'):
+        interface.validate_ase_config(config)
+
+
+def test_orca_and_qchem_refuse_initial_magnetic_moments():
+    for calculator, options in (('ase.calculators.orca.ORCA', {'orcasimpleinput': 'HF STO-3G'}),
+                                ('ase.calculators.qchem.QChem', {})):
+        config = {'ASE_calculator': calculator, 'QM_run_command': '/qm', 'input': options,
+                  'initial_magnetic_moments': {'O': 1.0}}
+        with pytest.raises(ValueError, match='multiplicity'):
+            interface.validate_ase_config(config)

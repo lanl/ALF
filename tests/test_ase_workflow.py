@@ -162,6 +162,15 @@ def test_a_retry_does_not_read_an_artifact_from_the_previous_attempt(tmp_path, d
     assert received == [b'first attempt']
 
 
+def test_each_stage_can_set_its_own_initial_magnetic_moments(dependent_calculators):
+    config = dependent_settings()
+    config['stages'][1]['initial_magnetic_moments'] = {'H': 'large'}
+    with pytest.raises(ValueError, match='finite number'):
+        validate_ase_workflow_config(config, {'properties_list': PROPERTIES})
+    config['stages'][1]['initial_magnetic_moments'] = {'H': 1.0}
+    validate_ase_workflow_config(config, {'properties_list': PROPERTIES})
+
+
 @pytest.mark.parametrize('change,error', [
     ({'stage': 'stage_1'}, 'earlier stage'),
     ({'stage': 'missing'}, 'earlier stage'),

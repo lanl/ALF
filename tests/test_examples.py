@@ -379,41 +379,45 @@ else:
     assert f"Final energy (eV): {-3.0 * Hartree}" in capsys.readouterr().out
 
 
-def test_the_staged_vasp_example_reads_charge_density_for_the_magnetic_label(tmp_path, monkeypatch, capsys):
+@pytest.mark.parametrize("repeat", [(1, 1, 1), (2, 2, 2)], ids=["2 atoms", "16 atoms"])
+def test_the_staged_vasp_example_labels_iron_cells_of_any_size(tmp_path, monkeypatch, repeat):
+    """ASE writes the real VASP input for each stage; only the VASP run itself is a stand-in."""
     import numpy as np
+    from ase.build import bulk
     from ase.calculators.vasp import Vasp
+    from alframework.qm_interfaces.ase.workflow import label_workflow
+    from alframework.tools.molecules import MoleculesObject
 
-    seen = []
+    potentials = tmp_path / "potentials" / "potpaw_PBE" / "Fe"
+    potentials.mkdir(parents=True)
+    (potentials / "POTCAR").write_text("PAW_PBE Fe 06Sep2000\n ZVAL = 8.000\n End of Dataset\n")
+    monkeypatch.setenv("VASP_PP_PATH", str(tmp_path / "potentials"))
+    atoms = bulk("Fe", "bcc", a=2.86, cubic=True).repeat(repeat)
 
-    def calculate(self, atoms, properties, system_changes):
-        assert atoms.get_chemical_formula() == "Fe2" and atoms.pbc.all()
-        assert self.command == "example-vasp"
-        assert self.int_params["nsw"] == 0 and self.int_params["ibrion"] == -1
-        assert self.int_params["istart"] == 0 and not self.bool_params["lwave"]
-        seen.append(atoms.copy())
-        charge_file = Path(self.directory) / "CHGCAR"
-        if self.int_params["ispin"] == 1:
-            assert properties == ["energy"] and self.int_params["icharg"] == 2
-            assert self.bool_params["lcharg"] and not self.bool_params["lh5"]
-            charge_file.write_bytes(b"nonmagnetic charge density")
-            self.results = {"energy": -1.0}
+    def run(self, command=None, out=None, directory=None):
+        incar = (Path(self.directory) / "INCAR").read_text().upper()
+        if "ISPIN = 1" in incar:
+            assert "ICHARG = 2" in incar and "LCHARG = .TRUE." in incar
+            (Path(self.directory) / "CHGCAR").write_text("nonmagnetic charge density")
         else:
-            assert self.int_params["ispin"] == 2 and self.int_params["icharg"] == 1
-            assert self.list_float_params["magmom"] == [2.2, 2.2]
-            assert properties == ["energy", "forces"] and charge_file.read_bytes() == b"nonmagnetic charge density"
-            self.results = {"energy": -2.0, "forces": np.ones((len(atoms), 3))}
+            assert "ISPIN = 2" in incar and "ICHARG = 1" in incar
+            assert f"MAGMOM = {len(atoms)}*2.2" in incar
+            assert (Path(self.directory) / "CHGCAR").read_text() == "nonmagnetic charge density"
+        return 0, ""
+
+    def read_results(self):
+        self.results = {"energy": -1.0, "forces": np.ones((len(self.atoms), 3))}
         self.converged = True
 
-    monkeypatch.setattr(Vasp, "calculate", calculate)
-    script = ROOT / "examples" / "staged_ase_qm" / "run_workflow.py"
-    scratch = tmp_path / "scratch"
-    monkeypatch.setattr(sys, "argv", [
-        str(script), "vasp", "--command", "example-vasp", "--scratch-dir", str(scratch),
-    ])
-    runpy.run_path(str(script), run_name="__main__")
-    assert len(seen) == 2 and seen[0] == seen[1]
-    assert (scratch / "bcc-fe/magnetic/CHGCAR").read_bytes() == b"nonmagnetic charge density"
-    assert "Final energy (eV): -2.0" in capsys.readouterr().out
+    monkeypatch.setattr(Vasp, "_run", run)
+    monkeypatch.setattr(Vasp, "read_results", read_results)
+    directory = ROOT / "examples" / "staged_ase_qm"
+    master = read(directory / "staged_vasp_master_config_fragment.json")
+    config = read(directory / master["QM_config_path"])
+    molecule = label_workflow(MoleculesObject(atoms, "fe"), config, str(tmp_path / "scratch"),
+                              master["properties_list"])
+    assert molecule.check_convergence(), molecule.metadata
+    assert [stage["name"] for stage in molecule.metadata["qm_workflow"]["stages"]] == ["charge_density", "magnetic"]
 
 
 @pytest.mark.parametrize("family", ["fine_tuning", "seeded_active_learning"])

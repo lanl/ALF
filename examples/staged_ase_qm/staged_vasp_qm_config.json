@@ -30,6 +30,7 @@
       "inputs_from_stages": [
         {"stage": "charge_density", "source": "CHGCAR", "destination": "CHGCAR"}
       ],
+      "initial_magnetic_moments": {"Fe": 2.2},
       "input": {
         "xc": "PBE",
         "encut": 450,
@@ -42,7 +43,6 @@
         "ispin": 2,
         "istart": 0,
         "icharg": 1,
-        "magmom": [2.2, 2.2],
         "lcharg": false,
         "lwave": false,
         "lh5": false

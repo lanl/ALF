@@ -491,9 +491,9 @@ Preferred ASE route
       }
 
    Put the calculator's options in ``input``. Older configurations that list them beside the ALF settings
-   still work, but a configuration can't mix the two. ``ASE_calculator``, ``QM_run_command`` and ``batching``
-   are ALF settings, never calculator options, and ALF sets ``atoms``, ``directory``, ``command`` and
-   ``profile`` itself, so ``input`` can't contain them. ``label`` may be a file name, without a directory.
+   still work, but a configuration can't mix the two. ``ASE_calculator``, ``QM_run_command``, ``batching``
+   and ``initial_magnetic_moments`` are ALF settings, never calculator options, and ALF sets ``atoms``,
+   ``directory``, ``command`` and ``profile`` itself, so ``input`` can't contain them. ``label`` may be a file name, without a directory.
    Calculators that run in ALF's process, such as EMT, need no ``QM_run_command``.
 
    ALF checks the configuration when the coordinator starts. For each label it then creates a fresh
@@ -507,6 +507,18 @@ Preferred ASE route
 
    A failed label records what went wrong in ``qm_error`` and ``qm_error_type``, and the step it happened
    at in ``qm_failed_stage``. In a sequential batch the other structures keep their labels.
+
+   ``initial_magnetic_moments`` gives a starting moment, in Bohr magnetons, for each element:
+
+   .. code-block:: json
+
+      {"initial_magnetic_moments": {"Fe": 2.2, "Co": 1.6}}
+
+   ASE calculators take initial moments per atom, so a per-atom list such as VASP's ``magmom`` fits only one
+   structure size, while ALF labels structures of many sizes. ALF sets each atom's moment from its element
+   on the copy it calculates on, and elements left out start at zero. Calculators that read initial moments
+   from the atoms, such as VASP, then use them. A configuration can't give both this and ``magmom`` in
+   ``input``, and ORCA and Q-Chem refuse it: they take the spin state from the multiplicity.
 
    Property names in ``properties_list`` must be the calculator's property names, such as ``energy`` and
    ``forces``; the first entry of each property gives the HDF5 dataset to store it in. Calculators built on
@@ -637,6 +649,8 @@ copies nonempty regular files before constructing the receiving calculator.
 Configure the receiving backend to read those files and check its output
 to confirm it did so. A missing or unreadable artifact fails the label at
 ``<stage>:input_files``.
+
+Each stage may set its own ``initial_magnetic_moments``.
 
 Every stage must succeed. Stages use the full ``properties_list`` by default.
 In ``last`` mode a preparatory stage may request a subset via ``properties``.

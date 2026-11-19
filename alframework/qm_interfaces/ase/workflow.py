@@ -24,7 +24,7 @@ from .generic import ERROR_KEYS, _configuration, fresh_scratch_directory, label_
 
 WORKFLOW_FIELDS = {'stages', 'result_mode', 'agreement', 'batching'}
 STAGE_CONTROLS = {'name', 'properties', 'inputs_from_stages'}
-STAGE_FIELDS = STAGE_CONTROLS | {'ASE_calculator', 'QM_run_command', 'input'}
+STAGE_FIELDS = STAGE_CONTROLS | {'ASE_calculator', 'QM_run_command', 'input', 'initial_magnetic_moments'}
 RESULT_MODES = ('last', 'mean_if_agree')
 # Stage names become directory names.
 STAGE_NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9_.-]*')

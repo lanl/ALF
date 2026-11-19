@@ -13,6 +13,7 @@ import stat
 
 import numpy as np
 from ase.calculators.calculator import BaseCalculator, all_changes
+from ase.data import chemical_symbols
 from parsl import python_app
 
 from alframework.tools.label_validation import validate_geometry, validate_label
@@ -21,7 +22,7 @@ from alframework.tools.task_timeline import timed
 from alframework.tools.config import load_module_from_config
 
 # QM_config keys that are ALF settings, never calculator options.
-ALF_SETTINGS = {'ASE_calculator', 'QM_run_command', 'batching', 'input'}
+ALF_SETTINGS = {'ASE_calculator', 'QM_run_command', 'batching', 'input', 'initial_magnetic_moments'}
 # Calculator options ALF sets itself for every label.
 RESERVED_OPTIONS = ALF_SETTINGS | {'atoms', 'directory', 'command', 'profile'}
 PROPERTY_SCOPES = ('system', 'atomic', 'pair_atomic')
@@ -93,6 +94,25 @@ def _run_command(config):
     return command
 
 
+def _magnetic_moments(config):
+    """``initial_magnetic_moments``: a starting moment in Bohr magnetons for each listed element, or None.
+
+    ASE calculators take initial moments per atom, so a fixed list only fits one structure size. ALF sets each
+    atom's moment from its element instead, and elements left out start at zero.
+    """
+    moments = config.get('initial_magnetic_moments')
+    if moments is None:
+        return None
+    if not isinstance(moments, dict) or not moments:
+        raise ValueError('initial_magnetic_moments must map element symbols to moments.')
+    for symbol, moment in moments.items():
+        if symbol not in chemical_symbols[1:]:
+            raise ValueError(f'initial_magnetic_moments has an unknown element: {symbol!r}.')
+        if isinstance(moment, bool) or not isinstance(moment, (int, float)) or not np.isfinite(moment):
+            raise ValueError(f'The initial magnetic moment for {symbol} must be a finite number.')
+    return {symbol: float(moment) for symbol, moment in moments.items()}
+
+
 def _check_properties(properties, calculator_class):
     """Each property needs ``[dataset, scope, multiplier]``, and the calculator must say it computes it."""
     if not isinstance(properties, dict) or not properties:
@@ -112,7 +132,7 @@ def _check_properties(properties, calculator_class):
 
 
 def _configuration(QM_config, properties=None):
-    """Check a QM configuration and return ``(calculator class, options, command)``; nothing runs."""
+    """Check a QM configuration and return ``(calculator class, options, command, moments)``; nothing runs."""
     if not isinstance(QM_config, dict):
         raise TypeError('QM_config must be a dictionary.')
     config = deepcopy(QM_config)
@@ -120,6 +140,10 @@ def _configuration(QM_config, properties=None):
         raise ValueError('ASE_calculator must name a calculator class.')
     options = _calculator_options(config)
     command = _run_command(config)
+    moments = _magnetic_moments(config)
+    if moments is not None and 'magmom' in options:
+        raise ValueError('Give initial magnetic moments per element in initial_magnetic_moments, '
+                         'or per atom in input magmom, not both.')
     calculator_class = load_module_from_config(config, 'ASE_calculator')
     if not isinstance(calculator_class, type) or not issubclass(calculator_class, BaseCalculator):
         raise TypeError('ASE_calculator must be an ASE BaseCalculator subclass.')
@@ -127,10 +151,12 @@ def _configuration(QM_config, properties=None):
         _check_properties(properties, calculator_class)
     # ORCA and Q-Chem get ALF's checks; any other class may provide its own.
     backend = _backend(calculator_class)
+    if backend and moments is not None:
+        raise ValueError('ORCA and Q-Chem take the spin state from the multiplicity, not initial_magnetic_moments.')
     validate = backend.validate_config if backend else getattr(calculator_class, 'validate_alf_config', None)
     if validate is not None:
         validate(options, command, properties)
-    return calculator_class, options, command
+    return calculator_class, options, command, moments
 
 
 def validate_ase_config(QM_config, master_config=None):
@@ -182,13 +208,15 @@ def molecule_directory(molecule_object, scratch):
     return str(Path(scratch) / moleculeid)
 
 
-def _working_atoms(molecule_object):
-    """A copy of the geometry to calculate on, carrying the molecule's charge and multiplicity."""
+def _working_atoms(molecule_object, moments=None):
+    """A copy of the geometry to calculate on, carrying the molecule's charge, multiplicity and initial moments."""
     atoms = molecule_object.get_atoms().copy()
     atoms.info = deepcopy(atoms.info)
     for key in STATE_KEYS:
         if key in molecule_object.metadata:
             atoms.info[key] = deepcopy(molecule_object.metadata[key])
+    if moments is not None:
+        atoms.set_initial_magnetic_moments([moments.get(symbol, 0.0) for symbol in atoms.get_chemical_symbols()])
     return atoms
 
 
@@ -235,8 +263,8 @@ def label_one(molecule_object, QM_config, QM_scratch_dir, properties_list, *, di
     molecule_object.set_converged_flag(False)
     stage = 'configuration'
     try:
-        calc_class, options, command = _configuration(QM_config, properties_list)
-        atoms = _working_atoms(molecule_object)
+        calc_class, options, command, moments = _configuration(QM_config, properties_list)
+        atoms = _working_atoms(molecule_object, moments)
         validate_geometry(atoms)
         default_directory = molecule_directory(molecule_object, QM_scratch_dir)  # Also checks the molecule ID.
         directory = default_directory if directory is None else directory

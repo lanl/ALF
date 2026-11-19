@@ -42,10 +42,11 @@ target-only calculation before adopting the warm start. [ORCA initial guess and 
 
 The `charge_density` stage runs with `ISPIN=1` and writes `CHGCAR`. The
 `magnetic` stage reads the copied charge density with `ICHARG=1` and
-initializes its wavefunctions with `ISTART=0`. Explicit `MAGMOM` values seed
-the `ISPIN=2` calculation. The two entries match the example cell's two Fe
-atoms. Check `magnetic/vasp.out` for a report that VASP read `CHGCAR`, and
-check the electronic convergence and final magnetization in `magnetic/OUTCAR`.
+initializes its wavefunctions with `ISTART=0`. Its `initial_magnetic_moments`
+setting gives every Fe atom 2.2 μB, so ASE writes a `MAGMOM` that fits a cell
+of any size; VASP uses it because the copied `CHGCAR` has no magnetization.
+Check `magnetic/vasp.out` for a report that VASP read `CHGCAR`, and check the
+electronic convergence and final magnetization in `magnetic/OUTCAR`.
 For a compatible wavefunction restart, the same handoff can copy `WAVECAR`
 with `LWAVE` enabled at the source and `ISTART=1` at the target. Confirm
 that VASP read the supplied file. [VASP magnetic initialization](https://vasp.at/wiki/MAGMOM), [VASP restart output](https://vasp.at/wiki/Restart_and_output_files_cheat_sheet)

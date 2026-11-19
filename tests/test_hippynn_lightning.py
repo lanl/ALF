@@ -308,3 +308,41 @@ def test_a_two_node_member_trains_on_shared_node_local_arrays(tmp_path, monkeypa
     assert not (member / "lightning_data").exists()
     assert list(local.iterdir()) == []
     ml.HIPNN_ASE_calculator(str(member), energy_key="energy", device="cpu")
+
+
+@pytest.mark.parametrize("total, batch_size, n_devices", [(10, 3, 2), (10, 3, 3), (9, 3, 4), (1, 4, 2)])
+def test_each_rank_gathers_only_its_own_final_test_batches(total, batch_size, n_devices):
+    """Together the ranks' batches are exactly the unshuffled loader's, with the same numbers."""
+    pytest.importorskip("pytorch_lightning")
+    import torch
+    from torch.utils.data import DataLoader, TensorDataset
+    from alframework.ml_interfaces.hippynn_lightning import _owned_batches
+
+    loader = DataLoader(TensorDataset(torch.arange(total), torch.arange(total) * 10), batch_size=batch_size)
+    expected = list(enumerate(loader))
+    found = sorted((pair for rank in range(n_devices) for pair in _owned_batches(loader, batch_size, rank, n_devices)),
+                   key=lambda pair: pair[0])
+    assert [number for number, _ in found] == [number for number, _ in expected]
+    for (_, got), (_, want) in zip(found, expected):
+        assert all(torch.equal(a, b) for a, b in zip(got, want))
+
+
+def test_check_capacity_counts_a_multi_node_member_by_its_gpus_on_each_node(capsys):
+    """16 GPUs on 2 nodes is 8 per node: one worker per node fits 8-GPU nodes, two would share GPUs."""
+    ensemble_training.check_capacity(2, 8, "from_multiprocessing", executor(1), gpus_per_member=16, member_nodes=2)
+    assert "Warning" not in capsys.readouterr().out
+    with pytest.raises(ValueError, match="share a GPU"):
+        ensemble_training.check_capacity(2, 8, "from_multiprocessing", executor(2), gpus_per_member=16,
+                                         member_nodes=2)
+
+
+def test_check_capacity_warns_when_member_node_groups_are_fewer_than_members(capsys):
+    # executor(1): 4 blocks of 1 node, so 2 groups of 2 nodes for 4 members.
+    ensemble_training.check_capacity(4, 8, "from_multiprocessing", executor(1), gpus_per_member=16, member_nodes=2)
+    assert "2 slots for 4 ensemble members" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("member_nodes, gpus_per_member", [(0, 8), (True, 8), (2, 1), (3, 16), (1.5, 8)])
+def test_member_nodes_must_share_gpus_per_member(member_nodes, gpus_per_member):
+    with pytest.raises(ValueError, match="member_nodes"):
+        ensemble_training.validated_member_nodes(member_nodes, gpus_per_member)

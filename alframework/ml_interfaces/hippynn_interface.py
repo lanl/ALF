@@ -2703,7 +2703,8 @@ def train_HIPPYNN_ensemble_multinode_task(ML_config, h5_dir, model_path, current
         len(params_list), model_path.format(current_training_id), current_training_id, gpus_per_node,
         ML_config.get('device_string', 'from_multiprocessing'), member_retries, _ml_executor(),
         finish=lambda: write_label_sources(model_path.format(current_training_id), h5_dir),
-        gpus_per_member=ML_config.get('gpus_per_member', 1))
+        gpus_per_member=ML_config.get('gpus_per_member', 1),
+        member_nodes=ML_config.get('member_nodes', 1))
 
 
 @join_app
@@ -2732,4 +2733,5 @@ def train_excited_state_HIPPYNN_ensemble_multinode_task(ML_config, h5_dir, model
         len(params_list), ensemble_dir, int(current_training_id), gpus_per_node,
         config.get('device_string', 'from_multiprocessing'), member_retries, _ml_executor(),
         finish=lambda: write_label_sources(ensemble_dir, h5_dir),
-        gpus_per_member=config.get('gpus_per_member', 1))
+        gpus_per_member=config.get('gpus_per_member', 1),
+        member_nodes=config.get('member_nodes', 1))

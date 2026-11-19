@@ -308,15 +308,25 @@ def _evaluate_share(module, database, evaluator, rank, n_devices, accelerator, l
     shares = {}
     for name in _final_splits(database, evaluator):
         shares[name] = []
-        for index, batch in enumerate(database.make_generator(name, 'eval', batch_size)):
-            if index % n_devices != rank:
-                continue
+        for index, batch in _owned_batches(database.make_generator(name, 'eval', batch_size), batch_size, rank,
+                                           n_devices):
             batch = [item.to(device=device) for item in batch]
             predictions = model(*batch[:evaluator.n_inputs])
             shares[name].append((index, [value.detach().cpu() for value in predictions],
                                  [value.detach().cpu() for value in batch[-evaluator.n_targets:]]))
             del predictions
     torch.save(shares, FINAL_SHARE.format(rank))
+
+
+def _owned_batches(loader, batch_size, rank, n_devices):
+    """(number, batch) for every ``n_devices``-th batch of the unshuffled ``loader``, from ``rank``: the same
+    batches it yields, but only these are gathered, so each rank's work shrinks as ranks are added."""
+    from torch.utils.data import DataLoader
+    total = len(loader.dataset)
+    numbers = list(range(rank, -(-total // batch_size), n_devices))
+    owned = [list(range(number * batch_size, min((number + 1) * batch_size, total))) for number in numbers]
+    return zip(numbers, DataLoader(loader.dataset, batch_sampler=owned, collate_fn=loader.collate_fn,
+                                   pin_memory=loader.pin_memory, num_workers=loader.num_workers))
 
 
 def _final_test(evaluator, database, n_devices, metric_tracker, when='FinalTraining'):

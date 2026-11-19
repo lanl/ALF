@@ -25,7 +25,7 @@ from alframework.tools.config import (
     build_input_dict, coordinator_poll_interval, load_config_file, load_module_from_string, stored_label_budget,
 )
 from alframework.tools.data_shards import store_current_data
-from alframework.tools.parsl_tasks import parsl_task_queue, release_allocations_at_exit, stop_if_executor_failed
+from alframework.tools.parsl_tasks import ParslTaskQueue, release_allocations_at_exit, stop_if_executor_failed
 from alframework.tools.serialization import data_serializer, use_data_serializer
 from alframework.tools.files import hold_lock
 from alframework.tools.pyanitools import anidataloader
@@ -76,8 +76,8 @@ all_configs = [master_config, builder_config, sampler_config, QM_config, ML_conf
 hold_lock(master_config['status_path'] + '.lock')
 
 # Define queues (the QM queue is created with the QM task below):
-ML_task_queue = parsl_task_queue()
-builder_task_queue = parsl_task_queue()
+ML_task_queue = ParslTaskQueue()
+builder_task_queue = ParslTaskQueue()
 
 if (args.test_builder or args.test_qm or args.test_sampler or args.test_ml) and 'parsl_debug_configuration' in master_config:
     parsl_configuration = load_module_from_string(master_config['parsl_debug_configuration'])

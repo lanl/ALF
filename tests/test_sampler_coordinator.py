@@ -14,7 +14,7 @@ from parsl import python_app
 
 from alframework.samplers import batched_mlmd
 from alframework.samplers.mlmd_sampling import simple_mlmd_sampling_task
-from alframework.tools.parsl_tasks import parsl_task_queue
+from alframework.tools.parsl_tasks import ParslTaskQueue
 from alframework.tools.config import coordinator_poll_interval
 from alframework.tools.molecules import MoleculesObject
 from alframework.tools.sampler_coordinator import SamplerCoordinator, driver_settings
@@ -185,7 +185,7 @@ def test_driver_settings_are_validated():
 
 def test_legacy_sampler_rejects_batching_settings():
     coordinator = SamplerCoordinator(simple_mlmd_sampling_task, "mlmd", {"dt": 0.5})
-    assert type(coordinator.queue) is parsl_task_queue and not coordinator.batched
+    assert type(coordinator.queue) is ParslTaskQueue and not coordinator.batched
     for key in ("driver", "batching"):
         with pytest.raises(ValueError, match="molecule_objects"):
             SamplerCoordinator(simple_mlmd_sampling_task, "mlmd", {key: {}})

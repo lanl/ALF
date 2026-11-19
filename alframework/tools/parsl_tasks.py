@@ -34,7 +34,7 @@ def is_final_task(task):
     return task.task_status() in FINAL_TASK_STATUSES
 
 
-class parsl_task_queue():
+class ParslTaskQueue:
     """Tasks the coordinator submitted and hasn't harvested yet, with counts by state.
 
     Tasks that support ``add_done_callback`` (Parsl's futures) report their final state once, when they finish,
@@ -197,6 +197,11 @@ class parsl_task_queue():
         print('Finished Tasks: {:d}'.format(self.get_completed_number()))
         print('Finished Successfully Tasks: {:d}'.format(self.get_exec_done_number()))
         print('Finished Failed Tasks: {:d}'.format(self.get_failed_number()))
+
+
+
+# The class's earlier name, which scripts and subclasses may still use.
+parsl_task_queue = ParslTaskQueue
 
 
 def cancel_blocks(dfk):

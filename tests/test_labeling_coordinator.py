@@ -13,7 +13,7 @@ from ase import Atoms
 from parsl import python_app
 
 from alframework.tools import labeling_coordinator as labeling_module
-from alframework.tools.parsl_tasks import parsl_task_queue
+from alframework.tools.parsl_tasks import ParslTaskQueue
 from alframework.tools.batching import BatchBuffer, BatchedSubmitter, BatchedTaskQueue
 from alframework.tools.labeling_coordinator import LabelingCoordinator, labeling_batch_settings
 from alframework.tools.molecules import MoleculesObject
@@ -353,7 +353,7 @@ def test_full_only_needs_a_queue_that_can_fill():
 
 def test_no_batching_keeps_the_ordinary_queue():
     coordinator = LabelingCoordinator(single_qm, "mock.qm", {})
-    assert type(coordinator.queue) is parsl_task_queue
+    assert type(coordinator.queue) is ParslTaskQueue
     assert coordinator.poll_delay(60) == 60
     assert coordinator.submit_ready([]) == 0
 

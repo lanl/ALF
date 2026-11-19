@@ -9,7 +9,7 @@ what checking every task gives.
 from concurrent.futures import Future
 
 from alframework.tools.batching import BatchedTaskQueue
-from alframework.tools.parsl_tasks import parsl_task_queue
+from alframework.tools.parsl_tasks import ParslTaskQueue
 from tests.helpers.fakes import FakeTask
 
 
@@ -35,7 +35,7 @@ class StatusFuture(Future):
 
 
 def test_counts_follow_tasks_as_they_finish_without_checking_them():
-    queue = parsl_task_queue()
+    queue = ParslTaskQueue()
     tasks = [StatusFuture() for _ in range(5)]
     for task in tasks:
         queue.add_task(task)
@@ -51,7 +51,7 @@ def test_counts_follow_tasks_as_they_finish_without_checking_them():
 
 def test_the_harvest_matches_checking_every_task():
     """Same results, in the same order (newest first), and the same failure count as before."""
-    queue = parsl_task_queue()
+    queue = ParslTaskQueue()
     tasks = [StatusFuture() for _ in range(4)]
     for task in tasks:
         queue.add_task(task)
@@ -66,7 +66,7 @@ def test_the_harvest_matches_checking_every_task():
 
 
 def test_a_task_done_before_it_is_added_counts_at_once():
-    queue = parsl_task_queue()
+    queue = ParslTaskQueue()
     task = StatusFuture()
     task.finish("x")
     queue.add_task(task)
@@ -74,7 +74,7 @@ def test_a_task_done_before_it_is_added_counts_at_once():
 
 
 def test_tasks_without_callbacks_are_still_checked_one_by_one():
-    queue = parsl_task_queue()
+    queue = ParslTaskQueue()
     tracked, plain_done, plain_running = StatusFuture(), FakeTask("exec_done", result="p"), \
         FakeTask("launched", done=False, running=True)
     for task in (tracked, plain_done, plain_running):

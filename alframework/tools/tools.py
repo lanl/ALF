@@ -34,6 +34,7 @@ from alframework.tools.parsl_tasks import (
     FAILED_TASK_STATUSES,
     FINAL_TASK_STATUSES,
     SUCCESSFUL_TASK_STATUSES,
+    ParslTaskQueue,
     _is_parsl_future,
     cancel_blocks,
     is_final_task,

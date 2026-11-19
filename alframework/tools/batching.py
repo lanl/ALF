@@ -21,7 +21,7 @@ from alframework.tools.parsl_tasks import (
     FAILED_TASK_STATUSES,
     SUCCESSFUL_TASK_STATUSES,
     is_final_task,
-    parsl_task_queue,
+    ParslTaskQueue,
 )
 
 logger = logging.getLogger(__name__)
@@ -224,7 +224,7 @@ class TaskWidths:
         self._widths = {key: value for key, value in self._widths.items() if key in live}
 
 
-class BatchedTaskQueue(parsl_task_queue):
+class BatchedTaskQueue(ParslTaskQueue):
     """Task queue whose counts are in input structures rather than tasks.
 
     This keeps ALF's structure-based limits (``bootstrap_set``,
@@ -362,7 +362,7 @@ class BatchedSubmitter:
     """Submit structures to a task one at a time or in compatible batches.
 
     With ``settings`` of ``None``, :meth:`submit` creates one ordinary task per
-    structure (``molecule_object=...``) on a plain ``parsl_task_queue``, exactly
+    structure (``molecule_object=...``) on a plain ``ParslTaskQueue``, exactly
     as ALF always has. Otherwise structures wait in a :class:`BatchBuffer` and
     :meth:`submit_ready` turns ready groups into tasks via :meth:`_group_task`,
     on a :class:`BatchedTaskQueue` that counts structures.
@@ -380,7 +380,7 @@ class BatchedSubmitter:
         self._failed_structures_read = 0
         self._startup_settings = None
         if settings is None:
-            self.queue = parsl_task_queue()
+            self.queue = ParslTaskQueue()
         else:
             self.buffer = BatchBuffer(settings["batch_size"], settings["partial_policy"],
                                       settings["max_wait_seconds"], key_function=key_function)

@@ -88,7 +88,7 @@ class LabelingCoordinator(BatchedSubmitter):
         master_config (dict): Used to check that ``full_only`` batches can fill.
 
     ``queue`` replaces ``QM_task_queue``. It is an ordinary
-    ``parsl_task_queue`` when batching is not selected and a
+    ``ParslTaskQueue`` when batching is not selected and a
     :class:`BatchedTaskQueue` (counting structures) otherwise.
     """
 

@@ -16,7 +16,7 @@ from alframework.tools.data_shards import compute_empirical_formula, store_curre
 from alframework.tools.geometry import random_rotation_matrix
 from alframework.tools.label_validation import system_checker
 from alframework.tools.molecules import MoleculesObject
-from alframework.tools.parsl_tasks import is_final_task, parsl_task_queue
+from alframework.tools.parsl_tasks import ParslTaskQueue, is_final_task
 from tests.helpers.fakes import FakeTask
 
 
@@ -35,6 +35,12 @@ def test_legacy_tool_paths_resolve_to_canonical_helpers(module, name):
     canonical = load_module_from_string(f"alframework.tools.{module}.{name}")
     assert load_module_from_config({"helper": f"{old}.{name}"}, "helper") is canonical
     assert pickle.loads(f"c{old}\n{name}\n.".encode()) is canonical
+
+
+def test_the_task_queue_keeps_its_lowercase_name():
+    from alframework.tools import parsl_tasks
+
+    assert parsl_tasks.parsl_task_queue is ParslTaskQueue
 
 
 def test_build_ani_info_keeps_its_pyanitools_path():
@@ -169,7 +175,7 @@ def test_nonperiodic_frames_are_saved_without_a_cell(tmp_path):
 
 
 def test_parsl_queue_counts_each_status():
-    queue = parsl_task_queue()
+    queue = ParslTaskQueue()
     queue.add_task(FakeTask("exec_done", done=True))
     queue.add_task(FakeTask("exec_done", done=False))
     queue.add_task(FakeTask("running", done=False, running=True))
@@ -190,7 +196,7 @@ def test_parsl_queue_counts_each_status():
 
 
 def test_parsl_queue_collects_finished_results():
-    queue = parsl_task_queue()
+    queue = ParslTaskQueue()
     queue.add_task(FakeTask("running", result="keep", done=False, running=True))
     queue.add_task(FakeTask("exec_done", result="done", done=True))
     queue.add_task(FakeTask("memo_done", result="memoized", done=True))

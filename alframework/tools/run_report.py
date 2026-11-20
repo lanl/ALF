@@ -33,7 +33,8 @@ import numpy as np
 import pandas as pd
 
 from alframework.tools.plot_style import GRID, MUTED, NOTE, RC, SHADE as QUEUE_SHADE, TEXT, series_colors, title_case
-from alframework.tools.plot_style import figure as _figure, label_end as _label_end, label_ends, panel as _panel, save
+from alframework.tools.plot_style import figure as _figure, key, label_end as _label_end, panel as _panel
+from alframework.tools.plot_style import save
 from alframework.tools.run_records import load_master_config, run_records
 
 # Stages in pipeline order, each with a fixed color from the reference palette.
@@ -231,8 +232,8 @@ def plot_stages(records, out_dir, written):
     edges, centers = _bins(t0, end)
     x = (centers - t0) / scale
     figure, axes = _figure(len(stages), "Stages over the run",
-                           "Solid: GPUs busy. Dashed: nodes in use. Both as a percentage of what the stage ran on. "
-                           "Darker shading: failed tasks so far. Gray: waiting for a Parsl block (queue and startup).")
+                           "Percentages are of the GPUs and nodes each stage ran on. Waiting for a block covers the "
+                           "scheduler's queue and the block's startup.")
     for axis, stage in zip(axes, stages):
         color, group = STAGE_COLOR[stage], tasks[tasks["stage"] == stage]
         for wait in waits[waits["stage"].str.split("/").apply(lambda names: stage in names)].itertuples():
@@ -252,13 +253,21 @@ def plot_stages(records, out_dir, written):
             per_bin = np.histogram(failed, bins=edges)[0]
             failed_pct = 100 * np.cumsum(per_bin) * per_task / capacity
             axis.fill_between(x, failed_pct, step="mid", color=color, alpha=0.55, lw=0)
-            _label_end(axis, x, failed_pct, f"{len(failed):,} Failed", color)
         axis.fill_between(x, busy_pct, color=color, alpha=0.15, lw=0)
         axis.plot(x, busy_pct, color=color, lw=1.6)
         axis.plot(x, nodes_pct, color=color, lw=1.0, ls=(0, (4, 2)))
         for number, finished in records["round_finishes"].items():
             axis.axvline((finished - t0) / scale, color=MUTED, ls=(0, (2, 2)), lw=0.8)
         axis.set_ylim(0, max(105, axis.get_ylim()[1]))
+        entries = [("GPUs busy" if not cpu_stage else "Tasks running", dict(color=color, lw=1.6)),
+                   ("Nodes in use", dict(color=color, lw=1.0, ls=(0, (4, 2))))]
+        if len(failed):
+            entries.append(("Failed so far", {"area": color, "alpha": 0.55}))
+        if any(stage in names for names in waits["stage"].str.split("/")):
+            entries.append(("Waiting for a block", {"area": QUEUE_SHADE}))
+        if len(records["round_finishes"]):
+            entries.append(("New model (ALF iteration)", dict(color=MUTED, lw=0.8, ls=(0, (2, 2)))))
+        key(axis, entries)
         axis.set_yticks([0, 50, 100], ["0", "50%", "100%"])
         axis.set_ylabel(title_case("busy"))
         active = group["end"].max() - group["start"].min()
@@ -267,8 +276,11 @@ def plot_stages(records, out_dir, written):
         _panel(axis, STAGE_NAME[stage], f"{len(group):,} task{'s' * (len(group) != 1)}  ·  {unit}  ·  "
                f"active {_minutes(active)}  ·  {len(failed):,} failed")
     for number, finished in records["round_finishes"].items():
-        axes[0].annotate(f"Model {number}", ((finished - t0) / scale, 1.0), xycoords=("data", "axes fraction"),
-                         xytext=(2, -2), textcoords="offset points", va="top", fontsize=NOTE, color=MUTED)
+        # Left of its line near the right edge, so it stays clear of the key.
+        right = (finished - t0) / (end - t0) > 0.75
+        axes[0].annotate(f"Iteration {number}", ((finished - t0) / scale, 1.0), xycoords=("data", "axes fraction"),
+                         xytext=(-3 if right else 3, -2), textcoords="offset points", va="top",
+                         ha="right" if right else "left", fontsize=NOTE, color=MUTED)
     axes[-1].set_xlabel(title_case(xlabel))
     for axis in axes:
         axis.set_xlim(0, (end - t0) / scale * 1.06)
@@ -281,9 +293,8 @@ def plot_task_times(records, out_dir, written):
     if tasks.empty:
         return False
     stages = [stage for stage, _, _ in STAGES if (tasks["stage"] == stage).any()]
-    figure, axes = _figure(len(stages), "Task times per cycle",
-                           "Box: the middle half of a cycle's tasks, with the median. Whiskers: shortest to longest. "
-                           "A long top whisker is a straggler the stage waited for.", height=1.5)
+    figure, axes = _figure(len(stages), "Task times per ALF iteration",
+                           "A long top whisker is a straggler the whole stage waited for.", height=1.5)
     for axis, stage in zip(axes, stages):
         group, color = tasks[tasks["stage"] == stage], STAGE_COLOR[stage]
         cycles = sorted(group["cycle"].unique())
@@ -298,7 +309,9 @@ def plot_task_times(records, out_dir, written):
         axis.set_ylim(0, seconds.max() * 1.15 if seconds.max() > 0 else 1)
         _panel(axis, STAGE_NAME[stage], f"median {seconds.median():,.1f} s  ·  90% within "
                f"{seconds.quantile(0.9):,.1f} s  ·  longest {seconds.max():,.1f} s", "Seconds")
-    axes[-1].set_xlabel(title_case("Cycle (the model in use when the task started)"))
+    key(axes[0], [("Middle half", {"area": MUTED, "alpha": 0.3}), ("Median", dict(color=MUTED, lw=2)),
+                  ("Shortest to longest", dict(color=MUTED, lw=1))])
+    axes[-1].set_xlabel(title_case("ALF iteration (the model in use when the task started)"))
     _save(figure, out_dir, "run-report-task-times.png", written)
     return True
 
@@ -317,40 +330,39 @@ def plot_spread(records, out_dir, written):
     spreads = [(name, title, unit) for name, title, unit in SPREADS if name != "Fsmax" and any(name in row for row in rows)]
     gpu = np.array([row.get("sampling_gpu_hours_per_candidate", np.nan) for row in rows])
     panels = len(spreads) + 1 + int(np.isfinite(gpu).any())
-    by_state = (" Energy and force lines: one per selected state (the state a trajectory ran on). Gap lines: one "
-                "per pair of states." if states else "")
-    figure, axes = _figure(panels, "Ensemble spread per cycle",
-                           "How much the ensemble's members disagree along each trajectory (its peak), how often a "
-                           "trajectory gave QM a candidate, and what each candidate cost in sampling. All should fall "
-                           "as the models improve." + by_state, height=1.5)
-    ends = {}  # Line-end labels, placed once each panel has its final limits.
+    by_state = " Per-state lines use the state a trajectory ran on; gap lines, the pair of states." if states else ""
+    figure, axes = _figure(panels, "Ensemble spread per ALF iteration",
+                           "Spread is each trajectory's peak disagreement between the ensemble's members. All of these "
+                           "should fall as the models improve." + by_state, height=1.5)
+    ends = {}  # Each panel's key entries, for the lines drawn per state or pair.
     pairs = sorted({lower for row in rows for lower in row.get("gap_pairs", {})}, key=int)
     for axis, (name, title, unit) in zip(axes, spreads):
         if name == "gap_std" and pairs:  # One line per pair of states, by its lower state.
             for color, lower in series_colors(pairs):
                 medians = np.array([row.get("gap_pairs", {}).get(lower, {}).get("median", np.nan) for row in rows])
                 axis.plot(models, medians, color=color, lw=1.5, marker="o", ms=3.5)
-                ends.setdefault(axis, []).append((models, medians, f"States {lower}–{int(lower) + 1}", color))
+                ends.setdefault(axis, []).append((f"States {lower}–{int(lower) + 1}",
+                                                  dict(color=color, lw=1.5, marker="o", ms=3.5)))
             last = rows[-1].get(name, {})
-            _panel(axis, "Gap spread per pair of states", f"last cycle, all pairs: median "
+            _panel(axis, "Gap spread per pair of states", f"last iteration, all pairs: median "
                    f"{last.get('median', np.nan):.3g} {unit}", unit)
         elif states and name != "gap_std":  # Excited states: each selected state's median.
             for color, state in series_colors(states):
                 medians = np.array([row.get("states", {}).get(state, {}).get(name, {}).get("median", np.nan)
                                     for row in rows])
                 axis.plot(models, medians, color=color, lw=1.5, marker="o", ms=3.5)
-                ends.setdefault(axis, []).append((models, medians, f"State {state}", color))
+                ends.setdefault(axis, []).append((f"State {state}", dict(color=color, lw=1.5, marker="o", ms=3.5)))
             last = rows[-1].get(name, {})
-            _panel(axis, title, f"last cycle, all states: median {last.get('median', np.nan):.3g} {unit}", unit)
+            _panel(axis, title, f"last iteration, all states: median {last.get('median', np.nan):.3g} {unit}", unit)
         else:
             medians = np.array([row.get(name, {}).get("median", np.nan) for row in rows])
             p90 = np.array([row.get(name, {}).get("p90", np.nan) for row in rows])
             axis.fill_between(models, medians, p90, color=MEMBER_COLOR, alpha=0.12, lw=0)
             axis.plot(models, p90, color=MEMBER_COLOR, lw=1, ls=(0, (4, 2)))
             axis.plot(models, medians, color=MEMBER_COLOR, lw=1.6, marker="o", ms=4)
-            ends.setdefault(axis, []).extend([(models, medians, "Median", MEMBER_COLOR),
-                                              (models, p90, "90th Percentile", MEMBER_COLOR)])
-            _panel(axis, title, f"last cycle: median {medians[-1]:.3g} {unit}, 90% below {p90[-1]:.3g} {unit}", unit)
+            key(axis, [("Median", dict(color=MEMBER_COLOR, lw=1.6, marker="o", ms=4)),
+                       ("90th percentile", dict(color=MEMBER_COLOR, lw=1, ls=(0, (4, 2))))])
+            _panel(axis, title, f"last iteration: median {medians[-1]:.3g} {unit}, 90% below {p90[-1]:.3g} {unit}", unit)
         axis.set_ylim(bottom=0)
     shares = np.array([100 * row["candidate_share"] if row["candidate_share"] is not None else np.nan
                        for row in rows])
@@ -367,13 +379,13 @@ def plot_spread(records, out_dir, written):
         axis = axes[-1]
         axis.plot(models, gpu * 60, color=STAGE_COLOR["sampler"], lw=1.6, marker="o", ms=4)
         last = gpu[np.isfinite(gpu)][-1] * 60
-        _panel(axis, "Sampling GPU time per QM candidate", f"last cycle: {last:.3g} GPU-minutes", "GPU-minutes")
+        _panel(axis, "Sampling GPU time per QM candidate", f"last iteration: {last:.3g} GPU-minutes", "GPU-minutes")
         axis.set_ylim(bottom=0)
-    axes[-1].set_xlabel(title_case("Cycle (model)"))
+    axes[-1].set_xlabel(title_case("ALF iteration"))
     for axis in axes:
         _cycle_axis(axis, models)
-    for axis, series in ends.items():
-        label_ends(axis, series)
+    for axis, entries in ends.items():
+        key(axis, entries)
     _save(figure, out_dir, "run-report-spread.png", written)
     return True
 
@@ -384,8 +396,7 @@ def plot_labels(records, out_dir, written):
         return False
     rounds = labels["round"].to_numpy()
     color = STAGE_COLOR["QM"]
-    figure, axes = _figure(2, "Labels per training round",
-                           "Labels stored for each training round, from its HDF5 shard, and in total.", height=1.5)
+    figure, axes = _figure(2, "Labels per ALF iteration", "Counted from each iteration's HDF5 shard.", height=1.5)
     bars = axes[0].bar(rounds, labels["labels"], color=color, width=0.6, alpha=0.85)
     if len(rounds) <= 16:
         axes[0].bar_label(bars, labels=[f"{value:,.0f}" for value in labels["labels"]], fontsize=NOTE, color=MUTED,
@@ -393,7 +404,7 @@ def plot_labels(records, out_dir, written):
     _panel(axes[0], "Added", f"median {labels['labels'].median():,.0f} per round", "Labels")
     axes[1].plot(rounds, labels["cumulative_labels"], color=color, lw=1.6, marker="o", ms=4)
     _label_end(axes[1], rounds, labels["cumulative_labels"], f"{labels['cumulative_labels'].iloc[-1]:,.0f}", color)
-    _panel(axes[1], "In total", f"{len(rounds)} round{'s' * (len(rounds) != 1)}", "Labels", "Training round")
+    _panel(axes[1], "In total", f"{len(rounds)} iteration{'s' * (len(rounds) != 1)}", "Labels", "ALF iteration")
     for axis in axes:
         axis.set_xticks(rounds, [str(number) for number in rounds])
         axis.set_xlim(rounds.min() - 0.6, rounds.max() + 0.6 + 0.12 * max(1, np.ptp(rounds)))
@@ -425,15 +436,15 @@ def _error_columns(training):
 def _state_metrics(training):
     """Excited-state members' final test errors by state: ``{"E" or "F": {state: {"RMSE": column, "MAE": ...}}}``."""
     by_state = {}
-    for key, errors in _error_columns(training).items():
-        if isinstance(key, tuple):
-            by_state.setdefault(key[0], {})[key[1]] = errors
+    for quantity, errors in _error_columns(training).items():
+        if isinstance(quantity, tuple):
+            by_state.setdefault(quantity[0], {})[quantity[1]] = errors
     return {kind: dict(sorted(states.items())) for kind, states in by_state.items()}
 
 
 def _ground_metrics(training):
     """Ground-state final test errors, energy first, at most four quantities."""
-    errors = {key: value for key, value in _error_columns(training).items() if not isinstance(key, tuple)}
+    errors = {quantity: value for quantity, value in _error_columns(training).items() if not isinstance(quantity, tuple)}
     order = list(QUANTITY) + sorted(set(errors) - set(QUANTITY))
     return {key: errors[key] for key in order if key in errors}
 
@@ -454,47 +465,48 @@ def plot_training(records, out_dir, written):
                    if kind in by_state]
     else:
         panels += [(quantity, f"Final Test {QUANTITY.get(quantity, quantity)} Error") for quantity in list(ground)[:4]]
-    lines = ("Lines: each state's median over the members; solid RMSE, dashed MAE." if by_state else
-             "Dots: ensemble members. Lines: their median; solid RMSE, dashed MAE.")
-    figure, axes = _figure(len(panels), "Training per Round",
-                           f"{lines} Epoch time is each member's last epoch; errors are the final test of each member's "
-                           "best model, in the units of the training data.", height=1.6)
+    figure, axes = _figure(len(panels), "Training per ALF iteration",
+                           "Epoch time is each member's last epoch. Errors are the final test of each member's best "
+                           "model, in the units of the training data" + (", as the median over members." if by_state
+                                                                          else "."), height=1.6)
     members = training["member"][training["round"] == rounds[-1]].nunique()
-    for axis, (key, title) in zip(axes, panels):
+    for axis, (kind, title) in zip(axes, panels):
         ends = []
-        if key == "epoch":
+        if kind == "epoch":
             values = pd.to_numeric(training["last_epoch_time"], errors="coerce")
             axis.scatter(training["round"], values, s=14, color=MEMBER_COLOR, alpha=0.55, lw=0)
             medians = values.groupby(training["round"]).median().reindex(rounds)
             axis.plot(rounds, medians, color=TEXT, lw=1.3)
-            ends.append((rounds, medians, "Median", TEXT))
-            _panel(axis, title, f"round {rounds[-1]}: median {medians.iloc[-1]:.3g} s, {members} members", "Seconds")
-        elif key in ("E", "F"):
-            for color, (state, errors) in series_colors(by_state[key].items()):
+            key(axis, [("Members", dict(color=MEMBER_COLOR, lw=0, marker="o", ms=5, alpha=0.6)),
+                       ("Median", dict(color=TEXT, lw=1.3))])
+            _panel(axis, title, f"iteration {rounds[-1]}: median {medians.iloc[-1]:.3g} s, {members} members", "Seconds")
+        elif kind in ("E", "F"):
+            for color, (state, errors) in series_colors(by_state[kind].items()):
                 for error, style in (("RMSE", "-"), ("MAE", (0, (4, 2)))):
                     if error in errors:
                         medians = _medians(training, errors[error], rounds)
                         axis.plot(rounds, medians, color=color, lw=1.5, ls=style, marker="o" if error == "RMSE"
                                   else None, ms=4)
-                        if error == "RMSE" or "RMSE" not in errors:
-                            ends.append((rounds, medians, f"State {state}", color))
-            _panel(axis, title, f"round {rounds[-1]}, {members} members", "Error")
+                ends.append((f"State {state}", dict(color=color, lw=1.5, marker="o", ms=4)))
+            _panel(axis, title, f"iteration {rounds[-1]}, {members} members", "Error")
+            key(axis, ends + [("RMSE: solid", dict(lw=1.5)), ("MAE: dashed", dict(lw=1.5, ls=(0, (4, 2))))])
         else:
-            errors = ground[key]
+            errors = ground[kind]
             for error, style in (("RMSE", "-"), ("MAE", (0, (4, 2)))):
                 if error in errors:
                     values = pd.to_numeric(training[errors[error]], errors="coerce")
                     axis.scatter(training["round"], values, s=14, color=MEMBER_COLOR, alpha=0.4, lw=0)
                     medians = values.groupby(training["round"]).median().reindex(rounds)
                     axis.plot(rounds, medians, color=MEMBER_COLOR, lw=1.5, ls=style)
-                    ends.append((rounds, medians, error, MEMBER_COLOR))
             last = ", ".join(f"{error} {_medians(training, column, rounds).iloc[-1]:.3g}"
                              for error, column in errors.items())
-            _panel(axis, title, f"round {rounds[-1]} medians: {last}", "Error")
+            _panel(axis, title, f"iteration {rounds[-1]} medians: {last}", "Error")
+            key(axis, [("Members", dict(color=MEMBER_COLOR, lw=0, marker="o", ms=5, alpha=0.5)),
+                       ("RMSE (median)", dict(color=MEMBER_COLOR, lw=1.5)),
+                       ("MAE (median)", dict(color=MEMBER_COLOR, lw=1.5, ls=(0, (4, 2))))])
         axis.set_xticks(rounds, [str(number) for number in rounds])
         axis.set_xlim(rounds.min() - 0.6, rounds.max() + 0.6 + 0.12 * max(1, np.ptp(rounds)))
-        label_ends(axis, ends)
-    axes[-1].set_xlabel(title_case("Training round"))
+    axes[-1].set_xlabel(title_case("ALF iteration"))
     _save(figure, out_dir, "run-report-training.png", written)
     return True
 
@@ -508,9 +520,7 @@ def plot_health(records, out_dir, written):
     if not panels:
         return False
     note = "" if failures is None else (" No task failed." if not failures else f" {failures:,} tasks failed.")
-    figure, axes = _figure(len(panels), "Run health",
-                           "GPU memory each task's PyTorch peaked at, the coordinator's memory, and failed tasks."
-                           + note, height=1.5)
+    figure, axes = _figure(len(panels), "Run health", note.strip() or None, height=1.5)
     t0 = records["run_start"]
     end = max(tasks["end"].max() if not tasks.empty else t0, memory["time"].max() if not memory.empty else t0)
     scale, xlabel = _time_axis(end - t0)
@@ -527,31 +537,35 @@ def plot_health(records, out_dir, written):
             axis.grid(axis="x", color=GRID, lw=0.8)
             axis.grid(axis="y", visible=False)
             highest = gpu.loc[gpu["gpu_peak_gb"].idxmax()]
+            key(axis, [("Middle half", {"area": MUTED, "alpha": 0.3}), ("Median", dict(color=MUTED, lw=2)),
+                       ("Lowest to highest", dict(color=MUTED, lw=1))])
             _panel(axis, "Peak GPU memory per task", f"highest {highest['gpu_peak_gb']:.1f} GB "
                    f"({STAGE_NAME.get(highest['stage'], highest['stage'])}, {highest['host']})", xlabel="GB")
         elif panel == "memory":
             x = (memory["time"] - t0) / scale
             axis.plot(x, memory["tree_gib"], color=MEMBER_COLOR, lw=1.6)
             axis.plot(x, memory["coordinator_gib"], color=SECONDARY, lw=1.2)
-            _label_end(axis, x, memory["tree_gib"], "With Child Processes (PSS)", MEMBER_COLOR, dy=5)
-            _label_end(axis, x, memory["coordinator_gib"], "Coordinator (RSS)", SECONDARY, dy=-5)
+            key(axis, [("All processes (PSS)", dict(color=MEMBER_COLOR, lw=1.6)),
+                       ("Coordinator (RSS)", dict(color=SECONDARY, lw=1.2))])
             _panel(axis, "Coordinator memory", f"peak {memory['tree_gib'].max():.1f} GiB with child processes, "
                    f"{memory['coordinator_gib'].max():.1f} GiB coordinator", "GiB", xlabel)
             axis.set_ylim(bottom=0)
-            axis.set_xlim(0, (end - t0) / scale * 1.18)
+            axis.set_xlim(0, (end - t0) / scale * 1.02)
         else:
             failed = tasks[tasks["outcome"] != "ok"].sort_values("end")
+            entries = []
             for stage, _, color in STAGES:
                 times = failed.loc[failed["stage"] == stage, "end"].to_numpy()
                 if len(times):
                     x = (np.concatenate([[t0], times]) - t0) / scale
                     axis.step(x, np.arange(len(times) + 1), where="post", color=color, lw=1.6)
-                    _label_end(axis, x, np.arange(len(times) + 1), f"{STAGE_NAME[stage]} {len(times):,}", color)
+                    entries.append((f"{STAGE_NAME[stage]} ({len(times):,})", dict(color=color, lw=1.6)))
+            key(axis, entries)
             reasons = failed["outcome"].value_counts()
             _panel(axis, "Failed tasks so far", ", ".join(f"{count:,} {reason}" for reason, count
                                                           in reasons.head(3).items()), "Tasks", xlabel)
             axis.set_ylim(bottom=0)
-            axis.set_xlim(0, (end - t0) / scale * 1.18)
+            axis.set_xlim(0, (end - t0) / scale * 1.02)
     _save(figure, out_dir, "run-report-health.png", written)
     return True
 

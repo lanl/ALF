@@ -229,3 +229,63 @@ def test_ground_state_errors_keep_rmse_and_mae_for_each_quantity(tmp_path):
     ground = run_report._ground_metrics(training)
     assert list(ground) == ["T", "TperAtom", "Force"], "energy first"
     assert ground["Force"] == {"RMSE": "final.test.ForceRMSE", "MAE": "final.test.ForceMAE"}
+
+
+def _rendered_figures(monkeypatch, draw):
+    """Every figure ``draw`` saves, kept open for inspection."""
+    from alframework.tools import plotting
+    kept = []
+
+    def keep(fig, path, dpi=130):
+        kept.append((os.path.basename(str(path)), fig))
+        fig.savefig(path, dpi=dpi)
+
+    for module in (plotting, run_report):
+        monkeypatch.setattr(module, "save", keep)
+    draw()
+    return kept
+
+
+@pytest.mark.parametrize("excited", [False, True], ids=["ground_state", "excited_states"])
+def test_no_text_overlaps_in_any_report_figure(tmp_path, monkeypatch, excited):
+    import matplotlib.pyplot as plt
+    from alframework.tools.plot_style import overlapping_text, text_outside
+    figures = _rendered_figures(monkeypatch, lambda: run_report.write_report(
+        make_run(tmp_path / "run", excited=excited), tmp_path / "report"))
+    assert len(figures) == 6
+    for name, fig in figures:
+        assert overlapping_text(fig) == [], name
+        assert text_outside(fig) == [], name
+        plt.close(fig)
+
+
+def test_no_text_overlaps_in_any_progress_plot(tmp_path, monkeypatch):
+    import matplotlib.pyplot as plt
+    from alframework.tools.plot_style import overlapping_text, text_outside
+    from alframework.tools.plotting import analysis_plot
+    from tests.test_plotting import finished, rejected_at_once, write_summary
+    rng = np.random.default_rng(3)
+    rows = []
+    for model in range(6):
+        for index in range(120):
+            scale = 1.0 / (1 + 0.5 * model)
+            es, fs = rng.lognormal(np.log(0.25 * scale), 0.5), rng.lognormal(np.log(0.12 * scale), 0.5)
+            triggered = max(es / 0.2, fs / 0.1) > 1
+            meta = finished(selected_state=index % 4, peak_Es=es, peak_Fs=fs, peak_Fsmax=2.5 * fs,
+                            peak_gap_std=rng.lognormal(np.log(0.08 * scale), 0.6), gap_std_lower_state=index % 3,
+                            simulationtime=float(rng.uniform(0.05, 1.0)) if triggered else 1.0,
+                            trajectory_outcome="eligible" if triggered else "completed")
+            if index % 37 == 0:
+                meta = rejected_at_once(screen_reject_reason=("min_distance", "max_force")[index % 2])
+            rows.append((model, meta))
+    summary = write_summary(tmp_path / "s.jsonl", rows)
+    figures = _rendered_figures(monkeypatch, lambda: analysis_plot(
+        plot_dir=str(tmp_path / "plots"), trajectory_summary_path=summary, Escut=0.2, Fscut=0.1, gap_std_cut=0.1,
+        acquisition={"eligibility": ["energy", "force_mean", "force_max", "gap"]}))
+    names = {name for name, _ in figures}
+    assert {"analysis-plot-cutoff-tuning.png", "analysis-plot-trigger-time.png", "analysis-plot-rejections.png",
+            "analysis-plot-sampling-cost.png", "analysis-plot-gap_std-states1-2.png"} <= names
+    for name, fig in figures:
+        assert overlapping_text(fig) == [], name
+        assert text_outside(fig) == [], name
+        plt.close(fig)

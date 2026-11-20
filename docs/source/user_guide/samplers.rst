@@ -532,7 +532,8 @@ ALF writes these to ``plot_dir``, as ``analysis-plot-<name>.png``:
      - With the cutoffs: for the latest model, the simulated time when each trajectory stopped
        against its peak uncertainty over the threshold. Early triggers mean the model fails fast.
 
-Box plots show the middle half of each model's trajectories with the median, whiskers from the 5th to
+Plots are by ALF iteration (the model in use). Box plots show the middle half of each model's trajectories
+with the median, whiskers from the 5th to
 the 95th percentile, and a tick at the largest value, so a long tail doesn't hide the rest. The
 cutoffs, ``Escut``, ``Fscut`` and ``gap_std_cut``, are read from the sampler config. Which signals
 trigger QM follows the sampler's ``acquisition.eligibility``: energy and both force signals by default,

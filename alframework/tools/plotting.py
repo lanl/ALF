@@ -22,7 +22,7 @@ import pandas as pd
 from matplotlib.ticker import FuncFormatter
 
 from alframework.tools.plot_style import (CATEGORICAL, GRID, LABEL, MUTED, NOTE, RC, SURFACE, WIDTH, figure,
-                                          label_end, panel, save, thousands, title_case)
+                                          key, label_end, panel, save, thousands, title_case)
 from alframework.tools.trajectory_summary import COLUMNS, read_trajectory_summary, trajectory_row
 
 METADATA_FILE = re.compile(r'metadata-(mol-\d+-\d+)\.p')
@@ -32,6 +32,8 @@ MOLECULE_ID = re.compile(r'mol-\d+-\d+')
 OUTCOME_COLORS = {"completed": "#2a78d6", "eligible": "#1baf7a", "rejected": "#eb6834", "failed": "#eda100",
                   "task_failed": "#e87ba4"}
 OTHER_OUTCOME_COLOR = "#6250d6"
+OUTCOME_MEANING = {"completed": "Completed: no candidate", "eligible": "Eligible: gave QM a candidate",
+                   "rejected": "Rejected by a screen", "failed": "Failed", "task_failed": "Its task failed"}
 BOX_COLOR = "#2a78d6"
 CUTOFF_COLOR = "#eb6834"
 # Each uncertainty signal: its column, the acquisition term that uses it, the cutoff key, the cutoff multiplier,
@@ -109,7 +111,7 @@ def _chosen_models(table, most):
 def _model_axis(axis, models):
     axis.set_xticks(range(len(models)), [str(model) for model in models], rotation=45 if len(models) > 12 else 0)
     axis.set_xlim(-0.75, len(models) - 0.25 + 0.04 * max(len(models), 4))
-    axis.set_xlabel(title_case("Model"))
+    axis.set_xlabel(title_case("ALF iteration"))
 
 
 def _mark_windows(axis, table, models):
@@ -125,8 +127,8 @@ def _mark_windows(axis, table, models):
                       textcoords="offset points", va="top", color=MUTED, fontsize=NOTE)
 
 
-def _new_figure(count, caption):
-    return figure(1, caption=caption, height=3.6, width=max(WIDTH, 0.24 * count + 3.0))
+def _new_figure(count, subtitle=None):
+    return figure(1, subtitle=subtitle, height=3.6, width=max(WIDTH, 0.24 * count + 3.0))
 
 
 def _cutoffs(Escut=None, Fscut=None, gap_std_cut=None):
@@ -161,11 +163,7 @@ def _box_plot(table, name, title, ylabel, path, models, windows, threshold=None)
         if len(group):
             positions.append(position)
             groups.append(group)
-    caption = ("Box: the middle half of each model's trajectories, with the median. Whiskers: 5th to 95th "
-               "percentile. Tick: the largest.")
-    if threshold is not None:
-        caption += " Orange line: the sampler's trigger threshold."
-    fig, (axis,) = _new_figure(len(models), caption)
+    fig, (axis,) = _new_figure(len(models))
     axis.boxplot(groups, positions=positions, widths=0.6, patch_artist=True, whis=(5, 95), showfliers=False,
                  boxprops=dict(facecolor=BOX_COLOR, edgecolor=BOX_COLOR, alpha=0.3),
                  medianprops=dict(color=BOX_COLOR, linewidth=2), whiskerprops=dict(color=MUTED, linewidth=1),
@@ -173,13 +171,17 @@ def _box_plot(table, name, title, ylabel, path, models, windows, threshold=None)
     axis.scatter(positions, [group.max() for group in groups], marker="_", s=60, color=MUTED, linewidths=1.2,
                  zorder=3)
     last = groups[-1]
-    numbers = f"model {models[positions[-1]]}: median {np.median(last):.3g}, {len(last):,} trajectories"
+    numbers = f"iteration {models[positions[-1]]}: median {np.median(last):.3g}, {len(last):,} trajectories"
+    entries = [("Middle half", {"area": BOX_COLOR, "alpha": 0.3}), ("Median", dict(color=BOX_COLOR, lw=2)),
+               ("5th to 95th percentile", dict(color=MUTED, lw=1)),
+               ("Largest", dict(color=MUTED, lw=0, marker="_", ms=10, mew=1.2))]
     if threshold is not None:
         axis.axhline(threshold, color=CUTOFF_COLOR, linestyle=(0, (4, 2)), linewidth=1.2)
-        label_end(axis, [len(models) - 0.5], [threshold], f"Threshold {threshold:.3g}", CUTOFF_COLOR, dy=9)
-        numbers += f", {100 * np.mean(last > threshold):.0f}% above the threshold"
+        numbers += f", {100 * np.mean(last > threshold):.0f}% above the threshold ({threshold:.3g})"
+        entries.append(("Trigger threshold", dict(color=CUTOFF_COLOR, lw=1.2, ls=(0, (4, 2)))))
     _model_axis(axis, models)
     panel(axis, title, numbers, ylabel)
+    key(axis, entries)
     _mark_windows(axis, windows, models)
     save(fig, path)
     return True
@@ -193,28 +195,22 @@ def _outcome_plot(table, path, models, windows):
     counts = known.groupby(["model", "outcome"]).size().unstack(fill_value=0).reindex(models, fill_value=0)
     ordered = [name for name in OUTCOME_COLORS if name in counts] + sorted(set(counts) - set(OUTCOME_COLORS))
     totals = counts.sum(axis=1).replace(0, np.nan).to_numpy()
-    fig, (axis,) = _new_figure(len(models), f"Each bar is one model's trajectories, {int(np.nansum(totals)):,} in "
-                               "all. 'eligible' trajectories gave QM a candidate; 'completed' ran to the end without one.")
+    fig, (axis,) = _new_figure(len(models))
     bottom = np.zeros(len(models))
     for name in ordered:
         share = np.nan_to_num(100 * counts[name].to_numpy() / totals)
         axis.bar(range(len(models)), share, 0.7, bottom=bottom, label=name, edgecolor=SURFACE, linewidth=1.5,
                  color=OUTCOME_COLORS.get(name, OTHER_OUTCOME_COLOR))
-        if share[-1] >= 6:  # Name each outcome on the last model's bar, where it fits.
-            axis.annotate(name, (len(models) - 1 + 0.4, bottom[-1] + share[-1] / 2), xytext=(4, 0),
-                          textcoords="offset points", va="center", fontsize=NOTE, annotation_clip=False,
-                          color=OUTCOME_COLORS.get(name, OTHER_OUTCOME_COLOR))
         bottom += share
     last = counts.iloc[-1]
     _model_axis(axis, models)
     axis.set_ylim(0, 100)
     axis.set_yticks([0, 25, 50, 75, 100], ["0", "25%", "50%", "75%", "100%"])
-    panel(axis, "Trajectory outcomes", f"model {models[-1]}: " + ", ".join(
+    panel(axis, "Trajectory outcomes", f"{int(np.nansum(totals)):,} trajectories; iteration {models[-1]}: " + ", ".join(
         f"{100 * last[name] / max(last.sum(), 1):.0f}% {name}" for name in ordered if last[name]), "Trajectories")
     _mark_windows(axis, windows, models)
-    legend = axis.legend(loc="upper left", bbox_to_anchor=(1.01, 1), reverse=True, fontsize=NOTE)
-    for text in legend.get_texts():
-        text.set_color(MUTED)
+    key(axis, [(OUTCOME_MEANING.get(name, name), {"area": OUTCOME_COLORS.get(name, OTHER_OUTCOME_COLOR)})
+               for name in reversed(ordered)])
     save(fig, path)
     return True
 
@@ -232,10 +228,9 @@ def _cutoff_tuning_plot(table, path, models, signals, thresholds):
     panels = [("all", "Any eligible signal")] + [(name, title.capitalize()) for name, _, _, _, title, _ in SIGNALS
                                                  if name in signals]
     fig, axes = figure(len(panels), "Cutoff tuning",
-                       "The share of each model's trajectories whose peak passes the threshold, if every cutoff were "
-                       "multiplied by the factor on the x axis (1 = the cutoffs now). With trajectories stopped at "
-                       "their first trigger, peaks above a threshold were cut short, so to the right of 1 the shares "
-                       "are lower bounds.", height=1.6)
+                       "Trajectories that would trigger QM if every cutoff were multiplied by the factor on the x "
+                       "axis. Right of 1×, shares are lower bounds: trajectories stop at their first trigger.",
+                       height=1.6)
     for number, (axis, (signal, title)) in enumerate(zip(axes, panels)):
         for color, model in zip(CATEGORICAL, latest):
             group = table[table["model"] == model]
@@ -245,21 +240,20 @@ def _cutoff_tuning_plot(table, path, models, signals, thresholds):
             if not len(ratio):
                 continue
             share = 100 * (ratio[None, :] > scales[:, None]).mean(axis=1)
-            axis.plot(scales, share, color=color, lw=1.6, label=f"Model {model}")
+            axis.plot(scales, share, color=color, lw=1.6)
         axis.axvline(1.0, color=MUTED, lw=0.8, ls=(0, (2, 2)))
         axis.set_xscale("log")
         axis.set_xticks([0.25, 0.5, 1, 2, 4], ["0.25×", "0.5×", "1×", "2×", "4×"])
         axis.set_xticks([], minor=True)
         axis.set_ylim(0, 105)
         axis.set_yticks([0, 50, 100], ["0", "50%", "100%"])
-        if number == 0:  # One key for every panel: the lines meet at 0 on the right, so they can't be labeled there.
-            legend = axis.legend(loc="upper right", reverse=True)
-            for text, line in zip(legend.get_texts(), legend.get_lines()):
-                text.set_color(line.get_color())
+        if number == 0:  # One key for every panel, which share the models and their colors.
+            key(axis, [(f"Iteration {model}", dict(color=color, lw=1.6)) for color, model in zip(CATEGORICAL, latest)]
+                + [("Cutoffs now", dict(color=MUTED, lw=0.8, ls=(0, (2, 2))))])
         group = table[table["model"] == latest[-1]]
         now = _trigger_ratio(group, signals, thresholds) if signal == "all" else group[signal] / thresholds[signal]
         now = now.dropna()
-        panel(axis, title, f"model {latest[-1]} now: {100 * (now > 1).mean():.0f}% above" if len(now) else None,
+        panel(axis, title, f"iteration {latest[-1]} now: {100 * (now > 1).mean():.0f}% above" if len(now) else None,
               "Share of Trajectories")
     axes[-1].set_xlabel(title_case("Cutoffs multiplied by"))
     save(fig, path)
@@ -275,10 +269,8 @@ def _trigger_time_plot(table, path, models, signals, thresholds):
     data = data[data["ratio"] > 0]
     if data.empty:
         return False
-    fig, (axis,) = figure(1, caption="Each trajectory of the latest model: simulated time when it stopped, and its "
-                          "peak uncertainty over the trigger threshold (above 1: it gave QM a candidate). Darker: more "
-                          "trajectories. Early triggers mean the model fails fast; a crowd just under 1 at the end of "
-                          "the run means the cutoffs barely held.", height=3.6)
+    fig, (axis,) = figure(1, subtitle="Above 1, a trajectory gave QM a candidate. Early triggers mean the model fails "
+                          "fast; a crowd just under 1 at the end means the cutoffs barely held.", height=3.6)
     if len(data) > 500:
         hexes = axis.hexbin(data["time"], data["ratio"], gridsize=60, yscale="log", bins="log", cmap="Blues",
                             mincnt=1, linewidths=0)
@@ -294,7 +286,11 @@ def _trigger_time_plot(table, path, models, signals, thresholds):
     axis.yaxis.set_major_formatter(plain)
     axis.yaxis.set_minor_formatter(FuncFormatter(lambda value, _: f"{value:g}" if f"{value:g}"[0] in "25" else ""))
     triggered = data["ratio"] > 1
-    panel(axis, f"When model {model}'s trajectories stopped",
+    key(axis, [("Trajectories (darker: more)" if len(data) > 500 else "One trajectory",
+                {"area": BOX_COLOR, "alpha": 0.6} if len(data) > 500 else
+                dict(color=BOX_COLOR, lw=0, marker="o", ms=5, alpha=0.6)),
+               ("Trigger threshold", dict(color=CUTOFF_COLOR, lw=1.2, ls=(0, (4, 2))))])
+    panel(axis, f"When iteration {model}'s trajectories stopped",
           f"{100 * triggered.mean():.0f}% triggered, median at {data.loc[triggered, 'time'].median():.3g} ps"
           if triggered.any() else "none triggered", "Peak uncertainty / threshold", "Simulated time (ps)")
     save(fig, path)
@@ -311,8 +307,7 @@ def _rejection_plot(table, path, models, windows):
     if len(reasons) > len(CATEGORICAL):  # A ninth reason folds into "other", rather than a generated color.
         counts["other"] = counts[reasons[len(CATEGORICAL) - 1:]].sum(axis=1)
         reasons = reasons[:len(CATEGORICAL) - 1] + ["other"]
-    fig, (axis,) = _new_figure(len(models), f"Rejected trajectories by the reason recorded for them, "
-                               f"{int(counts.to_numpy().sum()):,} in all.")
+    fig, (axis,) = _new_figure(len(models))
     bottom = np.zeros(len(models))
     for color, reason in zip(CATEGORICAL, reasons):
         axis.bar(range(len(models)), counts[reason].to_numpy(), 0.7, bottom=bottom, label=reason, color=color,
@@ -321,12 +316,10 @@ def _rejection_plot(table, path, models, windows):
     _model_axis(axis, models)
     thousands(axis)
     top = counts.iloc[-1]
-    panel(axis, "Why trajectories were rejected", f"model {models[-1]}: " + ", ".join(
+    panel(axis, "Why trajectories were rejected", f"{int(counts.to_numpy().sum()):,} rejected; iteration {models[-1]}: " + ", ".join(
         f"{top[reason]:,} {reason}" for reason in reasons[:3] if top[reason]), "Trajectories")
     _mark_windows(axis, windows, models)
-    legend = axis.legend(loc="upper left", bbox_to_anchor=(1.01, 1), reverse=True, fontsize=NOTE)
-    for text in legend.get_texts():
-        text.set_color(MUTED)
+    key(axis, [(reason, {"area": color}) for color, reason in reversed(list(zip(CATEGORICAL, reasons)))])
     save(fig, path)
     return True
 
@@ -346,16 +339,16 @@ def _sampling_cost_plot(table, path, models, windows):
     per_candidate = np.array([row[1] for row in rows])
     wasted = np.array([row[2] for row in rows])
     fig, axes = figure(2, "Sampling cost",
-                       "Simulated time spent per QM candidate, and the share of it in trajectories that gave none "
-                       "(they ran to the end, or a screen rejected them). Tighter cutoffs find candidates sooner; "
-                       "looser ones spend more simulation per candidate.", height=1.8,
+                       "Tighter cutoffs find candidates sooner; looser ones spend more simulation per candidate.",
+                       height=1.8,
                        width=max(WIDTH, 0.24 * len(models) + 3.0))
     positions = np.arange(len(models))
     axes[0].plot(positions, per_candidate, color=BOX_COLOR, lw=1.6, marker="o", ms=4)
-    panel(axes[0], "Simulated time per QM candidate", f"model {models[-1]}: {per_candidate[-1]:.3g} ps over "
+    panel(axes[0], "Simulated time per QM candidate", f"iteration {models[-1]}: {per_candidate[-1]:.3g} ps over "
           f"{rows[-1][0]:,} candidates", "Picoseconds")
     axes[1].bar(positions, wasted, 0.6, color=BOX_COLOR, alpha=0.85)
-    panel(axes[1], "Simulated time that found no candidate", f"model {models[-1]}: {wasted[-1]:.0f}%", "Percent")
+    panel(axes[1], "Simulated time that found no candidate", f"iteration {models[-1]}: {wasted[-1]:.0f}% "
+          "(ran to the end, or rejected)", "Percent")
     axes[1].set_ylim(0, 100)
     for axis in axes:
         _model_axis(axis, models)

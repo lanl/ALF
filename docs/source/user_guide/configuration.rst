@@ -177,6 +177,10 @@ The master config controls the workflow wiring. Common fields include:
        "frame_chunk": 1024}``. Every choice is lossless: the shards stay HDF5 with the
        same datasets, dtypes and values, and read as before. The default is gzip level 6
        with h5py's chunks. See :ref:`running-at-scale-storing-labels`.
+   * - ``coordinator_trim_after_snapshot``
+     - Optional boolean, default ``false``. After publishing a nonempty label snapshot,
+       collect Python garbage and release free coordinator heap pages on Linux with glibc.
+       The coordinator logs elapsed time and its PSS before and after when available.
    * - ``plotting_utility``, ``plot_dir``, ``update_plots_every``
      - Optional progress plots. ``plotting_utility`` is an import string such as
        ``alframework.tools.plotting.analysis_plot``, and ``plot_dir`` is where it

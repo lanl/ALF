@@ -110,6 +110,24 @@ def test_restart_after_snapshot_publication_with_real_coordinator(tmp_path, monk
     assert all_ids[:len(bootstrap)] == bootstrap
 
 
+def test_coordinator_trim_runs_after_each_snapshot(tmp_path, monkeypatch):
+    from alframework.tools import memory
+
+    snapshots = []
+
+    def configure(master):
+        assert master['coordinator_trim_after_snapshot'] is True
+        return lambda: snapshots.append(stored_ids(tmp_path / 'h5'))
+
+    monkeypatch.setattr(memory, 'snapshot_memory_trim', configure)
+    settings = dict(LOOP, label_storage_batch_size=2, finite_bootstrap=True, coordinator_trim_after_snapshot=True)
+    run_alf_driver(tmp_path, monkeypatch, **restart_tasks(tmp_path, []), **settings)
+    assert len(snapshots) == 2
+    assert len(snapshots[0]) == settings['bootstrap_set']
+    assert snapshots[1][:len(snapshots[0])] == snapshots[0]
+    assert len(snapshots[1]) > len(snapshots[0])
+
+
 def test_queue_harvest_bounds_structures_and_accounts_for_failures():
     class Task:
         def __init__(self, name, width, failed=False):

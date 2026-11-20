@@ -20,6 +20,7 @@ from alframework.tools.parsl_tasks import ParslTaskQueue, release_allocations_at
 from alframework.tools.serialization import data_serializer, use_data_serializer
 from alframework.tools.files import hold_lock
 from alframework.tools import memory_sampler
+from alframework.tools.memory import snapshot_memory_trim
 from alframework.tools.progress_plots import ProgressPlots
 from alframework.tools.pyanitools import anidataloader
 from alframework.tools.molecules import MoleculesObject
@@ -47,6 +48,7 @@ args = parser.parse_args()
 # Load the master configuration:
 master_config = load_config_file(args.master)
 poll_interval = coordinator_poll_interval(master_config)
+trim_snapshot_memory = snapshot_memory_trim(master_config)
 if 'master_directory' not in master_config:
     master_config['master_directory'] = None
 
@@ -227,6 +229,8 @@ def store_held_labels(**attributes):
     status['lifetime_stored_labels'] = status.get('lifetime_stored_labels', 0) + stored
     status['current_h5_id'] = status['current_h5_id'] + 1
     held.select_snapshot(master_config['h5_path'].format(status['current_h5_id']))
+    if stored and trim_snapshot_memory is not None:
+        trim_snapshot_memory()
     return stored
 
 ######################################

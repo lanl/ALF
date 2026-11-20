@@ -482,6 +482,16 @@ that has it, such as TorchSim for sampler workers. Different executors can use
 different environments. See :doc:`batching` for how ALF's queue limits relate to
 batch sizes.
 
+On many nodes, start **one worker pool per node**, with one worker per GPU inside it, rather
+than one pool per GPU. Each pool registers with its executor's interchange as a manager, and the
+interchange, one process on the coordinator's host, tracks every manager. With blocks of several
+nodes, a launcher that starts one process per node (``SrunLauncher`` with one task per node, the
+provider's default) does this, and ``available_accelerators`` pins each worker in the pool to its
+own GPU. In one run on 1,024 nodes of 8 GPUs, one pool per GPU gave 8,192 managers per executor, and
+some sampler tasks were never dispatched; one pool per node gave 1,024 managers, every task ran,
+and on 64 nodes the change moved the run's throughput by less than 0.2%. ``examples/large_scale/parsl_configs.py``
+follows this layout.
+
 Configuration Knobs
 -------------------
 

@@ -25,6 +25,7 @@ FAMILIES = (
     "CPP_excited_gpu4pyscf",
     "IL",
     "UO2",
+    "large_scale",
     "fine_tuning",
     "mace_fine_tuning",
     "uma_fine_tuning",
@@ -466,3 +467,53 @@ def test_examples_name_current_module_paths(path):
     for field, value in read(path).items():
         if isinstance(value, str):
             assert not value.startswith(moved), f"{field} names a moved module: {value}"
+
+
+def test_the_large_scale_example_applies_its_scaling_block_to_the_tasks_it_names(tmp_path, monkeypatch):
+    from alframework.qm_interfaces.teacher_interface import validate_teacher_config
+    from alframework.samplers import batched_mlmd
+    from alframework.tools.config import load_config_file
+    from alframework.tools.restarts import label_h5_options
+    from alframework.tools.sampled_frames import data_by_reference_settings
+    from alframework.tools.scaling import apply_scaling, large_run_warning
+
+    folder = ROOT / "examples" / "large_scale"
+    monkeypatch.chdir(folder)
+    master = load_config_file(str(folder / "master_config.json"))
+    sampler = load_config_file(str(folder / "mlmd_config.json"), master["master_directory"])
+    ml = read(folder / "hippynn_config.json")
+    block = apply_scaling(master, sampler, ml)
+    assert block == read(folder / "master_config.json")["scaling"]
+    assert large_run_warning(master, sampler) is None, "a large run with every measured setting on"
+    batched_mlmd.returned_metadata(sampler)
+    batched_mlmd.metadata_settings(sampler)
+    label_h5_options(master)
+    assert ml["shared_training_data"] and ml["stream_final_evaluation"]
+    assert sampler["batching"]["batch_size"] == master["maximum_builder_structures"] == 256
+    # Handing frames off by reference, as the README describes, needs nothing else.
+    assert data_by_reference_settings(dict(master, data_by_reference={"directory": "sampling-frames",
+                                                                      "sampler_frames": True}))
+    qm = read(folder / "qm_config.json")
+    checkpoint = tmp_path / qm["teacher"]["checkpoint"]
+    checkpoint.parent.mkdir(parents=True)
+    checkpoint.write_bytes(b"weights")
+    validate_teacher_config(qm, dict(master, master_directory=str(tmp_path)))
+    assert labeling_batch_settings(qm)["mode"] == "native"
+
+
+def test_the_large_scale_parsl_template_runs_one_pool_per_node(monkeypatch):
+    folder = ROOT / "examples" / "large_scale"
+    monkeypatch.syspath_prepend(str(folder))
+    monkeypatch.delitem(sys.modules, "parsl_configs", raising=False)
+    monkeypatch.setenv("ALF_THP_DISABLE", "1")
+    monkeypatch.setenv("ALF_GPUS_PER_NODE", "8")
+    monkeypatch.setenv("ALF_SAMPLER_NODES", "16")
+    templates = importlib.import_module("parsl_configs")
+    executors = {executor.label: executor for executor in templates.config.executors}
+    assert set(executors) == {"alf_sampler_executor", "alf_QM_executor", "alf_ML_executor"}
+    sampler = executors["alf_sampler_executor"]
+    assert sampler.provider.nodes_per_block == 16 and type(sampler.provider.launcher).__name__ == "SrunLauncher"
+    assert sampler.max_workers_per_node == 8 and len(sampler.available_accelerators) == 8
+    assert executors["alf_ML_executor"].max_workers_per_node == 1
+    assert all("export ALF_THP_DISABLE=1" in executor.provider.worker_init for executor in executors.values())
+    monkeypatch.delitem(sys.modules, "parsl_configs", raising=False)

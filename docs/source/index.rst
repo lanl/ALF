@@ -78,6 +78,7 @@ pieces to a concrete run.
    examples/il
    examples/uo2
    examples/reactive_sampling
+   examples/large_scale
 
 .. toctree::
    :maxdepth: 2

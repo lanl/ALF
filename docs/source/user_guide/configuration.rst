@@ -190,7 +190,7 @@ The master config controls the workflow wiring. Common fields include:
      - Optional. Hand sampled frames to QM through files on a shared filesystem instead of
        through the coordinator: ``{"directory": ..., "sampler_frames": true}``, with
        ``"keep_files": true`` to keep the files for debugging. Off unless set. See
-       :ref:`running-at-scale-data-by-reference`.
+       :ref:`handing frames to QM by reference <running-at-scale-data-by-reference>`.
    * - ``scaling``
      - Optional. One place for the settings that change how ALF runs at scale, by their usual
        names, including the sampler's and ML configuration's: each is passed to the

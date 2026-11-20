@@ -78,7 +78,7 @@ metadata files or compact returns off gets a warning naming them.
    * - ``data_by_reference``
      - master
      - Sampled frames go to QM through shared files rather than through the coordinator
-       (:ref:`running-at-scale-data-by-reference`). It also needs ``maximum_stored_labels``.
+       (:ref:`by reference <running-at-scale-data-by-reference>`). It also needs ``maximum_stored_labels``.
    * - ``trajectory_summary_path``, ``coordinator_memory_sample``, ``coordinator_memory_path``,
        ``coordinator_loop_path``
      - master

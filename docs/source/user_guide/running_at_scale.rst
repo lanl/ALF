@@ -115,7 +115,9 @@ Settings that size the work stay in their own configurations, since they change 
 run on: ``batching`` (the sampler and QM configurations each have one; see :doc:`batching`),
 ``maximum_builder_structures``, ``parallel_samplers``, ``target_queued_QM``, ``gpus_per_member``,
 ``member_nodes`` and ``member_launcher``. Naming one in the block stops the coordinator with a message saying
-where it goes. Settings that describe the nodes themselves stay in the workers' environment, set in the
+where it goes. The master configuration's ``sizing`` block can derive the batch sizes, the builder width and the
+queue limits from what each task holds and how many labels a round adds (see :ref:`batching-sizing`), and every
+run prints its capacity against its Parsl executors at startup (see :ref:`batching-capacity`). Settings that describe the nodes themselves stay in the workers' environment, set in the
 Parsl configuration's ``worker_init`` (for example with ``alframework.tools.worker_setup.worker_setup``):
 the node-local environment and caches below, ``ALF_THP_DISABLE``, and ``ALF_TASK_TIMELINE_DIR``.
 ``examples/large_scale`` puts all of these together.

@@ -17,6 +17,7 @@ from alframework.samplers.acquisition import acquisition_settings
 from alframework.tools.batching import batching_settings
 from alframework.tools.labeling_coordinator import labeling_batch_settings
 from alframework.tools.sampler_coordinator import driver_settings
+from alframework.tools.sizing import apply_sizing, derive_sizing, sizing_block
 from tests.helpers.fakes import import_neurochem_with_fake_backend
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -51,6 +52,9 @@ def test_example_configs_are_valid(path):
     for config in configs.values():
         assert isinstance(config, dict)
     sampler = configs["sampler"]
+    if "sizing" in master:  # The coordinator fills in the batch sizes and queue limits the block derives.
+        apply_sizing(derive_sizing(sizing_block(master), sampler_slots=1, builder_batches=True), dict(master),
+                     sampler, configs["QM"])
     acquisition_settings(sampler)
     driver_settings(sampler)
     batching_settings(sampler)
@@ -482,6 +486,11 @@ def test_the_large_scale_example_applies_its_scaling_block_to_the_tasks_it_names
     master = load_config_file(str(folder / "master_config.json"))
     sampler = load_config_file(str(folder / "mlmd_config.json"), master["master_directory"])
     ml = read(folder / "hippynn_config.json")
+    qm = read(folder / "qm_config.json")
+    # The sampler template's default: 4 nodes of 4 GPU workers, so 16 sampler tasks at once.
+    apply_sizing(derive_sizing(sizing_block(master), sampler_slots=16, builder_batches=True), master, sampler, qm)
+    assert (master["parallel_samplers"], master["target_queued_QM"], master["save_h5_threshold"]) == \
+        (16 * 256, 16384, 16383)
     block = apply_scaling(master, sampler, ml)
     assert block == read(folder / "master_config.json")["scaling"]
     assert large_run_warning(master, sampler, batched_mlmd.mlmd_trajectories_task) is None, \
@@ -494,12 +503,11 @@ def test_the_large_scale_example_applies_its_scaling_block_to_the_tasks_it_names
     # Handing frames off by reference, as the README describes, needs nothing else.
     assert data_by_reference_settings(dict(master, data_by_reference={"directory": "sampling-frames",
                                                                       "sampler_frames": True}))
-    qm = read(folder / "qm_config.json")
     checkpoint = tmp_path / qm["teacher"]["checkpoint"]
     checkpoint.parent.mkdir(parents=True)
     checkpoint.write_bytes(b"weights")
     validate_teacher_config(qm, dict(master, master_directory=str(tmp_path)))
-    assert labeling_batch_settings(qm)["mode"] == "native"
+    assert labeling_batch_settings(qm)["mode"] == "native" and qm["batching"]["batch_size"] == 256
 
 
 def test_the_large_scale_parsl_template_runs_one_pool_per_node(monkeypatch):

@@ -14,10 +14,69 @@ per task.
 
 To measure how many structures a GPU should take, run the benchmark in :doc:`gpu_sizing`.
 
+.. _batching-sizing:
+
+Sizing a Run
+------------
+
+A run's size is several settings that have to agree with each other and with the
+Parsl configuration: the sampler and QM batch sizes, the builder width, and the queue
+limits below. The master configuration's ``sizing`` block states the intent instead,
+and ALF fills them in:
+
+.. code-block:: json
+
+   "sizing": {
+     "trajectories_per_sampler_task": 256,
+     "structures_per_qm_task": 256,
+     "labels_per_round": 16384
+   }
+
+.. list-table::
+   :header-rows: 1
+   :widths: 32 68
+
+   * - Setting
+     - Filled in as
+   * - Sampler ``batching.batch_size``
+     - ``trajectories_per_sampler_task``. A ``batching`` block without ``batch_size``
+       keeps its other fields.
+   * - ``maximum_builder_structures``
+     - ``trajectories_per_sampler_task``, when the builder takes ``moleculeids``, so one
+       builder task fills one sampler task.
+   * - ``parallel_samplers``
+     - The sampler tasks the Parsl configuration runs at once (see
+       :ref:`batching-capacity`) times ``trajectories_per_sampler_task``, which keeps
+       every sampler slot busy. ``sampler_tasks_at_once`` replaces the Parsl count, and
+       is needed when the executors don't say.
+   * - QM ``batching.batch_size``
+     - ``structures_per_qm_task``. The mode comes from the QM task unless given.
+   * - ``target_queued_QM``
+     - ``labels_per_round``.
+   * - ``save_h5_threshold``
+     - ``labels_per_round`` minus one: a retraining starts once more than
+       ``save_h5_threshold`` labels are held, so once ``labels_per_round`` are.
+
+Each key is optional and fills in only its own settings. ``trajectories_per_sampler_task``
+needs a sampler task that takes ``molecule_objects``, such as ``mlmd_trajectories_task``.
+A setting also given in its own place must have the same value; a different one stops
+the coordinator, naming both. ``minimum_QM``, ``bootstrap_set``,
+``maximum_completed_QM`` and ``maximum_stored_labels`` stay yours. The coordinator
+prints what it derived, for example:
+
+.. code-block:: text
+
+   Sizing: sampler batching.batch_size 256, maximum_builder_structures 256, parallel_samplers 16,384
+   (64 sampler tasks at once), QM batching.batch_size 256, target_queued_QM 16,384, save_h5_threshold 16,383
+   (retrain once 16,384 new labels are held)
+
+The block is read once, when the coordinator starts; its values apply to every reload of
+the configuration files, and an edit to it waits for a restart.
+
 Choosing Widths
 ---------------
 
-You choose each width separately, and changing one does not change the others.
+Without the ``sizing`` block, you choose each width separately, and changing one does not change the others.
 Splitting or combining structures into tasks does not change their molecule IDs.
 
 .. list-table::

@@ -195,6 +195,11 @@ The master config controls the workflow wiring. Common fields include:
      - Optional. One place for the settings that change how ALF runs at scale, by their usual
        names, including the sampler's and ML configuration's: each is passed to the
        configuration that uses it. Read once, at startup. See :ref:`running-at-scale-settings`.
+   * - ``sizing``
+     - Optional. Size the run by ``trajectories_per_sampler_task``, ``structures_per_qm_task``
+       and ``labels_per_round``; ALF derives the batch sizes, ``maximum_builder_structures``,
+       ``parallel_samplers``, ``target_queued_QM`` and ``save_h5_threshold``. Read once, at
+       startup. See :ref:`batching-sizing`.
    * - ``plotting_utility``, ``plot_dir``, ``update_plots_every``
      - Optional progress plots. ``plotting_utility`` is an import string such as
        ``alframework.tools.plotting.analysis_plot``, and ``plot_dir`` is where it

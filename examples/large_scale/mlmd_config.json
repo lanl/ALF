@@ -16,7 +16,7 @@
   "meta_dir": "sampling/",
   "batched_calculator": "alframework.ml_interfaces.hippynn_interface.load_hippynn_batched_ensemble",
   "driver": {"strategy": "batched", "engine": "torchsim"},
-  "batching": {"batch_size": 256, "partial_policy": "timeout", "max_wait_seconds": 30.0},
+  "batching": {"partial_policy": "timeout", "max_wait_seconds": 30.0},
   "translate_to_center": true,
   "MLMD_calculator_options": {"well_params": {"r_start": 3.0, "force": 0.1}},
   "trajectory_frequency": 0.0,

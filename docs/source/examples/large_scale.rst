@@ -16,8 +16,8 @@ How It Runs
    * - Stage
      - Task and settings
    * - Builder
-     - ``simple_multi_condensed_phase_builder_task``, 256 structures per task (``maximum_builder_structures``), so
-       one builder task feeds one sampler task.
+     - ``simple_multi_condensed_phase_builder_task``, 256 structures per task, so one builder task feeds one sampler
+       task.
    * - Sampler
      - ``mlmd_trajectories_task`` with the ``torchsim`` engine, 256 trajectories per task on one GPU, returning
        compact metadata without momenta and writing one metadata file per task.
@@ -36,9 +36,10 @@ variables: the partition and account, GPUs and cores per node, nodes per role, a
 Sizing
 ------
 
-Keep the structures in flight equal to the sampling capacity: ``parallel_samplers`` is the sampler nodes times the
-GPUs per node times the sampler batch size, 16,384 for 16 sampler nodes of 4 GPUs. ``target_queued_QM`` and
-``save_h5_threshold`` at the same number retrain after every wave of sampling.
+The ``sizing`` block (see :ref:`batching-sizing`) states 256 trajectories per sampler task, 256 structures per QM task
+and 16,384 labels per round. ALF derives the batch sizes, the builder width, ``target_queued_QM``,
+``save_h5_threshold``, and ``parallel_samplers``: the sampler tasks the Parsl configuration runs at once times 256, so
+4,096 on the template's default 4 sampler nodes of 4 GPUs, and 16,384 on 16.
 
 Running
 -------

@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 import numpy as np
 import argparse
+import inspect
 np.set_printoptions(threshold=np.inf)
 
 import parsl
@@ -33,7 +34,8 @@ from alframework.tools.label_validation import screen_labels
 from alframework.tools.label_parts import hold_ready
 from alframework.tools.loop_timing import coordinator_loop_timer
 from alframework.tools.capabilities import validate_task_config
-from alframework.tools.capacity import capacity_report
+from alframework.tools.capacity import capacity_report, task_slots
+from alframework.tools.sizing import apply_sizing, derive_sizing, describe as describe_sizing, sizing_block
 from alframework.tools.scaling import SCALING, apply_scaling, describe as describe_scaling, large_run_warning
 from alframework.tools.builder_outputs import builder_outputs
 from alframework.tools.sampler_coordinator import SamplerCoordinator
@@ -98,6 +100,7 @@ executor_list = []
 # Create List of parsl executors
 for curExec in parsl_configuration.executors:
     executor_list.append(curExec.label)
+parsl_executors = {executor.label: executor for executor in parsl_configuration.executors}
 
 # Task data: Parsl's dill, or pickle first (parsl_data_serializer), before anything is submitted.
 use_data_serializer(data_serializer(master_config))
@@ -139,6 +142,16 @@ for cur_Exec in sampler_task.executors:
     if cur_Exec.replace('_executor', '_standby_executor') in executor_list:
         sampler_task.executors.append(cur_Exec.replace('_executor', '_standby_executor'))
 validate_task_config(sampler_task, sampler_config, master_config)
+# Optional: the master configuration's sizing block states what each task holds and how many labels a round adds,
+# and the batch sizes and queue limits follow (alframework.tools.sizing). Derived once, here.
+sizing_settings = sizing_block(master_config)
+sizing_derived = derive_sizing(
+    sizing_settings, sampler_slots=task_slots(sampler_task.executors, parsl_executors),
+    builder_batches='moleculeids' in inspect.signature(builder_task.func).parameters,
+    sampler_batches='molecule_objects' in inspect.signature(sampler_task.func).parameters)
+apply_sizing(sizing_derived, master_config, sampler_config, QM_config)
+if sizing_settings:
+    print(describe_sizing(sizing_settings, sizing_derived), flush=True)
 large_run = large_run_warning(master_config, sampler_config, sampler_task)
 if large_run:
     print('Warning: ' + large_run, flush=True)
@@ -174,7 +187,6 @@ validate_task_config(ml_task, ML_config, master_config)
 
 # What the run keeps in flight against what its Parsl executors can run, with warnings where they disagree.
 # Ensemble tasks that submit one app per member (join apps) are counted per member.
-parsl_executors = {executor.label: executor for executor in parsl_configuration.executors}
 ml_members = ML_config.get('n_models') if 'n_models' in ML_config else (ML_config.get('fine_tune') or {}).get('n_models')
 capacity_lines, capacity_warnings = capacity_report(
     master_config, parsl_executors,
@@ -543,6 +555,9 @@ while True:
             # Load the ML config:
             ML_config_new = load_config_file(master_config_new['ML_config_path'], master_config_new['master_directory'])
 
+            # The sizing and scaling blocks were read at startup: their settings apply to every reload, and an edit to
+            # either waits for a restart.
+            apply_sizing(sizing_derived, master_config_new, sampler_config_new, QM_config_new)
             # The scaling block was read at startup; its settings apply to every reload, and an edit to it waits for
             # a restart.
             if master_config_new.get(SCALING) != scaling_settings and not scaling_edit_reported:

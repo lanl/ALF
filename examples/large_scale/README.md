@@ -7,9 +7,9 @@ settings with your own; the scaling settings carry over.
 
 ## What it sets
 
-- **Fewer, larger tasks.** Each builder task builds 256 structures (`maximum_builder_structures`), each sampler task
-  runs 256 trajectories on one GPU (`batching` in `mlmd_config.json`), and each QM task labels up to 256 structures
-  in one teacher call (`batching` in `qm_config.json`).
+- **Fewer, larger tasks, sized in one place.** The `sizing` block in `master_config.json` says each sampler task
+  runs 256 trajectories on one GPU, each QM task labels up to 256 structures in one teacher call, and each round adds
+  16,384 labels. ALF derives the batch sizes, 256 structures per builder task, and the queue limits from it.
 - **The `scaling` block in `master_config.json`.** It gathers the settings that change how ALF runs at scale:
   pickle serialization, a short poll, releasing the coordinator's freed memory after each shard, turning off
   transparent huge pages for the coordinator, label storage in lossless HDF5 parts, compact sampler returns
@@ -23,10 +23,12 @@ settings with your own; the scaling settings carry over.
 
 ## Sizing
 
-Keep the structures in flight equal to the sampling capacity: `parallel_samplers` is the sampler nodes times
-`ALF_GPUS_PER_NODE` times the sampler batch size. The defaults, 16,384, fit 16 sampler nodes of 4 GPUs at 256
-trajectories each; with `ALF_SAMPLER_NODES=4` set `parallel_samplers` to 4,096. Set `target_queued_QM` and
-`save_h5_threshold` to the same number to retrain after every wave of sampling. A member on several nodes needs
+The `sizing` block keeps every sampler GPU busy whatever the machine: `parallel_samplers` becomes the sampler tasks
+the Parsl configuration runs at once, `ALF_SAMPLER_NODES` times `ALF_GPUS_PER_NODE`, times 256. With the template's
+defaults, 4 nodes of 4 GPUs, that is 4,096; with `ALF_SAMPLER_NODES=16`, 16,384. `labels_per_round` sets when a
+retraining starts, once 16,384 new labels are held, and how many structures wait for QM. The coordinator prints what
+it derived, then a capacity report of each stage's tasks at once against what it keeps in flight, with a warning
+for anything left idle. A member on several nodes needs
 `member_nodes`, a `member_launcher` and a Parsl configuration that gives each ML worker its group of nodes; see the
 ML interfaces guide.
 

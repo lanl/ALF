@@ -170,8 +170,10 @@ def test_driver_settings_are_validated():
     assert driver_settings({})["strategy"] == "single"
     with pytest.raises(ValueError, match="requires a sampler 'batching'"):
         driver_settings({"driver": {"strategy": "batched"}})
+    # A batching block means batched sampling; only an explicit "single" contradicts it.
+    assert driver_settings({"batching": {"batch_size": 2}})["strategy"] == "batched"
     with pytest.raises(ValueError, match="requires driver.strategy 'batched'"):
-        driver_settings({"batching": {"batch_size": 2}})
+        driver_settings({"driver": {"strategy": "single"}, "batching": {"batch_size": 2}})
     assert driver_settings({"driver": {"engine": "torchsim"}})["engine"] == "torchsim"
     assert driver_settings({"driver": {"engine": "alchemi"}})["engine"] == "alchemi"
     assert driver_settings({"driver": {"engine": "alchemi"}, "batched_calculator": "x.y"})["engine"] == "alchemi"

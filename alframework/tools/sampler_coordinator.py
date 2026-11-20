@@ -122,7 +122,10 @@ def resolve_selected_state(molecule, settings, ordinal=None):
 
 
 def driver_settings(sampler_config):
-    """Return validated ``driver`` settings for a multi-trajectory sampler."""
+    """Return validated ``driver`` settings for a multi-trajectory sampler.
+
+    Without ``driver.strategy``, a ``batching`` block means ``"batched"``, and no block ``"single"``.
+    """
     velocity_initialization_settings(sampler_config)
     block = sampler_config.get("driver") or {}
     if not isinstance(block, dict):
@@ -130,7 +133,7 @@ def driver_settings(sampler_config):
     unknown = set(block) - {"strategy", "engine"}
     if unknown:
         raise ValueError(f"Unknown driver settings: {sorted(unknown)}.")
-    strategy = block.get("strategy", "single")
+    strategy = block.get("strategy", "batched" if sampler_config.get("batching") is not None else "single")
     engine = block.get("engine", "ase")
     if strategy not in STRATEGIES:
         raise ValueError(f"driver.strategy must be one of {STRATEGIES}; received {strategy!r}.")

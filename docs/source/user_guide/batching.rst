@@ -84,8 +84,10 @@ Molecules of different sizes and compositions can otherwise share a batch.
 Labeling Batches
 ----------------
 
-A QM config's ``batching`` block also needs a ``mode``, which says how the batch
-is labeled:
+A QM config's ``batching`` block can also give a ``mode``, which says how the batch
+is labeled. Without one, ALF chooses it from the QM task: ``native`` for a task that
+takes ``molecule_objects``, ``sequential`` for one that takes ``molecule_object``. The
+startup line then says ``(mode from the QM task)``:
 
 .. code-block:: json
 
@@ -111,7 +113,7 @@ is labeled:
      - Tasks that accept ``molecule_object``: ORCA, Q-Chem, VASP, ASE calculators,
        GPU4PySCF, ``pyscf_task``, ``pyseqm_excited_state_task``, and ``teacher_task``.
 
-ALF stops at startup if the mode doesn't match the QM task. With ``sequential``,
+ALF stops at startup if a given mode doesn't match the QM task. With ``sequential``,
 make sure ``batch_size`` times the runtime of one calculation fits in your
 executor's walltime.
 
@@ -122,9 +124,10 @@ tasks fall back to solving members alone when a whole batch solve fails.
 Sampler Batches
 ---------------
 
-Sampler batching needs ``mlmd_trajectories_task`` and
-``"driver": {"strategy": "batched"}`` alongside the ``batching`` block. ALF stops
-at startup if a single-structure sampler task is given these settings. See
+Sampler batching needs ``mlmd_trajectories_task``. A ``batching`` block in its config
+selects ``"driver": {"strategy": "batched"}``, which can also be written out; an
+explicit ``"single"`` with a ``batching`` block is an error. ALF stops at startup if a
+single-structure sampler task is given these settings. See
 :ref:`samplers-multi-trajectory`.
 
 .. _batching-excited-state-batches:
@@ -163,12 +166,9 @@ workers are enough where one-per-task sampling could use up to 100. See
 :doc:`parsl` for how to size executors.
 
 With ``"partial_policy": "full_only"``, keep the matching queue limit at least as
-large as ``batch_size``. Otherwise ALF stops building structures before a batch
-can fill:
-
-* ``target_queued_QM`` for QM batches. ALF checks this at startup.
-* ``parallel_samplers`` for sampler batches. ALF doesn't check this, so the run
-  stalls without an error.
+large as ``batch_size``: ``target_queued_QM`` for QM batches, ``parallel_samplers`` for
+sampler batches. Otherwise ALF would stop building structures before a batch could
+fill, so it stops at startup instead.
 
 Checking Your Settings
 ----------------------

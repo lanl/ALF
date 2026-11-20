@@ -41,8 +41,23 @@ logger = logging.getLogger(__name__)
 LABELING_MODES = ("native", "sequential")
 
 
-def labeling_batch_settings(QM_config):
-    """Return validated labeling batch settings, or ``None`` when not selected."""
+def labeling_mode_for(qm_task):
+    """The labeling mode a QM task's signature calls for: ``native`` if it takes ``molecule_objects``,
+    ``sequential`` if it takes ``molecule_object``, else ``None``."""
+    parameters = inspect.signature(getattr(qm_task, "func", qm_task)).parameters
+    if "molecule_objects" in parameters:
+        return "native"
+    if "molecule_object" in parameters:
+        return "sequential"
+    return None
+
+
+def labeling_batch_settings(QM_config, qm_task=None):
+    """Return validated labeling batch settings, or ``None`` when not selected.
+
+    Without ``batching.mode``, the mode comes from ``qm_task``'s signature (:func:`labeling_mode_for`), and
+    ``inferred_mode`` is true; without a task either, the mode is required.
+    """
     block = (QM_config or {}).get("batching")
     if block is None:
         return None
@@ -50,12 +65,16 @@ def labeling_batch_settings(QM_config):
         raise ValueError("QM batching must be a dictionary.")
     block = dict(block)
     mode = block.pop("mode", None)
+    inferred = mode is None and qm_task is not None
+    if inferred:
+        mode = labeling_mode_for(qm_task)
     if mode not in LABELING_MODES:
         raise ValueError("QM batching.mode must be 'native' (the labeler accepts molecule_objects) "
                          "or 'sequential' (an existing single-structure labeler is called per member); "
                          f"received {mode!r}.")
     settings = batching_settings({"batching": block})
     settings["mode"] = mode
+    settings["inferred_mode"] = inferred
     return settings
 
 
@@ -95,7 +114,7 @@ class LabelingCoordinator(BatchedSubmitter):
     """
 
     def __init__(self, qm_task, qm_task_path, QM_config, master_config=None, sampled_frame_handoff=False):
-        settings = labeling_batch_settings(QM_config)
+        settings = labeling_batch_settings(QM_config, qm_task)
         self._reference_task = None
         if sampled_frame_handoff:
             if settings is None or settings['mode'] != 'native':
@@ -127,8 +146,9 @@ class LabelingCoordinator(BatchedSubmitter):
     def describe(self):
         if not self.batched:
             return "one structure per QM task"
+        how = " (mode from the QM task)" if self.settings.get("inferred_mode") else ""
         return "{mode} batches of up to {batch_size} structures ({partial_policy}, {max_wait_seconds:g} s)".format(
-            **self.settings)
+            **self.settings) + how
 
     def take_finished_with_references(self, max_items):
         """Count completed references by file, including inputs omitted from a partial output."""

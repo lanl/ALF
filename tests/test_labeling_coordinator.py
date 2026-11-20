@@ -344,6 +344,16 @@ def test_labeler_must_match_the_batching_mode():
         LabelingCoordinator(native_qm, "mock.qm", {"batching": {"mode": "sequential", "batch_size": 2}})
 
 
+@pytest.mark.parametrize("task, mode", [("native", "native"), ("single", "sequential")])
+def test_the_mode_comes_from_the_qm_task_when_not_given(task, mode):
+    qm = native_qm if task == "native" else single_qm
+    coordinator = LabelingCoordinator(qm, "mock.qm", {"batching": {"batch_size": 2}})
+    assert coordinator.settings["mode"] == mode and coordinator.batched
+    assert coordinator.describe().endswith("(mode from the QM task)")
+    explicit = LabelingCoordinator(qm, "mock.qm", {"batching": {"mode": mode, "batch_size": 2}})
+    assert "mode from" not in explicit.describe()
+
+
 def test_full_only_needs_a_queue_that_can_fill():
     settings = {"batching": {"mode": "native", "batch_size": 4, "partial_policy": "full_only"}}
     with pytest.raises(ValueError, match="target_queued_QM"):

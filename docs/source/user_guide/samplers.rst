@@ -90,8 +90,10 @@ Select it in ``master_config.json``, then add its settings to the sampler config
    * - Field
      - Meaning
    * - ``driver.strategy``
-     - ``"single"`` (default) runs one trajectory per task. ``"batched"`` groups
-       trajectories using the required ``batching`` block; see :doc:`batching`.
+     - ``"single"`` runs one trajectory per task. ``"batched"`` groups
+       trajectories using the required ``batching`` block; see :doc:`batching`. The
+       default is ``"batched"`` when the config has a ``batching`` block, else
+       ``"single"``.
    * - ``driver.engine``
      - Chooses how trajectories advance. Use ``"ase"`` (default), ``"torchsim"``,
        or ``"alchemi"``. See below.

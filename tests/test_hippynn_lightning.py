@@ -57,7 +57,7 @@ def test_excited_state_member_trains_on_two_devices(tmp_path):
 
 def test_ground_state_member_trains_on_two_devices_inside_a_slurm_step(tmp_path, monkeypatch):
     """Under Parsl's SrunLauncher each worker runs inside a Slurm step. Lightning must still see ALF's ranks,
-    not SLURM_PROCID 0 in every rank, which made all of them bind the same port (seen on Frontier). ALF names
+    not SLURM_PROCID 0 in every rank, which made all of them bind the same port (seen on an HPC system). ALF names
     Lightning's environment whether or not Slurm is there, so this one training covers both cases."""
     pytest.importorskip("hippynn")
     pytest.importorskip("pytorch_lightning")

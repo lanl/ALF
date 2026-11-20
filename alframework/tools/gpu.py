@@ -23,7 +23,7 @@ def normalize_amd_visibility(environ=os.environ, amd=None):
 
     Parsl's HighThroughputExecutor gives a worker accelerator ``N`` by setting both masks to ``N``. On AMD,
     ROCr first narrows the node to that GPU, numbered 0, and HIP then applies ``CUDA_VISIBLE_DEVICES=N`` to
-    what is left, so every worker but the one on GPU 0 sees no GPU (7 of 8 on a Frontier node). The repeat
+    what is left, so every worker but the one on GPU 0 sees no GPU (7 of 8 on an 8-GPU node). The repeat
     adds nothing there, so it is removed. NVIDIA nodes, where ``CUDA_VISIBLE_DEVICES`` is the mask that
     counts, and every other combination are left alone. ``amd`` defaults to whether the AMD GPU driver
     (``/dev/kfd``) is present. This must run before the process first uses the GPU runtime, which reads the

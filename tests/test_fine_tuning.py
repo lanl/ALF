@@ -162,7 +162,7 @@ def test_child_environment_picks_one_gpu_within_the_worker_mask(monkeypatch):
 
 
 def test_child_environment_on_amd_masks(monkeypatch):
-    """Slurm sets ROCR_VISIBLE_DEVICES on AMD nodes; fine-tuning must still pick one GPU (seen on Frontier)."""
+    """Slurm sets ROCR_VISIBLE_DEVICES on AMD nodes; fine-tuning must still pick one GPU (seen on an HPC system)."""
     for key in ("CUDA_VISIBLE_DEVICES", "HIP_VISIBLE_DEVICES"):
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("ROCR_VISIBLE_DEVICES", "0,1,2,3,4,5,6,7")

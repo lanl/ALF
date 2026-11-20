@@ -39,7 +39,7 @@ A provider's ``worker_init`` runs once per block, on its first node. For blocks 
 launcher starts workers on all of them (``SrunLauncher``), pass ``all_nodes=True`` to ``worker_setup`` (or
 ``setup_from_environment``): the setup then runs on every node of the block as one ``srun`` step, and a
 node that cannot unpack stops the block. ``all_nodes`` can also be the command that runs one task per
-node, such as ``mpiexec -ppn 1``. Reading the archive from shared storage is usually fine: on Frontier,
+node, such as ``mpiexec -ppn 1``. Reading the archive from shared storage is usually fine: on one HPC system,
 unpacking a 6.5 GB conda-pack archive took about 72 s per node, whether it was read from Lustre or from a
 node-local ``sbcast`` copy, since decompressing dominates.
 
@@ -60,7 +60,7 @@ Fewer Small Files
 A parallel filesystem handles every file creation on a metadata server, and a run that writes one file
 per structure sends all of them there at once. On Lustre, a directory's files and subdirectories stay
 on that directory's metadata server, and small files may be stored on it too (Data-on-MDT), so giving
-each task its own subdirectory still loads the same server. On Frontier's Lustre, single file writes
+each task its own subdirectory still loads the same server. On one large Lustre filesystem, single file writes
 during sampling stalled for 7 to 25 minutes, at 2, 8 and 16 nodes, with and without per-task
 subdirectories. A stage waits for its slowest task, so one stall delays the whole stage, and stalls
 become more likely as the number of nodes grows.

@@ -223,7 +223,7 @@ def test_coordinator_sigterm_during_multinode_training_releases_everything(tmp_p
 
 def test_coordinator_ctrl_c_in_a_terminal_releases_everything(tmp_path, real_coordinator):
     """Ctrl-C signals the terminal's whole foreground process group, so Parsl's interchanges stop along with
-    the coordinator. Parsl's cleanup then waits forever for an interchange's answer (seen on Frontier, with
+    the coordinator. Parsl's cleanup then waits forever for an interchange's answer (seen on an HPC system, with
     the blocks left running), so the coordinator must cancel the blocks itself and still exit."""
     started = real_coordinator("slow_multinode", new_session=True, environ={"ALF_PARSL_CLEANUP_TIMEOUT": "5"})
     os.killpg(started.coordinator.pid, signal.SIGINT)

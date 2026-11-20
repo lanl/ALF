@@ -239,7 +239,7 @@ cell requires fully periodic systems. ``batched_calculator_options`` can set:
    * - ``neighbor_backend``
      - Fully periodic systems only. How that list is built: ``"ase"`` (default) or ``"vesin"``, which
        is usually faster but must be installed separately. The default is ASE because Vesin's thread
-       pool can hang a forked process at exit, which was seen with Frontier's exit hooks.
+       pool can hang a forked process at exit, which has been seen with the exit hooks an HPC site adds to every process.
 
 See :ref:`samplers-multi-trajectory`.
 

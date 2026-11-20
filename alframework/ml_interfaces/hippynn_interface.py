@@ -1063,7 +1063,7 @@ def load_hippynn_batched_ensemble(model_directory, device="cuda:0", energy_key="
     ``hippynn_kernel`` and ``pair_skin`` (Angstrom) can be set through the sampler's
     ``batched_calculator_options``. A zero ``pair_skin`` rebuilds the shared list at every evaluation.
     ``neighbor_backend`` is ``"ase"`` (default) or the optional ``"vesin"`` package. ASE avoids a
-    Vesin thread-pool teardown/fork interaction seen with Frontier's XALT exit hook.
+    Vesin thread-pool teardown/fork interaction seen with a site's XALT exit hook on an HPC system.
     """
     return HippynnBatchedEnsemble(model_directory, device=device, energy_key=energy_key, force_key=force_key,
                                   hippynn_kernel=hippynn_kernel, pair_skin=pair_skin, neighbor_backend=neighbor_backend)

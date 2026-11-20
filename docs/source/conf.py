@@ -32,7 +32,9 @@ release = '0.1.0'
 # ones.
 extensions = ["sphinx.ext.autodoc", "sphinx.ext.napoleon", "sphinx_rtd_theme", "sphinx.ext.viewcode"]
 add_module_names = False
-autodoc_mock_imports = ["anitraintools", "ase_interface", "tqdm", "rdkit"]
+# ALF imports PyTorch and HIPPYNN inside functions, except hippynn_final, which builds on HIPPYNN's graph classes
+# when imported; the docs build doesn't install either.
+autodoc_mock_imports = ["anitraintools", "ase_interface", "tqdm", "rdkit", "torch", "hippynn"]
 
 # @python_app replaces each ALF task with a Parsl app object, which autodoc skips.
 # Keep the plain function during the docs build, so that tasks appear on API pages

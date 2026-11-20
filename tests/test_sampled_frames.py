@@ -94,26 +94,53 @@ def test_reference_handoff_requires_native_qm():
         LabelingCoordinator(None, 'fixture.labeler', {}, sampled_frame_handoff=True)
 
 
-def test_keep_sampler_frames_preserves_the_spool_and_logs_its_size(tmp_path, capsys):
+def test_keep_files_preserves_the_spool_and_logs_its_size(tmp_path, capsys):
     from types import SimpleNamespace
 
     def sampler(molecule_objects, frame_spool=None):
         pass
 
     config = {'Escut': 0.0, 'Fscut': 0.0}
-    master = {'master_directory': str(tmp_path), 'maximum_stored_labels': 1, 'keep_sampler_frames': True}
+    master = {'master_directory': str(tmp_path), 'maximum_stored_labels': 1,
+              'data_by_reference': {'directory': 'frames', 'sampler_frames': True, 'keep_files': True}}
     task = SimpleNamespace(func=sampler)
-    with pytest.raises(ValueError, match='requires sampler_frame_spool'):
-        SamplerCoordinator(task, 'fixture.sampler', config, master)
-
-    master['sampler_frame_spool'] = 'frames'
     sampling = SamplerCoordinator(task, 'fixture.sampler', config, master)
+    assert Path(sampling.frame_directory).parent == tmp_path / 'frames'
     frame, = stage_sampled_frames([MoleculesObject(Atoms('H'), 'a')], sampling.frame_directory, 0)
     assert sampling.frame_retirement is None and sampling.harvest([frame]) == [frame]
     sampling.cleanup_frames()
     path = Path(frame.path)
     assert path.is_file()
     assert f'retained 1 batch files ({path.stat().st_size:,} bytes) at {path.parent}' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize('block, message', [
+    ('frames', 'must be a dictionary'),
+    ({'directory': 'frames'}, 'hands nothing off'),
+    ({'directory': 'frames', 'sampler_frames': False, 'keep_files': True}, 'hands nothing off'),
+    ({'sampler_frames': True}, 'directory must name a shared directory'),
+    ({'directory': 'frames', 'sampler_frames': 'yes'}, 'sampler_frames must be true or false'),
+    ({'directory': 'frames', 'sampler_frames': True, 'qm': True}, r"unknown settings \['qm'\]"),
+], ids=['not_a_block', 'nothing_on', 'only_keep_files', 'no_directory', 'not_boolean', 'unknown'])
+def test_data_by_reference_settings_refuse_mistakes(block, message):
+    with pytest.raises(ValueError, match=message):
+        sampled_frames.data_by_reference_settings({'data_by_reference': block})
+
+
+@pytest.mark.parametrize('old', ['sampler_frame_spool', 'keep_sampler_frames'])
+def test_the_earlier_handoff_names_point_to_data_by_reference(old):
+    with pytest.raises(ValueError, match=f'{old} was renamed: use data_by_reference'):
+        sampled_frames.data_by_reference_settings({old: 'frames'})
+
+
+def test_data_by_reference_is_off_without_its_block_and_resolves_its_directory(tmp_path):
+    assert sampled_frames.data_by_reference_settings({}) is None
+    settings = sampled_frames.data_by_reference_settings(
+        {'master_directory': str(tmp_path), 'data_by_reference': {'directory': 'frames', 'sampler_frames': True}})
+    assert settings == {'directory': str(tmp_path / 'frames'), 'sampler_frames': True, 'keep_files': False}
+    absolute = sampled_frames.data_by_reference_settings(
+        {'master_directory': str(tmp_path), 'data_by_reference': {'directory': '/shared/frames', 'sampler_frames': True}})
+    assert absolute['directory'] == '/shared/frames'
 
 
 @pytest.mark.parametrize('durable', [True, False])

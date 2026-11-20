@@ -99,8 +99,17 @@ reads them back one held piece, at most 1,000 labels, at a time.
   structures per cycle before going larger. Setting ``coordinator_memory_sample`` (see :doc:`configuration`)
   records it, with that of Parsl's interchanges, throughout the run.
 
+.. _running-at-scale-data-by-reference:
+
 Finite workflows using the batched MLMD sampler, immediate frame selection and native batched QM
-can set ``sampler_frame_spool`` in the master configuration to a shared filesystem path. The sampler
+can hand sampled frames to QM by reference, through files on a shared filesystem, instead of through
+the coordinator. This is off unless the master configuration turns it on:
+
+.. code-block:: json
+
+   "data_by_reference": {"directory": "sampling-frames", "sampler_frames": true}
+
+``directory`` is relative to ``master_directory`` unless absolute. The sampler
 writes one pickle file per batch with eligible frames and returns trajectory summaries and frame
 references. The coordinator counts completed frames toward the normal sampler wave, and QM workers
 read the original frames once the wave opens. Both worker roles need access to the same absolute paths.
@@ -111,9 +120,10 @@ HDF5 storage makes successful labels durable as held parts. With legacy storage 
 stay until the training shard is published. The coordinator retires files in its normal polling loop
 and cleans the invocation directory after workers exit. Restart starts a fresh spool and resumes
 from persisted status and labels. Remove abandoned directories after the workers have exited.
-For debugging exact QM inputs, set ``keep_sampler_frames`` to ``true`` alongside
-``sampler_frame_spool``. The coordinator preserves all staged batches and prints the path, file
-count, and bytes at normal exit. Size a retained spool for the full debug run.
+For debugging exact QM inputs, add ``"keep_files": true`` to ``data_by_reference``. The coordinator
+preserves all staged batches and prints the path, file count, and bytes at normal exit. Size a retained
+spool for the full debug run. The earlier names of these settings, ``sampler_frame_spool`` and
+``keep_sampler_frames``, are refused with a message naming ``data_by_reference``.
 
 Durable labels become visible through the atomically published HDF5 snapshot. HIPPYNN training and
 fine-tuning read its backing parts directly in serial and parallel, keeping at most one part open per

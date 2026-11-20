@@ -99,7 +99,7 @@ class LabelingCoordinator(BatchedSubmitter):
         self._reference_task = None
         if sampled_frame_handoff:
             if settings is None or settings['mode'] != 'native':
-                raise ValueError('sampler_frame_spool requires native QM batching.')
+                raise ValueError('data_by_reference sampler_frames requires native QM batching.')
             self._reference_task = python_app(executors=list(qm_task.executors))(label_sampled_frames)
         if settings is not None:
             mode = settings["mode"]

@@ -30,7 +30,7 @@ from tempfile import mkdtemp
 from alframework.samplers.acquisition import cohort_selection
 from alframework.tools.batching import BatchedSubmitter, SampledFrameQueue, StartupSettings, batching_settings, default_batch_key
 from alframework.tools.config import stored_label_budget
-from alframework.tools.sampled_frames import FrameRetirement
+from alframework.tools.sampled_frames import FrameRetirement, data_by_reference_settings
 from alframework.tools.cohorts import CohortPool
 from alframework.ml_interfaces.ensemble_inference import ADJACENT_GAPS
 from alframework.tools.gap_seeking import gap_seeking_settings
@@ -178,19 +178,15 @@ class SamplerCoordinator(BatchedSubmitter):
         self.frame_directory = None
         self.frame_retirement = None
         self._frame_batch = 0
-        spool = (master_config or {}).get('sampler_frame_spool')
-        self._keep_sampler_frames = (master_config or {}).get('keep_sampler_frames', False)
-        if not isinstance(self._keep_sampler_frames, bool):
-            raise ValueError('keep_sampler_frames must be true or false.')
-        if self._keep_sampler_frames and spool is None:
-            raise ValueError('keep_sampler_frames requires sampler_frame_spool.')
+        reference = data_by_reference_settings(master_config)
+        spool = reference['directory'] if reference is not None and reference['sampler_frames'] else None
+        self._keep_sampler_frames = spool is not None and reference['keep_files']
         if spool is not None:
-            if not isinstance(spool, str) or not spool.strip():
-                raise ValueError('sampler_frame_spool must name a shared directory.')
             if 'frame_spool' not in parameters or not self.multi_trajectory:
-                raise ValueError('sampler_frame_spool requires the built-in batched MLMD sampler.')
+                raise ValueError('data_by_reference sampler_frames requires the built-in batched MLMD sampler.')
             if stored_label_budget(master_config) is None:
-                raise ValueError('sampler_frame_spool requires a finite workflow with maximum_stored_labels.')
+                raise ValueError('data_by_reference sampler_frames requires a finite workflow with '
+                                 'maximum_stored_labels.')
         self.pool = None
         summary_path = (master_config or {}).get("trajectory_summary_path")
         self._summary = None if summary_path is None else TrajectorySummary(summary_path)
@@ -223,12 +219,12 @@ class SamplerCoordinator(BatchedSubmitter):
         selection = cohort_selection(sampler_config)
         if selection is not None:
             if spool is not None:
-                raise ValueError('sampler_frame_spool requires immediate selection without cohorts.')
+                raise ValueError('data_by_reference sampler_frames requires immediate selection without cohorts.')
             self.pool = CohortPool(selection)
         super().__init__(sampler_task, settings, key_function=lambda molecule:
                          _model_batch_key(molecule, excited=self._states is not None))
         if spool is not None:
-            root = Path(master_config.get('master_directory') or '.') / spool
+            root = Path(spool)
             root.mkdir(parents=True, exist_ok=True)
             self.frame_directory = mkdtemp(dir=root.resolve(), prefix='run-')
             if not self._keep_sampler_frames:

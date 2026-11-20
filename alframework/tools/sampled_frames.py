@@ -12,6 +12,46 @@ from alframework.tools.config import load_module_from_string
 from alframework.tools.task_timeline import timed
 from alframework.tools.trajectory_summary import trajectory_row
 
+# The master configuration's opt-in handoff of data by reference through shared files, and what it can hand off.
+DATA_BY_REFERENCE = 'data_by_reference'
+HANDOFFS = ('sampler_frames',)
+REFERENCE_SETTINGS = ('directory', *HANDOFFS, 'keep_files')
+RENAMED = {'sampler_frame_spool': 'data_by_reference with "directory" and "sampler_frames": true',
+           'keep_sampler_frames': 'data_by_reference "keep_files"'}
+
+
+def data_by_reference_settings(master_config):
+    """The checked ``data_by_reference`` block, or ``None`` when the run doesn't hand data off by reference.
+
+    ``{"directory": <shared path>, "sampler_frames": true, "keep_files": false}``: with ``sampler_frames``, each
+    sampler task writes its eligible frames to a file in ``directory`` and returns references, which QM workers
+    resolve. ``directory`` is relative to ``master_directory`` unless absolute, and every worker that writes or
+    reads the files must see it at the same path. ``keep_files`` keeps every file after the run, for debugging.
+    Each handoff is off unless set to ``true``, and a block that turns none on is refused.
+    """
+    master_config = master_config or {}
+    for old, new in RENAMED.items():
+        if old in master_config:
+            raise ValueError(f'{old} was renamed: use {new}.')
+    block = master_config.get(DATA_BY_REFERENCE)
+    if block is None:
+        return None
+    if not isinstance(block, dict):
+        raise ValueError(f'{DATA_BY_REFERENCE} must be a dictionary with keys from {list(REFERENCE_SETTINGS)}.')
+    unknown = sorted(set(block) - set(REFERENCE_SETTINGS))
+    if unknown:
+        raise ValueError(f'{DATA_BY_REFERENCE} has unknown settings {unknown}; it takes {list(REFERENCE_SETTINGS)}.')
+    directory = block.get('directory')
+    if not isinstance(directory, str) or not directory.strip():
+        raise ValueError(f'{DATA_BY_REFERENCE}.directory must name a shared directory.')
+    for key in (*HANDOFFS, 'keep_files'):
+        if not isinstance(block.get(key, False), bool):
+            raise ValueError(f'{DATA_BY_REFERENCE}.{key} must be true or false.')
+    if not any(block.get(key, False) for key in HANDOFFS):
+        raise ValueError(f'{DATA_BY_REFERENCE} hands nothing off: set one of {list(HANDOFFS)} to true.')
+    return dict(directory=str(Path(master_config.get('master_directory') or '.') / directory),
+                **{key: block.get(key, False) for key in (*HANDOFFS, 'keep_files')})
+
 
 class SampledFrame(NamedTuple):
     """A scalar trajectory summary and, for an eligible frame, its location in a worker file."""

@@ -126,10 +126,10 @@ for cur_Exec in sampler_task.executors:
         sampler_task.executors.append(cur_Exec.replace('_executor', '_standby_executor'))
 # Single-structure samplers submit one task per structure as before; see sampler_coordinator.
 sampling_master = master_config
-if args.test_sampler and 'sampler_frame_spool' in master_config:
+if args.test_sampler and 'data_by_reference' in master_config:
+    # A one-structure sampler test returns its frame directly, so QM can be tested on it.
     sampling_master = dict(master_config)
-    sampling_master.pop('sampler_frame_spool')
-    sampling_master.pop('keep_sampler_frames', None)
+    sampling_master.pop('data_by_reference')
 sampling = SamplerCoordinator(sampler_task, master_config['sampler_task'], sampler_config, sampling_master)
 sampler_task_queue = sampling.queue
 frame_retirement = sampling.frame_retirement

@@ -484,7 +484,8 @@ def test_the_large_scale_example_applies_its_scaling_block_to_the_tasks_it_names
     ml = read(folder / "hippynn_config.json")
     block = apply_scaling(master, sampler, ml)
     assert block == read(folder / "master_config.json")["scaling"]
-    assert large_run_warning(master, sampler) is None, "a large run with every measured setting on"
+    assert large_run_warning(master, sampler, batched_mlmd.mlmd_trajectories_task) is None, \
+        "a large run with every measured setting on"
     batched_mlmd.returned_metadata(sampler)
     batched_mlmd.metadata_settings(sampler)
     label_h5_options(master)

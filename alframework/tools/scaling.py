@@ -17,6 +17,7 @@ read once, when the coordinator starts, and applied again to each reload of the 
 import json
 
 from alframework.tools import config as workflow_config
+from alframework.tools.capabilities import require, supports
 
 SCALING = 'scaling'
 MASTER_SETTINGS = ('parsl_data_serializer', 'poll_interval', 'coordinator_trim_after_snapshot',
@@ -35,11 +36,6 @@ STAGE_SETTINGS = {
     'member_nodes': 'the ML configuration',
     'member_launcher': 'the ML configuration',
 }
-# The tasks that read the sampler and ML settings, by the module their function is defined in.
-SAMPLER_MODULE = 'alframework.samplers.batched_mlmd'
-ML_MODULES = {'shared_training_data': ('alframework.ml_interfaces.hippynn_interface',),
-              'stream_final_evaluation': ('alframework.ml_interfaces.hippynn_interface',),
-              'h5_read_workers': ('alframework.ml_interfaces.hippynn_interface', 'alframework.ml_interfaces.fine_tuning')}
 # A large run, by the structures in flight: from about here, the settings in LARGE_RUN_SETTINGS were measured to
 # matter (see the Running at Scale guide).
 LARGE_RUN_SAMPLERS = 4096
@@ -68,22 +64,12 @@ def _resolved(name, value, master_directory):
     return value
 
 
-def _task_module(master_config, task):
-    loaded = workflow_config.load_module_from_string(master_config[task])
-    return getattr(getattr(loaded, 'func', loaded), '__module__', '') or ''
-
-
 def _supported(name, master_config):
-    if name in SAMPLER_SETTINGS:
-        module = _task_module(master_config, 'sampler_task')
-        if module != SAMPLER_MODULE:
-            raise ValueError(f'{SCALING} {name} is read by the {SAMPLER_MODULE} sampler tasks only, not '
-                             f'{master_config["sampler_task"]} ({module}).')
-    elif name in ML_SETTINGS:
-        module = _task_module(master_config, 'ML_task')
-        if not module.startswith(ML_MODULES[name]):
-            raise ValueError(f'{SCALING} {name} is read by {" and ".join(ML_MODULES[name])} training only, not '
-                             f'{master_config["ML_task"]} ({module}).')
+    """Refuse a sampler or ML setting that the configured task doesn't declare (``alframework.tools.capabilities``)."""
+    task = 'sampler_task' if name in SAMPLER_SETTINGS else 'ML_task' if name in ML_SETTINGS else None
+    if task is not None:
+        require(workflow_config.load_module_from_string(master_config[task]), master_config[task], name,
+                f'{SCALING} {name}')
 
 
 def _same(first, second):
@@ -123,8 +109,9 @@ def describe(block):
     return 'Scaling settings: ' + ', '.join(f'{name}={json.dumps(value)}' for name, value in block.items())
 
 
-def large_run_warning(master_config, sampler_config):
-    """For a large run, a warning naming the measured settings it leaves off, or ``None``."""
+def large_run_warning(master_config, sampler_config, sampler_task=None):
+    """For a large run, a warning naming the measured settings it leaves off, or ``None``. The sampler settings are
+    named only for a ``sampler_task`` that declares them."""
     samplers = master_config.get('parallel_samplers') or 0
     if not isinstance(samplers, (int, float)) or samplers < LARGE_RUN_SAMPLERS:
         return None
@@ -133,10 +120,11 @@ def large_run_warning(master_config, sampler_config):
         off.append('parsl_data_serializer "pickle"')
     if master_config.get('label_storage_batch_size') is None:
         off.append('label_storage_batch_size')
-    if str(master_config.get('sampler_task', '')).startswith(SAMPLER_MODULE + '.'):
-        if sampler_config.get('metadata_files', 'per_trajectory') == 'per_trajectory':
+    if sampler_task is not None:
+        if supports(sampler_task, 'metadata_files') and \
+                sampler_config.get('metadata_files', 'per_trajectory') == 'per_trajectory':
             off.append('metadata_files "per_task"')
-        if sampler_config.get('returned_metadata', 'full') != 'compact':
+        if supports(sampler_task, 'returned_metadata') and sampler_config.get('returned_metadata', 'full') != 'compact':
             off.append('returned_metadata "compact"')
     if not off:
         return None

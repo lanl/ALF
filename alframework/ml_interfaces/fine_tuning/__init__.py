@@ -31,6 +31,7 @@ from pathlib import Path
 
 from parsl import join_app, python_app
 from alframework.tools.task_timeline import timed
+from alframework.tools.capabilities import declares
 
 from alframework.tools import ensemble_training
 from alframework.tools.gpu import mask_entries
@@ -245,6 +246,7 @@ def fine_tune_ensemble(ML_config, h5_dir, model_path, current_training_id, gpus_
 
 
 @python_app(executors=['alf_ML_executor'])
+@declares('h5_read_workers')
 @timed('ML')
 def fine_tune_ensemble_task(ML_config, h5_dir, model_path, current_training_id, gpus_per_node=None,
                             h5_path=None, current_h5_id=None, master_directory=None):
@@ -276,6 +278,7 @@ def _fine_tune_member_task(settings, shards, member_dir, member, gpus_per_node, 
 
 
 @join_app
+@declares('h5_read_workers')
 def fine_tune_ensemble_multinode_task(ML_config, h5_dir, model_path, current_training_id, gpus_per_node=None,
                                       master_directory=None, member_retries=1):
     """Fine-tune each copy as its own app, so a round can span any number of nodes.

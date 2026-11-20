@@ -31,6 +31,7 @@ from alframework.samplers.acquisition import cohort_selection
 from alframework.tools.batching import BatchedSubmitter, SampledFrameQueue, StartupSettings, batching_settings, default_batch_key
 from alframework.tools.config import stored_label_budget
 from alframework.tools.sampled_frames import FrameRetirement, data_by_reference_settings
+from alframework.tools.capabilities import require
 from alframework.tools.cohorts import CohortPool
 from alframework.ml_interfaces.ensemble_inference import ADJACENT_GAPS
 from alframework.tools.gap_seeking import gap_seeking_settings
@@ -169,10 +170,7 @@ class SamplerCoordinator(BatchedSubmitter):
             if sampler_config.get(setting, default) == default:
                 continue
             # Checked here, before any task runs, rather than as failed sampler tasks.
-            module = getattr(getattr(sampler_task, 'func', sampler_task), '__module__', None)
-            if module != 'alframework.samplers.batched_mlmd':
-                raise ValueError(f'{setting} is supported by the alframework.samplers.batched_mlmd sampler '
-                                 f'tasks only, not {sampler_task_path} ({module}).')
+            require(sampler_task, sampler_task_path, setting)
             from alframework.samplers import batched_mlmd
             getattr(batched_mlmd, setting)(sampler_config)
         self._states = state_settings(sampler_config)
@@ -185,8 +183,10 @@ class SamplerCoordinator(BatchedSubmitter):
         spool = reference['directory'] if reference is not None and reference['sampler_frames'] else None
         self._keep_sampler_frames = spool is not None and reference['keep_files']
         if spool is not None:
+            require(sampler_task, sampler_task_path, 'frame_spool', 'data_by_reference sampler_frames')
             if 'frame_spool' not in parameters or not self.multi_trajectory:
-                raise ValueError('data_by_reference sampler_frames requires the built-in batched MLMD sampler.')
+                raise ValueError(f'data_by_reference sampler_frames needs {sampler_task_path} to take molecule_objects '
+                                 'and frame_spool, as the batched MLMD sampler does.')
             if stored_label_budget(master_config) is None:
                 raise ValueError('data_by_reference sampler_frames requires a finite workflow with '
                                  'maximum_stored_labels.')

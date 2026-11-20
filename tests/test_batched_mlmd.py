@@ -891,7 +891,7 @@ def test_the_coordinator_checks_returned_metadata_before_any_task_runs(tmp_path)
     with pytest.raises(ValueError, match="metadata files must keep them"):
         SamplerCoordinator(batched_mlmd.mlmd_trajectories_task, "batched",
                            {"returned_metadata": "compact", "metadata_files": "none", "meta_dir": str(tmp_path)})
-    with pytest.raises(ValueError, match="batched_mlmd sampler tasks only"):
+    with pytest.raises(ValueError, match="tasks that declare 'returned_metadata'"):
         SamplerCoordinator(simple_mlmd_sampling_task, "mlmd", {"returned_metadata": "compact", "meta_dir": str(tmp_path)})
 
 
@@ -919,7 +919,7 @@ def test_returned_momenta_is_checked_before_any_task_runs(tmp_path):
 
     with pytest.raises(ValueError, match="returned_momenta must be true or false"):
         SamplerCoordinator(batched_mlmd.mlmd_trajectories_task, "batched", {"returned_momenta": "no"})
-    with pytest.raises(ValueError, match="batched_mlmd sampler tasks only"):
+    with pytest.raises(ValueError, match="tasks that declare 'returned_momenta'"):
         SamplerCoordinator(simple_mlmd_sampling_task, "mlmd", {"returned_momenta": False})
 
 

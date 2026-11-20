@@ -32,6 +32,7 @@ from alframework.tools.labeling_coordinator import LabelingCoordinator
 from alframework.tools.label_validation import screen_labels
 from alframework.tools.label_parts import hold_ready
 from alframework.tools.loop_timing import coordinator_loop_timer
+from alframework.tools.capabilities import validate_task_config
 from alframework.tools.scaling import SCALING, apply_scaling, describe as describe_scaling, large_run_warning
 from alframework.tools.builder_outputs import builder_outputs
 from alframework.tools.sampler_coordinator import SamplerCoordinator
@@ -69,9 +70,6 @@ ML_config = load_config_file(master_config['ML_config_path'], master_config['mas
 scaling_settings = apply_scaling(master_config, sampler_config, ML_config)
 if scaling_settings:
     print(describe_scaling(scaling_settings), flush=True)
-large_run = large_run_warning(master_config, sampler_config)
-if large_run:
-    print('Warning: ' + large_run, flush=True)
 poll_interval = coordinator_poll_interval(master_config)
 trim_snapshot_memory = snapshot_memory_trim(master_config)
 # Before anything large is allocated or any child process (such as Parsl's interchange) starts, which inherits it.
@@ -131,12 +129,18 @@ builder_task = load_module_from_string(master_config['builder_task'])
 for cur_Exec in builder_task.executors:
     if cur_Exec.replace('_executor', '_standby_executor') in executor_list:
         builder_task.executors.append(cur_Exec.replace('_executor', '_standby_executor'))
+# Every task can check its own configuration (a validate_config attribute), so a mistake stops ALF here.
+validate_task_config(builder_task, builder_config, master_config)
 
 # Sampler
 sampler_task = load_module_from_string(master_config['sampler_task'])
 for cur_Exec in sampler_task.executors:
     if cur_Exec.replace('_executor', '_standby_executor') in executor_list:
         sampler_task.executors.append(cur_Exec.replace('_executor', '_standby_executor'))
+validate_task_config(sampler_task, sampler_config, master_config)
+large_run = large_run_warning(master_config, sampler_config, sampler_task)
+if large_run:
+    print('Warning: ' + large_run, flush=True)
 # Single-structure samplers submit one task per structure as before; see sampler_coordinator.
 sampling_master = master_config
 if args.test_sampler and 'data_by_reference' in master_config:
@@ -164,10 +168,8 @@ ml_task = load_module_from_string(master_config['ML_task'])
 for cur_Exec in ml_task.executors:
     if cur_Exec.replace('_executor', '_standby_executor') in executor_list:
         ml_task.executors.append(cur_Exec.replace('_executor', '_standby_executor'))
-# An ML task can check its own configuration, so a mistake stops ALF before the bootstrap is labeled.
-validate_ml_config = getattr(getattr(ml_task, 'func', None), 'validate_config', None)
-if validate_ml_config is not None:
-    validate_ml_config(ML_config, master_config)
+# The QM task's is called by LabelingCoordinator; the ML task's runs before the bootstrap is labeled.
+validate_task_config(ml_task, ML_config, master_config)
 
 ##########################################
 ## Step 3: Evaluate restart possibilites #

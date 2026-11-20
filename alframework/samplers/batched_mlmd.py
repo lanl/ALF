@@ -48,6 +48,7 @@ from ase import units
 from parsl import python_app
 from alframework.tools.task_failure_cleanup import releases_memory_on_failure
 from alframework.tools.task_timeline import timed
+from alframework.tools.capabilities import declares
 
 from alframework.ml_interfaces.ensemble_inference import ensemble_statistics, SelectedStateEvaluator
 from alframework.samplers.acquisition import acquisition_settings, assess_frame, frame_id, top_k, worker_retention_limit
@@ -601,6 +602,7 @@ def sample_trajectories(molecule_objects, models, sampler_config, engine_class=N
 
 
 @python_app(executors=['alf_sampler_executor'])
+@declares('returned_metadata', 'returned_momenta', 'metadata_files', 'frame_spool')
 @timed('sampler')
 @releases_memory_on_failure
 def mlmd_trajectories_task(molecule_objects, sampler_config, model_path, current_model_id, gpus_per_node=None,

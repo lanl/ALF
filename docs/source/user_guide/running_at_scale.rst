@@ -36,8 +36,10 @@ passes each to the configuration that uses it, so a large run can state them tog
 
 Each setting keeps its own default and meaning, and can still be set in its own configuration instead. One
 set in both places with different values stops the coordinator at startup, so neither wins silently. A sampler
-setting needs the batched MLMD sampler (``alframework.samplers.batched_mlmd``), and an ML setting a HIPPYNN
-task (``h5_read_workers`` also suits fine-tuning); others stop the coordinator at startup too. The block is
+or ML setting needs a task that declares it reads it: the batched MLMD sampler
+(``alframework.samplers.batched_mlmd``) declares the sampler settings, and the HIPPYNN multi-node tasks the ML
+ones (``h5_read_workers`` also the single-node and fine-tuning tasks). Any other task stops the coordinator at
+startup, with a message saying how a task of your own declares a setting. The block is
 read when the coordinator starts, which prints the settings it applied, and an edit to it waits for a restart.
 A run with ``parallel_samplers`` of 4,096 or more that leaves the serializer, bounded label storage, per-task
 metadata files or compact returns off gets a warning naming them.

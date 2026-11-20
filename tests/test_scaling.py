@@ -7,20 +7,22 @@ import pytest
 
 from alframework.tools import config as workflow_config
 from alframework.tools import scaling
+from alframework.tools.capabilities import declares
 
 
-def _task(module):
+def _task(*features):
+    @declares(*features)
     def func():
         pass
-    func.__module__ = module
     return SimpleNamespace(func=func)
 
 
-TASKS = {'my.sampler': _task('alframework.samplers.batched_mlmd'),
-         'my.trainer': _task('alframework.ml_interfaces.hippynn_interface'),
-         'my.fine_tuner': _task('alframework.ml_interfaces.fine_tuning'),
-         'my.other_sampler': _task('alframework.samplers.mlmd_sampling'),
-         'my.other_trainer': _task('alframework.ml_interfaces.neurochem_interface')}
+SAMPLER_FEATURES = ('returned_metadata', 'returned_momenta', 'metadata_files', 'frame_spool')
+TASKS = {'my.sampler': _task(*SAMPLER_FEATURES),
+         'my.trainer': _task('shared_training_data', 'stream_final_evaluation', 'h5_read_workers'),
+         'my.fine_tuner': _task('h5_read_workers'),
+         'my.other_sampler': _task(),
+         'my.other_trainer': _task()}
 
 BLOCK = {'parsl_data_serializer': 'pickle', 'poll_interval': 1, 'coordinator_trim_after_snapshot': True,
          'disable_transparent_huge_pages': True, 'label_storage_batch_size': 8192,
@@ -95,14 +97,14 @@ def test_unknown_settings_and_a_block_that_is_not_one_are_refused():
         scaling.apply_scaling(_master(scaling=['pickle']), {}, {})
 
 
-@pytest.mark.parametrize('name, task, message', [
-    ('returned_metadata', dict(sampler_task='my.other_sampler'), 'batched_mlmd sampler tasks only'),
-    ('metadata_files', dict(sampler_task='my.other_sampler'), 'batched_mlmd sampler tasks only'),
-    ('shared_training_data', dict(ML_task='my.fine_tuner'), 'hippynn_interface training only'),
-    ('h5_read_workers', dict(ML_task='my.other_trainer'), 'hippynn_interface and .*fine_tuning training only'),
+@pytest.mark.parametrize('name, task', [
+    ('returned_metadata', dict(sampler_task='my.other_sampler')),
+    ('metadata_files', dict(sampler_task='my.other_sampler')),
+    ('shared_training_data', dict(ML_task='my.fine_tuner')),
+    ('h5_read_workers', dict(ML_task='my.other_trainer')),
 ])
-def test_a_setting_the_configured_task_does_not_read_is_refused(name, task, message):
-    with pytest.raises(ValueError, match=message):
+def test_a_setting_the_configured_task_does_not_read_is_refused(name, task):
+    with pytest.raises(ValueError, match=f"scaling {name} is read only by tasks that declare '{name}'"):
         scaling.apply_scaling(dict(_master(scaling={name: BLOCK[name]}), **task), {}, {})
 
 
@@ -121,18 +123,18 @@ def test_a_reload_gets_the_startup_block_without_checking_tasks_again(monkeypatc
 
 
 def test_a_large_run_without_the_measured_settings_is_warned_about():
-    master = _master(parallel_samplers=8192, sampler_task='alframework.samplers.batched_mlmd.mlmd_trajectories_task')
-    warning = scaling.large_run_warning(master, {})
+    master, sampler = _master(parallel_samplers=8192), TASKS['my.sampler']
+    warning = scaling.large_run_warning(master, {}, sampler)
     for name in ('parsl_data_serializer "pickle"', 'label_storage_batch_size', 'metadata_files "per_task"',
                  'returned_metadata "compact"'):
         assert name in warning
     assert 'parallel_samplers 8,192' in warning
     done = dict(master, parsl_data_serializer='pickle', label_storage_batch_size=8192)
-    assert scaling.large_run_warning(done, {'metadata_files': 'per_task', 'returned_metadata': 'compact'}) is None
-    assert scaling.large_run_warning(dict(master, parallel_samplers=4095), {}) is None
-    other = dict(master, sampler_task='my.other_sampler', parsl_data_serializer='pickle',
-                 label_storage_batch_size=8192)
-    assert scaling.large_run_warning(other, {}) is None, 'sampler settings only for the sampler that reads them'
+    assert scaling.large_run_warning(done, {'metadata_files': 'per_task', 'returned_metadata': 'compact'},
+                                     sampler) is None
+    assert scaling.large_run_warning(dict(master, parallel_samplers=4095), {}, sampler) is None
+    assert scaling.large_run_warning(done, {}, TASKS['my.other_sampler']) is None, \
+        'sampler settings only for a sampler that reads them'
 
 
 def test_reports_find_monitoring_paths_in_the_block():

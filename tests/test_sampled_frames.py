@@ -96,9 +96,17 @@ def test_reference_handoff_requires_native_qm():
 
 def test_keep_files_preserves_the_spool_and_logs_its_size(tmp_path, capsys):
     from types import SimpleNamespace
+    from alframework.tools.capabilities import declares
 
     def sampler(molecule_objects, frame_spool=None):
         pass
+
+    undeclared = SimpleNamespace(func=sampler)
+    with pytest.raises(ValueError, match="declare 'frame_spool'"):
+        SamplerCoordinator(undeclared, 'fixture.sampler', {'Escut': 0.0, 'Fscut': 0.0},
+                           {'master_directory': str(tmp_path), 'maximum_stored_labels': 1,
+                            'data_by_reference': {'directory': 'frames', 'sampler_frames': True}})
+    sampler = declares('frame_spool')(sampler)
 
     config = {'Escut': 0.0, 'Fscut': 0.0}
     master = {'master_directory': str(tmp_path), 'maximum_stored_labels': 1,

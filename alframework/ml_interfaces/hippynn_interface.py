@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from parsl import python_app, join_app
 from alframework.tools.task_timeline import timed
+from alframework.tools.capabilities import declares
 import contextlib
 import multiprocessing
 import re
@@ -1015,6 +1016,7 @@ def _single_node_training_devices(ML_config, gpus_per_node):
 
 
 @python_app(executors=['alf_ML_executor'])
+@declares('h5_read_workers')
 @timed('ML')
 def train_HIPPYNN_ensemble_task(ML_config,h5_dir,model_path,current_training_id,gpus_per_node,remove_existing=False,h5_test_dir=None,
                                 h5_path=None,current_h5_id=None):
@@ -2873,6 +2875,7 @@ def _ml_executor():
 
 
 @join_app
+@declares('shared_training_data', 'stream_final_evaluation', 'h5_read_workers')
 def train_HIPPYNN_ensemble_multinode_task(ML_config, h5_dir, model_path, current_training_id, gpus_per_node,
                                           member_retries=1):
     """Train a ground-state ensemble with one app per member, so it can span any number of nodes.
@@ -2892,6 +2895,7 @@ def train_HIPPYNN_ensemble_multinode_task(ML_config, h5_dir, model_path, current
 
 
 @join_app
+@declares('shared_training_data', 'stream_final_evaluation')
 def train_excited_state_HIPPYNN_ensemble_multinode_task(ML_config, h5_dir, model_path, current_training_id,
                                                         gpus_per_node, properties_list, remove_existing=False,
                                                         h5_test_dir=None, member_retries=1):

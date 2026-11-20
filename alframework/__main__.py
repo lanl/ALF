@@ -33,6 +33,7 @@ from alframework.tools.label_validation import screen_labels
 from alframework.tools.label_parts import hold_ready
 from alframework.tools.loop_timing import coordinator_loop_timer
 from alframework.tools.capabilities import validate_task_config
+from alframework.tools.capacity import capacity_report
 from alframework.tools.scaling import SCALING, apply_scaling, describe as describe_scaling, large_run_warning
 from alframework.tools.builder_outputs import builder_outputs
 from alframework.tools.sampler_coordinator import SamplerCoordinator
@@ -170,6 +171,22 @@ for cur_Exec in ml_task.executors:
         ml_task.executors.append(cur_Exec.replace('_executor', '_standby_executor'))
 # The QM task's is called by LabelingCoordinator; the ML task's runs before the bootstrap is labeled.
 validate_task_config(ml_task, ML_config, master_config)
+
+# What the run keeps in flight against what its Parsl executors can run, with warnings where they disagree.
+# Ensemble tasks that submit one app per member (join apps) are counted per member.
+parsl_executors = {executor.label: executor for executor in parsl_configuration.executors}
+ml_members = ML_config.get('n_models') if 'n_models' in ML_config else (ML_config.get('fine_tune') or {}).get('n_models')
+capacity_lines, capacity_warnings = capacity_report(
+    master_config, parsl_executors,
+    builder_labels=builder_task.executors, builder_width=master_config.get('maximum_builder_structures', 1),
+    builder_batches=master_config.get('maximum_builder_structures', 1) > 1,
+    sampler_labels=sampler_task.executors, sampler_width=sampling.settings['batch_size'] if sampling.batched else 1,
+    qm_labels=qm_task.executors, qm_width=labeling.settings['batch_size'] if labeling.batched else 1,
+    ml_labels=[label for label in ('alf_ML_executor', 'alf_ML_standby_executor') if label in parsl_executors],
+    n_models=ml_members if getattr(ml_task, 'join', False) else None, member_nodes=ML_config.get('member_nodes', 1))
+print('Capacity:\n  ' + '\n  '.join(capacity_lines), flush=True)
+for warning in capacity_warnings:
+    print('Warning: ' + warning, flush=True)
 
 ##########################################
 ## Step 3: Evaluate restart possibilites #

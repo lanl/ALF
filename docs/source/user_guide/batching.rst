@@ -180,6 +180,32 @@ ALF prints the batching it will use at startup, for example:
    Sampling: torchsim engine, batches of up to 32 structures (timeout, 5 s)
    QM labeling: native batches of up to 64 structures (timeout, 5 s)
 
+.. _batching-capacity:
+
+It then sets what the run keeps in flight beside what its Parsl executors can run: each
+stage's tasks at once (workers per node, times nodes per block, times ``max_blocks``),
+times structures per task, against its queue setting. For example:
+
+.. code-block:: text
+
+   Capacity:
+     sampling: 16 tasks at once of up to 256 structures = 4,096; parallel_samplers 4,096
+     builders: 256 structures per task, 16 tasks to fill sampling
+     QM: 8 tasks at once of up to 256 structures = 2,048; target_queued_QM 2,048
+     retraining: once more than 4,095 new labels are held
+     ML: 8 ensemble members, 8 trained at once
+
+A ``Warning:`` line follows for each mismatch it finds:
+
+- sampler or QM task slots that ``parallel_samplers`` or ``target_queued_QM`` leaves idle;
+- a ``parallel_samplers`` that isn't a multiple of the sampler batch size, so one batch
+  at a time waits out ``max_wait_seconds``;
+- builder tasks whose width differs from the sampler batch size;
+- more ensemble members than ML slots, for tasks that train each member as its own app.
+
+The report changes nothing; a stage whose executors don't say how many tasks they run
+is reported as running an unknown number.
+
 While running, the queue status for batched stages shows how many structures are
 in tasks and how many are waiting:
 

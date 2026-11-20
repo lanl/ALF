@@ -98,7 +98,11 @@ def check_capacity(n_models, gpus_per_node, device_string, executor, gpus_per_me
         raise ValueError(f'alf_ML_executor has {workers} workers per node with {gpus_per_member} GPU(s) each, but '
                          f'gpus_per_node is {gpus_per_node}, so members would share a GPU. Lower '
                          'max_workers_per_node, or set available_accelerators if each worker has its own GPUs.')
-    slots = workers * provider.nodes_per_block * provider.max_blocks // member_nodes
+    from alframework.tools.capacity import executor_slots
+    slots = executor_slots(executor)
+    if slots is None:
+        return
+    slots //= member_nodes
     if slots < n_models:
         print(f'Warning: alf_ML_executor has {slots} slots for {n_models} ensemble members, so some members will '
               'wait for others to finish. Check max_workers_per_node and max_blocks.', flush=True)

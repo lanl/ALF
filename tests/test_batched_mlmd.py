@@ -948,3 +948,37 @@ def test_the_scalar_sampler_returns_the_original_constraints():
     atoms = run_legacy(start, config, schedule, seed=5).get_atoms()
     assert atoms is not None
     assert [type(c) for c in atoms.constraints] == [FixAtoms], "only the structure's own constraint comes back"
+
+
+def test_an_engine_of_your_own_is_named_by_its_import_path():
+    from alframework.tools.sampler_coordinator import driver_settings
+    from tests.helpers.engines import CountingASEEngine
+
+    CountingASEEngine.constructed.clear()
+    path = "tests.helpers.engines.CountingASEEngine"
+    config = dict(GROUP_CONFIG, driver={"engine": path})
+    assert driver_settings(config)["engine"] == path
+    inputs = mixed_inputs()[:3]
+    copies = lambda: [MoleculesObject(m.get_atoms().copy(), m.get_moleculeid()) for m in inputs]
+    plugin = sample_trajectories(copies(), fake_ensemble(), config)
+    built_in = sample_trajectories(copies(), fake_ensemble(), dict(GROUP_CONFIG))
+    assert CountingASEEngine.constructed == [3]
+    assert [m.get_metadata()["trajectory_outcome"] for m in plugin] == \
+        [m.get_metadata()["trajectory_outcome"] for m in built_in]
+
+
+@pytest.mark.parametrize("engine, message", [
+    ("no_such_package.Engine", "could not be imported"),
+    ("tests.helpers.engines.require_engine", "not an engine class"),
+    ("verlet", "or the import path of an engine class"),
+])
+def test_an_engine_that_cannot_be_used_is_refused_at_startup(engine, message):
+    from alframework.tools.sampler_coordinator import driver_settings
+    with pytest.raises(ValueError, match=message):
+        driver_settings({"driver": {"engine": engine}})
+
+
+def test_a_batched_calculator_needs_an_engine_that_accepts_one():
+    from alframework.tools.sampler_coordinator import driver_settings
+    with pytest.raises(ValueError, match="batched_calculator needs an engine that evaluates batches"):
+        driver_settings({"driver": {"engine": "tests.helpers.engines.CountingASEEngine"}, "batched_calculator": "x.y"})

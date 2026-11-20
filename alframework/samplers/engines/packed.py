@@ -71,6 +71,8 @@ class PackedMLMDEngine:
 
     engine_name = "packed"
     state_class = PackedState
+    # Evaluates the ensemble a sampler's batched_calculator loads (see engines.factory).
+    accepts_batched_calculator = True
 
     def __init__(self, atoms_list, models, dt, temperatures_K, rngs, calculator_options=None, friction=0.02,
                  device="cpu"):

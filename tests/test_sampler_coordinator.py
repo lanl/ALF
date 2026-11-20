@@ -177,7 +177,7 @@ def test_driver_settings_are_validated():
     assert driver_settings({"driver": {"engine": "torchsim"}})["engine"] == "torchsim"
     assert driver_settings({"driver": {"engine": "alchemi"}})["engine"] == "alchemi"
     assert driver_settings({"driver": {"engine": "alchemi"}, "batched_calculator": "x.y"})["engine"] == "alchemi"
-    with pytest.raises(ValueError, match="batched_calculator requires"):
+    with pytest.raises(ValueError, match="batched_calculator needs an engine that evaluates batches"):
         driver_settings({"batched_calculator": "x.y"})
     with pytest.raises(ValueError, match="driver.engine"):
         driver_settings({"driver": {"engine": "lammps"}})

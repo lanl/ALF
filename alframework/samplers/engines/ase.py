@@ -88,6 +88,9 @@ class ASEEngine:
     An optional ``synchronize()`` waits for device work before a timing checkpoint.
     """
 
+    # Uses the ase_calculator ensemble (see engines.factory).
+    accepts_batched_calculator = False
+
     def __init__(self, atoms_list, models, dt, temperatures_K, rngs, calculator_options=None, friction=0.02):
         self._states = isinstance(models, SelectedStateEvaluator)
         self.n_models = models.n_models if self._states else len(models)

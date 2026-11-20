@@ -41,6 +41,7 @@ from alframework.tools.velocities import velocity_initialization_settings
 
 STRATEGIES = ("single", "batched")
 ENGINES = ("ase", "torchsim", "alchemi")
+BATCHED_ENGINES = ("torchsim", "alchemi")
 # Read once at startup. Cutoffs set what a cohort's scores mean, so they stay fixed only in cohort mode.
 FIXED_SETTINGS = ("driver", "batching", "acquisition", "model_mode", "state_selection", "gap_uncertainty",
                   "gap_seeking", "sampling_windows", "velocity_initialization", "initial_velocity_temperature_K")
@@ -138,12 +139,19 @@ def driver_settings(sampler_config):
     engine = block.get("engine", "ase")
     if strategy not in STRATEGIES:
         raise ValueError(f"driver.strategy must be one of {STRATEGIES}; received {strategy!r}.")
-    if engine not in ENGINES:
-        raise ValueError(f"driver.engine must be one of {ENGINES}; received {engine!r}.")
+    if engine in ENGINES:
+        accepts_batched = engine in BATCHED_ENGINES
+    elif isinstance(engine, str) and "." in engine:
+        # An engine of your own, by import path; see alframework.samplers.engines.factory.
+        from alframework.samplers.engines.factory import engine_class
+        accepts_batched = getattr(engine_class(engine), "accepts_batched_calculator", False)
+    else:
+        raise ValueError(f"driver.engine must be one of {ENGINES} or the import path of an engine class; "
+                         f"received {engine!r}.")
     states = state_settings(sampler_config)
-    if sampler_config.get("batched_calculator") is not None and engine not in {"torchsim", "alchemi"} and states is None:
-        raise ValueError("batched_calculator requires driver.engine 'torchsim' or 'alchemi'; "
-                         "the ASE engine uses ase_calculator.")
+    if sampler_config.get("batched_calculator") is not None and not accepts_batched and states is None:
+        raise ValueError(f"batched_calculator needs an engine that evaluates batches ('torchsim', 'alchemi', or a "
+                         f"class with accepts_batched_calculator = True); engine {engine!r} uses ase_calculator.")
     batching = batching_settings(sampler_config)
     if strategy == "batched" and batching is None:
         raise ValueError("driver.strategy 'batched' requires a sampler 'batching' block.")

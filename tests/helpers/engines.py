@@ -62,3 +62,15 @@ class Tether(Calculator):
         super().calculate(atoms, properties, system_changes)
         x = atoms.get_positions()
         self.results = {"energy": 0.5 * self.k * (x**2).sum(), "forces": -self.k * x}
+
+
+class CountingASEEngine:
+    """An engine of a user's own, named by import path in ``driver.engine``: ALF's ASE engine, counting the
+    trajectories it was built with."""
+
+    constructed = []
+
+    def __new__(cls, atoms_list, models, dt, temperatures_K, rngs, calculator_options=None, device=None, friction=0.02):
+        from alframework.samplers.engines.ase import ASEEngine
+        cls.constructed.append(len(atoms_list))
+        return ASEEngine(atoms_list, models, dt, temperatures_K, rngs, calculator_options, friction=friction)

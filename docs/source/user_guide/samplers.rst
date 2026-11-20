@@ -96,7 +96,9 @@ Select it in ``master_config.json``, then add its settings to the sampler config
        ``"single"``.
    * - ``driver.engine``
      - Chooses how trajectories advance. Use ``"ase"`` (default), ``"torchsim"``,
-       or ``"alchemi"``. See below.
+       or ``"alchemi"``, or the import path of an engine class of your own, such as
+       ``"my_package.engines.MyEngine"`` (see :mod:`alframework.samplers.engines.factory`
+       for what the class provides). See below.
    * - ``batched_calculator``
      - Import string for a loader that evaluates many structures at once, used by
        the ``torchsim`` and ``alchemi`` engines in place of ``ase_calculator``. For

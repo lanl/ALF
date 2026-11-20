@@ -729,6 +729,35 @@ def test_h5_loader_restores_atom_order(tmp_path):
 # ---- Reading multi-state training data ----
 
 
+def test_excited_state_virtual_shard_matches_native_column_selection(tmp_path):
+    pytest.importorskip('hippynn')
+    from alframework.tools.label_parts import publish_snapshot
+
+    ordinary = tmp_path / 'ordinary.h5'
+    _write_group(ordinary, 'HO', count=4)
+    with h5py.File(ordinary, 'r+') as handle:
+        group = handle['HO']
+        group['_id'] = np.array([b'a', b'b', b'c', b'd'])
+        parts = []
+        for start in (0, 2):
+            part = tmp_path / f'part-{start}.h5'
+            with h5py.File(part, 'w') as output:
+                target = output.create_group('HO')
+                for name, source in group.items():
+                    target[name] = source[()] if name == 'species' else source[start:start + 2]
+            parts.append(part)
+
+    snapshot = tmp_path / 'snapshot.h5'
+    publish_snapshot(snapshot, parts, {})
+    before, original = ml.load_excited_state_h5_arrays(ordinary, _properties())
+    after, virtual = ml.load_excited_state_h5_arrays(snapshot, _properties())
+    assert before.keys() == after.keys()
+    for key, value in before.items():
+        assert after[key].dtype == value.dtype
+        np.testing.assert_array_equal(after[key], value)
+    assert [frame['id'] for frame in original['frames']] == [frame['id'] for frame in virtual['frames']]
+
+
 def test_h5_loader_reads_two_states(tmp_path):
     pytest.importorskip("hippynn")
     shard = tmp_path / "data-0000.h5"

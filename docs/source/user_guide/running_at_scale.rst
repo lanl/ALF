@@ -224,6 +224,12 @@ The shards stay HDF5 with the same datasets, dtypes and values, so trainers and 
 unchanged. Writing parts happens on the coordinator as results arrive, so choose a layout whose writing keeps
 pace with your QM wave; keep the default where other tools expect gzip level 6.
 
+Each pass of the coordinator's loop writes one part, then more while a full part's worth of finished labels is
+waiting, for up to 30 seconds, so the loop keeps answering while labels don't pile up behind it. Writing only one
+part per pass, as ALF did before, fell behind at scale: with 1,024 nodes a pass took about 5 s, and the 257 parts
+of 2,097,152 labels were still being written 24 minutes after QM finished. A part of 8,192 structures takes about
+1.7 s to write with lzf, most of it building the arrays.
+
 .. _running-at-scale-training:
 
 Training With Many Labels
@@ -245,6 +251,13 @@ up to one per group; the batches are the same, in the same order. ``ALF_H5_READ_
 (``1`` reads serially). For the 15 GB shard above, with huge pages off, 8 processes took 93 s and one 133 s,
 and every array was identical. Turning off huge pages (see :ref:`running-at-scale-huge-pages`) mattered
 more.
+
+A shard published over parts (``label_storage_batch_size``) is a small file of virtual datasets: ALF counts the
+parts it references when deciding to read in parallel, and each process reads the parts' datasets directly
+rather than through HDF5's virtual layer, which was about 6 times slower. The arrays are the same. Before this,
+a member of a 1,024-node run read its 2,097,152 labels serially through the virtual layer for 17.5 minutes;
+reading 16 of those parts (128,000 structures) went from 176 s to between 4 and 25 s, depending on the load of
+the node.
 
 Data parallelism (see :ref:`ml-multigpu-members`) keeps the time per epoch flat only while a member's GPUs
 grow with the labels. On one node, each epoch takes longer in proportion to the labels per GPU (four times

@@ -29,6 +29,7 @@ from alframework.tools.restarts import (
 )
 from alframework.tools.labeling_coordinator import LabelingCoordinator
 from alframework.tools.label_validation import screen_labels
+from alframework.tools.label_parts import hold_ready
 from alframework.tools.builder_outputs import builder_outputs
 from alframework.tools.sampler_coordinator import SamplerCoordinator
 #import logging
@@ -185,17 +186,19 @@ storage_batch_size = master_config.get('label_storage_batch_size')
 
 
 def hold_finished_labels(*, drain=False):
-    """Move finished QM work out of memory, so a crash can't lose it."""
+    """Move finished QM work out of memory, so a crash can't lose it. With bounded storage, a pass writes as
+    many full parts as are waiting, within a time limit (``label_parts.hold_ready``); ``drain`` writes them all."""
     properties = held.properties if storage_batch_size is not None else master_config['properties_list']
-    while True:
+
+    def take_one_part():
         results, failed = QM_task_queue.get_task_results(max_items=storage_batch_size)
         screen_labels(results, properties)
         lost = labeling.take_failed_structures(failed)
         status['lifetime_failed_QM_tasks'] = status['lifetime_failed_QM_tasks'] + failed
         status['lifetime_failed_QM_structures'] = status.get('lifetime_failed_QM_structures', 0) + lost
         held.hold(results, lost)
-        if not drain or storage_batch_size is None or not QM_task_queue.get_completed_number():
-            return
+
+    hold_ready(take_one_part, QM_task_queue.get_completed_number, storage_batch_size, drain=drain)
 
 
 def store_held_labels(**attributes):

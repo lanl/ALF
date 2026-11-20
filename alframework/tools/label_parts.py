@@ -20,6 +20,29 @@ REJECTED_IDS = 'alf_rejected_label_ids'
 PROPERTY_SCHEMA = 'alf_label_properties'
 
 
+# With bounded storage, the longest a coordinator loop pass spends writing label parts beyond its first one.
+HOLD_SECONDS = 30.0
+
+
+def hold_ready(take_one_part, waiting, batch_size, *, drain=False, seconds=HOLD_SECONDS, clock=None):
+    """Write label parts until enough are written for this loop pass; returns how many were written.
+
+    ``take_one_part()`` holds up to ``batch_size`` finished labels; ``waiting()`` counts the finished labels still
+    in the queue. A pass writes one part, then more while a full part is waiting, for up to ``seconds``, so finished
+    labels don't wait in memory while the loop writes one part per pass (at large scale a pass takes seconds).
+    ``drain`` writes everything. Without a ``batch_size`` (unbounded storage) one call holds everything at once.
+    """
+    import time
+    clock = clock or time.monotonic
+    started, written = clock(), 0
+    while True:
+        take_one_part()
+        written += 1
+        left = waiting() if batch_size is not None else 0
+        if not left or (not drain and (left < batch_size or clock() - started >= seconds)):
+            return written
+
+
 def part_directory(snapshot):
     snapshot = Path(snapshot)
     return snapshot.parent / '.alf-label-parts' / snapshot.name

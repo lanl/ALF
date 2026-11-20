@@ -126,7 +126,7 @@ class ParslTaskQueue:
         return taken
 
     def get_completed_number(self):
-        """Get the number of completed tasks.
+        """Get the number of completed tasks, or of their structures in a batched queue (see ``_weight``).
         """
         return int(self._count('final', is_final_task))
 

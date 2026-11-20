@@ -222,3 +222,88 @@ def test_a_label_layout_rejects_unknown_settings(layout, message):
 def test_without_a_layout_labels_are_written_as_before():
     from alframework.tools.restarts import label_h5_options
     assert label_h5_options({}) == {}
+
+
+class _Queue:
+    """Finished labels waiting in a QM queue, taken a part at a time."""
+
+    def __init__(self, waiting, batch):
+        self.waiting, self.batch, self.parts = waiting, batch, 0
+
+    def take_one_part(self):
+        self.waiting -= min(self.batch, self.waiting) if self.batch else self.waiting
+        self.parts += 1
+
+
+def test_a_pass_writes_every_full_part_that_is_waiting():
+    from alframework.tools.label_parts import hold_ready
+    queue = _Queue(waiting=8 * 4 + 3, batch=8)
+    assert hold_ready(queue.take_one_part, lambda: queue.waiting, 8) == 4
+    assert queue.waiting == 3, "the pass stops at a part that isn't full; the next pass or a drain takes it"
+    assert hold_ready(queue.take_one_part, lambda: queue.waiting, 8, drain=True) == 1 and queue.waiting == 0
+
+
+def test_a_pass_stops_writing_parts_after_its_time_limit():
+    from alframework.tools.label_parts import hold_ready
+    queue = _Queue(waiting=8 * 100, batch=8)
+    ticks = iter(range(1000))
+    written = hold_ready(queue.take_one_part, lambda: queue.waiting, 8, seconds=3, clock=lambda: next(ticks))
+    assert written == 3 and queue.waiting == 8 * 97, "one part per clock tick, three ticks allowed"
+    written = hold_ready(queue.take_one_part, lambda: queue.waiting, 8, drain=True, seconds=3,
+                         clock=lambda: next(ticks))
+    assert written == 97 and queue.waiting == 0, "a drain ignores the limit"
+
+
+def test_without_bounded_storage_one_call_holds_everything():
+    from alframework.tools.label_parts import hold_ready
+    queue = _Queue(waiting=1000, batch=None)
+    assert hold_ready(queue.take_one_part, lambda: queue.waiting, None) == 1 and queue.waiting == 0
+
+
+def _snapshot(tmp_path, count=7, batch_size=2):
+    labels = [labeled(f'mol-{i}', energy=-i) for i in range(count)]
+    snapshot = tmp_path / 'parts' / 'data.h5'
+    held = HDF5HeldLabels(snapshot, PROPERTIES, batch_size=batch_size)
+    held.hold(labels)
+    held.commit(snapshot, PROPERTIES, {})
+    return snapshot
+
+
+def test_a_snapshot_reads_the_same_from_its_parts_as_through_hdf5(tmp_path):
+    from alframework.tools import h5_parallel
+    snapshot = _snapshot(tmp_path)
+    for path in h5_parallel.group_paths(str(snapshot)):
+        direct = h5_parallel.read_group(str(snapshot), path)
+        with h5py.File(snapshot) as handle:
+            assert any(dataset.is_virtual for dataset in handle[path].values()), "the test needs virtual datasets"
+            for key, dataset in handle[path].items():
+                reference = dataset[()]
+                if reference.dtype.kind == 'S' and reference.ndim == 1:
+                    assert direct[key] == [item.decode('ascii') for item in reference]
+                else:
+                    assert direct[key].dtype == reference.dtype
+                    np.testing.assert_array_equal(direct[key], reference)
+
+
+def test_a_snapshot_is_sized_by_its_parts_when_choosing_readers(tmp_path, monkeypatch):
+    from alframework.tools import h5_parallel
+    snapshot = _snapshot(tmp_path)
+    parts = sum(path.stat().st_size for path in part_directory(snapshot).glob('part-*.h5'))
+    assert h5_parallel.stored_bytes(str(snapshot)) == snapshot.stat().st_size + parts
+    monkeypatch.delenv(h5_parallel.READ_WORKERS, raising=False)
+    monkeypatch.setattr(h5_parallel, 'PARALLEL_MIN_BYTES', snapshot.stat().st_size + 1)
+    assert h5_parallel.workers_for(str(snapshot), 4) > 1, "the parts, not the small snapshot, make it large"
+
+
+def test_a_mapping_alf_does_not_write_falls_back_to_hdf5(tmp_path):
+    from alframework.tools import h5_parallel
+    source = tmp_path / 'source.h5'
+    with h5py.File(source, 'w') as handle:
+        handle['x'] = np.arange(12.0).reshape(4, 3)
+    layout = h5py.VirtualLayout(shape=(2, 3), dtype='f8')
+    layout[:, :] = h5py.VirtualSource(str(source), 'x', shape=(4, 3))[1:3, :]  # part of the source, not all of it
+    with h5py.File(tmp_path / 'view.h5', 'w') as handle:
+        handle.create_group('g').create_virtual_dataset('x', layout)
+        handle['g/species'] = np.array([b'H'])
+    data = h5_parallel.read_group(str(tmp_path / 'view.h5'), '/g')
+    np.testing.assert_array_equal(data['x'], np.arange(12.0).reshape(4, 3)[1:3])

@@ -68,8 +68,10 @@ def test_example_configs_are_valid(path):
             source = path.parent.joinpath(*module.split(".")).with_suffix(".py")
         assert source.is_file(), master[field]
         tree = ast.parse(source.read_text())
+        # A package may give a name defined in one of its modules, such as alframework.ml_interfaces.hippynn's tasks.
         assert any(
-            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.name == name
+            (isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.name == name)
+            or (isinstance(node, ast.ImportFrom) and any(alias.name == name for alias in node.names))
             for node in tree.body
         ), master[field]
     assert all(len(spec) == 3 for spec in master["properties_list"].values())
@@ -464,9 +466,9 @@ def test_cfg_seed_examples_build_clusters(family):
 @pytest.mark.parametrize("path", MASTERS, ids=lambda path: str(path.relative_to(ROOT / "examples")))
 def test_examples_name_current_module_paths(path):
     """Moved modules still import from their old paths, with a FutureWarning; examples use the new ones."""
-    from alframework import qm_interfaces, samplers, tools
+    from alframework import ml_interfaces, qm_interfaces, samplers, tools
 
-    moved = tuple(f"{package.__name__}.{name}." for package in (qm_interfaces, samplers, tools)
+    moved = tuple(f"{package.__name__}.{name}." for package in (ml_interfaces, qm_interfaces, samplers, tools)
                   for name in package.MOVED_MODULES)
     for field, value in read(path).items():
         if isinstance(value, str):

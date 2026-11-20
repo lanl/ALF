@@ -41,7 +41,7 @@ def test_each_group_reads_as_hippynns_loader_reads_it(tmp_path):
 
 def test_a_database_read_in_parallel_matches_the_serial_read(tmp_path, monkeypatch):
     pytest.importorskip("hippynn")
-    from alframework.ml_interfaces.hippynn_interface import ALFPyAniDirectoryDB
+    from alframework.ml_interfaces.hippynn.interface import ALFPyAniDirectoryDB
     _write_shard(tmp_path / "data")
 
     def load(workers):

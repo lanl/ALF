@@ -194,13 +194,13 @@ def fine_tune_hippynn_member(arguments):
     from hippynn.databases.database import prettyprint_arrays
     from hippynn.experiment import SetupParams, setup_and_train
     from hippynn.experiment.controllers import PatienceController, RaiseBatchSizeOnPlateau
-    from alframework.ml_interfaces._hippynn_compat import checkpoints
+    from alframework.ml_interfaces.hippynn.compat import checkpoints
     load_checkpoint = checkpoints().load_checkpoint
     from hippynn.graphs import find_unique_relative
     from hippynn.graphs.nodes.targets import HEnergyNode
     from hippynn.tools import active_directory, log_terminal
 
-    from alframework.ml_interfaces.hippynn_interface import ALFPyAniDirectoryDB, use_separate_test_set
+    from alframework.ml_interfaces.hippynn.interface import ALFPyAniDirectoryDB, use_separate_test_set
 
     settings, seed = arguments['settings'], int(arguments['seed'])
     source, member_dir = Path(arguments['source']), str(Path(arguments['member_dir']).resolve())

@@ -73,7 +73,7 @@ def test_the_ase_ensemble_evaluator_keeps_the_contract():
 
 
 def test_the_hippynn_batched_evaluator_keeps_the_contract(trained_ensemble):
-    from alframework.ml_interfaces.hippynn_interface import load_hippynn_batched_ensemble
+    from alframework.ml_interfaces.hippynn.interface import load_hippynn_batched_ensemble
     rows = check_evaluator(load_hippynn_batched_ensemble(str(trained_ensemble), device="cpu"), [WATER, WATER])
     assert all(np.isfinite(row["Es"]) for row in rows)
 

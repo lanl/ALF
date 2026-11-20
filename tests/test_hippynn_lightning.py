@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from alframework.ml_interfaces import hippynn_interface as ml
+from alframework.ml_interfaces.hippynn import interface as ml
 from alframework.tools import ensemble_training
 from tests.helpers.hippynn import TINY_NETWORK, write_water_shard
 
@@ -28,7 +28,7 @@ def _check_member(member, devices=2, batch_size=4):
     assert f"Testing model on {devices} devices, eval batch size {batch_size // devices} each" in log, \
         "the final test is split over the member's devices, each at its share of the evaluation batch"
     assert not list(member.glob("final_test_rank*.pt")), "the ranks' shares are removed after the final test"
-    from alframework.ml_interfaces._hippynn_compat import checkpoints
+    from alframework.ml_interfaces.hippynn.compat import checkpoints
     load_checkpoint = checkpoints().load_checkpoint
 
     bundle = load_checkpoint(str(member / "experiment_structure.pt"), str(member / "best_checkpoint.pt"),
@@ -109,7 +109,7 @@ def test_a_single_device_ground_state_member_records_its_training(tmp_path):
 
 def test_batch_sizes_must_divide_across_devices():
     pytest.importorskip("pytorch_lightning")
-    from alframework.ml_interfaces.hippynn_lightning import _split_batches
+    from alframework.ml_interfaces.hippynn.lightning import _split_batches
 
     controller = SimpleNamespace(batch_size=64, eval_batch_size=30, scheduler_list=[])
     with pytest.raises(ValueError, match="eval_batch_size 30"):
@@ -161,7 +161,7 @@ def test_the_split_final_test_reports_what_one_device_would(tmp_path, monkeypatc
     pytest.importorskip("hippynn")
     pytest.importorskip("pytorch_lightning")
     from hippynn.experiment import test_model
-    from alframework.ml_interfaces import hippynn_lightning as hl
+    from alframework.ml_interfaces.hippynn import lightning as hl
 
     seen = {}
     train = hl._train_ranks_and_finish
@@ -205,7 +205,7 @@ def test_streamed_histogram_has_the_whole_split_edges_and_counts(tmp_path):
     import pickle
 
     import numpy as np
-    from alframework.ml_interfaces.hippynn_final import _edges, _extend_ranges, _histogram_counts
+    from alframework.ml_interfaces.hippynn.final_evaluation import _edges, _extend_ranges, _histogram_counts
 
     x = np.array([-20, 4, 2, 7, 20, 4, 2, 4, -12], dtype=np.float32)
     y = np.array([3, 1, 2, 7, 18, -3, 2, 0, -17], dtype=np.float32)
@@ -278,7 +278,7 @@ def test_a_failed_node_fails_the_member(tmp_path):
 
 
 def test_node_rank_comes_from_the_first_variable_set():
-    from alframework.ml_interfaces.hippynn_lightning import node_rank
+    from alframework.ml_interfaces.hippynn.lightning import node_rank
 
     assert node_rank({"SLURM_PROCID": "3"}) == 3
     assert node_rank({"ALF_NODE_RANK": "1", "SLURM_PROCID": "3"}) == 1
@@ -289,7 +289,7 @@ def test_node_rank_comes_from_the_first_variable_set():
 
 def test_member_nodes_must_share_the_gpus_and_have_a_launcher():
     pytest.importorskip("pytorch_lightning")
-    from alframework.ml_interfaces.hippynn_lightning import _local_devices
+    from alframework.ml_interfaces.hippynn.lightning import _local_devices
 
     assert _local_devices(16, 2, ["srun"]) == 8
     assert _local_devices(8, 1, None) == 8
@@ -313,7 +313,7 @@ def test_shared_split_arrays_come_back_unchanged(tmp_path, monkeypatch):
     """The ranks map exactly the arrays the parent wrote: same values, dtypes and shapes, for every split."""
     pytest.importorskip("pytorch_lightning")
     import torch
-    from alframework.ml_interfaces import hippynn_lightning as hl
+    from alframework.ml_interfaces.hippynn import lightning as hl
 
     monkeypatch.chdir(tmp_path)
     splits = {"train": {"coordinates": torch.randn(5, 3, 3), "species": torch.tensor([[1, 8, 1]] * 5),
@@ -355,7 +355,7 @@ def test_a_two_node_member_trains_on_shared_node_local_arrays(tmp_path, monkeypa
     (None, None, False), (None, "1", True), (None, "0", False), (True, None, True), (True, "0", True),
     (False, "1", False)])
 def test_training_options_come_from_ml_config_before_the_environment(value, variable, expected):
-    from alframework.ml_interfaces import hippynn_lightning as hl
+    from alframework.ml_interfaces.hippynn import lightning as hl
     shared = {} if variable is None else {hl.SHARED_DATA_VARIABLE: variable}
     stream = {} if variable is None else {hl.STREAM_FINAL_VARIABLE: variable}
     assert hl.shared_data_enabled(value, shared) is expected
@@ -375,7 +375,7 @@ def test_each_rank_gathers_only_its_own_final_test_batches(total, batch_size, n_
     pytest.importorskip("pytorch_lightning")
     import torch
     from torch.utils.data import DataLoader, TensorDataset
-    from alframework.ml_interfaces.hippynn_lightning import _owned_batches
+    from alframework.ml_interfaces.hippynn.lightning import _owned_batches
 
     loader = DataLoader(TensorDataset(torch.arange(total), torch.arange(total) * 10), batch_size=batch_size)
     expected = list(enumerate(loader))

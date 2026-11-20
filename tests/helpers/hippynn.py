@@ -13,8 +13,8 @@ def train_cpu_ensemble(directory, members=2, *, periodic=False):
     from hippynn.graphs import inputs, loss, networks, physics, targets
     from hippynn.tools import active_directory
 
-    from alframework.ml_interfaces._hippynn_compat import system_energy
-    from alframework.ml_interfaces.hippynn_interface import ALFPyAniDirectoryDB
+    from alframework.ml_interfaces.hippynn.compat import system_energy
+    from alframework.ml_interfaces.hippynn.interface import ALFPyAniDirectoryDB
 
     directory = Path(directory).resolve()
     data = directory / "training-data"

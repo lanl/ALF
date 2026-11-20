@@ -1466,7 +1466,7 @@ def test_ground_state_labels_are_stored_as_energy_and_forces(fake_gpu_stack, mon
 
 def test_hippynn_ground_state_reader_reads_a_ground_state_shard(fake_backend, tmp_path):
     pytest.importorskip("hippynn")
-    from alframework.ml_interfaces.hippynn_interface import ALFPyAniDirectoryDB
+    from alframework.ml_interfaces.hippynn.interface import ALFPyAniDirectoryDB
 
     energies, forces = _predictions(0)
     fake_backend(_returns(energies, forces))

@@ -9,7 +9,7 @@
       3
     ]
   },
-  "batched_calculator": "alframework.ml_interfaces.hippynn_interface.load_hippynn_excited_state_ensemble",
+  "batched_calculator": "alframework.ml_interfaces.hippynn.load_hippynn_excited_state_ensemble",
   "batched_calculator_options": {
     "properties_list": {
       "E0": [

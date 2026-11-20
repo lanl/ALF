@@ -168,7 +168,7 @@ only in their engine:
 .. code-block:: json
 
    {
-     "batched_calculator": "alframework.ml_interfaces.hippynn_interface.load_hippynn_batched_ensemble",
+     "batched_calculator": "alframework.ml_interfaces.hippynn.load_hippynn_batched_ensemble",
      "driver": {"strategy": "batched", "engine": "torchsim"},
      "batching": {"batch_size": 32, "partial_policy": "timeout", "max_wait_seconds": 5.0}
    }

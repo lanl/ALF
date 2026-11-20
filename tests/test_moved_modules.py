@@ -47,10 +47,20 @@ MOVED = [
     ("alframework.tools.node_setup", "alframework.tools.worker_setup", "worker_setup"),
     ("alframework.tools.labeling", "alframework.tools.labeling_coordinator", "LabelingCoordinator"),
     ("alframework.tools.molecules_class", "alframework.tools.molecules", "MoleculesObject"),
+    ("alframework.ml_interfaces.hippynn_interface", "alframework.ml_interfaces.hippynn.interface",
+     "train_HIPPYNN_ensemble_task"),
+    ("alframework.ml_interfaces.hippynn_interface", "alframework.ml_interfaces.hippynn.interface",
+     "load_hippynn_batched_ensemble"),
+    ("alframework.ml_interfaces.hippynn_lightning", "alframework.ml_interfaces.hippynn.lightning",
+     "train_data_parallel"),
+    ("alframework.ml_interfaces._hippynn_compat", "alframework.ml_interfaces.hippynn.compat", "checkpoints"),
 ]
+# Imports PyTorch and HIPPYNN by design, so it is checked only where they are installed.
+NEEDS_HIPPYNN = [("alframework.ml_interfaces.hippynn_final", "alframework.ml_interfaces.hippynn.final_evaluation",
+                  "FinalEvaluation")]
 # Modules that moved whole, rather than being split.
 WHOLE = sorted({(old, new) for old, new, _ in MOVED if not old.endswith("ase_calculator_interface")})
-PACKAGES = ["alframework.qm_interfaces", "alframework.samplers", "alframework.tools"]
+PACKAGES = ["alframework.ml_interfaces", "alframework.qm_interfaces", "alframework.samplers", "alframework.tools"]
 
 
 def run_fresh(code):
@@ -127,7 +137,8 @@ def test_a_module_that_never_existed_is_still_an_error(package):
 
 
 def test_old_paths_import_no_gpu_libraries():
-    imports = "\n".join(f"import {old}" for old, _ in WHOLE)
+    # The Lightning trainer imports PyTorch Lightning when it is installed, at its old path as at its new one.
+    imports = "\n".join(f"import {old}" for old, _ in WHOLE if old != "alframework.ml_interfaces.hippynn_lightning")
     run_fresh(f"""
 import sys
 {imports}
@@ -151,3 +162,25 @@ def test_batched_mlmd_still_gives_the_engine_names_it_used_to_define():
     for name in ("ASEEngine", "OBSERVED_PROPERTIES", "_PredictedMember", "_StateMeanCalculator"):
         assert getattr(batched_mlmd, name) is getattr(ase, name)
     assert batched_mlmd.make_engine is factory.make_engine
+
+
+@pytest.mark.parametrize("old,new,name", NEEDS_HIPPYNN)
+def test_the_streaming_final_evaluation_keeps_its_old_path(old, new, name):
+    pytest.importorskip("hippynn")
+    run_fresh(warning_check(old, new, name))
+
+
+def test_a_checkpoint_naming_the_old_database_class_still_loads():
+    """HIPPYNN checkpoints pickle the training database's class by the module it was defined in."""
+    pytest.importorskip("hippynn")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", FutureWarning)
+        loaded = pickle.loads(b"calframework.ml_interfaces.hippynn_interface\nALFPyAniDirectoryDB\n.")
+    assert loaded.__name__ == "ALFPyAniDirectoryDB"
+
+
+def test_configurations_name_the_hippynn_tasks_from_the_package():
+    from alframework.ml_interfaces import hippynn
+    from alframework.ml_interfaces.hippynn import interface
+    for name in hippynn.__all__:
+        assert load_module_from_string(f"alframework.ml_interfaces.hippynn.{name}") is getattr(interface, name)

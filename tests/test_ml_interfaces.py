@@ -8,7 +8,7 @@ import os
 import pytest
 from parsl.app.errors import RemoteExceptionWrapper
 
-from alframework.ml_interfaces import hippynn_interface
+from alframework.ml_interfaces.hippynn import interface as hippynn_interface
 from alframework.tools import ensemble_training
 from alframework.tools.config import build_input_dict
 from tests.helpers.fakes import fake_training_pool, import_neurochem_with_fake_backend

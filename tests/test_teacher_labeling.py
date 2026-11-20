@@ -270,7 +270,7 @@ def test_qm_shards_are_unchanged(tmp_path):
 
 def test_hippynn_reads_a_shard_that_records_label_sources(checkpoint, tmp_path):
     pytest.importorskip("hippynn")
-    from alframework.ml_interfaces.hippynn_interface import ALFPyAniDirectoryDB
+    from alframework.ml_interfaces.hippynn.interface import ALFPyAniDirectoryDB
 
     data_shards.store_current_data(str(tmp_path / "data-0000.h5"), label(structures(4), config(checkpoint)), PROPERTIES)
     database = ALFPyAniDirectoryDB(directory=str(tmp_path), inputs=["species", "coordinates"],

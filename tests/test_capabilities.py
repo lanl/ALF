@@ -34,7 +34,8 @@ def test_an_undeclared_feature_is_refused_with_how_to_declare_it():
 
 
 def test_the_built_in_tasks_declare_what_they_read():
-    from alframework.ml_interfaces import fine_tuning, hippynn_interface
+    from alframework.ml_interfaces import fine_tuning
+    from alframework.ml_interfaces.hippynn import interface as hippynn_interface
     from alframework.samplers import batched_mlmd, mlmd_sampling
 
     assert declared(batched_mlmd.mlmd_trajectories_task) == {'returned_metadata', 'returned_momenta', 'metadata_files',

@@ -167,7 +167,7 @@ def test_resume_mode_cannot_hide_pending_labels(tmp_path):
 @pytest.mark.parametrize('workers', [1, 2])
 def test_hippynn_loader_reads_the_same_arrays_from_a_virtual_shard(tmp_path, monkeypatch, workers):
     pytest.importorskip('hippynn')
-    from alframework.ml_interfaces.hippynn_interface import ALFPyAniDirectoryDB
+    from alframework.ml_interfaces.hippynn.interface import ALFPyAniDirectoryDB
 
     labels = [labeled(f'mol-{i}', energy=-i) for i in range(3)]
     if workers == 2:

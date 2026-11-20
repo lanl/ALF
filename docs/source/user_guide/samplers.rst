@@ -78,7 +78,7 @@ Select it in ``master_config.json``, then add its settings to the sampler config
    {
      "driver": {"strategy": "batched", "engine": "torchsim"},
      "batching": {"batch_size": 32, "partial_policy": "timeout", "max_wait_seconds": 5.0},
-     "batched_calculator": "alframework.ml_interfaces.hippynn_interface.load_hippynn_batched_ensemble",
+     "batched_calculator": "alframework.ml_interfaces.hippynn.load_hippynn_batched_ensemble",
      "random_seed": 1234,
      "device": "cuda"
    }
@@ -103,7 +103,7 @@ Select it in ``master_config.json``, then add its settings to the sampler config
      - Import string for a loader that evaluates many structures at once, used by
        the ``torchsim`` and ``alchemi`` engines in place of ``ase_calculator``. For
        HIPPYNN, use
-       ``alframework.ml_interfaces.hippynn_interface.load_hippynn_batched_ensemble``.
+       ``alframework.ml_interfaces.hippynn.load_hippynn_batched_ensemble``.
        The MACE and UMA examples use model loaders backed by
        ``alframework.ml_interfaces.torchsim_ensemble``.
        With only ``ase_calculator`` configured, these engines evaluate the ensemble

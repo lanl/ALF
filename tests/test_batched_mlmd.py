@@ -18,7 +18,7 @@ from ase import Atoms
 from ase.io import write
 
 from alframework.ml_interfaces.ensemble_inference import SelectedStateEvaluator, ensemble_statistics
-from alframework.ml_interfaces.hippynn_interface import HIPNN_ASE_load_ensemble
+from alframework.ml_interfaces.hippynn.interface import HIPNN_ASE_load_ensemble
 from alframework.samplers import batched_mlmd
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator
 from alframework.samplers.batched_mlmd import (

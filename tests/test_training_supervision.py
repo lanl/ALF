@@ -13,7 +13,7 @@ from types import SimpleNamespace
 import pytest
 from parsl.app.errors import RemoteExceptionWrapper
 
-from alframework.ml_interfaces import hippynn_interface as ml
+from alframework.ml_interfaces.hippynn import interface as ml
 from alframework.tools import ensemble_training as training
 from tests.helpers.fakes import training_member
 

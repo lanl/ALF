@@ -40,7 +40,7 @@ def properties(states):
 
 def _graph(atoms, choice, params, states):
     from hippynn.graphs import inputs
-    from alframework.ml_interfaces.hippynn_interface import (
+    from alframework.ml_interfaces.hippynn.interface import (
         _build_shared_network, build_excited_state_training_graph, validate_excited_state_training_properties)
     species = inputs.SpeciesNode(db_name='species')
     positions = inputs.PositionsNode(db_name='coordinates')
@@ -132,7 +132,7 @@ def write_untrained_members(directory, atoms, choice, params, states, members):
 
 
 def sampling_case(case, atoms, torch):
-    from alframework.ml_interfaces import hippynn_interface as ml
+    from alframework.ml_interfaces.hippynn import interface as ml
     device, states = case['device'], case['states']
     with tempfile.TemporaryDirectory(prefix='alf-benchmark-') as directory:
         write_untrained_members(directory, atoms, case['network_choice'], case['network_params'], states,

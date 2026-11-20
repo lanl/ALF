@@ -43,7 +43,7 @@ This example uses:
    * - QM
      - ``alframework.qm_interfaces.ase.vasp.VASP_ase_calculator_task``
    * - ML
-     - ``alframework.ml_interfaces.hippynn_interface.train_HIPPYNN_ensemble_task``
+     - ``alframework.ml_interfaces.hippynn.train_HIPPYNN_ensemble_task``
 
 The builder reads ``builder_config.json`` and creates charge-neutral random
 atomic systems from the configured ``atom_charges``. The provided configuration

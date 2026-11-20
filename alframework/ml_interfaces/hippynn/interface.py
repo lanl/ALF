@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 from alframework.tools.atom_order import TOPOLOGY_ATOM_IDS, canonical_orders
 from alframework.tools import ensemble_training
-from alframework.ml_interfaces._hippynn_compat import node_from_name, system_energy
+from alframework.ml_interfaces.hippynn.compat import node_from_name, system_energy
 from alframework.tools.excited_state_schema import derive_state_property_table, derive_gap_property_table
 from alframework.tools.data_shards import STRUCTURE_STATE_DATASETS
 
@@ -438,7 +438,7 @@ def train_HIPNN_model(model_dir,
         member_nodes (int): Nodes those GPUs are on, sharing them evenly. Above 1 needs ``member_launcher``.
         member_launcher (list): Command, as a list of words, that starts one process on each of the
             member's nodes, each seeing that node's GPUs, such as ``srun`` with one task per node. Each
-            process gets its node number from the launcher; see ``hippynn_lightning.NODE_RANK_VARIABLES``.
+            process gets its node number from the launcher; see ``hippynn.lightning.NODE_RANK_VARIABLES``.
         h5_read_workers (int): Processes that read each HDF5 file. ``None`` uses ``ALF_H5_READ_WORKERS``, or
             decides by the file's size. See ``alframework.tools.h5_parallel.workers_for``.
         shared_training_data (bool): With ``gpus_per_member`` above 1, the ranks on a node map one copy of the
@@ -461,7 +461,7 @@ def train_HIPNN_model(model_dir,
         raise ValueError(f'member_nodes is {member_nodes!r}, but gpus_per_member is 1: a member on several nodes '
                          'trains on all of their GPUs, so gpus_per_member counts them.')
     from alframework.tools.h5_parallel import read_workers_setting
-    from alframework.ml_interfaces.hippynn_lightning import option_setting
+    from alframework.ml_interfaces.hippynn.lightning import option_setting
     read_workers_setting(h5_read_workers)
     option_setting(shared_training_data, 'shared_training_data')
     option_setting(stream_final_evaluation, 'stream_final_evaluation')
@@ -475,7 +475,7 @@ def train_HIPNN_model(model_dir,
     import hippynn
     from hippynn import plotting
     from hippynn.graphs import inputs, networks, targets, physics, loss
-    from alframework.ml_interfaces.hippynn_interface import ALFPyAniDirectoryDB
+    from alframework.ml_interfaces.hippynn.interface import ALFPyAniDirectoryDB
     from hippynn.experiment.assembly import assemble_for_training
     from hippynn.pretraining import hierarchical_energy_initialization
     from hippynn.experiment.controllers import RaiseBatchSizeOnPlateau, PatienceController
@@ -885,7 +885,7 @@ def train_HIPNN_model(model_dir,
                             if arrays}
             # Parameters describing the training procedure.
             if ensemble_training.validated_gpus_per_member(gpus_per_member) > 1:
-                from alframework.ml_interfaces.hippynn_lightning import train_data_parallel
+                from alframework.ml_interfaces.hippynn.lightning import train_data_parallel
                 metric_tracker = train_data_parallel(training_modules, database, controller, n_devices=gpus_per_member,
                                                      accelerator='cpu' if device_cuda == 'cpu' else 'gpu',
                                                      seed=int(np.random.randint(2**31 - 1)), nodes=member_nodes,
@@ -941,7 +941,7 @@ def use_separate_test_set(database, h5_test_dir, db_info, database_schema, speci
     aren't filtered, so the test set is measured as it is.
     """
     import torch
-    from alframework.ml_interfaces.hippynn_interface import ALFPyAniDirectoryDB
+    from alframework.ml_interfaces.hippynn.interface import ALFPyAniDirectoryDB
     database_test = ALFPyAniDirectoryDB(directory=h5_test_dir, allow_unfound=True, quiet=False,
                                         seed=np.random.randint(1e9), **db_info, **database_schema)
     arrays = database_test.arr_dict
@@ -1041,7 +1041,7 @@ def train_HIPPYNN_ensemble_task(ML_config,h5_dir,model_path,current_training_id,
 
 
 def HIPNN_ASE_calculator(HIPNN_model_directory,energy_key='energy',device="cuda:0"):
-    from alframework.ml_interfaces._hippynn_compat import checkpoints
+    from alframework.ml_interfaces.hippynn.compat import checkpoints
     load_checkpoint = checkpoints().load_checkpoint
     from hippynn.interfaces.ase_interface import HippynnCalculator
     import torch
@@ -1107,7 +1107,7 @@ def load_hippynn_batched_ensemble(model_directory, device="cuda:0", energy_key="
 
 def _load_member(member_directory, device):
     # Absolute paths: no process-wide chdir, so concurrent loads in one process are safe.
-    from alframework.ml_interfaces._hippynn_compat import checkpoints
+    from alframework.ml_interfaces.hippynn.compat import checkpoints
     load_saved_tensors = checkpoints().load_saved_tensors
     structure, state = load_saved_tensors(os.path.join(member_directory, "experiment_structure.pt"),
                                           os.path.join(member_directory, "best_model.pt"), map_location=device)
@@ -1502,7 +1502,7 @@ def validate_excited_state_training_config(
     """Validate the supported multi-state training contract."""
 
     config = dict(ML_config or {})
-    from alframework.ml_interfaces.hippynn_lightning import option_setting
+    from alframework.ml_interfaces.hippynn.lightning import option_setting
     for option in ("shared_training_data", "stream_final_evaluation"):
         option_setting(config.get(option), option)
     state_table = validate_excited_state_training_properties(properties_list)
@@ -1657,7 +1657,7 @@ def load_excited_state_h5_arrays(h5_train_dir, properties_list, *, coordinates_k
     paths = _h5_shards(h5_train_dir)
     targets = [row[key] for row in states for key in ('energy_db_name', 'force_db_name')]
     targets += [row['gap_db_name'] for row in gaps]
-    from alframework.ml_interfaces.hippynn_interface import ALFPyAniDirectoryDB
+    from alframework.ml_interfaces.hippynn.interface import ALFPyAniDirectoryDB
     database = ALFPyAniDirectoryDB(
         str(Path(paths[0]).parent), files=[str(Path(p).resolve()) for p in paths],
         inputs=[species_key, coordinates_key], targets=targets,
@@ -2492,7 +2492,7 @@ def train_single_excited_state_model(
             )
             gpus_per_member = ensemble_training.validated_gpus_per_member(config.get('gpus_per_member', 1))
             if gpus_per_member > 1:
-                from alframework.ml_interfaces.hippynn_lightning import train_data_parallel
+                from alframework.ml_interfaces.hippynn.lightning import train_data_parallel
                 metric_tracker = train_data_parallel(training_modules, database, controller,
                                                      n_devices=gpus_per_member, seed=seed,
                                                      accelerator='cpu' if device.type == 'cpu' else 'gpu',
@@ -2855,7 +2855,7 @@ def _train_excited_state_member(arg_dict, attempt):
 @python_app(executors=['alf_ML_executor'])
 @timed('ML')
 def _ground_state_member_task(arg_dict, shards, attempt):
-    from alframework.ml_interfaces import hippynn_interface
+    from alframework.ml_interfaces.hippynn import interface as hippynn_interface
     from alframework.tools import ensemble_training
     ensemble_training.wait_for_shards(shards)
     return ensemble_training.run_member_in_child(hippynn_interface._train_ground_state_member, arg_dict, attempt)
@@ -2864,7 +2864,7 @@ def _ground_state_member_task(arg_dict, shards, attempt):
 @python_app(executors=['alf_ML_executor'])
 @timed('ML')
 def _excited_state_member_task(arg_dict, shards, attempt):
-    from alframework.ml_interfaces import hippynn_interface
+    from alframework.ml_interfaces.hippynn import interface as hippynn_interface
     from alframework.tools import ensemble_training
     ensemble_training.wait_for_shards(shards)
     return ensemble_training.run_member_in_child(hippynn_interface._train_excited_state_member, arg_dict, attempt)

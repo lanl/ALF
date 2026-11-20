@@ -72,7 +72,7 @@ def test_stage_spans(tmp_path, monkeypatch):
 
 
 def test_alf_tasks_keep_their_signatures_for_build_input_dict():
-    from alframework.ml_interfaces.hippynn_interface import train_HIPPYNN_ensemble_task
+    from alframework.ml_interfaces.hippynn.interface import train_HIPPYNN_ensemble_task
     from alframework.samplers.batched_mlmd import mlmd_trajectories_task
 
     task = mlmd_trajectories_task.func
@@ -144,7 +144,7 @@ TIMED_MODULES = [
     "alframework.qm_interfaces.ase.vasp",
     "alframework.qm_interfaces.ase.workflow",
     "alframework.qm_interfaces.legacy.orca5_interface", "alframework.qm_interfaces.legacy.qchem_DFT_interface",
-    "alframework.ml_interfaces.hippynn_interface",
+    "alframework.ml_interfaces.hippynn.interface",
 ]
 
 

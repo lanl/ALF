@@ -530,7 +530,7 @@ def state(path):
 
 def test_hippynn_round_fine_tunes_copies_that_alf_samplers_load(tmp_path, pretrained):
     torch = pytest.importorskip("torch")
-    from alframework.ml_interfaces.hippynn_interface import HIPNN_ASE_load_ensemble, load_hippynn_batched_ensemble
+    from alframework.ml_interfaces.hippynn.interface import HIPNN_ASE_load_ensemble, load_hippynn_batched_ensemble
 
     water_labels(tmp_path / "h5")
     config = {"fine_tune": dict(adapter=HIPPYNN, foundation_model=str(pretrained), n_models=2, device="cpu",
@@ -569,7 +569,7 @@ def test_hippynn_source_is_one_model_or_each_member_in_turn(pretrained):
 
 def test_hippynn_frozen_nodes_keep_their_weights(tmp_path, pretrained):
     torch = pytest.importorskip("torch")
-    from alframework.ml_interfaces._hippynn_compat import checkpoints
+    from alframework.ml_interfaces.hippynn.compat import checkpoints
     load_checkpoint = checkpoints().load_checkpoint
 
     from alframework.ml_interfaces.fine_tuning.hippynn import frozen_parameters
@@ -591,7 +591,7 @@ def test_hippynn_E0s_are_kept_or_refit(tmp_path, pretrained, E0s):
     torch = pytest.importorskip("torch")
     # Freeze the energy head, so only a refit can change its atomic energies.
     member_dir = fine_tune_in_process(tmp_path, hippynn_tuner(pretrained, E0s=E0s, freeze=["henergy"]))
-    from alframework.ml_interfaces._hippynn_compat import checkpoints
+    from alframework.ml_interfaces.hippynn.compat import checkpoints
     load_checkpoint = checkpoints().load_checkpoint
     from hippynn.graphs import find_unique_relative
     from hippynn.graphs.nodes.targets import HEnergyNode
@@ -606,7 +606,7 @@ def test_hippynn_E0s_are_kept_or_refit(tmp_path, pretrained, E0s):
 
 
 def test_hippynn_uses_a_separate_test_set(tmp_path, pretrained, monkeypatch):
-    from alframework.ml_interfaces import hippynn_interface
+    from alframework.ml_interfaces.hippynn import interface as hippynn_interface
 
     used = []
     real = hippynn_interface.use_separate_test_set
@@ -762,7 +762,7 @@ def test_hippynn_copy_is_complete_only_with_its_model_and_a_finished_log(tmp_pat
 
 def test_hippynn_never_trains_or_freezes_integer_parameters(pretrained):
     pytest.importorskip("torch")
-    from alframework.ml_interfaces._hippynn_compat import checkpoints
+    from alframework.ml_interfaces.hippynn.compat import checkpoints
     load_checkpoint = checkpoints().load_checkpoint
 
     from alframework.ml_interfaces.fine_tuning.hippynn import frozen_parameters, trainable_names

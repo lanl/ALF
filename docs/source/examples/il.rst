@@ -39,7 +39,7 @@ Workflow Pattern
    * - QM
      - ``alframework.qm_interfaces.ase.workflow.ase_workflow_task``
    * - ML
-     - ``alframework.ml_interfaces.hippynn_interface.train_HIPPYNN_ensemble_task``
+     - ``alframework.ml_interfaces.hippynn.train_HIPPYNN_ensemble_task``
 
 The builder assembles systems from ``fragment_library`` using
 ``solute_molecule_options`` and ``solvent_molecules``. This is useful when the

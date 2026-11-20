@@ -23,7 +23,7 @@ stages fit together like this:
        ``alframework.qm_interfaces.pyseqm_interface.pyseqm_excited_state_task``, or
        ``alframework.qm_interfaces.pyseqm_interface.pyseqm_excited_state_batch_task``
    * - Training
-     - ``alframework.ml_interfaces.hippynn_interface.train_excited_state_HIPPYNN_ensemble_task``,
+     - ``alframework.ml_interfaces.hippynn.train_excited_state_HIPPYNN_ensemble_task``,
        or ``train_excited_state_HIPPYNN_ensemble_multinode_task`` to train across several
        nodes; see :ref:`ml-multinode-training`.
    * - Sampling
@@ -299,7 +299,7 @@ Point the master config at the excited-state trainer. It reads the states from
 .. code-block:: json
 
    {
-     "ML_task": "alframework.ml_interfaces.hippynn_interface.train_excited_state_HIPPYNN_ensemble_task",
+     "ML_task": "alframework.ml_interfaces.hippynn.train_excited_state_HIPPYNN_ensemble_task",
      "ML_config_path": "hippynn_config.json"
    }
 
@@ -393,7 +393,7 @@ its selected state, and ``Es`` and ``Fs`` uncertainty is measured on that state.
      "state_selection": {"mode": "batch_cycle", "states": [0, 1]},
      "gap_uncertainty": {"pair": [0, 1]},
      "gap_std_cut": 0.1,
-     "batched_calculator": "alframework.ml_interfaces.hippynn_interface.load_hippynn_excited_state_ensemble",
+     "batched_calculator": "alframework.ml_interfaces.hippynn.load_hippynn_excited_state_ensemble",
      "batched_calculator_options": {
        "properties_list": {
          "E0": ["E0", "system", 1.0],
@@ -524,4 +524,4 @@ Excited-State API Links
 * :doc:`Excited-state schema module <../api_documentation/alframework.tools.excited_state_schema>`
 * :doc:`GPU4PySCF interface module <../api_documentation/alframework.qm_interfaces.pyscf.gpu4pyscf>`
 * :doc:`PySEQM interface module <../api_documentation/alframework.qm_interfaces.pyseqm_interface>`
-* :doc:`HIPPYNN interface module <../api_documentation/alframework.ml_interfaces.hippynn_interface>`
+* :doc:`HIPPYNN interface module <../api_documentation/alframework.ml_interfaces.hippynn.interface>`

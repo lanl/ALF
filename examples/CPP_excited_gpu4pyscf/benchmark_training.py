@@ -30,7 +30,7 @@ def run_case(profile, batch, mode, device, warmup, steps, states, hippynn_kernel
     from ase.io import read
     from hippynn.graphs import GraphModule, inputs
 
-    from alframework.ml_interfaces.hippynn_interface import (_build_shared_network,
+    from alframework.ml_interfaces.hippynn.interface import (_build_shared_network,
                                                              build_excited_state_training_graph)
     from prepare import apply_model_profile
 

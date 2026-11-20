@@ -280,7 +280,7 @@ def test_task_stores_the_ground_state_under_the_names_trainers_read(tmp_path):
     frames = shard_atoms([shard])
     assert len(frames) == 3 and frames[0].info["REF_energy"] == pytest.approx(labeled[0].get_results()["E0"])
     hippynn = pytest.importorskip("hippynn")
-    from alframework.ml_interfaces.hippynn_interface import ALFPyAniDirectoryDB
+    from alframework.ml_interfaces.hippynn.interface import ALFPyAniDirectoryDB
 
     database = ALFPyAniDirectoryDB(directory=str(tmp_path), inputs=["species", "coordinates"],
                                    targets=["energy", "forces"], quiet=True, seed=0)

@@ -22,8 +22,8 @@ import numpy as np
 import pytest
 from ase import Atoms, units
 
-from alframework.ml_interfaces import hippynn_interface as ml
-from alframework.ml_interfaces.hippynn_interface import HIPNN_ASE_calculator, HIPNN_ASE_load_ensemble
+from alframework.ml_interfaces.hippynn import interface as ml
+from alframework.ml_interfaces.hippynn.interface import HIPNN_ASE_calculator, HIPNN_ASE_load_ensemble
 from alframework.tools.excited_state_schema import derive_gap_property_table
 from tests.helpers.fakes import fake_training_pool
 from tests.helpers.molecules import WATER
@@ -103,7 +103,7 @@ def guarded_import(name, *args, **kwargs):
     assert name.split('.')[0] not in ('torch', 'hippynn'), name
     return original_import(name, *args, **kwargs)
 builtins.__import__ = guarded_import
-import alframework.ml_interfaces.hippynn_interface
+import alframework.ml_interfaces.hippynn.interface
 """,
         ],
         capture_output=True,
@@ -113,7 +113,7 @@ import alframework.ml_interfaces.hippynn_interface
 
 def test_trained_hippynn_checkpoints_reload_through_alf(tmp_path):
     pytest.importorskip("hippynn")
-    from alframework.ml_interfaces._hippynn_compat import checkpoints
+    from alframework.ml_interfaces.hippynn.compat import checkpoints
     load_checkpoint = checkpoints().load_checkpoint
 
     from tests.helpers.hippynn import train_cpu_ensemble
@@ -169,7 +169,7 @@ def test_members_load_concurrently_without_changing_directory(tmp_path, monkeypa
     serialization.load_checkpoint = load
     interface = ModuleType("hippynn.interfaces.ase_interface")
     interface.HippynnCalculator = Calculator
-    from alframework.ml_interfaces._hippynn_compat import CHECKPOINT_MODULES
+    from alframework.ml_interfaces.hippynn.compat import CHECKPOINT_MODULES
     for name in CHECKPOINT_MODULES:  # whichever name this hippynn uses, ALF must find the fake
         monkeypatch.setitem(sys.modules, name, serialization)
     monkeypatch.setitem(sys.modules, interface.__name__, interface)
@@ -206,7 +206,7 @@ def test_members_load_concurrently_without_changing_directory(tmp_path, monkeypa
 
 def test_concurrent_loading_matches_legacy_predictions(monkeypatch, trained_ensemble):
     import torch
-    from alframework.ml_interfaces._hippynn_compat import checkpoints, node_from_name
+    from alframework.ml_interfaces.hippynn.compat import checkpoints, node_from_name
     serialization = checkpoints()
     from hippynn.interfaces.ase_interface import HippynnCalculator
     from hippynn.tools import active_directory
@@ -261,7 +261,7 @@ def readers():
     pytest.importorskip("hippynn")
     from hippynn.databases.h5_pyanitools import PyAniDirectoryDB
 
-    from alframework.ml_interfaces.hippynn_interface import ALFPyAniDirectoryDB
+    from alframework.ml_interfaces.hippynn.interface import ALFPyAniDirectoryDB
 
     return ALFPyAniDirectoryDB, PyAniDirectoryDB
 
@@ -311,7 +311,7 @@ def test_custom_dataset_names_survive_restart(tmp_path, readers):
     ALFPyAniDirectoryDB, PyAniDirectoryDB = readers
     schema = write_dataset(tmp_path / "data.h5", custom=True)
     db = ALFPyAniDirectoryDB(str(tmp_path), inputs=None, targets=None, allow_unfound=True, quiet=True, seed=1, **schema)
-    assert type(db).__module__ == "alframework.ml_interfaces.hippynn_interface"
+    assert type(db).__module__ == "alframework.ml_interfaces.hippynn.interface"
     assert type(db).__qualname__ == "ALFPyAniDirectoryDB"
     restarted = pickle.loads(pickle.dumps(db.restarter)).attempt_restart()
     assert restarted.coordinates_key == "xyz"
@@ -328,7 +328,7 @@ import pickle
 import sys
 restarter = pickle.loads(sys.stdin.buffer.read())
 database = restarter.attempt_restart()
-assert type(database).__module__ == 'alframework.ml_interfaces.hippynn_interface'
+assert type(database).__module__ == 'alframework.ml_interfaces.hippynn.interface'
 assert database.coordinates_key == 'xyz'
 assert database.arr_dict['xyz'].shape == (4, 6, 3)
 """,
@@ -423,7 +423,7 @@ def two_state_ensemble(request, tmp_path_factory):
 
 
 def _reload_checkpoint(ensemble):
-    from alframework.ml_interfaces._hippynn_compat import checkpoints
+    from alframework.ml_interfaces.hippynn.compat import checkpoints
     load_checkpoint = checkpoints().load_checkpoint
 
     return load_checkpoint(

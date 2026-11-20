@@ -28,7 +28,7 @@ Sampler configuration additions (all other keys are those of
 ``driver.engine`` ``torchsim`` or ``alchemi`` packs a task's trajectories into
 one engine state. Either may use a batched
 ensemble loader, ``"batched_calculator":
-"alframework.ml_interfaces.hippynn_interface.load_hippynn_batched_ensemble"``
+"alframework.ml_interfaces.hippynn.load_hippynn_batched_ensemble"``
 (with optional ``batched_calculator_options``), in place of ``ase_calculator``.
 
 With ``random_seed``, each trajectory's random stream (schedule draws,

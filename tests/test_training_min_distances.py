@@ -9,7 +9,7 @@ pytest.importorskip("torch_sim")
 
 from hippynn.pretraining import calculate_min_dists
 
-from alframework.ml_interfaces.hippynn_interface import training_minimum_distances
+from alframework.ml_interfaces.hippynn.interface import training_minimum_distances
 from alframework.tools import geometry
 
 ATOMS = 24

@@ -48,7 +48,7 @@ This example uses ALF's standard tasks:
    * - QM
      - ``alframework.qm_interfaces.ase.generic.ase_calculator_task``
    * - ML
-     - ``alframework.ml_interfaces.hippynn_interface.train_HIPPYNN_ensemble_task``
+     - ``alframework.ml_interfaces.hippynn.train_HIPPYNN_ensemble_task``
 
 The builder reads ``.cfg`` structures from ``fragment_library``. The ML task is
 the normal HIPPYNN ensemble training task, so this example does not require a

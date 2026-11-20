@@ -7,7 +7,7 @@
   "builder_task": "custom_modules.ring_molecule_builder_task",
   "sampler_task": "alframework.samplers.batched_mlmd.mlmd_trajectories_task",
   "QM_task": "custom_modules.gpu4pyscf_label_task",
-  "ML_task": "alframework.ml_interfaces.hippynn_interface.train_excited_state_HIPPYNN_ensemble_task",
+  "ML_task": "alframework.ml_interfaces.hippynn.train_excited_state_HIPPYNN_ensemble_task",
   "properties_list": {
     "E0": [
       "E0",

@@ -22,7 +22,7 @@ from alframework.ml_interfaces.ensemble_inference import (
     SelectedStateEvaluator,
     ensemble_statistics,
 )
-from alframework.ml_interfaces.hippynn_interface import HIPNN_ASE_load_ensemble, load_hippynn_batched_ensemble
+from alframework.ml_interfaces.hippynn.interface import HIPNN_ASE_load_ensemble, load_hippynn_batched_ensemble
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator  # noqa: E402
 from alframework.samplers.batched_mlmd import sample_trajectories  # noqa: E402
 from alframework.tools.molecules import MoleculesObject  # noqa: E402

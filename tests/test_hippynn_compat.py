@@ -5,8 +5,8 @@ from types import ModuleType
 
 import pytest
 
-from alframework.ml_interfaces import _hippynn_compat
-from alframework.ml_interfaces._hippynn_compat import CHECKPOINT_MODULES, checkpoints
+from alframework.ml_interfaces.hippynn import compat as _hippynn_compat
+from alframework.ml_interfaces.hippynn.compat import CHECKPOINT_MODULES, checkpoints
 
 
 def _hide(monkeypatch, name):
@@ -67,7 +67,7 @@ def test_installed_hippynn_has_one_of_them():
 
 def test_node_and_energy_names_work_with_both_hippynn_spellings():
     """Current hippynn has unique_node_from_name and system_energy; release 0.1.3 only the older names."""
-    from alframework.ml_interfaces._hippynn_compat import node_from_name, system_energy
+    from alframework.ml_interfaces.hippynn.compat import node_from_name, system_energy
 
     class Current:
         output_names = ("system_energy", "atom_energies")

@@ -9,7 +9,7 @@ import pytest
 from ase import Atoms
 
 from alframework.ml_interfaces.ensemble_inference import ASEEnsembleEvaluator, ensemble_statistics
-from alframework.ml_interfaces.hippynn_interface import HIPNN_ASE_load_ensemble
+from alframework.ml_interfaces.hippynn.interface import HIPNN_ASE_load_ensemble
 from alframework.samplers import acquisition
 from alframework.samplers.acquisition import (
     acquisition_settings,

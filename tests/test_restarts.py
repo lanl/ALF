@@ -115,7 +115,7 @@ def test_readers_ignore_a_partial_shard(tmp_path):
         "label_sources": [], "shards_without_label_sources": ["data-0000.h5"], "shards": 1}
 
     pytest.importorskip("hippynn")
-    from alframework.ml_interfaces.hippynn_interface import ALFPyAniDirectoryDB, _h5_shards
+    from alframework.ml_interfaces.hippynn.interface import ALFPyAniDirectoryDB, _h5_shards
 
     assert _h5_shards(str(h5)) == [str(h5 / "data-0000.h5")]
     database = ALFPyAniDirectoryDB(directory=str(h5), inputs=["species", "coordinates"],

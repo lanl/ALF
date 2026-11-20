@@ -45,7 +45,7 @@ This example uses:
    * - QM
      - ``alframework.qm_interfaces.ase.generic.ase_calculator_task``
    * - ML
-     - ``alframework.ml_interfaces.hippynn_interface.train_HIPPYNN_ensemble_task``
+     - ``alframework.ml_interfaces.hippynn.train_HIPPYNN_ensemble_task``
 
 The builder reads ``builder_config.json`` and loads reaction metadata from the
 fragment library. The provided example contains one reactant file, one

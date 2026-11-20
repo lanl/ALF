@@ -264,7 +264,7 @@ def test_shards_without_charge_or_spin_metadata_are_unchanged(tmp_path):
 
 def test_hippynn_reads_shards_with_and_without_charge_and_spin(tmp_path):
     pytest.importorskip("hippynn")
-    from alframework.ml_interfaces.hippynn_interface import ALFPyAniDirectoryDB
+    from alframework.ml_interfaces.hippynn.interface import ALFPyAniDirectoryDB
     from alframework.tools.data_shards import store_current_data
 
     store_current_data(str(tmp_path / "data-0000.h5"), [charged(f"w{i}", WATER_MOLECULE) for i in range(3)],

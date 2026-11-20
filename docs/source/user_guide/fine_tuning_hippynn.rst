@@ -22,7 +22,7 @@ and trains on the shards in place, without copying them. This recipe is ALF's ow
    }
 
 The copies are written in HIPPYNN's usual layout, so the sampler loads them as it loads any trained
-HIPPYNN ensemble, with ``"ase_calculator": "alframework.ml_interfaces.hippynn_interface.HIPNN_ASE_load_ensemble"``
+HIPPYNN ensemble, with ``"ase_calculator": "alframework.ml_interfaces.hippynn.HIPNN_ASE_load_ensemble"``
 or the batched ``load_hippynn_batched_ensemble``; see :doc:`ml_interfaces`.
 
 .. list-table::

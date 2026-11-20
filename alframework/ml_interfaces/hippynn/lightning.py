@@ -17,7 +17,7 @@ are the ones a single device would report.
 ALF starts one process per device itself, with ``spawn``, and sets the rank variables so Lightning
 treats them as launched externally. A member on several nodes (``nodes`` above 1) runs a launcher
 command, such as ``srun``, that starts one process on each node, ``python -m
-alframework.ml_interfaces.hippynn_lightning``; each starts its node's device processes, and they meet
+alframework.ml_interfaces.hippynn.lightning``; each starts its node's device processes, and they meet
 through a small file in the member's directory, which must be on storage every node shares. Lightning's own launchers either rerun ``sys.argv``, which inside a
 Parsl worker would start another worker, or pass the model and data to each process through shared
 memory, which fails on Linux for empty tensors. Each process reads the setup from a file instead. Import this
@@ -99,7 +99,7 @@ class AlfLightningModule(HippynnLightningModule):
 
     def _save_best(self):
         import torch
-        from alframework.ml_interfaces._hippynn_compat import checkpoints
+        from alframework.ml_interfaces.hippynn.compat import checkpoints
         serialization = checkpoints()
 
         best = copy.deepcopy(self.model.state_dict())
@@ -211,7 +211,7 @@ def train_data_parallel(training_modules, database, controller, *, n_devices, ac
     import hippynn
     import torch
     from hippynn.experiment import SetupParams, setup_training
-    from alframework.ml_interfaces._hippynn_compat import checkpoints
+    from alframework.ml_interfaces.hippynn.compat import checkpoints
     serialization = checkpoints()
 
     local_devices = _local_devices(n_devices, nodes, launcher)
@@ -235,7 +235,7 @@ def train_data_parallel(training_modules, database, controller, *, n_devices, ac
     print(f'Preparation: structure file and training setup took {time.perf_counter() - started:.1f} s')
     stream = None
     if stream_final_enabled(stream_final):
-        from alframework.ml_interfaces.hippynn_final import FinalEvaluation
+        from alframework.ml_interfaces.hippynn.final_evaluation import FinalEvaluation
 
         stream = FinalEvaluation.from_evaluator(training_modules.evaluator)
         if stream is None:
@@ -299,7 +299,7 @@ def _train_ranks_and_finish(training_modules, database, controller, metric_track
     if stream is None:
         _final_test(training_modules.evaluator, database, n_devices, metric_tracker)
     else:
-        from alframework.ml_interfaces.hippynn_final import finish
+        from alframework.ml_interfaces.hippynn.final_evaluation import finish
 
         when = 'FinalTraining'
         names = _final_splits(database, training_modules.evaluator)
@@ -383,7 +383,7 @@ def _evaluate_share(module, database, evaluator, rank, n_devices, accelerator, l
     if stream_directory is None:
         torch.save({name: list(predict(name)) for name in names}, FINAL_SHARE.format(rank))
     else:
-        from alframework.ml_interfaces.hippynn_final import FinalEvaluation, write_rank_summary
+        from alframework.ml_interfaces.hippynn.final_evaluation import FinalEvaluation, write_rank_summary
 
         plan = FinalEvaluation.from_evaluator(evaluator)
         if plan is None:
@@ -519,12 +519,13 @@ def _launch_nodes(launcher, nodes, local_devices):
     rendezvous = os.path.abspath(RENDEZVOUS)
     Path(rendezvous).unlink(missing_ok=True)
     command = [str(word) for word in launcher] + [
-        sys.executable, '-m', 'alframework.ml_interfaces.hippynn_lightning', '--payload', os.path.abspath(PAYLOAD),
+        sys.executable, '-m', 'alframework.ml_interfaces.hippynn.lightning', '--payload', os.path.abspath(PAYLOAD),
         '--nodes', str(nodes), '--local-devices', str(local_devices), '--rendezvous', rendezvous,
         '--token', secrets.token_hex(8)]
     # The node processes import the ALF this process runs, wherever the environment's own copy is.
     environment = dict(os.environ)
-    source = str(Path(__file__).resolve().parents[2])
+    import alframework
+    source = str(Path(alframework.__file__).resolve().parents[1])
     environment['PYTHONPATH'] = os.pathsep.join(filter(None, [source, environment.get('PYTHONPATH')]))
     print('Starting the member on', nodes, 'nodes:', ' '.join(command))
     sys.stdout.flush()

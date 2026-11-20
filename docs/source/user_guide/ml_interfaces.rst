@@ -21,9 +21,9 @@ through its own training task and sampler loading path.
    * - Package
      - Associated training task
    * - HIPPYNN
-     - ``alframework.ml_interfaces.hippynn_interface.train_HIPPYNN_ensemble_task``
+     - ``alframework.ml_interfaces.hippynn.train_HIPPYNN_ensemble_task``
    * - HIPPYNN, several electronic states
-     - ``alframework.ml_interfaces.hippynn_interface.train_excited_state_HIPPYNN_ensemble_task``.
+     - ``alframework.ml_interfaces.hippynn.train_excited_state_HIPPYNN_ensemble_task``.
        See :doc:`excited_states`.
    * - HIPPYNN, across several nodes
      - ``train_HIPPYNN_ensemble_multinode_task`` and
@@ -139,7 +139,7 @@ ensembles during the ALF loop. A typical master configuration uses:
 .. code-block:: json
 
    {
-     "ML_task": "alframework.ml_interfaces.hippynn_interface.train_HIPPYNN_ensemble_task",
+     "ML_task": "alframework.ml_interfaces.hippynn.train_HIPPYNN_ensemble_task",
      "ML_config_path": "hippynn_config.json"
    }
 
@@ -148,7 +148,7 @@ The sampler usually loads the trained ensemble with:
 .. code-block:: json
 
    {
-     "ase_calculator": "alframework.ml_interfaces.hippynn_interface.HIPNN_ASE_load_ensemble",
+     "ase_calculator": "alframework.ml_interfaces.hippynn.HIPNN_ASE_load_ensemble",
      "MLMD_calculator_options": {"well_params": null}
    }
 
@@ -211,7 +211,7 @@ the sampler config instead:
 .. code-block:: json
 
    {
-     "batched_calculator": "alframework.ml_interfaces.hippynn_interface.load_hippynn_batched_ensemble"
+     "batched_calculator": "alframework.ml_interfaces.hippynn.load_hippynn_batched_ensemble"
    }
 
 ``load_hippynn_batched_ensemble(model_directory, device="cuda:0", energy_key="energy",
@@ -256,7 +256,7 @@ with each member still training on one GPU. To use one, set ``ML_task``:
 .. code-block:: json
 
    {
-     "ML_task": "alframework.ml_interfaces.hippynn_interface.train_HIPPYNN_ensemble_multinode_task",
+     "ML_task": "alframework.ml_interfaces.hippynn.train_HIPPYNN_ensemble_multinode_task",
      "gpus_per_node": 4,
      "member_retries": 1
    }
@@ -478,7 +478,7 @@ ML Interface API Links
 You can link from this guide directly to API pages:
 
 * :doc:`ML interfaces package API <../api_documentation/alframework.ml_interfaces>`
-* :doc:`HIPPYNN interface module <../api_documentation/alframework.ml_interfaces.hippynn_interface>`
+* :doc:`HIPPYNN interface module <../api_documentation/alframework.ml_interfaces.hippynn.interface>`
 * :doc:`NeuroChem interface module <../api_documentation/alframework.ml_interfaces.neurochem_interface>`
 * :doc:`Fine-tuning module <../api_documentation/alframework.ml_interfaces.fine_tuning>`, with its
   :doc:`HIPPYNN <../api_documentation/alframework.ml_interfaces.fine_tuning.hippynn>`,

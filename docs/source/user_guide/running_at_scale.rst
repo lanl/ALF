@@ -111,6 +111,9 @@ HDF5 storage makes successful labels durable as held parts. With legacy storage 
 stay until the training shard is published. The coordinator retires files in its normal polling loop
 and cleans the invocation directory after workers exit. Restart starts a fresh spool and resumes
 from persisted status and labels. Remove abandoned directories after the workers have exited.
+For debugging exact QM inputs, set ``keep_sampler_frames`` to ``true`` alongside
+``sampler_frame_spool``. The coordinator preserves all staged batches and prints the path, file
+count, and bytes at normal exit. Size a retained spool for the full debug run.
 
 Durable labels become visible through the atomically published HDF5 snapshot. HIPPYNN reads its
 backing parts directly in serial and parallel, keeping at most one part open per group reader.

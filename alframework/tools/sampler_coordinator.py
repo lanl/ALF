@@ -179,6 +179,11 @@ class SamplerCoordinator(BatchedSubmitter):
         self.frame_retirement = None
         self._frame_batch = 0
         spool = (master_config or {}).get('sampler_frame_spool')
+        self._keep_sampler_frames = (master_config or {}).get('keep_sampler_frames', False)
+        if not isinstance(self._keep_sampler_frames, bool):
+            raise ValueError('keep_sampler_frames must be true or false.')
+        if self._keep_sampler_frames and spool is None:
+            raise ValueError('keep_sampler_frames requires sampler_frame_spool.')
         if spool is not None:
             if not isinstance(spool, str) or not spool.strip():
                 raise ValueError('sampler_frame_spool must name a shared directory.')
@@ -226,7 +231,8 @@ class SamplerCoordinator(BatchedSubmitter):
             root = Path(master_config.get('master_directory') or '.') / spool
             root.mkdir(parents=True, exist_ok=True)
             self.frame_directory = mkdtemp(dir=root.resolve(), prefix='run-')
-            self.frame_retirement = FrameRetirement()
+            if not self._keep_sampler_frames:
+                self.frame_retirement = FrameRetirement()
             self.queue = SampledFrameQueue(self.buffer)
         fixed = FIXED_SETTINGS + (FIXED_COHORT_SETTINGS if self.pool is not None else ())
         self._startup_settings = StartupSettings(sampler_config, fixed, "sampler")
@@ -267,12 +273,19 @@ class SamplerCoordinator(BatchedSubmitter):
             self.queue.collect()
 
     def cleanup_frames(self):
-        """Remove this invocation's spool after all Parsl allocations have closed."""
-        if self.frame_directory is not None:
-            try:
+        """Finish the spool after all Parsl allocations have closed."""
+        if self.frame_directory is None:
+            return
+        try:
+            if self._keep_sampler_frames:
+                files = list(Path(self.frame_directory).glob('batch-*.pkl'))
+                size = sum(path.stat().st_size for path in files)
+                print(f'Sampler spool: retained {len(files)} batch files ({size:,} bytes) at {self.frame_directory}',
+                      flush=True)
+            else:
                 shutil.rmtree(self.frame_directory)
-            except OSError as exc:
-                print(f'Could not clean sampler frame spool {self.frame_directory}: {exc}', flush=True)
+        except OSError as exc:
+            print(f'Could not finalize sampler frame spool {self.frame_directory}: {exc}', flush=True)
 
     def harvest(self, sampler_results):
         """Return the frames to label from harvested sampler results.
@@ -285,7 +298,8 @@ class SamplerCoordinator(BatchedSubmitter):
         if failed:
             self.queue.failed_inputs.clear()
         if self.frame_directory is not None:
-            self.frame_retirement.register(sampler_results)
+            if self.frame_retirement is not None:
+                self.frame_retirement.register(sampler_results)
             if self._summary is not None:
                 self._summary.append_rows((frame.summary for frame in sampler_results), failed)
             return [frame for frame in sampler_results if frame.path is not None]

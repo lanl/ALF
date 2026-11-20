@@ -11,6 +11,7 @@ from alframework.tools.batching import BatchBuffer, BatchedTaskQueue, SampledFra
 from alframework.tools.labeling_coordinator import LabelingCoordinator
 from alframework.tools.molecules import MoleculesObject
 from alframework.tools.sampled_frames import FrameRetirement, label_sampled_frames, stage_sampled_frames
+from alframework.tools.sampler_coordinator import SamplerCoordinator
 from tests.helpers.fakes import FakeTask
 
 
@@ -91,6 +92,28 @@ def test_unpublished_batch_is_removed_on_write_failure(tmp_path, monkeypatch):
 def test_reference_handoff_requires_native_qm():
     with pytest.raises(ValueError, match='requires native QM batching'):
         LabelingCoordinator(None, 'fixture.labeler', {}, sampled_frame_handoff=True)
+
+
+def test_keep_sampler_frames_preserves_the_spool_and_logs_its_size(tmp_path, capsys):
+    from types import SimpleNamespace
+
+    def sampler(molecule_objects, frame_spool=None):
+        pass
+
+    config = {'Escut': 0.0, 'Fscut': 0.0}
+    master = {'master_directory': str(tmp_path), 'maximum_stored_labels': 1, 'keep_sampler_frames': True}
+    task = SimpleNamespace(func=sampler)
+    with pytest.raises(ValueError, match='requires sampler_frame_spool'):
+        SamplerCoordinator(task, 'fixture.sampler', config, master)
+
+    master['sampler_frame_spool'] = 'frames'
+    sampling = SamplerCoordinator(task, 'fixture.sampler', config, master)
+    frame, = stage_sampled_frames([MoleculesObject(Atoms('H'), 'a')], sampling.frame_directory, 0)
+    assert sampling.frame_retirement is None and sampling.harvest([frame]) == [frame]
+    sampling.cleanup_frames()
+    path = Path(frame.path)
+    assert path.is_file()
+    assert f'retained 1 batch files ({path.stat().st_size:,} bytes) at {path.parent}' in capsys.readouterr().out
 
 
 @pytest.mark.parametrize('durable', [True, False])

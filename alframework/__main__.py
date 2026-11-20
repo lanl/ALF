@@ -127,6 +127,7 @@ sampling_master = master_config
 if args.test_sampler and 'sampler_frame_spool' in master_config:
     sampling_master = dict(master_config)
     sampling_master.pop('sampler_frame_spool')
+    sampling_master.pop('keep_sampler_frames', None)
 sampling = SamplerCoordinator(sampler_task, master_config['sampler_task'], sampler_config, sampling_master)
 sampler_task_queue = sampling.queue
 frame_retirement = sampling.frame_retirement

@@ -524,6 +524,13 @@ keep going, so it's the time until a screen rejected them or ``maxt``, and it ca
 At 1 million trajectories, the summary is about 350 MB, and one plot update takes several seconds
 and about 1.3 GB of memory on the coordinator's node. Each update rereads the whole file.
 
+Each update runs in a new Python process (``python -m alframework.tools.progress_plots``), not in a
+fork of the coordinator, so its memory doesn't grow with the labels the coordinator holds. That
+process imports ``plotting_utility`` by its dotted name, using the coordinator's import path, and
+receives the plot settings as JSON. A custom plotting utility must therefore be a function in an
+importable module, not one defined in the script that starts ALF. If the previous update is still
+running when the next one is due, ALF skips the new one and prints that it did.
+
 Configuration Reference
 -----------------------
 

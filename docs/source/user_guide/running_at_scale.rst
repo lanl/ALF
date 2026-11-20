@@ -93,6 +93,8 @@ reads them back one held piece, at most 1,000 labels, at a time.
 - Set the sampler's ``returned_momenta`` to ``false``: structures return without their MD momenta.
   Serialized for a QM task, a returned 201-atom structure with compact metadata took 12.0 KiB, 4.7 KiB of
   it momenta; Parsl's interchange holds a serialized copy of every queued QM task.
+- Progress plots don't add to it: each update runs in its own new process rather than a fork of the
+  coordinator, which would copy much of a large coordinator's memory (see :ref:`samplers-progress-plots`).
 - Watch the coordinator's resident memory over a smaller run and scale it by the number of
   structures per cycle before going larger.
 

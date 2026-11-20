@@ -12,13 +12,23 @@ from hippynn import settings
 from hippynn.graphs import GraphModule
 from hippynn.graphs.indextypes import IdxType
 from hippynn.graphs.nodes import indexers, loss
-from hippynn.graphs.nodes.base import IndexNode, ValueNode, base
+# The algebra nodes are defined in base.algebra; newer HIPPYNN also re-exports them from base, released 0.1.3 doesn't.
+from hippynn.graphs.nodes.base import IndexNode, algebra
 from hippynn.plotting import Hist2D, PlotMaker, SensitivityPlot
 
 
-ROW_NODES = (base.AtLeast2D, indexers.OneHotEncoder, indexers.PaddingIndexer, indexers.AtomReIndexer, IndexNode)
-SCALAR_NODES = (ValueNode, base.AddNode, base.SubNode, base.MulNode, base.DivNode, base.PowNode, base.NegNode)
+ROW_NODES = (algebra.AtLeast2D, indexers.OneHotEncoder, indexers.PaddingIndexer, indexers.AtomReIndexer, IndexNode)
+SCALAR_NODES = (algebra.ValueNode, algebra.AddNode, algebra.SubNode, algebra.MulNode, algebra.DivNode,
+                algebra.PowNode, algebra.NegNode)
 REDUCERS = (loss.MAELoss, loss.MSELoss, loss.Mean)
+
+
+def _index_state(node):
+    """A node's index state: ``index_state`` in newer HIPPYNN, ``_index_state`` in released 0.1.3."""
+    try:
+        return node.index_state
+    except (AttributeError, ValueError):  # HIPPYNN looks unknown attributes up among the node's inputs
+        return getattr(node, '_index_state', None)
 
 
 def _operations(graph):
@@ -55,7 +65,7 @@ class FinalEvaluation:
         graph = evaluator.loss
         if type(graph) is not GraphModule or settings.DEBUG_LOSS_BROADCAST:
             return None
-        scalar = {node for node in graph.input_nodes if node.index_state is IdxType.Scalar}
+        scalar = {node for node in graph.input_nodes if _index_state(node) is IdxType.Scalar}
         rows = set(graph.input_nodes) - scalar
         row_ops, reductions, scalar_ops = [], [], []
         for node, module in _operations(graph):
@@ -95,7 +105,7 @@ class FinalEvaluation:
     def __init__(self, evaluator, row_ops, reductions, scalar_ops, histograms):
         self.evaluator = evaluator
         self.input_nodes = evaluator.loss.input_nodes
-        self.scalar_columns = [i for i, node in enumerate(self.input_nodes) if node.index_state is IdxType.Scalar]
+        self.scalar_columns = [i for i, node in enumerate(self.input_nodes) if _index_state(node) is IdxType.Scalar]
         self.row_ops = row_ops
         self.reductions = reductions
         self.scalar_ops = scalar_ops

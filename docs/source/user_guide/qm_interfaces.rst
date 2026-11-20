@@ -481,6 +481,9 @@ HIPPYNN student learns from it. Its settings, safeguards, and a walkthrough are 
 Adding New QM Engines
 -----------------------------------
 
+:doc:`extending` lists what a labeler is given and returns, and
+``alframework.testing.check_labeler_task`` checks one in your own tests.
+
 Preferred ASE route
    Use this path when ASE already provides a calculator for the engine.
    Configure ``ase_calculator_task`` as the QM task and include an

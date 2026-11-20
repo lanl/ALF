@@ -46,7 +46,7 @@ and ALF fills them in:
        builder task fills one sampler task.
    * - ``parallel_samplers``
      - The sampler tasks the Parsl configuration runs at once (see
-       :ref:`batching-capacity`) times ``trajectories_per_sampler_task``, which keeps
+       :ref:`the capacity report <batching-capacity>`) times ``trajectories_per_sampler_task``, which keeps
        every sampler slot busy. ``sampler_tasks_at_once`` replaces the Parsl count, and
        is needed when the executors don't say.
    * - QM ``batching.batch_size``

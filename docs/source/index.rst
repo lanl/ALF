@@ -62,6 +62,12 @@ pieces to a concrete run.
 
 .. toctree::
    :maxdepth: 2
+   :caption: Adding Your Own Code
+
+   user_guide/extending
+
+.. toctree::
+   :maxdepth: 2
    :caption: Reference
 
    user_guide/units

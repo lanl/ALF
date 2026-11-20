@@ -383,7 +383,9 @@ Adding New ML Architectures
 
 New ML backends can be added as ordinary Python modules that ALF imports from
 configuration strings. The module can live in ``alframework.ml_interfaces`` or
-in a project-local module on ``PYTHONPATH``.
+in a project-local module on ``PYTHONPATH``. :ref:`extending-models` lists what a trainer
+and a model loader provide, including a batched evaluator for the ``torchsim`` and
+``alchemi`` engines, and :mod:`alframework.testing` checks them in your own tests.
 
 Training task signature
    Define a Parsl task with the same call shape used by ALF:

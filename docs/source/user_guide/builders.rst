@@ -22,7 +22,8 @@ In a master configuration, the selected builder is specified with the
    }
 
 Most builder tasks run on the ``alf_sampler_executor`` Parsl executor because
-they feed candidate structures into the sampler queue.
+they feed candidate structures into the sampler queue. To write one of your own, see
+:doc:`extending`; ``alframework.testing.check_builder_task`` checks it in your tests.
 
 Supported Builder Tasks
 -----------------------

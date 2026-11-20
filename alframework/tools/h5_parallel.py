@@ -167,3 +167,18 @@ def read_groups(file, paths, workers, keys=None):
     context = multiprocessing.get_context('spawn')
     with concurrent.futures.ProcessPoolExecutor(max_workers=workers, mp_context=context) as pool:
         yield from pool.map(read_group, repeat(file), paths, repeat(keys))
+
+
+def read_shard(file, keys=None):
+    """Every structure group of a stored label file, in order, as :func:`read_group` gives them, read in
+    parallel when the file is large (see :func:`workers_for`).
+
+    A snapshot published over label parts is checked first, so a missing part raises ``FileNotFoundError``
+    rather than reading as HDF5's fill values, and its datasets are read from the parts directly.
+    """
+    import h5py
+    from alframework.tools.pyanitools import validate_label_parts
+    with h5py.File(file, 'r') as handle:
+        validate_label_parts(handle)
+    paths = group_paths(file)
+    return read_groups(file, paths, workers_for(file, len(paths)), keys)

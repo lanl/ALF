@@ -342,6 +342,49 @@ def test_mace_training_data_matches_the_shards(tmp_path):
         mace(tmp_path).prepare_data([], tmp_path)
 
 
+def _mixed_labels():
+    box = Atoms("OH2OH2", positions=WATER.positions.tolist() + (WATER.positions + 2.5).tolist(),
+                cell=[6.0, 6.5, 7.0], pbc=True)
+    return [labeled(f"w{i}", energy=-float(i)) for i in range(5)] + [labeled("box", box, energy=-9.0)]
+
+
+def _published_over_parts(directory, labels):
+    from alframework.tools.label_parts import HDF5HeldLabels
+    snapshot = directory / "data-0000.h5"
+    held = HDF5HeldLabels(snapshot, PROPERTIES, batch_size=2)
+    held.hold(labels)
+    held.commit(snapshot, PROPERTIES, {})
+    return str(snapshot)
+
+
+def test_fine_tuning_reads_a_snapshot_published_over_parts_like_one_shard(tmp_path):
+    (tmp_path / "plain").mkdir()
+    (tmp_path / "parts").mkdir()
+    plain = str(tmp_path / "plain" / "data-0000.h5")
+    store_current_data(plain, _mixed_labels(), PROPERTIES)
+    snapshot = _published_over_parts(tmp_path / "parts", _mixed_labels())
+    import h5py
+    with h5py.File(snapshot) as handle:
+        assert any(dataset.is_virtual for group in handle.values() for dataset in group.values())
+
+    expected, found = shard_atoms([plain]), shard_atoms([snapshot])
+    assert len(found) == len(expected) == 6
+    for mine, theirs in zip(found, expected):
+        assert list(mine.numbers) == list(theirs.numbers) and mine.info == theirs.info
+        np.testing.assert_array_equal(mine.positions, theirs.positions)
+        np.testing.assert_array_equal(mine.arrays["REF_forces"], theirs.arrays["REF_forces"])
+        np.testing.assert_array_equal(mine.cell.array, theirs.cell.array)
+        assert (mine.pbc == theirs.pbc).all()
+
+
+def test_fine_tuning_refuses_a_snapshot_whose_part_is_missing(tmp_path):
+    from alframework.tools.label_parts import part_directory
+    snapshot = _published_over_parts(tmp_path, _mixed_labels())
+    next(part_directory(Path(snapshot)).glob("part-*.h5")).unlink()
+    with pytest.raises(FileNotFoundError, match="required label part"):
+        shard_atoms([snapshot])
+
+
 def test_mace_failure_reports_the_end_of_its_log(tmp_path, monkeypatch):
     import subprocess
 

@@ -115,8 +115,9 @@ For debugging exact QM inputs, set ``keep_sampler_frames`` to ``true`` alongside
 ``sampler_frame_spool``. The coordinator preserves all staged batches and prints the path, file
 count, and bytes at normal exit. Size a retained spool for the full debug run.
 
-Durable labels become visible through the atomically published HDF5 snapshot. HIPPYNN reads its
-backing parts directly in serial and parallel, keeping at most one part open per group reader.
+Durable labels become visible through the atomically published HDF5 snapshot. HIPPYNN training and
+fine-tuning read its backing parts directly in serial and parallel, keeping at most one part open per
+group reader, and stop with an error if a part is missing, rather than reading HDF5's fill values.
 ``ALF_H5_READ_WORKERS`` controls group parallelism. Keep the snapshot and its referenced parts
 together when moving a run.
 

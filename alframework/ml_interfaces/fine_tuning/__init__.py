@@ -98,37 +98,38 @@ def shard_atoms(shards, energy_dataset='energy', forces_dataset='forces'):
     """Read ALF shards as ``ase.Atoms`` carrying ``REF_energy`` and ``REF_forces``.
 
     A shard's ``total_charge`` and ``spin_multiplicity``, if it has them, go to ``atoms.info`` as
-    ``charge`` and ``spin``.
+    ``charge`` and ``spin``. A shard published over label parts is read from its parts, and a missing part
+    is an error (see :func:`alframework.tools.h5_parallel.read_shard`).
     """
-    import h5py
     import numpy as np
     from ase import Atoms
 
     from alframework.tools.data_shards import STRUCTURE_STATE_DATASETS
+    from alframework.tools.h5_parallel import read_shard
 
+    keys = {'species', 'coordinates', 'cell', energy_dataset, forces_dataset, *STRUCTURE_STATE_DATASETS}
     frames = []
     for shard in shards:
-        with h5py.File(shard, 'r') as handle:
-            for name in sorted(handle):
-                group = handle[name]
-                if not isinstance(group, h5py.Group) or energy_dataset not in group:
-                    continue
-                symbols = [value.decode() if isinstance(value, bytes) else str(value) for value in group['species'][()]]
-                coordinates = group['coordinates'][()]
-                energies = np.asarray(group[energy_dataset][()], dtype=float).reshape(-1)
-                forces = group[forces_dataset][()] if forces_dataset in group else None
-                if forces is None:
-                    raise ValueError(f'{shard}:{name} has no {forces_dataset!r} dataset to fine-tune forces on.')
-                cells = group['cell'][()] if 'cell' in group else None
-                for index in range(len(energies)):
-                    atoms = Atoms(symbols, positions=coordinates[index],
-                                  cell=None if cells is None else cells[index], pbc=cells is not None)
-                    atoms.info[ENERGY_KEY] = float(energies[index])
-                    atoms.arrays[FORCES_KEY] = np.asarray(forces[index], dtype=float)
-                    for key, dataset in zip(('charge', 'spin'), STRUCTURE_STATE_DATASETS):
-                        if dataset in group:
-                            atoms.info[key] = int(group[dataset][index])
-                    frames.append(atoms)
+        for group in read_shard(shard, keys):
+            if energy_dataset not in group:
+                continue
+            symbols = [str(value) for value in group['species']]
+            coordinates = group['coordinates']
+            energies = np.asarray(group[energy_dataset], dtype=float).reshape(-1)
+            forces = group.get(forces_dataset)
+            if forces is None:
+                raise ValueError(f'{shard}:{group["path"].lstrip("/")} has no {forces_dataset!r} dataset to '
+                                 'fine-tune forces on.')
+            cells = group.get('cell')
+            for index in range(len(energies)):
+                atoms = Atoms(symbols, positions=coordinates[index],
+                              cell=None if cells is None else cells[index], pbc=cells is not None)
+                atoms.info[ENERGY_KEY] = float(energies[index])
+                atoms.arrays[FORCES_KEY] = np.asarray(forces[index], dtype=float)
+                for key, dataset in zip(('charge', 'spin'), STRUCTURE_STATE_DATASETS):
+                    if dataset in group:
+                        atoms.info[key] = int(group[dataset][index])
+                frames.append(atoms)
     return frames
 
 

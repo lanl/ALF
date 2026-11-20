@@ -327,6 +327,13 @@ accuracy before changing it. Reading and preparing the data (about 7.5 minutes h
 plots (about 6 to 11 minutes) don't get faster with more GPUs, and each rank held a full copy of the data
 (about 24 GB) unless ``ALF_LIGHTNING_SHARED_DATA`` is set. Size the ML job's walltime for all of these.
 
+For ALF's standard Lightning loss and plot graphs, set ``ALF_LIGHTNING_STREAM_FINAL=1`` in the ML workers'
+environment to bound memory during final evaluation. Each rank accumulates sums and element counts so RMSE
+and combined losses use the whole split. For histogram plots, ranks save only the plotted columns temporarily
+to ``ALF_NODE_LOCAL_DIR`` or the system temporary directory, then use common bin edges and return bin counts.
+Unrecognized loss and plot graphs use the regular whole-split evaluator. The option applies after training
+has finished and the ranks have loaded the best checkpoint.
+
 .. _running-at-scale-failed-gpu-tasks:
 
 Failed GPU Tasks

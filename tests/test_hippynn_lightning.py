@@ -153,7 +153,8 @@ def test_single_node_tasks_refuse_several_gpus_per_member():
         ensemble_training.single_gpu_members({"gpus_per_member": 4})
 
 
-def test_the_split_final_test_reports_what_one_device_would(tmp_path, monkeypatch):
+@pytest.mark.parametrize('stream', [False, True])
+def test_the_split_final_test_reports_what_one_device_would(tmp_path, monkeypatch, stream):
     """The ranks predict every n-th evaluation batch and the parent computes hippynn's metrics over all of them:
     the same numbers as hippynn's test_model on one device, for every split, after a real two-device training."""
     pytest.importorskip("hippynn")
@@ -162,15 +163,18 @@ def test_the_split_final_test_reports_what_one_device_would(tmp_path, monkeypatc
     from alframework.ml_interfaces import hippynn_lightning as hl
 
     seen = {}
-    final_test = hl._final_test
+    train = hl._train_ranks_and_finish
 
-    def recording(evaluator, database, n_devices, metric_tracker, when="FinalTraining"):
-        seen.update(evaluator=evaluator, database=database, n_devices=n_devices)
-        seen["split"] = final_test(evaluator, database, n_devices, metric_tracker, when)
-        return seen["split"]
+    def recording(modules, database, controller, tracker, settings, local_devices, launcher, plan):
+        seen.update(evaluator=modules.evaluator, database=database, n_devices=settings['n_devices'])
+        assert (plan is not None) == stream
+        result = train(modules, database, controller, tracker, settings, local_devices, launcher, plan)
+        seen['split'] = result.other_metric_values['FinalTraining']
+        return result
 
-    monkeypatch.setattr(hl, "_final_test", recording)
-    write_water_shard(tmp_path / "data", frames=24)
+    monkeypatch.setenv('ALF_LIGHTNING_STREAM_FINAL', '1' if stream else '0')
+    monkeypatch.setattr(hl, '_train_ranks_and_finish', recording)
+    write_water_shard(tmp_path / "data", frames=25)
     member = tmp_path / "model-00"
     member.mkdir()
     ml.train_HIPNN_model(str(member), str(tmp_path / "data"), energy_key="energy", coordinates_key="coordinates",
@@ -191,6 +195,33 @@ def test_the_split_final_test_reports_what_one_device_would(tmp_path, monkeypatc
     for name in reference:
         for key, value in reference[name].items():
             assert seen["split"][name][key] == pytest.approx(value, rel=1e-5, abs=1e-8), (name, key)
+    assert not list(member.glob('final-evaluation-*'))
+
+
+def test_streamed_histogram_has_the_whole_split_edges_and_counts(tmp_path):
+    pytest.importorskip('hippynn')
+    import pickle
+
+    import numpy as np
+    from alframework.ml_interfaces.hippynn_final import _edges, _extend_ranges, _histogram_counts
+
+    x = np.array([-20, 4, 2, 7, 20, 4, 2, 4, -12], dtype=np.float32)
+    y = np.array([3, 1, 2, 7, 18, -3, 2, 0, -17], dtype=np.float32)
+    for predicted in (y, np.full_like(y, 1.5)):
+        expected, x_edges, y_edges = np.histogram2d(x, predicted, bins=10)
+        with (tmp_path / 'plot.pkl').open('w+b') as spool:
+            ranks = []
+            for rows in (slice(0, 6, 2), slice(1, 6, 2), slice(6, None)):
+                parts = [(x[rows], predicted[rows])]
+                ranges = [None]
+                _extend_ranges(ranges, parts)
+                ranks.append(ranges[0])
+                pickle.dump(('test', parts), spool)
+            edges = _edges(SimpleNamespace(bins=10), ranks)
+            np.testing.assert_array_equal(edges[0], x_edges)
+            np.testing.assert_array_equal(edges[1], y_edges)
+            counts, = _histogram_counts(spool, {'test': [edges]})['test']
+            np.testing.assert_array_equal(counts, expected)
 
 
 NODE_LAUNCHER = str(__import__("pathlib").Path(__file__).parent / "helpers" / "node_launcher.py")

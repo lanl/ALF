@@ -29,6 +29,7 @@ import json
 import os
 import shutil
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -202,6 +203,27 @@ def train_data_parallel(training_modules, database, controller, *, n_devices, ac
     print(f'Training with PyTorch Lightning on {n_devices} {accelerator} devices{where}: batch size '
           f'{controller.batch_size} per device, {controller.batch_size * n_devices} in total.')
     print(f'Preparation: structure file and training setup took {time.perf_counter() - started:.1f} s')
+    stream = None
+    if os.environ.get('ALF_LIGHTNING_STREAM_FINAL') == '1':
+        from alframework.ml_interfaces.hippynn_final import FinalEvaluation
+
+        stream = FinalEvaluation.from_evaluator(training_modules.evaluator)
+        if stream is None:
+            print('Final evaluation graph has no streaming support. Using whole-split evaluation.', flush=True)
+    directory = (tempfile.TemporaryDirectory(prefix='final-evaluation-', dir=settings['directory'])
+                 if stream is not None else contextlib.nullcontext())
+    with directory as path:
+        if path is not None:
+            settings['final_evaluation_directory'] = path
+        return _train_ranks_and_finish(training_modules, database, controller, metric_tracker, settings,
+                                       local_devices, launcher, stream)
+
+
+def _train_ranks_and_finish(training_modules, database, controller, metric_tracker, settings, local_devices, launcher,
+                            stream):
+    import torch
+
+    n_devices, nodes = settings['n_devices'], settings['nodes']
     started = time.perf_counter()
     sys.stdout.flush()
     # The ranks read the setup from a file. Passing it as process arguments would share its tensors
@@ -244,7 +266,15 @@ def train_data_parallel(training_modules, database, controller, *, n_devices, ac
     # The ranks evaluated the best model in batches of one device's share of the evaluation batch, the size
     # each evaluated during training; the configured total can exceed one device's memory.
     print(f"Testing model on {n_devices} devices, eval batch size {record['eval_batch_size_per_device']} each...")
-    _final_test(training_modules.evaluator, database, n_devices, metric_tracker)
+    if stream is None:
+        _final_test(training_modules.evaluator, database, n_devices, metric_tracker)
+    else:
+        from alframework.ml_interfaces.hippynn_final import finish
+
+        when = 'FinalTraining'
+        names = _final_splits(database, training_modules.evaluator)
+        metrics = finish(stream, names, settings['final_evaluation_directory'], n_devices, when)
+        _report_final_metrics(metric_tracker, metrics, when)
     print('Training complete.')
     return metric_tracker
 
@@ -292,7 +322,7 @@ def _final_splits(database, evaluator):
     return basic + [name for name in names if name not in basic]
 
 
-def _evaluate_share(module, database, evaluator, rank, n_devices, accelerator, local_rank=None):
+def _evaluate_share(module, database, evaluator, rank, n_devices, accelerator, local_rank=None, stream_directory=None):
     """This rank's share of the final test: the best model's predictions for every ``n_devices``-th batch of
     hippynn's evaluation batches, numbered so the parent can put them back in order. On the rank's own device,
     the one it trained on (Lightning may have moved the model back to the CPU at the end of training)."""
@@ -309,17 +339,31 @@ def _evaluate_share(module, database, evaluator, rank, n_devices, accelerator, l
     model.load_state_dict(torch.load('best_model.pt', map_location=device, weights_only=True))
     model.eval()
     batch_size = int(module.controller.eval_batch_size)
-    shares = {}
-    for name in _final_splits(database, evaluator):
-        shares[name] = []
+    names = _final_splits(database, evaluator)
+
+    def predict(name):
         for index, batch in _owned_batches(database.make_generator(name, 'eval', batch_size), batch_size, rank,
                                            n_devices):
             batch = [item.to(device=device) for item in batch]
             predictions = model(*batch[:evaluator.n_inputs])
-            shares[name].append((index, [value.detach().cpu() for value in predictions],
-                                 [value.detach().cpu() for value in batch[-evaluator.n_targets:]]))
+            yield (index, [value.detach().cpu() for value in predictions],
+                   [value.detach().cpu() for value in batch[-evaluator.n_targets:]])
             del predictions
-    torch.save(shares, FINAL_SHARE.format(rank))
+
+    if stream_directory is None:
+        torch.save({name: list(predict(name)) for name in names}, FINAL_SHARE.format(rank))
+    else:
+        from alframework.ml_interfaces.hippynn_final import FinalEvaluation, write_rank_summary
+
+        plan = FinalEvaluation.from_evaluator(evaluator)
+        if plan is None:
+            raise RuntimeError('The final evaluation graph changed after loading the rank setup.')
+
+        def inputs(name):
+            for _, predictions, targets in predict(name):
+                yield predictions + targets
+
+        write_rank_summary(plan, ((name, inputs(name)) for name in names), stream_directory, rank, n_devices)
 
 
 def _owned_batches(loader, batch_size, rank, n_devices):
@@ -352,9 +396,13 @@ def _final_test(evaluator, database, n_devices, metric_tracker, when='FinalTrain
                                             eval_type=name)
     for rank in range(n_devices):
         Path(FINAL_SHARE.format(rank)).unlink(missing_ok=True)
+    _report_final_metrics(metric_tracker, metrics, when)
+    return metrics
+
+
+def _report_final_metrics(metric_tracker, metrics, when):
     metric_tracker.register_metrics(metrics, when=when)
     metric_tracker.evaluation_print(metrics, quiet=False)
-    return metrics
 
 
 def _local_devices(n_devices, nodes, launcher):
@@ -595,7 +643,7 @@ def _rank_main(payload, local_rank, local_devices, node, nodes, address, port, d
     trainer.fit(module, datamodule=datamodule)
     stats.phase('trained')
     _evaluate_share(module, setup['database'], setup['training_modules'].evaluator, rank, world, accelerator,
-                    local_rank)
+                    local_rank, settings.get('final_evaluation_directory'))
     stats.phase('final_share_written')
     device = torch.device('cuda', local_rank) if accelerator == 'gpu' else torch.device('cpu')
     stats.write(settings['directory'], device)

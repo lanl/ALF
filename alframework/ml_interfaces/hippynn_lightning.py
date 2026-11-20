@@ -165,6 +165,8 @@ class AlfLightningModule(HippynnLightningModule):
                       batch_size=int(self.controller.batch_size) * self.n_devices,
                       eval_batch_size_per_device=int(self.controller.eval_batch_size),
                       eval_batch_size=int(self.controller.eval_batch_size) * self.n_devices)
+        if 'final_evaluation_directory' in self.parent_settings:
+            record['final_evaluation'] = 'streaming'
         Path(RECORD).write_text(json.dumps(record, indent=2) + '\n')
 
 

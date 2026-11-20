@@ -331,16 +331,20 @@ def test_shared_split_arrays_come_back_unchanged(tmp_path, monkeypatch):
 
 def test_a_two_node_member_trains_on_shared_node_local_arrays(tmp_path, monkeypatch):
     """With ALF_LIGHTNING_SHARED_DATA the split arrays go to files that every node copies to its local
-    directory and every rank maps; the member is written as usual and both copies are removed afterwards."""
+    directory and every rank maps. Streaming evaluation removes its temporary reports as well."""
     pytest.importorskip("hippynn")
     pytest.importorskip("pytorch_lightning")
     local = tmp_path / "node-local"
     local.mkdir()
     monkeypatch.setenv("ALF_LIGHTNING_SHARED_DATA", "1")
+    monkeypatch.setenv("ALF_LIGHTNING_STREAM_FINAL", "1")
     monkeypatch.setenv("ALF_NODE_LOCAL_DIR", str(local))
     member = _train_on_two_nodes(tmp_path)
     _check_member(member, devices=4, batch_size=8)
+    record = json.loads((member / 'lightning_training.json').read_text())
+    assert record['final_evaluation'] == 'streaming'
     assert not (member / "lightning_data").exists()
+    assert not list(member.glob('final-evaluation-*'))
     assert list(local.iterdir()) == []
     ml.HIPNN_ASE_calculator(str(member), energy_key="energy", device="cpu")
 

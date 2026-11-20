@@ -19,6 +19,7 @@ from alframework.tools.data_shards import store_current_data
 from alframework.tools.parsl_tasks import ParslTaskQueue, release_allocations_at_exit, stop_if_executor_failed
 from alframework.tools.serialization import data_serializer, use_data_serializer
 from alframework.tools.files import hold_lock
+from alframework.tools import memory_sampler
 from alframework.tools.progress_plots import ProgressPlots
 from alframework.tools.pyanitools import anidataloader
 from alframework.tools.molecules import MoleculesObject
@@ -65,6 +66,8 @@ all_configs = [master_config, builder_config, sampler_config, QM_config, ML_conf
 # One coordinator per run, in every mode, since each one rewrites status. Taken before any
 # allocation is requested, so a refused second coordinator holds nothing.
 hold_lock(master_config['status_path'] + '.lock')
+# Optional: the memory of this process and its children (such as Parsl's interchanges), over the run.
+coordinator_memory_sampler = memory_sampler.start(master_config)
 
 # Define queues (the QM queue is created with the QM task below):
 ML_task_queue = ParslTaskQueue()

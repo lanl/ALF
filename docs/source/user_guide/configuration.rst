@@ -186,6 +186,12 @@ The master config controls the workflow wiring. Common fields include:
    * - ``trajectory_summary_path``
      - Optional file where ALF appends one row per trajectory, for progress plots.
        See :ref:`samplers-progress-plots`.
+   * - ``coordinator_memory_sample``, ``coordinator_memory_path``
+     - Optional. Seconds between samples of the coordinator's memory and that of its child
+       processes, such as Parsl's interchanges; off when unset or ``0``. A separate process
+       appends one row per process per sample (time, PID, parent PID, command, RSS and PSS in
+       KiB) to ``coordinator_memory_path``, default ``coordinator_memory.csv``, and stops when
+       the coordinator exits. It reads ``/proc``, so it needs Linux. See :ref:`running-at-scale-coordinator-memory`.
 
 .. _configuration-property-names:
 

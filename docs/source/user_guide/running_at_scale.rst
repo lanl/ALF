@@ -96,7 +96,8 @@ reads them back one held piece, at most 1,000 labels, at a time.
 - Progress plots don't add to it: each update runs in its own new process rather than a fork of the
   coordinator, which would copy much of a large coordinator's memory (see :ref:`samplers-progress-plots`).
 - Watch the coordinator's resident memory over a smaller run and scale it by the number of
-  structures per cycle before going larger.
+  structures per cycle before going larger. Setting ``coordinator_memory_sample`` (see :doc:`configuration`)
+  records it, with that of Parsl's interchanges, throughout the run.
 
 .. _running-at-scale-coordinator-cpu:
 

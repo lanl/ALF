@@ -47,19 +47,20 @@ def __getattr__(name):
                 self.restarter.kwargs.update(excited_state_properties=excited_state_properties,
                                             retained_indices=retained_indices)
 
-        def _extract_in_parallel(self, file, species_key, permit_only):
-            """hippynn's ``extract_full_file`` with each group read by its own process, or None to read the
-            file serially (small files, one group, or ALF_H5_READ_WORKERS=1). The same batches, in the same order."""
+        def _extract_groups(self, file, species_key, permit_only, *, has_parts):
+            """Read ALF snapshots and use parallel group reads for large ordinary files."""
             import collections
             from hippynn.databases.h5_pyanitools import numpy_map_elements
             from alframework.tools import h5_parallel
             paths = h5_parallel.group_paths(file)
             workers = h5_parallel.workers_for(file, len(paths))
-            if workers < 2:
+            if workers < 2 and not has_parts:
                 return None
-            print(f'Reading {len(paths)} groups of {file} with {workers} processes', flush=True)
+            if workers > 1:
+                print(f'Reading {len(paths)} groups of {file} with {workers} processes', flush=True)
+            keys = set(permit_only) | {species_key} if permit_only else None
             n_atoms_max, batches, counter = 0, [], collections.Counter()
-            for group in h5_parallel.read_groups(file, paths, workers):
+            for group in h5_parallel.read_groups(file, paths, workers, keys):
                 if species_key not in group:
                     raise ValueError(f"Species key '{species_key}' not found' in file {file}!\n"
                                      f"\tFound keys: {set(group.keys())}")
@@ -80,14 +81,16 @@ def __getattr__(name):
 
         def extract_full_file(self, file, species_key='species', permit_only=None):
             import h5py
-            from alframework.tools.pyanitools import validate_label_parts
+            from alframework.tools.h5_parallel import read_datasets
+            from alframework.tools.pyanitools import LABEL_PARTS, validate_label_parts
 
             # Newer HIPPYNN passes permit_only; older releases do not accept it.
             if self.excited_state_properties is None:
                 with h5py.File(file, 'r') as handle:
                     validate_label_parts(handle)
+                    has_parts = LABEL_PARTS in handle.attrs
                 extra = {} if permit_only is None else {'permit_only': permit_only}
-                batches, n_atoms_max, count = (self._extract_in_parallel(file, species_key, permit_only)
+                batches, n_atoms_max, count = (self._extract_groups(file, species_key, permit_only, has_parts=has_parts)
                                                if species_key is not None else None) or \
                     super().extract_full_file(file, species_key=species_key, **extra)
                 # Charge and spin describe a structure, not a target, and only some shards have them. Kept,
@@ -120,7 +123,7 @@ def __getattr__(name):
                     group = handle[name]
                     if self.coordinates_key not in group or species_key not in group:
                         raise KeyError(f'{file}:{name}: missing required coordinates/species datasets')
-                    batch = {key: group[key][()] for key in keys if key in group}
+                    batch = read_datasets(handle, group, keys)
                     species = np.asarray(batch[species_key])
                     if species.dtype.kind in 'SUO':
                         species = np.array([atomic_numbers[v.decode() if isinstance(v, bytes) else str(v)]

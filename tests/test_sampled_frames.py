@@ -7,10 +7,10 @@ import pytest
 from ase import Atoms
 
 from alframework.tools import sampled_frames
-from alframework.tools.batching import BatchBuffer, SampledFrameQueue
+from alframework.tools.batching import BatchBuffer, BatchedTaskQueue, SampledFrameQueue
 from alframework.tools.labeling_coordinator import LabelingCoordinator
 from alframework.tools.molecules import MoleculesObject
-from alframework.tools.sampled_frames import label_sampled_frames, stage_sampled_frames
+from alframework.tools.sampled_frames import FrameRetirement, label_sampled_frames, stage_sampled_frames
 from tests.helpers.fakes import FakeTask
 
 
@@ -91,3 +91,39 @@ def test_unpublished_batch_is_removed_on_write_failure(tmp_path, monkeypatch):
 def test_reference_handoff_requires_native_qm():
     with pytest.raises(ValueError, match='requires native QM batching'):
         LabelingCoordinator(None, 'fixture.labeler', {}, sampled_frame_handoff=True)
+
+
+@pytest.mark.parametrize('durable', [True, False])
+def test_retire_only_after_the_last_input_and_its_outcome_are_recorded(tmp_path, durable):
+    a, b, c = [MoleculesObject(Atoms('H'), name) for name in ('a', 'b', 'c')]
+    first, second = stage_sampled_frames([a, b], tmp_path, 0), stage_sampled_frames([c], tmp_path, 1)
+    lifecycle = FrameRetirement()
+    lifecycle.register(first + second)
+    labeler = object.__new__(LabelingCoordinator)
+    labeler.queue = queue = BatchedTaskQueue()
+    retry = FakeTask('pending', [a], done=False)
+    queue.add_task(retry, inputs=first[:1])
+    queue.add_task(FakeTask('exec_done', []), inputs=first[1:])  # terminal partial output
+    queue.add_task(FakeTask('exec_done', [c]), inputs=second)
+    results, failed, passed, errors = labeler.take_finished_with_references(None)
+    assert results == [c] and not failed
+    lifecycle.labels_held(passed, errors, durable=durable)
+    assert Path(second[0].path).exists()  # write_status has not completed
+    lifecycle.checkpointed()
+    assert Path(second[0].path).exists() != durable
+    assert Path(first[0].path).exists()
+
+    retry._status = 'failed'
+    retry._done = True
+    retry._exception = RuntimeError('QM exhausted its retries')
+    results, failed, passed, errors = labeler.take_finished_with_references(None)
+    assert not results and failed == 1
+    lifecycle.labels_held(passed, errors, durable=durable)
+    lifecycle.checkpointed(seconds=0)  # a saturated poll can defer unlinks
+    assert Path(first[0].path).exists()
+    lifecycle.checkpointed()
+    assert Path(first[0].path).exists() != durable
+
+    lifecycle.snapshot_published()
+    lifecycle.checkpointed()
+    assert not list(tmp_path.iterdir())

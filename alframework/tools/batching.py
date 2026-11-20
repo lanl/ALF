@@ -279,21 +279,25 @@ class BatchedTaskQueue(ParslTaskQueue):
     def get_failed_number(self):
         return int(self._count('failed', lambda task: task.task_status() in FAILED_TASK_STATUSES))
 
-    def get_task_results(self, max_items=None):
-        return self._harvest(self._take_finished(max_items=max_items))
+    def get_task_results(self, max_items=None, *, on_finished_inputs=None):
+        return self._harvest(self._take_finished(max_items=max_items), on_finished_inputs=on_finished_inputs)
 
-    def _harvest(self, taken, output_types=(MoleculesObject,)):
+    def _harvest(self, taken, output_types=(MoleculesObject,), *, on_finished_inputs=None):
         results_list = []
         failed_number = 0
         self.last_failed = []
         for task, status in taken:
             if status in SUCCESSFUL_TASK_STATUSES:
                 try:
-                    results_list.extend(flatten_molecule_output(task.result(), output_types))
-                    self._forget(task)
-                    continue
+                    results = flatten_molecule_output(task.result(), output_types)
                 except Exception:
                     logger.error("Task marked as done but raised or returned invalid output", exc_info=True)
+                else:
+                    results_list.extend(results)
+                    if on_finished_inputs is not None:
+                        on_finished_inputs(self._inputs.get(id(task), ()), True)
+                    self._forget(task)
+                    continue
             else:
                 try:
                     task.result()
@@ -303,7 +307,11 @@ class BatchedTaskQueue(ParslTaskQueue):
             failed_number += 1
             self.last_failed.append(task)
             self.failed_structures += self.widths.width(task)
-            self.failed_inputs.extend(self._inputs.get(id(task), []))
+            inputs = self._inputs.get(id(task), ())
+            if on_finished_inputs is None:
+                self.failed_inputs.extend(inputs)
+            else:
+                on_finished_inputs(inputs, False)
             self._forget(task)
         return results_list, failed_number
 

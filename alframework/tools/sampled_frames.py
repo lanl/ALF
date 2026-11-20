@@ -2,6 +2,8 @@
 
 import os
 import pickle
+import time
+from collections import Counter, deque
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import NamedTuple, Optional
@@ -22,6 +24,58 @@ class SampledFrame(NamedTuple):
 
     def get_moleculeid(self):
         return self.summary['id']
+
+
+class FrameRetirement:
+    """Track references until the coordinator has recorded their terminal QM outcomes."""
+
+    def __init__(self):
+        self._pending = Counter()
+        self._held = Counter()
+        self._checkpoint_ready = Counter()
+        self._unlink_ready = deque()
+        self._warned = False
+
+    def register(self, frames):
+        self._pending.update(frame.path for frame in frames if frame.path is not None)
+
+    def labels_held(self, succeeded, failed, *, durable):
+        self._checkpoint_ready.update(failed)
+        (self._checkpoint_ready if durable else self._held).update(succeeded)
+
+    def snapshot_published(self):
+        self._checkpoint_ready.update(self._held)
+        self._held.clear()
+
+    def checkpointed(self, *, seconds=1.0):
+        for path, count in self._checkpoint_ready.items():
+            left = self._pending[path] - count
+            if left < 0:
+                raise RuntimeError(f'More QM inputs retired than registered for {path}.')
+            if left:
+                self._pending[path] = left
+            else:
+                del self._pending[path]
+                self._unlink_ready.append(path)
+        self._checkpoint_ready.clear()
+
+        started = time.monotonic()
+        removed = 0
+        for _ in range(len(self._unlink_ready)):
+            if time.monotonic() - started >= seconds:
+                break
+            path = self._unlink_ready.popleft()
+            try:
+                Path(path).unlink(missing_ok=True)
+            except OSError as exc:
+                self._unlink_ready.append(path)
+                if not self._warned:
+                    print(f'Could not remove sampler frame file {path}: {exc}', flush=True)
+                    self._warned = True
+            else:
+                removed += 1
+        if removed:
+            print(f'Sampler spool: retired {removed} batch files after QM checkpoint.', flush=True)
 
 
 def stage_sampled_frames(molecules, directory, batch):

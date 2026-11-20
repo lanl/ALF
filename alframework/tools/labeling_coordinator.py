@@ -28,6 +28,7 @@ memory and are not restored after a restart.
 
 import inspect
 import logging
+from collections import Counter
 
 from parsl import python_app
 
@@ -128,6 +129,16 @@ class LabelingCoordinator(BatchedSubmitter):
             return "one structure per QM task"
         return "{mode} batches of up to {batch_size} structures ({partial_policy}, {max_wait_seconds:g} s)".format(
             **self.settings)
+
+    def take_finished_with_references(self, max_items):
+        """Count completed references by file, including inputs omitted from a partial output."""
+        succeeded, failed = Counter(), Counter()
+
+        def record(inputs, success):
+            (succeeded if success else failed).update(frame.path for frame in inputs if isinstance(frame, SampledFrame))
+
+        results, failed_tasks = self.queue.get_task_results(max_items=max_items, on_finished_inputs=record)
+        return results, failed_tasks, succeeded, failed
 
     def _group_task(self, group, input_dicts):
         if self.settings["mode"] == "native":

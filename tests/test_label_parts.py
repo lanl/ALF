@@ -146,11 +146,15 @@ def test_resume_mode_cannot_hide_pending_labels(tmp_path):
         open_held_labels(config, 0)
 
 
-def test_hippynn_loader_reads_the_same_arrays_from_a_virtual_shard(tmp_path):
+@pytest.mark.parametrize('workers', [1, 2])
+def test_hippynn_loader_reads_the_same_arrays_from_a_virtual_shard(tmp_path, monkeypatch, workers):
     pytest.importorskip('hippynn')
     from alframework.ml_interfaces.hippynn_interface import ALFPyAniDirectoryDB
 
     labels = [labeled(f'mol-{i}', energy=-i) for i in range(3)]
+    if workers == 2:
+        labels[-1].get_atoms().set_chemical_symbols('H3')
+    monkeypatch.setenv('ALF_H5_READ_WORKERS', str(workers))
     snapshot = tmp_path / 'parts' / 'data.h5'
     held = HDF5HeldLabels(snapshot, PROPERTIES, batch_size=2)
     held.hold(labels)
@@ -283,6 +287,43 @@ def test_a_snapshot_reads_the_same_from_its_parts_as_through_hdf5(tmp_path):
                 else:
                     assert direct[key].dtype == reference.dtype
                     np.testing.assert_array_equal(direct[key], reference)
+
+
+def test_selected_snapshot_columns_read_in_part_order_and_preserve_fill_values(tmp_path, monkeypatch):
+    from contextlib import contextmanager
+    from alframework.tools import h5_parallel
+
+    snapshot = tmp_path / 'data.h5'
+    held = HDF5HeldLabels(snapshot, PROPERTIES, batch_size=1)
+    labels = [labeled(f'mol-{i}', energy=-i) for i in range(5)]
+    labels[2].update_metadata({'charge': -1})
+    held.hold(labels)
+    held.commit(snapshot, PROPERTIES, {})
+    path, = h5_parallel.group_paths(str(snapshot))
+    keys = {'energy', '_id', 'total_charge'}
+    with h5py.File(snapshot) as handle:
+        expected = {key: handle[path][key][()] for key in keys}
+    np.testing.assert_array_equal(expected['total_charge'], [0, 0, -1, 0, 0])
+
+    open_parts = []
+    opener = h5py.File
+
+    @contextmanager
+    def track(name, *args, **kwargs):
+        with opener(name, *args, **kwargs) as handle:
+            if name != str(snapshot):
+                assert not any(part.id.valid for part in open_parts)
+                open_parts.append(handle)
+            yield handle
+
+    monkeypatch.setattr(h5py, 'File', track)
+    group, = h5_parallel.read_groups(str(snapshot), [path], 1, keys)
+    assert len(open_parts) == 5
+    assert set(group) == keys | {'path'}
+    assert group['_id'] == [item.decode() for item in expected['_id']]
+    for key in ('energy', 'total_charge'):
+        assert group[key].dtype == expected[key].dtype
+        np.testing.assert_array_equal(group[key], expected[key])
 
 
 def test_a_snapshot_is_sized_by_its_parts_when_choosing_readers(tmp_path, monkeypatch):

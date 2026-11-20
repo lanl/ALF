@@ -129,6 +129,7 @@ if args.test_sampler and 'sampler_frame_spool' in master_config:
     sampling_master.pop('sampler_frame_spool')
 sampling = SamplerCoordinator(sampler_task, master_config['sampler_task'], sampler_config, sampling_master)
 sampler_task_queue = sampling.queue
+frame_retirement = sampling.frame_retirement
 print("Sampling: " + sampling.describe())
 
 # QM
@@ -197,12 +198,17 @@ def hold_finished_labels(*, drain=False):
     properties = held.properties if storage_batch_size is not None else master_config['properties_list']
 
     def take_one_part():
-        results, failed = QM_task_queue.get_task_results(max_items=storage_batch_size)
+        if frame_retirement is None:
+            results, failed = QM_task_queue.get_task_results(max_items=storage_batch_size)
+        else:
+            results, failed, succeeded_files, failed_files = labeling.take_finished_with_references(storage_batch_size)
         screen_labels(results, properties)
         lost = labeling.take_failed_structures(failed)
         status['lifetime_failed_QM_tasks'] = status['lifetime_failed_QM_tasks'] + failed
         status['lifetime_failed_QM_structures'] = status.get('lifetime_failed_QM_structures', 0) + lost
         held.hold(results, lost)
+        if frame_retirement is not None:
+            frame_retirement.labels_held(succeeded_files, failed_files, durable=storage_batch_size is not None)
 
     hold_ready(take_one_part, QM_task_queue.get_completed_number, storage_batch_size, drain=drain)
 
@@ -215,6 +221,8 @@ def store_held_labels(**attributes):
     hold_finished_labels(drain=True)
     stored = held.commit(master_config['h5_path'].format(status['current_h5_id']),
                          master_config['properties_list'], attributes)
+    if frame_retirement is not None:
+        frame_retirement.snapshot_published()
     status['lifetime_stored_labels'] = status.get('lifetime_stored_labels', 0) + stored
     status['current_h5_id'] = status['current_h5_id'] + 1
     held.select_snapshot(master_config['h5_path'].format(status['current_h5_id']))
@@ -579,6 +587,8 @@ while True:
     sys.stdout.flush()
     
     write_status(master_config['status_path'], status)
+    if frame_retirement is not None:
+        frame_retirement.checkpointed()
     stop_if_executor_failed(parsl.dfk())
     
     if not admitting and ML_task_queue.get_number() == 0:

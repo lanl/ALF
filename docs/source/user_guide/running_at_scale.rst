@@ -104,10 +104,18 @@ can set ``sampler_frame_spool`` in the master configuration to a shared filesyst
 writes one pickle file per batch with eligible frames and returns trajectory summaries and frame
 references. The coordinator counts completed frames toward the normal sampler wave, and QM workers
 read the original frames once the wave opens. Both worker roles need access to the same absolute paths.
-Size the spool for the sampled frames in the run and set ``maximum_stored_labels`` to bound the workflow.
-ALF removes the invocation's spool directory after a normal shutdown. A restart creates a fresh
-directory and resumes from the usual persisted status and labels. Remove abandoned spool directories
-after confirming that the corresponding workers have exited.
+Set ``maximum_stored_labels`` for a finite workflow and size the spool for the largest in-flight
+wave, queued cleanup, and any abandoned files. A receipt publishes a closed, flushed batch file.
+ALF keeps each file through QM retries and until its last frame's outcome is recorded. Bounded
+HDF5 storage makes successful labels durable as held parts. With legacy storage their input files
+stay until the training shard is published. The coordinator retires files in its normal polling loop
+and cleans the invocation directory after workers exit. Restart starts a fresh spool and resumes
+from persisted status and labels. Remove abandoned directories after the workers have exited.
+
+Durable labels become visible through the atomically published HDF5 snapshot. HIPPYNN reads its
+backing parts directly in serial and parallel, keeping at most one part open per group reader.
+``ALF_H5_READ_WORKERS`` controls group parallelism. Keep the snapshot and its referenced parts
+together when moving a run.
 
 .. _running-at-scale-coordinator-cpu:
 

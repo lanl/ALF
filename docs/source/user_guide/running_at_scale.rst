@@ -3,10 +3,125 @@
 Running at Scale
 ================
 
+A run on many nodes asks more of the shared filesystem, of the coordinator, which submits and collects every
+task, and of each training member, which reads every label. This page describes what ALF offers for each, with
+what it was measured to change. Everything here is off unless you set it, and none of it changes what a run
+computes, only how it gets there.
+
+.. _running-at-scale-settings:
+
+Scaling Settings in One Place
+-----------------------------
+
+The settings below usually live in three configurations: the master, the sampler's, and the ML
+configuration's. A ``scaling`` block in the master configuration takes any of them, by the same names, and
+passes each to the configuration that uses it, so a large run can state them together:
+
+.. code-block:: json
+
+   "scaling": {
+     "parsl_data_serializer": "pickle",
+     "coordinator_trim_after_snapshot": true,
+     "disable_transparent_huge_pages": true,
+     "label_storage_batch_size": 8192,
+     "label_h5_layout": {"compression": "gzip", "level": 1, "shuffle": true, "frame_chunk": 1024},
+     "trajectory_summary_path": "records/trajectories.jsonl",
+     "coordinator_loop_path": "records/coordinator_loop.csv",
+     "returned_metadata": "compact",
+     "returned_momenta": false,
+     "metadata_files": "per_task",
+     "shared_training_data": true,
+     "stream_final_evaluation": true
+   }
+
+Each setting keeps its own default and meaning, and can still be set in its own configuration instead. One
+set in both places with different values stops the coordinator at startup, so neither wins silently. A sampler
+setting needs the batched MLMD sampler (``alframework.samplers.batched_mlmd``), and an ML setting a HIPPYNN
+task (``h5_read_workers`` also suits fine-tuning); others stop the coordinator at startup too. The block is
+read when the coordinator starts, which prints the settings it applied, and an edit to it waits for a restart.
+A run with ``parallel_samplers`` of 4,096 or more that leaves the serializer, bounded label storage, per-task
+metadata files or compact returns off gets a warning naming them.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 12 58
+
+   * - Setting
+     - Read by
+     - What it changes, as measured
+   * - ``parsl_data_serializer`` ``"pickle"``
+     - master
+     - Task inputs serialize with pickle, dill only as the fallback: about 20 times faster
+       (:ref:`running-at-scale-coordinator-cpu`).
+   * - ``poll_interval``
+     - master
+     - Seconds between the coordinator's passes, default 60. A finished stage waits up to one before the next
+       starts.
+   * - ``coordinator_trim_after_snapshot``
+     - master
+     - Returns the coordinator's freed heap to the system after each stored shard: about 1.7 GiB freed in
+       0.07 s per generation of 131,072 labels.
+   * - ``disable_transparent_huge_pages``
+     - master
+     - The coordinator and its child processes opt out of huge pages, which made large allocations 30 to 60
+       times slower on a busy host (:ref:`running-at-scale-huge-pages`). Workers use ``ALF_THP_DISABLE``.
+   * - ``label_storage_batch_size``
+     - master
+     - Finished labels are written as HDF5 parts while QM runs. For 2,097,352 labels, the pause before
+       training went from 1,605 s to 7 s and peak memory from 39.3 to 1.3 GiB
+       (:ref:`running-at-scale-storing-labels`).
+   * - ``label_h5_layout``
+     - master
+     - A lossless layout for those parts: lzf, or gzip at a lower level, with shuffle and whole-frame chunks
+       wrote the same labels 1.6 to 2.3 times faster than the default gzip 6, and read them 2.9 to 3.9 times
+       faster.
+   * - ``data_by_reference``
+     - master
+     - Sampled frames go to QM through shared files rather than through the coordinator
+       (:ref:`running-at-scale-data-by-reference`). It also needs ``maximum_stored_labels``.
+   * - ``trajectory_summary_path``, ``coordinator_memory_sample``, ``coordinator_memory_path``,
+       ``coordinator_loop_path``
+     - master
+     - Records for watching a large run: one trajectory summary instead of every metadata file, the
+       coordinator's memory, and the time of each phase of its loop (:doc:`monitoring`).
+   * - ``returned_metadata`` ``"compact"``
+     - sampler
+     - Returned structures leave out the per-trajectory arrays their metadata file keeps: about two thirds less
+       coordinator memory per trajectory, and 10 times faster serialization
+       (:ref:`running-at-scale-coordinator-memory`).
+   * - ``returned_momenta`` ``false``
+     - sampler
+     - Returned structures leave out their MD momenta, 4.7 of the 12.0 KiB a 201-atom structure cost.
+   * - ``metadata_files`` ``"per_task"``
+     - sampler
+     - One metadata file per sampler task instead of one per trajectory (:ref:`running-at-scale-small-files`).
+   * - ``shared_training_data``
+     - ML
+     - A member's ranks on a node map one copy of the training arrays instead of each loading its own, which
+       was about 24 GB per rank for 1.5 million training structures (:ref:`running-at-scale-training`).
+   * - ``stream_final_evaluation``
+     - ML
+     - The final test accumulates errors and histograms on each rank instead of gathering every prediction:
+       for 2,097,352 labels on one node of 8 GPUs, 647 s became 486 s and the parent's memory 82.6 GiB became
+       22.2 GiB.
+       Its metrics agree with the default to about one part in 10\ :sup:`7`, not bit for bit.
+   * - ``h5_read_workers``
+     - ML
+     - Processes reading each HDF5 file; by default large files use one per core.
+
+Settings that size the work stay in their own configurations, since they change what tasks run or what they
+run on: ``batching`` (the sampler and QM configurations each have one; see :doc:`batching`),
+``maximum_builder_structures``, ``parallel_samplers``, ``target_queued_QM``, ``gpus_per_member``,
+``member_nodes`` and ``member_launcher``. Naming one in the block stops the coordinator with a message saying
+where it goes. Settings that describe the nodes themselves stay in the workers' environment, set in the
+Parsl configuration's ``worker_init`` (for example with ``alframework.tools.worker_setup.worker_setup``):
+the node-local environment and caches below, ``ALF_THP_DISABLE``, and ``ALF_TASK_TIMELINE_DIR``.
+``examples/large_scale`` puts all of these together.
+
 When many nodes start at once, every worker importing PyTorch, CuPy, and their libraries from shared
 storage opens thousands of small files, which slows each start and loads the filesystem's metadata
 servers. Package caches that default to your home directory are written by every node at once. The
-CPP and AcAc Parsl templates can avoid both; everything below is off unless you set it.
+CPP and AcAc Parsl templates, and ``examples/large_scale``, can avoid both.
 
 Node-Local Environment
 ----------------------

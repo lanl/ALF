@@ -191,6 +191,10 @@ The master config controls the workflow wiring. Common fields include:
        through the coordinator: ``{"directory": ..., "sampler_frames": true}``, with
        ``"keep_files": true`` to keep the files for debugging. Off unless set. See
        :ref:`running-at-scale-data-by-reference`.
+   * - ``scaling``
+     - Optional. One place for the settings that change how ALF runs at scale, by their usual
+       names, including the sampler's and ML configuration's: each is passed to the
+       configuration that uses it. Read once, at startup. See :ref:`running-at-scale-settings`.
    * - ``plotting_utility``, ``plot_dir``, ``update_plots_every``
      - Optional progress plots. ``plotting_utility`` is an import string such as
        ``alframework.tools.plotting.analysis_plot``, and ``plot_dir`` is where it

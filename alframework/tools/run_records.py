@@ -249,12 +249,14 @@ def run_records(run_dir, master_config=None, timeline_dir=None):
     if timeline_dir is None:
         timeline_dir = (_resolve(run_dir, master.get('task_timeline_dir')) or os.environ.get('ALF_TASK_TIMELINE_DIR')
                         or os.path.join(run_dir, 'task_timeline'))
+    # Monitoring paths may be in the master configuration's scaling block (alframework.tools.scaling).
+    from alframework.tools.scaling import setting
     paths = dict(timeline=timeline_dir if os.path.isdir(timeline_dir) else None,
-                 trajectories=_resolve(run_dir, master.get('trajectory_summary_path')),
+                 trajectories=_resolve(run_dir, setting(master, 'trajectory_summary_path')),
                  labels=_resolve(run_dir, master.get('h5_path')),
                  models=_resolve(run_dir, master.get('model_path')),
-                 memory=_resolve(run_dir, master.get('coordinator_memory_path', 'coordinator_memory.csv')),
-                 loop=_resolve(run_dir, master.get('coordinator_loop_path')))
+                 memory=_resolve(run_dir, setting(master, 'coordinator_memory_path', 'coordinator_memory.csv')),
+                 loop=_resolve(run_dir, setting(master, 'coordinator_loop_path')))
     task_table = tasks(paths['timeline'])
     training_table = training(paths['models'])
     finishes = round_finish_times(training_table)

@@ -32,6 +32,7 @@ from alframework.tools.labeling_coordinator import LabelingCoordinator
 from alframework.tools.label_validation import screen_labels
 from alframework.tools.label_parts import hold_ready
 from alframework.tools.loop_timing import coordinator_loop_timer
+from alframework.tools.scaling import SCALING, apply_scaling, describe as describe_scaling, large_run_warning
 from alframework.tools.builder_outputs import builder_outputs
 from alframework.tools.sampler_coordinator import SamplerCoordinator
 from alframework.tools.sampled_frames import SampledFrame
@@ -48,10 +49,6 @@ args = parser.parse_args()
 
 # Load the master configuration:
 master_config = load_config_file(args.master)
-poll_interval = coordinator_poll_interval(master_config)
-trim_snapshot_memory = snapshot_memory_trim(master_config)
-# Before anything large is allocated or any child process (such as Parsl's interchange) starts, which inherits it.
-coordinator_huge_pages(master_config)
 if 'master_directory' not in master_config:
     master_config['master_directory'] = None
 
@@ -66,6 +63,19 @@ QM_config = load_config_file(master_config['QM_config_path'], master_config['mas
 
 # Load the ML config:
 ML_config = load_config_file(master_config['ML_config_path'], master_config['master_directory'])
+
+# Optional: the master configuration's scaling block, one place for the settings that change how ALF runs at
+# scale, passed to the configurations that use them (alframework.tools.scaling). Read once, here.
+scaling_settings = apply_scaling(master_config, sampler_config, ML_config)
+if scaling_settings:
+    print(describe_scaling(scaling_settings), flush=True)
+large_run = large_run_warning(master_config, sampler_config)
+if large_run:
+    print('Warning: ' + large_run, flush=True)
+poll_interval = coordinator_poll_interval(master_config)
+trim_snapshot_memory = snapshot_memory_trim(master_config)
+# Before anything large is allocated or any child process (such as Parsl's interchange) starts, which inherits it.
+coordinator_huge_pages(master_config)
 
 # All configs
 all_configs = [master_config, builder_config, sampler_config, QM_config, ML_config]
@@ -492,13 +502,13 @@ if status['current_model_id'] < 0:
 ## Step 6: Begin Active Learning #
 ##################################
 master_loop_iter = 1
+scaling_edit_reported = False
 while True:
     with loop_timer.phase('reload_config'):
         #Re-load configurations, but watch for stupid errors
         try:
             # Load the master configuration:
             master_config_new = load_config_file(args.master)
-            poll_interval_new = coordinator_poll_interval(master_config_new)
             if 'master_directory' not in master_config_new:
                 master_config_new['master_directory'] = None
 
@@ -513,6 +523,16 @@ while True:
 
             # Load the ML config:
             ML_config_new = load_config_file(master_config_new['ML_config_path'], master_config_new['master_directory'])
+
+            # The scaling block was read at startup; its settings apply to every reload, and an edit to it waits for
+            # a restart.
+            if master_config_new.get(SCALING) != scaling_settings and not scaling_edit_reported:
+                print(f'The master configuration\'s {SCALING} block changed; it is read when the coordinator starts, '
+                      'so the run keeps its starting settings.', flush=True)
+                scaling_edit_reported = True
+            apply_scaling(master_config_new, sampler_config_new, ML_config_new, scaling_settings or {},
+                          check_tasks=False)
+            poll_interval_new = coordinator_poll_interval(master_config_new)
         except Exception as e:
             print("Failed to re-load configuration files:")
             print(e)

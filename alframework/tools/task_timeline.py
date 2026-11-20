@@ -22,6 +22,8 @@ import threading
 import time
 
 ENV = 'ALF_TASK_TIMELINE_DIR'
+# Every timed task also applies the workers' huge-page setting (alframework.tools.memory), once per process.
+HUGE_PAGES_ENV = 'ALF_THP_DISABLE'
 # Tasks that call another task's ``.func`` (UDD sampling calls MLMD sampling) are recorded once, as the
 # outer task: the inner call is part of the outer task's time. The flag lives on the running thread, not in
 # this module: Parsl serializes a decorated task's wrapper by value, with this module's globals, so they must
@@ -88,10 +90,17 @@ def write_record(directory, record):
 
 
 def timed(stage):
-    """Decorate a task function (under ``@python_app``) so each call adds a line to the task timeline."""
+    """Decorate a task function (under ``@python_app``) so each call adds a line to the task timeline.
+
+    With ``ALF_THP_DISABLE=1`` in the worker's environment, the task first turns off transparent huge pages for
+    its worker and the processes the task starts (:func:`alframework.tools.memory.disable_transparent_huge_pages`).
+    """
     def decorator(function):
         @functools.wraps(function)
         def wrapper(*args, **kwargs):
+            if os.environ.get(HUGE_PAGES_ENV, '') not in ('', '0'):
+                from alframework.tools.memory import disable_transparent_huge_pages_if_requested
+                disable_transparent_huge_pages_if_requested()
             directory = os.environ.get(ENV)
             if not directory or not _begin_outermost():
                 return function(*args, **kwargs)

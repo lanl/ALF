@@ -59,6 +59,18 @@ def test_local_caches_alone_set_caches_and_hdf5_without_unpacking(tmp_path):
     assert miopen == f"{tmp_path}/alf-alf/cache/miopen|{tmp_path}/alf-alf/cache/miopen"
 
 
+def test_workers_can_turn_huge_pages_off_for_every_alf_task(tmp_path):
+    lines, python = worker_setup(disable_huge_pages=True)
+    assert python is None and lines == ["export ALF_THP_DISABLE=1"]
+    out = subprocess.run(["bash", "-c", "\n".join(lines) + '\necho "$ALF_THP_DISABLE"\n'], capture_output=True,
+                         text=True, check=True).stdout.strip()
+    assert out == "1"
+    assert setup_from_environment("ALF_QM", environ={"ALF_THP_DISABLE": "1"}) == (lines, None)
+    assert setup_from_environment("ALF_QM", environ={"ALF_THP_DISABLE": "0"}) == ([], None)
+    with pytest.raises(ValueError, match="ALF_THP_DISABLE must be 1 or 0"):
+        setup_from_environment("ALF_QM", environ={"ALF_THP_DISABLE": "maybe"})
+
+
 def test_two_blocks_on_one_node_unpack_once(tmp_path):
     node = tmp_path / "node"
     node.mkdir()

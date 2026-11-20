@@ -36,12 +36,13 @@ def environment_key(env_tarball):
 
 
 def worker_setup(env_tarball=None, node_dir=None, local_caches=False, cupy_cache=None, env_python='bin/python',
-                 all_nodes=False):
+                 all_nodes=False, disable_huge_pages=False):
     """Return ``(lines, python)``: ``worker_init`` lines, and a shell expression for the worker interpreter.
 
     ``python`` is ``None`` without ``env_tarball``, meaning the shared interpreter. ``node_dir`` is the
     node-local root; by default ``$TMPDIR`` on the node, or ``/tmp``. With an archive, the lines set
-    ``ALF_ENV_BIN`` to the directory holding its interpreter, for ``PATH``.
+    ``ALF_ENV_BIN`` to the directory holding its interpreter, for ``PATH``. ``disable_huge_pages`` exports
+    ``ALF_THP_DISABLE=1``, so every ALF task turns off transparent huge pages for its worker and what it starts.
 
     ``worker_init`` runs once per block, on its first node. For blocks of several nodes whose launcher
     starts workers on all of them (``SrunLauncher``), set ``all_nodes``: the setup then also runs on every
@@ -49,6 +50,8 @@ def worker_setup(env_tarball=None, node_dir=None, local_caches=False, cupy_cache
     ``all_nodes`` may also be the command that runs one task per node, in place of ``ALL_NODES_COMMAND``.
     """
     lines, python = _setup_lines(env_tarball, node_dir, local_caches, cupy_cache, env_python)
+    if disable_huge_pages:
+        lines.append('export ALF_THP_DISABLE=1')
     if all_nodes and lines:
         command = ALL_NODES_COMMAND if all_nodes is True else str(all_nodes)
         # The lines are idempotent (a finished unpack is reused, directories are created with -p), so the
@@ -119,12 +122,15 @@ def _setup_lines(env_tarball, node_dir, local_caches, cupy_cache, env_python):
 
 def setup_from_environment(role_prefix, environ=os.environ, all_nodes=False):
     """Read the templates' variables: ``ALF_ENV_TARBALL`` (or ``<role_prefix>_ENV_TARBALL``),
-    ``ALF_ENV_PYTHON``, ``ALF_NODE_LOCAL_DIR``, ``ALF_NODE_LOCAL_CACHES``, and ``ALF_CUPY_CACHE_DIR``.
-    ``all_nodes`` is passed to ``worker_setup``, for multi-node blocks."""
-    caches = environ.get('ALF_NODE_LOCAL_CACHES', '').strip().lower()
-    if caches not in {'', '0', 'false', 'no', '1', 'true', 'yes'}:
-        raise ValueError(f'ALF_NODE_LOCAL_CACHES must be 1 or 0, not {caches!r}')
+    ``ALF_ENV_PYTHON``, ``ALF_NODE_LOCAL_DIR``, ``ALF_NODE_LOCAL_CACHES``, ``ALF_CUPY_CACHE_DIR``, and
+    ``ALF_THP_DISABLE``. ``all_nodes`` is passed to ``worker_setup``, for multi-node blocks."""
+    flags = {}
+    for name in ('ALF_NODE_LOCAL_CACHES', 'ALF_THP_DISABLE'):
+        value = environ.get(name, '').strip().lower()
+        if value not in {'', '0', 'false', 'no', '1', 'true', 'yes'}:
+            raise ValueError(f'{name} must be 1 or 0, not {value!r}')
+        flags[name] = value in {'1', 'true', 'yes'}
     return worker_setup(environ.get(role_prefix + '_ENV_TARBALL') or environ.get('ALF_ENV_TARBALL') or None,
-                        environ.get('ALF_NODE_LOCAL_DIR') or None, caches in {'1', 'true', 'yes'},
+                        environ.get('ALF_NODE_LOCAL_DIR') or None, flags['ALF_NODE_LOCAL_CACHES'],
                         environ.get('ALF_CUPY_CACHE_DIR') or None, environ.get('ALF_ENV_PYTHON') or 'bin/python',
-                        all_nodes=all_nodes)
+                        all_nodes=all_nodes, disable_huge_pages=flags['ALF_THP_DISABLE'])

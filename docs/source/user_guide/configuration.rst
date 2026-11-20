@@ -181,6 +181,16 @@ The master config controls the workflow wiring. Common fields include:
      - Optional boolean, default ``false``. After publishing a nonempty label snapshot,
        collect Python garbage and release free coordinator heap pages on Linux with glibc.
        The coordinator logs elapsed time and its PSS before and after when available.
+   * - ``disable_transparent_huge_pages``
+     - Optional boolean, default ``false``. On Linux, turn off transparent huge pages for the
+       coordinator and the processes it starts, such as Parsl's interchanges, before Parsl
+       starts. Workers have their own setting, ``ALF_THP_DISABLE``. See
+       :ref:`running-at-scale-huge-pages`.
+   * - ``data_by_reference``
+     - Optional. Hand sampled frames to QM through files on a shared filesystem instead of
+       through the coordinator: ``{"directory": ..., "sampler_frames": true}``, with
+       ``"keep_files": true`` to keep the files for debugging. Off unless set. See
+       :ref:`running-at-scale-data-by-reference`.
    * - ``plotting_utility``, ``plot_dir``, ``update_plots_every``
      - Optional progress plots. ``plotting_utility`` is an import string such as
        ``alframework.tools.plotting.analysis_plot``, and ``plot_dir`` is where it

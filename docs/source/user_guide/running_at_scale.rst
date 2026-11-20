@@ -149,8 +149,8 @@ for that task:
 
 .. _running-at-scale-huge-pages:
 
-Transparent Huge Pages on the Coordinator's Host
-------------------------------------------------
+Transparent Huge Pages
+----------------------
 
 At scale the coordinator allocates large blocks of memory: harvested results, held-label pieces, and the
 arrays of each stored shard. On a host whose transparent huge pages are always on
@@ -159,26 +159,22 @@ pages, and on a busy shared login node that made large allocations 30 to 60 time
 1.3 GB array took 39 s instead of 0.7 s, and a 400 MB one 4.4 s instead of 0.2 s. Allocations of about
 100 MB were not affected, so small runs don't show it.
 
-A process can opt out for itself and every process it starts, without administrator rights: call
-``prctl(PR_SET_THP_DISABLE, 1, 0, 0, 0)`` and then ``exec`` the coordinator. The setting is kept across
-``exec`` and inherited by child processes, such as Parsl's interchange. For example, a wrapper
-``thp_off.py``:
+A process can opt out for itself and every process it starts, without administrator rights (Linux's
+``prctl(PR_SET_THP_DISABLE)``, kept across ``exec`` and inherited by child processes). ALF does this in two
+places, each off unless set:
 
-.. code-block:: python
+- **The coordinator:** ``"disable_transparent_huge_pages": true`` in the master configuration. The
+  coordinator opts out when it starts, before Parsl does, so Parsl's interchanges inherit it.
+- **The workers:** ``ALF_THP_DISABLE=1`` in their environment, for example with
+  ``worker_setup(disable_huge_pages=True)`` in the Parsl configuration's ``worker_init``, or
+  ``ALF_THP_DISABLE=1`` where the CPP and AcAc templates read their settings. Every ALF builder, sampler, QM
+  and ML task then opts out its worker when it starts, and everything the task starts inherits it, including
+  ensemble members and their ranks; each node process of a member on several nodes opts out as well.
 
-   import ctypes, os, sys
-   ctypes.CDLL(None).prctl(41, 1, 0, 0, 0)  # 41 = PR_SET_THP_DISABLE
-   os.execvp(sys.argv[1], sys.argv[1:])
-
-started as ``python thp_off.py python -m alframework --master master_config.json``. ``grep THP_enabled
-/proc/<pid>/status`` shows ``0`` for the coordinator and its children once it applies.
-
-Training members allocate the same way: reading the database pads every group into arrays of the full
-dataset, then converts them, and the ranks load their setup. Members are started by Parsl workers, not by
-the coordinator, so they don't inherit its setting. Set ``ALF_THP_DISABLE=1`` in the ML workers'
-environment (``worker_init``): each member's process, and each node process of a member on several nodes,
-then opts out for itself and its ranks. On the shared login node above, reading 2,097,352 structures of
-up to 201 atoms (a 15 GB shard) took 823 s with huge pages and 133 s without.
+``grep THP_enabled /proc/<pid>/status`` shows ``0`` for a process once it applies. Training members allocate
+the same way as the coordinator: reading the database pads every group into arrays of the full dataset, then
+converts them, and the ranks load their setup. On the shared login node above, reading 2,097,352 structures
+of up to 201 atoms (a 15 GB shard) took 823 s with huge pages and 133 s without.
 
 .. _running-at-scale-batched-builders:
 

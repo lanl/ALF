@@ -40,19 +40,47 @@ def snapshot_memory_trim(master_config):
     return release
 
 
-def disable_transparent_huge_pages_if_requested(environ=None):
-    """With ALF_THP_DISABLE=1, turn off transparent huge pages for this process and every process it starts.
+# The process that last turned huge pages off, so a worker running many tasks asks the kernel once.
+_DISABLED_IN = None
+
+
+def disable_transparent_huge_pages(reason=THP_VARIABLE):
+    """Turn off transparent huge pages for this process and every process it starts. Returns whether it applied.
 
     Where the system setting is "always", first writes to large new arrays can stall in the kernel's huge-page
     compaction: on one shared login node, copying into fresh arrays ran at about 60 MiB/s with huge pages and
-    1.6 GiB/s without. Preparing a member's data copies its full dataset several times. The setting is kept across exec
-    and inherited by child processes (Linux prctl PR_SET_THP_DISABLE). Returns whether it was applied.
+    1.6 GiB/s without. The setting is kept across exec and inherited by child processes (Linux prctl
+    PR_SET_THP_DISABLE), and needs no administrator rights. Elsewhere it does nothing.
     """
-    environ = os.environ if environ is None else environ
-    if environ.get(THP_VARIABLE, '') in ('', '0') or not sys.platform.startswith('linux'):
+    global _DISABLED_IN
+    if _DISABLED_IN == os.getpid():
+        return True
+    if not sys.platform.startswith('linux'):
         return False
     libc = ctypes.CDLL(None, use_errno=True)
     if libc.prctl(PR_SET_THP_DISABLE, 1, 0, 0, 0) != 0:
-        print(f'{THP_VARIABLE}: prctl failed (errno {ctypes.get_errno()}); keeping the system setting', flush=True)
+        print(f'{reason}: prctl failed (errno {ctypes.get_errno()}); keeping the system setting', flush=True)
         return False
+    _DISABLED_IN = os.getpid()
     return True
+
+
+def disable_transparent_huge_pages_if_requested(environ=None):
+    """With ``ALF_THP_DISABLE=1`` in the environment, :func:`disable_transparent_huge_pages`. Every ALF task
+    applies this when it starts (``task_timeline.timed``), so set it in the workers' ``worker_init``, for example
+    with ``worker_setup(disable_huge_pages=True)``. Returns whether it was applied."""
+    environ = os.environ if environ is None else environ
+    if environ.get(THP_VARIABLE, '') in ('', '0'):
+        return False
+    return disable_transparent_huge_pages()
+
+
+def coordinator_huge_pages(master_config):
+    """With the master configuration's ``disable_transparent_huge_pages`` true, turn huge pages off for the
+    coordinator before Parsl starts, so its interchanges and other child processes inherit it."""
+    disabled = master_config.get('disable_transparent_huge_pages', False)
+    if not isinstance(disabled, bool):
+        raise ValueError('disable_transparent_huge_pages must be true or false.')
+    if disabled and disable_transparent_huge_pages('disable_transparent_huge_pages'):
+        print('Transparent huge pages are off for the coordinator and the processes it starts.', flush=True)
+    return disabled

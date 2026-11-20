@@ -33,6 +33,7 @@ from parsl import python_app
 
 from alframework.tools.batching import BatchedSubmitter, StartupSettings, batching_settings, flatten_molecule_output
 from alframework.tools.config import build_input_dict
+from alframework.tools.sampled_frames import SampledFrame, label_sampled_frames
 
 logger = logging.getLogger(__name__)
 
@@ -92,8 +93,13 @@ class LabelingCoordinator(BatchedSubmitter):
     :class:`BatchedTaskQueue` (counting structures) otherwise.
     """
 
-    def __init__(self, qm_task, qm_task_path, QM_config, master_config=None):
+    def __init__(self, qm_task, qm_task_path, QM_config, master_config=None, sampled_frame_handoff=False):
         settings = labeling_batch_settings(QM_config)
+        self._reference_task = None
+        if sampled_frame_handoff:
+            if settings is None or settings['mode'] != 'native':
+                raise ValueError('sampler_frame_spool requires native QM batching.')
+            self._reference_task = python_app(executors=list(qm_task.executors))(label_sampled_frames)
         if settings is not None:
             mode = settings["mode"]
             required = "molecule_objects" if mode == "native" else "molecule_object"
@@ -125,6 +131,11 @@ class LabelingCoordinator(BatchedSubmitter):
 
     def _group_task(self, group, input_dicts):
         if self.settings["mode"] == "native":
+            if self._reference_task is not None and any(isinstance(frame, SampledFrame) for frame in group):
+                task_input = build_input_dict(self.qm_task.func, [{"molecule_objects": group}, *input_dicts],
+                                              raise_on_fail=True)
+                task_input.pop('molecule_objects')
+                return self._reference_task(group, self.qm_task_path, task_input)
             return super()._group_task(group, input_dicts)
         task_input = build_input_dict(self.qm_task.func, [{"molecule_object": None}, *input_dicts],
                                       raise_on_fail=True)

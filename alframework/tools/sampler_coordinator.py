@@ -23,9 +23,13 @@ cohort's selected frames for labeling once the whole cohort has finished.
 """
 
 import inspect
+import shutil
+from pathlib import Path
+from tempfile import mkdtemp
 
 from alframework.samplers.acquisition import cohort_selection
-from alframework.tools.batching import BatchedSubmitter, StartupSettings, batching_settings, default_batch_key
+from alframework.tools.batching import BatchedSubmitter, SampledFrameQueue, StartupSettings, batching_settings, default_batch_key
+from alframework.tools.config import stored_label_budget
 from alframework.tools.cohorts import CohortPool
 from alframework.ml_interfaces.ensemble_inference import ADJACENT_GAPS
 from alframework.tools.gap_seeking import gap_seeking_settings
@@ -170,6 +174,16 @@ class SamplerCoordinator(BatchedSubmitter):
         self._states = state_settings(sampler_config)
         self._admission_ordinal = 0
         self.multi_trajectory = "molecule_objects" in parameters
+        self.frame_directory = None
+        self._frame_batch = 0
+        spool = (master_config or {}).get('sampler_frame_spool')
+        if spool is not None:
+            if not isinstance(spool, str) or not spool.strip():
+                raise ValueError('sampler_frame_spool must name a shared directory.')
+            if 'frame_spool' not in parameters or not self.multi_trajectory:
+                raise ValueError('sampler_frame_spool requires the built-in batched MLMD sampler.')
+            if stored_label_budget(master_config) is None:
+                raise ValueError('sampler_frame_spool requires maximum_stored_labels to bound staged files.')
         self.pool = None
         summary_path = (master_config or {}).get("trajectory_summary_path")
         self._summary = None if summary_path is None else TrajectorySummary(summary_path)
@@ -201,9 +215,16 @@ class SamplerCoordinator(BatchedSubmitter):
                              "parallel_samplers >= batching.batch_size.")
         selection = cohort_selection(sampler_config)
         if selection is not None:
+            if spool is not None:
+                raise ValueError('sampler_frame_spool requires immediate selection without cohorts.')
             self.pool = CohortPool(selection)
         super().__init__(sampler_task, settings, key_function=lambda molecule:
                          _model_batch_key(molecule, excited=self._states is not None))
+        if spool is not None:
+            root = Path(master_config.get('master_directory') or '.') / spool
+            root.mkdir(parents=True, exist_ok=True)
+            self.frame_directory = mkdtemp(dir=root.resolve(), prefix='run-')
+            self.queue = SampledFrameQueue(self.buffer)
         fixed = FIXED_SETTINGS + (FIXED_COHORT_SETTINGS if self.pool is not None else ())
         self._startup_settings = StartupSettings(sampler_config, fixed, "sampler")
 
@@ -232,7 +253,23 @@ class SamplerCoordinator(BatchedSubmitter):
     def _group_task(self, group, input_dicts):
         # Every member of a group shares one model generation (see _model_batch_key).
         model_id = group[0].get_metadata()["sampling_model_id"]
-        return super()._group_task(group, [{"current_model_id": model_id}, *input_dicts])
+        inputs = {"current_model_id": model_id}
+        if self.frame_directory is not None:
+            inputs['frame_spool'] = (self.frame_directory, self._frame_batch)
+            self._frame_batch += 1
+        return super()._group_task(group, [inputs, *input_dicts])
+
+    def collect_frames(self):
+        if self.frame_directory is not None:
+            self.queue.collect()
+
+    def cleanup_frames(self):
+        """Remove this invocation's spool after all Parsl allocations have closed."""
+        if self.frame_directory is not None:
+            try:
+                shutil.rmtree(self.frame_directory)
+            except OSError as exc:
+                print(f'Could not clean sampler frame spool {self.frame_directory}: {exc}', flush=True)
 
     def harvest(self, sampler_results):
         """Return the frames to label from harvested sampler results.
@@ -244,6 +281,10 @@ class SamplerCoordinator(BatchedSubmitter):
         failed = list(getattr(self.queue, "failed_inputs", []))
         if failed:
             self.queue.failed_inputs.clear()
+        if self.frame_directory is not None:
+            if self._summary is not None:
+                self._summary.append_rows((frame.summary for frame in sampler_results), failed)
+            return [frame for frame in sampler_results if frame.path is not None]
         if self._summary is not None:
             self._summary.append(sampler_results, failed)
         if self.pool is None:

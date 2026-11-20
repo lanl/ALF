@@ -603,7 +603,8 @@ def sample_trajectories(molecule_objects, models, sampler_config, engine_class=N
 @python_app(executors=['alf_sampler_executor'])
 @timed('sampler')
 @releases_memory_on_failure
-def mlmd_trajectories_task(molecule_objects, sampler_config, model_path, current_model_id, gpus_per_node=None):
+def mlmd_trajectories_task(molecule_objects, sampler_config, model_path, current_model_id, gpus_per_node=None,
+                           frame_spool=None):
     """Run MLMD for several trajectories in one task.
 
     Args:
@@ -628,7 +629,12 @@ def mlmd_trajectories_task(molecule_objects, sampler_config, model_path, current
             molecule.update_metadata(dict(sampling_task_width=len(molecule_objects),
                                            sampling_engine=driver_settings(sampler_config)['engine']))
     models = worker_ensemble(sampler_config, model_path.format(current_model_id) + '/', device)
-    return sample_trajectories(list(molecule_objects), models, sampler_config, device=device)
+    results = sample_trajectories(list(molecule_objects), models, sampler_config, device=device)
+    if frame_spool is not None:
+        from alframework.tools.sampled_frames import stage_sampled_frames
+
+        return stage_sampled_frames(results, *frame_spool)
+    return results
 
 
 # The ensemble this worker loaded last. A promoted model directory never changes, so later tasks

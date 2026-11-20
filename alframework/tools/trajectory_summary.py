@@ -69,23 +69,30 @@ class TrajectorySummary:
 
     def append(self, structures, failed=()):
         """Record harvested results, and the members of tasks that failed as a whole."""
+        self.append_rows((trajectory_row(molecule.get_moleculeid(), molecule.get_metadata())
+                          for molecule in structures), failed)
+
+    def append_rows(self, rows, failed=()):
+        """Write precomputed or streamed rows without assembling an entire wave in memory."""
+        from itertools import chain
+
         try:
-            rows = [trajectory_row(molecule.get_moleculeid(), molecule.get_metadata()) for molecule in structures]
-            rows += [trajectory_row(molecule.get_moleculeid(), molecule.get_metadata(), TASK_FAILED) for molecule in failed]
-            if not rows:
+            rows = chain(rows, (trajectory_row(molecule.get_moleculeid(), molecule.get_metadata(), TASK_FAILED)
+                                for molecule in failed))
+            first = next(rows, None)
+            if first is None:
                 return
             directory = os.path.dirname(self.path)
             if directory:
                 os.makedirs(directory, exist_ok=True)
-            text = "".join(json.dumps(row) + "\n" for row in rows).encode("utf-8")
             with open(self.path, "ab+") as handle:
                 # A crash can leave a partial line. Finish it, so that only that row is lost.
                 if handle.seek(0, os.SEEK_END) > 0:
                     handle.seek(-1, os.SEEK_END)
                     if handle.read(1) != b"\n":
-                        text = b"\n" + text
-                handle.write(text)
-                handle.flush()
+                        handle.write(b"\n")
+                for row in chain((first,), rows):
+                    handle.write((json.dumps(row) + "\n").encode("utf-8"))
         except Exception as exc:
             if not self._warned:
                 print(f"Could not write the trajectory summary {self.path}: {type(exc).__name__}: {exc}", flush=True)

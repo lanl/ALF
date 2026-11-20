@@ -99,6 +99,16 @@ reads them back one held piece, at most 1,000 labels, at a time.
   structures per cycle before going larger. Setting ``coordinator_memory_sample`` (see :doc:`configuration`)
   records it, with that of Parsl's interchanges, throughout the run.
 
+Finite workflows using the batched MLMD sampler, immediate frame selection and native batched QM
+can set ``sampler_frame_spool`` in the master configuration to a shared filesystem path. The sampler
+writes one pickle file per batch with eligible frames and returns trajectory summaries and frame
+references. The coordinator counts completed frames toward the normal sampler wave, and QM workers
+read the original frames once the wave opens. Both worker roles need access to the same absolute paths.
+Size the spool for the sampled frames in the run and set ``maximum_stored_labels`` to bound the workflow.
+ALF removes the invocation's spool directory after a normal shutdown. A restart creates a fresh
+directory and resumes from the usual persisted status and labels. Remove abandoned spool directories
+after confirming that the corresponding workers have exited.
+
 .. _running-at-scale-coordinator-cpu:
 
 Coordinator CPU

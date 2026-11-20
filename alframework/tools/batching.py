@@ -23,6 +23,7 @@ from alframework.tools.parsl_tasks import (
     is_final_task,
     ParslTaskQueue,
 )
+from alframework.tools.sampled_frames import SampledFrame
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +78,7 @@ def batching_settings(config):
     }
 
 
-def flatten_molecule_output(output):
+def flatten_molecule_output(output, types=(MoleculesObject,)):
     """Normalize single, nested-list, or empty task output into a flat list.
 
     Order and ``MoleculesObject`` identity are preserved, so splitting or
@@ -85,12 +86,12 @@ def flatten_molecule_output(output):
     """
     if output is None:
         return []
-    if isinstance(output, MoleculesObject):
+    if isinstance(output, types):
         return [output]
     if isinstance(output, (list, tuple)):
         flattened = []
         for item in output:
-            flattened.extend(flatten_molecule_output(item))
+            flattened.extend(flatten_molecule_output(item, types))
         return flattened
     raise TypeError("Task output must be a MoleculesObject, a nested list/tuple of "
                     f"MoleculesObject instances, or None; got {type(output).__name__}.")
@@ -103,6 +104,10 @@ def default_batch_key(molecule):
     stricter requirements (for example a selected excited state or a common
     cell) supply their own key function to :class:`BatchBuffer`.
     """
+    if isinstance(molecule, SampledFrame):
+        if molecule.pbc is None:
+            raise ValueError(f"Cannot batch rejected sampled frame {molecule.get_moleculeid()!r}.")
+        return ("pbc", molecule.pbc)
     atoms = molecule.get_atoms()
     if atoms is None:
         raise ValueError(f"Cannot batch {molecule.get_moleculeid()!r}: atoms are None.")
@@ -141,8 +146,8 @@ class BatchBuffer:
         return sum(len(bucket) for bucket in self._buckets.values())
 
     def add(self, molecule, now=None):
-        if not isinstance(molecule, MoleculesObject):
-            raise TypeError("BatchBuffer accepts only MoleculesObject instances.")
+        if not isinstance(molecule, (MoleculesObject, SampledFrame)):
+            raise TypeError("BatchBuffer accepts MoleculesObject instances and sampled frame references.")
         key = self.key_function(molecule)
         timestamp = time.time() if now is None else float(now)
         self._buckets.setdefault(key, []).append((timestamp, molecule))
@@ -275,13 +280,16 @@ class BatchedTaskQueue(ParslTaskQueue):
         return int(self._count('failed', lambda task: task.task_status() in FAILED_TASK_STATUSES))
 
     def get_task_results(self, max_items=None):
+        return self._harvest(self._take_finished(max_items=max_items))
+
+    def _harvest(self, taken, output_types=(MoleculesObject,)):
         results_list = []
         failed_number = 0
         self.last_failed = []
-        for task, status in self._take_finished(max_items=max_items):
+        for task, status in taken:
             if status in SUCCESSFUL_TASK_STATUSES:
                 try:
-                    results_list.extend(flatten_molecule_output(task.result()))
+                    results_list.extend(flatten_molecule_output(task.result(), output_types))
                     self._forget(task)
                     continue
                 except Exception:
@@ -310,6 +318,58 @@ class BatchedTaskQueue(ParslTaskQueue):
         print('Finished Structures: {:d}'.format(self.get_completed_number()))
         print('Finished Successfully Structures: {:d}'.format(self.get_exec_done_number()))
         print('Finished Failed Structures: {:d}'.format(self.get_failed_number()))
+
+
+class SampledFrameQueue(BatchedTaskQueue):
+    """Release finished Parsl futures while keeping their receipts in the sampler-wave counts."""
+
+    def __init__(self, buffer):
+        super().__init__(buffer)
+        self._clear_receipts()
+
+    def _clear_receipts(self):
+        self._receipts = []
+        self._received_tasks = self._received_structures = 0
+        self._received_failed_tasks = self._received_failed_structures = 0
+        self._received_exec_done = 0
+
+    def collect(self):
+        taken = self._take_finished()
+        if not taken:
+            return
+        width = sum(self.widths.width(task) for task, _ in taken)
+        self._received_exec_done += sum(self.widths.width(task) for task, status in taken if status == 'exec_done')
+        prior_failures = self.failed_structures
+        receipts, failed = self._harvest(taken, (SampledFrame,))
+        self._receipts.extend(receipts)
+        self._received_tasks += len(taken)
+        self._received_structures += width
+        self._received_failed_tasks += failed
+        self._received_failed_structures += self.failed_structures - prior_failures
+
+    def get_number(self):
+        return super().get_number() + self._received_structures
+
+    def get_task_number(self):
+        return super().get_task_number() + self._received_tasks
+
+    def get_completed_number(self):
+        return super().get_completed_number() + self._received_structures
+
+    def get_exec_done_number(self):
+        return super().get_exec_done_number() + self._received_exec_done
+
+    def get_failed_number(self):
+        return super().get_failed_number() + self._received_failed_structures
+
+    def get_task_results(self):
+        self.collect()
+        receipts = self._receipts
+        # A later batch may have finished first. Keep the same handoff order as inline results.
+        receipts.sort(key=lambda frame: frame.batch)
+        failures = self._received_failed_tasks
+        self._clear_receipts()
+        return receipts, failures
 
 
 def poll_delay(default, *buffers, now=None):

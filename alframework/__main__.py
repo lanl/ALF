@@ -32,6 +32,7 @@ from alframework.tools.label_validation import screen_labels
 from alframework.tools.label_parts import hold_ready
 from alframework.tools.builder_outputs import builder_outputs
 from alframework.tools.sampler_coordinator import SamplerCoordinator
+from alframework.tools.sampled_frames import SampledFrame
 #import logging
 #logging.basicConfig(level=logging.DEBUG)
 
@@ -122,7 +123,11 @@ for cur_Exec in sampler_task.executors:
     if cur_Exec.replace('_executor', '_standby_executor') in executor_list:
         sampler_task.executors.append(cur_Exec.replace('_executor', '_standby_executor'))
 # Single-structure samplers submit one task per structure as before; see sampler_coordinator.
-sampling = SamplerCoordinator(sampler_task, master_config['sampler_task'], sampler_config, master_config)
+sampling_master = master_config
+if args.test_sampler and 'sampler_frame_spool' in master_config:
+    sampling_master = dict(master_config)
+    sampling_master.pop('sampler_frame_spool')
+sampling = SamplerCoordinator(sampler_task, master_config['sampler_task'], sampler_config, sampling_master)
 sampler_task_queue = sampling.queue
 print("Sampling: " + sampling.describe())
 
@@ -132,7 +137,8 @@ for cur_Exec in qm_task.executors:
     if cur_Exec.replace('_executor', '_standby_executor') in executor_list:
         qm_task.executors.append(cur_Exec.replace('_executor', '_standby_executor'))
 # Without a 'batching' block in QM_config, labeling submits one QM task per structure as before.
-labeling = LabelingCoordinator(qm_task, master_config['QM_task'], QM_config, master_config)
+labeling = LabelingCoordinator(qm_task, master_config['QM_task'], QM_config, master_config,
+                               sampled_frame_handoff=sampling.frame_directory is not None)
 QM_task_queue = labeling.queue
 print("QM labeling: " + labeling.describe())
 
@@ -514,12 +520,13 @@ while True:
         sampling.submit_ready([{"sampler_config": sampler_config}, *all_configs, status])
 
     # Run more QM
+    sampling.collect_frames()
     if admitting and sampler_task_queue.get_completed_number() > master_config['minimum_QM']:
         sampler_results, failed = sampler_task_queue.get_task_results()
         status['lifetime_failed_sampler_tasks'] = status['lifetime_failed_sampler_tasks'] + failed
         status['lifetime_failed_sampler_structures'] = status.get('lifetime_failed_sampler_structures', 0) + sampling.take_failed_structures(failed)
         for structure in sampler_results: #may need [0]
-            assert isinstance(structure, MoleculesObject), 'structure must be a MoleculesObject instance'
+            assert isinstance(structure, (MoleculesObject, SampledFrame)), 'invalid sampled frame'
         # Without cohort selection this is every result whose atoms is set, as before.
         for structure in sampling.harvest(sampler_results):
             labeling.submit(structure, [{"QM_config": QM_config}, master_config, *all_configs, status])
@@ -590,4 +597,5 @@ while True:
 
 # Release the allocations; a run without a label budget never reaches this.
 parsl.dfk().cleanup()
+sampling.cleanup_frames()
 	

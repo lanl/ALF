@@ -73,6 +73,25 @@ task's end, without the time a block spends idle. Tasks in your own modules are 
 decorated with ``alframework.tools.task_timeline.timed(stage)`` under ``@python_app``. With the variable
 unset, nothing is written, and a line that can't be written is skipped without failing the task.
 
+.. _monitoring-coordinator-loop:
+
+Coordinator Loop
+----------------
+
+At scale the coordinator itself can be what a run waits for: it submits every task, collects every result
+and writes the held labels, one pass of its loop after another. To see where its time goes, set
+``coordinator_loop_path`` in the master configuration, such as ``"coordinator_loop.csv"``. Each pass then
+appends one CSV row: its ``loop`` (``bootstrap`` or ``active``), ``start`` and ``seconds`` without its
+sleep, the seconds in each phase (reloading the configuration files, submitting and collecting builders,
+submitting and collecting sampling, submitting QM, holding finished labels, storing a shard, collecting
+training results, progress plots, printing and writing status, checking the executors, and retiring
+by-reference files), the ``sleep`` that followed, the QM results it held, and how much work was in flight
+at its end. It is off by default, adds a few timer calls per pass when on, and a row that can't be written
+stops the timing without stopping the run. A restarted coordinator appends to the same file.
+
+When passes get longer and their sleeps no longer leave the loop idle, the coordinator limits the run, and
+the busiest phase is where to look.
+
 .. _monitoring-run-report:
 
 Run Report
@@ -118,6 +137,9 @@ A *cycle* below is the model the run had when a task started, the same number as
        excited states, each state's energy and force errors as one line per state.
    * - ``run-report-health.png``
      - Each stage's peak GPU memory per task, the coordinator's memory over the run, and failed tasks.
+   * - ``run-report-loop.png``
+     - With ``coordinator_loop_path``: the share of the coordinator's loop time each phase took over the
+       run, waiting included, and each pass's time without waiting.
    * - ``run_report.json``
      - The numbers behind the figures, plus each stage's task count, failures and time percentiles, the
        gaps between stages in each cycle, the block waits, and hosts whose median task time is at least
@@ -126,8 +148,8 @@ A *cycle* below is the model the run had when a task started, the same number as
 It reads the task timeline (``task_timeline_dir`` in the master configuration, else
 ``ALF_TASK_TIMELINE_DIR``, else ``RUN_DIR/task_timeline``), Parsl's ``runinfo`` submit scripts, the
 trajectory summary, the label shards (``h5_path``), the members' ``training_summary.json`` and, with
-``ALF_LIGHTNING_STATS=1``, their per-rank ``lightning_stats``, and the coordinator's memory samples
-(``coordinator_memory_sample``). A figure whose records are missing is skipped, and ``run_report.json`` lists
+``ALF_LIGHTNING_STATS=1``, their per-rank ``lightning_stats``, the coordinator's memory samples
+(``coordinator_memory_sample``), and its loop timing (``coordinator_loop_path``). A figure whose records are missing is skipped, and ``run_report.json`` lists
 it under ``skipped``.
 
 Parsl

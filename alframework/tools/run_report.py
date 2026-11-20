@@ -14,6 +14,8 @@ It reads the records described in :mod:`alframework.tools.run_records` and write
 - ``run-report-labels.png``: labels stored per training round, and in total;
 - ``run-report-training.png``: epoch time and the final test errors per round, one point per member;
 - ``run-report-health.png``: GPU memory peaks per stage, the coordinator's memory over the run, and failed tasks;
+- ``run-report-loop.png``: with ``coordinator_loop_path``, how the coordinator's loop divided its time among its
+  phases over the run, and how long each pass took;
 - ``run_report.json``: the numbers behind them, with the gaps between stages and the slowest hosts.
 
 A figure whose records are missing is skipped, and the summary lists what was missing. With ``run_report: true``
@@ -570,9 +572,83 @@ def plot_health(records, out_dir, written):
     return True
 
 
+# What each phase of a coordinator pass does (alframework.tools.loop_timing.PHASES), for the loop figure's key.
+LOOP_PHASE_NAMES = {
+    "reload_config": "Reloading configs", "builders": "Submitting builders", "builder_harvest": "Collecting builders",
+    "sampler_submit": "Submitting sampling", "sampler_harvest": "Collecting samples", "qm_submit": "Submitting QM",
+    "hold": "Holding labels", "store": "Storing a shard", "ml": "Collecting training", "plots": "Progress plots",
+    "print_status": "Printing status", "write_status": "Writing status", "executor_check": "Checking executors",
+    "retire_frames": "Retiring frames"}
+LOOP_PHASES_SHOWN = 7  # the busiest phases get the palette's first colors; the rest are summed as "Other"
+
+
+def loop_phase_shares(loop):
+    """Each phase's share of the coordinator's busy time over the whole run, largest first."""
+    from alframework.tools.loop_timing import PHASES
+    totals = loop[list(PHASES)].sum()
+    busy = totals.sum()
+    return (totals / busy).sort_values(ascending=False) if busy > 0 else totals * 0
+
+
+def plot_loop(records, out_dir, written):
+    loop = records["loop"]
+    if loop.empty:
+        return False
+    from alframework.tools.loop_timing import PHASES
+    from alframework.tools.plot_style import OVERFLOW
+    t0 = records["run_start"]
+    end = float((loop["start"] + loop["seconds"] + loop["sleep"].fillna(0)).max())
+    scale, xlabel = _time_axis(end - t0)
+    edges, centers = _bins(t0, end)
+    bin_of = np.clip(np.searchsorted(edges, loop["start"].to_numpy(), side="right") - 1, 0, len(centers) - 1)
+    present = np.unique(bin_of)
+    phase_seconds = loop[list(PHASES)].fillna(0).groupby(bin_of).sum().reindex(present)
+    waiting = loop["sleep"].fillna(0).groupby(bin_of).sum().reindex(present)
+    whole = phase_seconds.sum(axis=1) + waiting
+    whole[whole <= 0] = np.nan
+    shares = loop_phase_shares(loop)
+    shown = [phase for phase in shares.index[:LOOP_PHASES_SHOWN] if shares[phase] > 0]
+    others = [phase for phase in PHASES if phase not in shown]
+    series = [(LOOP_PHASE_NAMES[phase], phase_seconds[phase], color) for color, phase in series_colors(shown)]
+    if others and phase_seconds[others].to_numpy().sum() > 0:
+        series.append(("Other phases", phase_seconds[others].sum(axis=1), OVERFLOW))
+    series.append(("Waiting between passes", waiting, QUEUE_SHADE))
+
+    figure, axes = _figure(2, "Coordinator loop", "Each pass of the coordinator's main loop, from coordinator_loop_path. "
+                           "The top panel divides the loop's time among its phases, waiting included: when the "
+                           "waiting disappears, the coordinator itself is what the run waits for.", height=1.7)
+    x = (centers[present] - t0) / scale
+    axes[0].stackplot(x, [100 * values.to_numpy() / whole.to_numpy() for _, values, _ in series],
+                      colors=[color for _, _, color in series], alpha=0.9, linewidth=0)
+    key(axes[0], [(name, {"area": color, "alpha": 0.9}) for name, _, color in series])
+    busiest = ", ".join(f"{LOOP_PHASE_NAMES[phase][0].lower()}{LOOP_PHASE_NAMES[phase][1:]} {100 * shares[phase]:.0f}%"
+                        for phase in shown[:2])
+    _panel(axes[0], "Where the coordinator's time went", f"busy time: {busiest}" if busiest else "no busy time",
+           "Percent of loop time")
+    axes[0].set_ylim(0, 100)
+
+    seconds = loop["seconds"].to_numpy()
+    starts = (loop["start"].to_numpy() - t0) / scale
+    medians = pd.Series(seconds).groupby(bin_of).median().reindex(present)
+    axes[1].scatter(starts, seconds, s=8, color=MEMBER_COLOR, alpha=0.35, lw=0)
+    axes[1].plot(x, medians.to_numpy(), color=TEXT, lw=1.4)
+    key(axes[1], [("Each pass", dict(color=MEMBER_COLOR, lw=0, marker="o", ms=4, alpha=0.6)),
+                  ("Median over time", dict(color=TEXT, lw=1.4))])
+    longest = loop.loc[loop["seconds"].idxmax()]
+    _panel(axes[1], "Time per pass, without waiting",
+           f"{len(loop):,} passes, median {np.median(seconds):.3g} s, longest {longest['seconds']:.3g} s at "
+           f"{(longest['start'] - t0) / scale:.1f} {xlabel.split()[0].lower()}", "Seconds", xlabel)
+    axes[1].set_ylim(bottom=0)
+    for axis in axes:
+        axis.set_xlim(0, (end - t0) / scale * 1.02)
+    _save(figure, out_dir, "run-report-loop.png", written)
+    return True
+
+
 FIGURES = (("stages", plot_stages, "task timeline"), ("task_times", plot_task_times, "task timeline"),
            ("spread", plot_spread, "trajectory summary"), ("labels", plot_labels, "stored labels"),
-           ("training", plot_training, "training summaries"), ("health", plot_health, "task timeline and memory"))
+           ("training", plot_training, "training summaries"), ("health", plot_health, "task timeline and memory"),
+           ("loop", plot_loop, "coordinator loop timing"))
 
 
 def summary(records):
@@ -598,7 +674,18 @@ def summary(records):
         coordinator_memory=dict(peak_tree_gib=float(memory["tree_gib"].max()),
                                 peak_coordinator_gib=float(memory["coordinator_gib"].max())) if not memory.empty
         else {},
+        coordinator_loop=_loop_summary(records["loop"]),
     ))
+
+
+def _loop_summary(loop):
+    if loop.empty:
+        return {}
+    seconds = loop["seconds"]
+    return dict(passes=int(len(loop)), median_seconds=float(seconds.median()),
+                p90_seconds=float(seconds.quantile(0.9)), longest_seconds=float(seconds.max()),
+                busy_share_by_phase={phase: float(share) for phase, share in loop_phase_shares(loop).items()},
+                results_held=int(loop["results_held"].fillna(0).sum()))
 
 
 def write_report(run_dir, out_dir=None, master_config_path=None, timeline_dir=None):

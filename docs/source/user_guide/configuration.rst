@@ -206,6 +206,10 @@ The master config controls the workflow wiring. Common fields include:
        appends one row per process per sample (time, PID, parent PID, command, RSS and PSS in
        KiB) to ``coordinator_memory_path``, default ``coordinator_memory.csv``, and stops when
        the coordinator exits. It reads ``/proc``, so it needs Linux. See :ref:`running-at-scale-coordinator-memory`.
+   * - ``coordinator_loop_path``
+     - Optional CSV file where the coordinator appends one row per pass of its loop: how long
+       each phase of the pass took, its sleep, and the work in flight. Off when unset. See
+       :ref:`monitoring-coordinator-loop`.
    * - ``run_report``, ``run_report_dir``, ``task_timeline_dir``
      - Optional. With ``run_report`` true, each progress-plot update also remakes the run report in
        ``run_report_dir`` (default ``run_report``), in its own process. ``task_timeline_dir`` is where the

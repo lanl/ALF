@@ -8,7 +8,8 @@ says what it lacks. The records:
 - the trajectory summary (``trajectory_summary_path``): one row per trajectory, with its model and spread;
 - the stored labels (``h5_path``): one shard per training round;
 - the members' ``training_summary.json`` and ``lightning_stats`` (``model_path``): one row per member per round;
-- the coordinator memory samples (``coordinator_memory_path``, :mod:`alframework.tools.memory_sampler`).
+- the coordinator memory samples (``coordinator_memory_path``, :mod:`alframework.tools.memory_sampler`);
+- the coordinator's loop passes (``coordinator_loop_path``, :mod:`alframework.tools.loop_timing`).
 
 A task's *cycle* is the model the run had when the task started: the latest training round finished by then
 (see :func:`assign_cycles`), the same number as a trajectory's ``model``.
@@ -229,6 +230,18 @@ def coordinator_memory(path):
     return pd.DataFrame({'coordinator_gib': coordinator, 'tree_gib': tree}).reset_index()
 
 
+def coordinator_loop(path):
+    """The coordinator's loop passes (:mod:`alframework.tools.loop_timing`), one row each; empty without them."""
+    from alframework.tools.loop_timing import COLUMNS
+    if not path or not os.path.exists(path):
+        return pd.DataFrame(columns=list(COLUMNS))
+    passes = pd.read_csv(path)
+    for column in COLUMNS:
+        if column != 'loop':
+            passes[column] = pd.to_numeric(passes[column], errors='coerce') if column in passes else np.nan
+    return passes.dropna(subset=['start', 'seconds']).sort_values('start', kind='stable').reset_index(drop=True)
+
+
 def run_records(run_dir, master_config=None, timeline_dir=None):
     """Every record of a run as a dict of tables, with the paths it read under ``paths``."""
     run_dir = str(run_dir)
@@ -240,7 +253,8 @@ def run_records(run_dir, master_config=None, timeline_dir=None):
                  trajectories=_resolve(run_dir, master.get('trajectory_summary_path')),
                  labels=_resolve(run_dir, master.get('h5_path')),
                  models=_resolve(run_dir, master.get('model_path')),
-                 memory=_resolve(run_dir, master.get('coordinator_memory_path', 'coordinator_memory.csv')))
+                 memory=_resolve(run_dir, master.get('coordinator_memory_path', 'coordinator_memory.csv')),
+                 loop=_resolve(run_dir, master.get('coordinator_loop_path')))
     task_table = tasks(paths['timeline'])
     training_table = training(paths['models'])
     finishes = round_finish_times(training_table)
@@ -248,10 +262,11 @@ def run_records(run_dir, master_config=None, timeline_dir=None):
         task_table['cycle'] = assign_cycles(task_table['start'], finishes)
     blocks = block_submissions(run_dir)
     memory = coordinator_memory(paths['memory'])
+    loop = coordinator_loop(paths['loop'])
     # The run's start: its first record of any kind.
     starts = [table[column].min() for table, column in ((task_table, 'start'), (blocks, 'submitted'),
-                                                         (memory, 'time')) if not table.empty]
+                                                         (memory, 'time'), (loop, 'start')) if not table.empty]
     return dict(paths=paths, tasks=task_table, blocks=blocks, block_waits=block_waits(blocks, task_table),
                 trajectories=trajectories(paths['trajectories']), labels=labels_per_round(paths['labels']),
-                training=training_table, round_finishes=finishes, memory=memory,
+                training=training_table, round_finishes=finishes, memory=memory, loop=loop,
                 run_start=float(min(starts)) if starts else None)

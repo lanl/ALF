@@ -31,6 +31,7 @@ from alframework.tools.restarts import (
 from alframework.tools.labeling_coordinator import LabelingCoordinator
 from alframework.tools.label_validation import screen_labels
 from alframework.tools.label_parts import hold_ready
+from alframework.tools.loop_timing import coordinator_loop_timer
 from alframework.tools.builder_outputs import builder_outputs
 from alframework.tools.sampler_coordinator import SamplerCoordinator
 from alframework.tools.sampled_frames import SampledFrame
@@ -195,6 +196,17 @@ write_status(master_config['status_path'], status)
 label_budget = stored_label_budget(master_config)
 spare_seeds = bootstrap_spare_count(master_config)
 storage_batch_size = master_config.get('label_storage_batch_size')
+# Optional: how long each phase of each loop pass takes (alframework.tools.loop_timing).
+loop_timer = coordinator_loop_timer(master_config)
+
+
+def end_loop_pass(loop, delay):
+    """Record the end of a timed loop pass, with how much work was in flight."""
+    if loop_timer.enabled:
+        loop_timer.count(builder_queue=builder_task_queue.get_number(), sampler_queue=sampler_task_queue.get_number(),
+                         qm_queue=QM_task_queue.get_number(), ml_queue=ML_task_queue.get_number(),
+                         held_labels=held.successful())
+        loop_timer.end_pass(loop, delay)
 
 
 def hold_finished_labels(*, drain=False):
@@ -208,6 +220,7 @@ def hold_finished_labels(*, drain=False):
         else:
             results, failed, succeeded_files, failed_files = labeling.take_finished_with_references(storage_batch_size)
         screen_labels(results, properties)
+        loop_timer.count(results_held=len(results))
         lost = labeling.take_failed_structures(failed)
         status['lifetime_failed_QM_tasks'] = status['lifetime_failed_QM_tasks'] + failed
         status['lifetime_failed_QM_structures'] = status.get('lifetime_failed_QM_structures', 0) + lost
@@ -392,54 +405,63 @@ if status['current_h5_id'] == 0 and status['current_model_id'] < 0:
                   'than bootstrap_set ({})'.format(spares_handed_out(), spare_seeds, bootstrap_failures(),
                                                     held.converged(), master_config['bootstrap_set']), flush=True)
             break
-        if QM_task_queue.get_queued_number() < master_config['target_queued_QM']:
-            while builder_task_queue.get_number() * master_config.get('maximum_builder_structures', 1) < master_config['parallel_samplers']:
-                moleculeids, next_molecule_id = next_bootstrap_ids(
-                    status['current_molecule_id'], bootstrap_limit,
-                    master_config.get('maximum_builder_structures', 1), finite_bootstrap, bootstrap_skip)
-                status['current_molecule_id'] = next_molecule_id
-                if not moleculeids:
-                    break
-                task_input = build_input_dict(builder_task.func,
-                                              [{"moleculeid": moleculeids[0],
-                                                "moleculeids": moleculeids, "builder_config": builder_config},
-                                               *all_configs, status],
-                                              raise_on_fail=True)
-                task = builder_task(**task_input)
-                bootstrap_builder_seeds[task] = len(moleculeids)
-                builder_task_queue.add_task(task)
+        with loop_timer.phase('builders'):
+            if QM_task_queue.get_queued_number() < master_config['target_queued_QM']:
+                while builder_task_queue.get_number() * master_config.get('maximum_builder_structures', 1) < master_config['parallel_samplers']:
+                    moleculeids, next_molecule_id = next_bootstrap_ids(
+                        status['current_molecule_id'], bootstrap_limit,
+                        master_config.get('maximum_builder_structures', 1), finite_bootstrap, bootstrap_skip)
+                    status['current_molecule_id'] = next_molecule_id
+                    if not moleculeids:
+                        break
+                    task_input = build_input_dict(builder_task.func,
+                                                  [{"moleculeid": moleculeids[0],
+                                                    "moleculeids": moleculeids, "builder_config": builder_config},
+                                                   *all_configs, status],
+                                                  raise_on_fail=True)
+                    task = builder_task(**task_input)
+                    bootstrap_builder_seeds[task] = len(moleculeids)
+                    builder_task_queue.add_task(task)
 
-        if (builder_task_queue.get_exec_done_number() > master_config['minimum_QM']
-                or builder_task_queue.get_failed_number() > 0
-                or (master_config.get('finite_bootstrap', False) and builder_task_queue.get_completed_number() > 0)):
-            builder_results, failed = builder_task_queue.get_task_results()
-            status['lifetime_failed_builder_tasks'] = status['lifetime_failed_builder_tasks'] + failed
-            # A lost builder's seeds count as failed, so spares can replace them.
-            lost_builder_seeds += sum(bootstrap_builder_seeds.get(task, 0) for task in builder_task_queue.last_failed)
-            bootstrap_builder_seeds = {task: seeds for task, seeds in bootstrap_builder_seeds.items()
-                                       if any(task is running for running in builder_task_queue.task_list)}
-            for result in builder_results:
-                for structure in builder_outputs(result, master_config['builder_task']):
-                    labeling.submit(structure, [{"QM_config": QM_config}, *all_configs, status])
-            builder_results = result = structure = None
-        # Once every seed is built, a partial batch can't fill, so send it ("full_only" would wait forever).
-        labeling.submit_ready([{"QM_config": QM_config}, *all_configs, status], flush=bootstrap_seeds_exhausted())
-        hold_finished_labels()
+        with loop_timer.phase('builder_harvest'):
+            if (builder_task_queue.get_exec_done_number() > master_config['minimum_QM']
+                    or builder_task_queue.get_failed_number() > 0
+                    or (master_config.get('finite_bootstrap', False) and builder_task_queue.get_completed_number() > 0)):
+                builder_results, failed = builder_task_queue.get_task_results()
+                status['lifetime_failed_builder_tasks'] = status['lifetime_failed_builder_tasks'] + failed
+                # A lost builder's seeds count as failed, so spares can replace them.
+                lost_builder_seeds += sum(bootstrap_builder_seeds.get(task, 0) for task in builder_task_queue.last_failed)
+                bootstrap_builder_seeds = {task: seeds for task, seeds in bootstrap_builder_seeds.items()
+                                           if any(task is running for running in builder_task_queue.task_list)}
+                for result in builder_results:
+                    for structure in builder_outputs(result, master_config['builder_task']):
+                        labeling.submit(structure, [{"QM_config": QM_config}, *all_configs, status])
+                builder_results = result = structure = None
+        with loop_timer.phase('qm_submit'):
+            # Once every seed is built, a partial batch can't fill, so send it ("full_only" would wait forever).
+            labeling.submit_ready([{"QM_config": QM_config}, *all_configs, status], flush=bootstrap_seeds_exhausted())
+        with loop_timer.phase('hold'):
+            hold_finished_labels()
 
-        print("### Bootstraping Learning Status at: " + time.ctime() + " ###")
-        if finite_bootstrap:
-            print("bootstrap: {} of {} labels converged, {} failed, {} of {} spare seeds handed out".format(
-                held.converged(), master_config['bootstrap_set'], bootstrap_failures(),
-                spares_handed_out(), spare_seeds))
-        print("builder status:")
-        builder_task_queue.print_status()
-        print("QM status:")
-        QM_task_queue.print_status()
-    
-        write_status(master_config['status_path'], status)
-        stop_if_executor_failed(parsl.dfk())
+        with loop_timer.phase('print_status'):
+            print("### Bootstraping Learning Status at: " + time.ctime() + " ###")
+            if finite_bootstrap:
+                print("bootstrap: {} of {} labels converged, {} failed, {} of {} spare seeds handed out".format(
+                    held.converged(), master_config['bootstrap_set'], bootstrap_failures(),
+                    spares_handed_out(), spare_seeds))
+            print("builder status:")
+            builder_task_queue.print_status()
+            print("QM status:")
+            QM_task_queue.print_status()
 
-        time.sleep(labeling.poll_delay(poll_interval))
+        with loop_timer.phase('write_status'):
+            write_status(master_config['status_path'], status)
+        with loop_timer.phase('executor_check'):
+            stop_if_executor_failed(parsl.dfk())
+
+        delay = labeling.poll_delay(poll_interval)
+        end_loop_pass('bootstrap', delay)
+        time.sleep(delay)
 
     if finite_bootstrap:
         print("Finite bootstrap finished: {} of {} labels converged, {} seeds failed, {} spare seeds handed out".format(
@@ -471,146 +493,164 @@ if status['current_model_id'] < 0:
 ##################################
 master_loop_iter = 1
 while True:
-    #Re-load configurations, but watch for stupid errors
-    try:
-        # Load the master configuration:
-        master_config_new = load_config_file(args.master)
-        poll_interval_new = coordinator_poll_interval(master_config_new)
-        if 'master_directory' not in master_config_new:
-            master_config_new['master_directory'] = None
+    with loop_timer.phase('reload_config'):
+        #Re-load configurations, but watch for stupid errors
+        try:
+            # Load the master configuration:
+            master_config_new = load_config_file(args.master)
+            poll_interval_new = coordinator_poll_interval(master_config_new)
+            if 'master_directory' not in master_config_new:
+                master_config_new['master_directory'] = None
 
-        # Load the builder config:
-        builder_config_new = load_config_file(master_config_new['builder_config_path'], master_config_new['master_directory'])
-        
-        # Load the sampler config:
-        sampler_config_new = load_config_file(master_config_new['sampler_config_path'], master_config_new['master_directory'])
-        
-        # Load the QM config:
-        QM_config_new = load_config_file(master_config_new['QM_config_path'], master_config_new['master_directory'])
-        
-        # Load the ML config:
-        ML_config_new = load_config_file(master_config_new['ML_config_path'], master_config_new['master_directory'])
-    except Exception as e:
-        print("Failed to re-load configuration files:")
-        print(e)
-    else:
-        master_config = master_config_new
-        poll_interval = poll_interval_new
-        builder_config = builder_config_new
-        sampler_config = sampling.apply_window(sampling.keep_startup_settings(sampler_config_new),
-                                               status.get('lifetime_stored_labels', 0))
-        QM_config = labeling.keep_startup_settings(QM_config_new)
-        ML_config = ML_config_new
-        all_configs = [master_config, builder_config, sampler_config, QM_config, ML_config]
-	
+            # Load the builder config:
+            builder_config_new = load_config_file(master_config_new['builder_config_path'], master_config_new['master_directory'])
+
+            # Load the sampler config:
+            sampler_config_new = load_config_file(master_config_new['sampler_config_path'], master_config_new['master_directory'])
+
+            # Load the QM config:
+            QM_config_new = load_config_file(master_config_new['QM_config_path'], master_config_new['master_directory'])
+
+            # Load the ML config:
+            ML_config_new = load_config_file(master_config_new['ML_config_path'], master_config_new['master_directory'])
+        except Exception as e:
+            print("Failed to re-load configuration files:")
+            print(e)
+        else:
+            master_config = master_config_new
+            poll_interval = poll_interval_new
+            builder_config = builder_config_new
+            sampler_config = sampling.apply_window(sampling.keep_startup_settings(sampler_config_new),
+                                                   status.get('lifetime_stored_labels', 0))
+            QM_config = labeling.keep_startup_settings(QM_config_new)
+            ML_config = ML_config_new
+            all_configs = [master_config, builder_config, sampler_config, QM_config, ML_config]
+
     # Once the label budget is reached, start nothing new; only running training finishes.
     admitting = label_budget is None or status.get('lifetime_stored_labels', 0) < label_budget
 
     # Run more builders
-    if admitting and (QM_task_queue.get_queued_number() < master_config['target_queued_QM']) and \
-            (QM_task_queue.get_number() + held.successful() < master_config.get('maximum_completed_QM', 1e12)):
-        while sampler_task_queue.get_number() + builder_task_queue.get_number() * master_config.get('maximum_builder_structures', 1) \
-                < master_config['parallel_samplers']:
-            moleculeids = ['mol-{:04d}-{:010d}'.format(status['current_model_id'], it_ind) for it_ind in
-                           range(status['current_molecule_id'], status['current_molecule_id']+master_config.get('maximum_builder_structures',1))]
-            task_input = build_input_dict(builder_task.func,
-                                          [{"moleculeid": 'mol-{:04d}-{:010d}'.format(status['current_model_id'], status['current_molecule_id']),
-                                            "moleculeids": moleculeids, "builder_config": builder_config},
-                                           *all_configs, status],
-                                          raise_on_fail=True)
-            builder_task_queue.add_task(builder_task(**task_input))
-            status['current_molecule_id'] = status['current_molecule_id'] + master_config.get('maximum_builder_structures',1)
-            
+    with loop_timer.phase('builders'):
+        if admitting and (QM_task_queue.get_queued_number() < master_config['target_queued_QM']) and \
+                (QM_task_queue.get_number() + held.successful() < master_config.get('maximum_completed_QM', 1e12)):
+            while sampler_task_queue.get_number() + builder_task_queue.get_number() * master_config.get('maximum_builder_structures', 1) \
+                    < master_config['parallel_samplers']:
+                moleculeids = ['mol-{:04d}-{:010d}'.format(status['current_model_id'], it_ind) for it_ind in
+                               range(status['current_molecule_id'], status['current_molecule_id']+master_config.get('maximum_builder_structures',1))]
+                task_input = build_input_dict(builder_task.func,
+                                              [{"moleculeid": 'mol-{:04d}-{:010d}'.format(status['current_model_id'], status['current_molecule_id']),
+                                                "moleculeids": moleculeids, "builder_config": builder_config},
+                                               *all_configs, status],
+                                              raise_on_fail=True)
+                builder_task_queue.add_task(builder_task(**task_input))
+                status['current_molecule_id'] = status['current_molecule_id'] + master_config.get('maximum_builder_structures',1)
+
     # Harvest failed builders too, so they free capacity for replacement tasks.
-    if admitting and builder_task_queue.get_completed_number() > 0:
-        structure_list, failed = builder_task_queue.get_task_results()
-        status['lifetime_failed_builder_tasks'] = status['lifetime_failed_builder_tasks'] + failed
-        # Douple loop to facilitate possiblitiy of multiple sctructures returned by builder
-        for result in structure_list:
-            for structure in builder_outputs(result, master_config['builder_task']):
-                sampling.submit(structure, [{"sampler_config": sampler_config}, *all_configs, status])
-        # This loop runs at module level, so these names would keep the last harvest alive until the next one.
-        structure_list = result = structure = None
-    if admitting:
-        sampling.submit_ready([{"sampler_config": sampler_config}, *all_configs, status])
+    with loop_timer.phase('builder_harvest'):
+        if admitting and builder_task_queue.get_completed_number() > 0:
+            structure_list, failed = builder_task_queue.get_task_results()
+            status['lifetime_failed_builder_tasks'] = status['lifetime_failed_builder_tasks'] + failed
+            # Douple loop to facilitate possiblitiy of multiple sctructures returned by builder
+            for result in structure_list:
+                for structure in builder_outputs(result, master_config['builder_task']):
+                    sampling.submit(structure, [{"sampler_config": sampler_config}, *all_configs, status])
+            # This loop runs at module level, so these names would keep the last harvest alive until the next one.
+            structure_list = result = structure = None
+    with loop_timer.phase('sampler_submit'):
+        if admitting:
+            sampling.submit_ready([{"sampler_config": sampler_config}, *all_configs, status])
 
     # Run more QM
-    sampling.collect_frames()
-    if admitting and sampler_task_queue.get_completed_number() > master_config['minimum_QM']:
-        sampler_results, failed = sampler_task_queue.get_task_results()
-        status['lifetime_failed_sampler_tasks'] = status['lifetime_failed_sampler_tasks'] + failed
-        status['lifetime_failed_sampler_structures'] = status.get('lifetime_failed_sampler_structures', 0) + sampling.take_failed_structures(failed)
-        for structure in sampler_results: #may need [0]
-            assert isinstance(structure, (MoleculesObject, SampledFrame)), 'invalid sampled frame'
-        # Without cohort selection this is every result whose atoms is set, as before.
-        for structure in sampling.harvest(sampler_results):
-            labeling.submit(structure, [{"QM_config": QM_config}, master_config, *all_configs, status])
-        # Labeling holds what it needs; releasing these lets each structure go once its QM task finishes,
-        # instead of the whole harvest staying in memory for the rest of the run.
-        sampler_results = structure = None
-    if admitting:
-        labeling.submit_ready([{"QM_config": QM_config}, master_config, *all_configs, status])
+    with loop_timer.phase('sampler_harvest'):
+        sampling.collect_frames()
+        if admitting and sampler_task_queue.get_completed_number() > master_config['minimum_QM']:
+            sampler_results, failed = sampler_task_queue.get_task_results()
+            status['lifetime_failed_sampler_tasks'] = status['lifetime_failed_sampler_tasks'] + failed
+            status['lifetime_failed_sampler_structures'] = status.get('lifetime_failed_sampler_structures', 0) + sampling.take_failed_structures(failed)
+            for structure in sampler_results: #may need [0]
+                assert isinstance(structure, (MoleculesObject, SampledFrame)), 'invalid sampled frame'
+            # Without cohort selection this is every result whose atoms is set, as before.
+            for structure in sampling.harvest(sampler_results):
+                labeling.submit(structure, [{"QM_config": QM_config}, master_config, *all_configs, status])
+            # Labeling holds what it needs; releasing these lets each structure go once its QM task finishes,
+            # instead of the whole harvest staying in memory for the rest of the run.
+            sampler_results = structure = None
+    with loop_timer.phase('qm_submit'):
+        if admitting:
+            labeling.submit_ready([{"QM_config": QM_config}, master_config, *all_configs, status])
     # Including during training, when labels can't go into h5_dir.
-    hold_finished_labels()
+    with loop_timer.phase('hold'):
+        hold_finished_labels()
 
     # Train more models
-    if admitting and (held.converged() > master_config['save_h5_threshold']) and (ML_task_queue.get_number() < 1):
-        store_held_labels()
-        task_input = build_input_dict(ml_task.func,
-                                      [{"ML_config": ML_config}, *all_configs, status],
-                                      raise_on_fail=True)
-        ML_task_queue.add_task(ml_task(**task_input))
-        status['current_training_id'] = status['current_training_id'] + 1
-        
+    with loop_timer.phase('store'):
+        if admitting and (held.converged() > master_config['save_h5_threshold']) and (ML_task_queue.get_number() < 1):
+            store_held_labels()
+            task_input = build_input_dict(ml_task.func,
+                                          [{"ML_config": ML_config}, *all_configs, status],
+                                          raise_on_fail=True)
+            ML_task_queue.add_task(ml_task(**task_input))
+            status['current_training_id'] = status['current_training_id'] + 1
+
     # Update Model
-    if ML_task_queue.get_completed_number() > 0:
-        output, failed = ML_task_queue.get_task_results()
-        status['lifetime_failed_ML_tasks'] = status['lifetime_failed_ML_tasks'] + failed
-        for network in output:
-            if all(network[0]) and (network[1] > status['current_model_id']):
-                print('New Model: {:04d}'.format(network[1]))
-                status['current_model_id'] = network[1]
-                status['current_molecule_id'] = 0
-    
+    with loop_timer.phase('ml'):
+        if ML_task_queue.get_completed_number() > 0:
+            output, failed = ML_task_queue.get_task_results()
+            status['lifetime_failed_ML_tasks'] = status['lifetime_failed_ML_tasks'] + failed
+            for network in output:
+                if all(network[0]) and (network[1] > status['current_model_id']):
+                    print('New Model: {:04d}'.format(network[1]))
+                    status['current_model_id'] = network[1]
+                    status['current_molecule_id'] = 0
+
     # Construct analysis plots
-    if (master_loop_iter % master_config.get('update_plots_every', 1000) == 0) and (analysis_plot is not None):
-        analysis_input = build_input_dict(analysis_plot, all_configs)
-        progress_plots.update(analysis_input)
-    if run_report_updates is not None and master_loop_iter % master_config.get('update_plots_every', 1000) == 0:
-        run_report_updates.update({'run_dir': os.getcwd(), 'out_dir': master_config.get('run_report_dir'),
-                                   'master_config_path': os.path.abspath(args.master)})
-                
-    print("### Active Learning Status at: " + time.ctime() + " ###")
-    print("builder status:")
-    builder_task_queue.print_status()
-    print("sampling status:")
-    sampler_task_queue.print_status()
-    if sampling.status() is not None:
-        print("cohorts: " + json.dumps(sampling.status()))
-    print("QM status:")
-    QM_task_queue.print_status()
-    print("ML status:")
-    ML_task_queue.print_status()
-    sys.stdout.flush()
-    
-    write_status(master_config['status_path'], status)
-    if frame_retirement is not None:
-        frame_retirement.checkpointed()
-    stop_if_executor_failed(parsl.dfk())
-    
+    with loop_timer.phase('plots'):
+        if (master_loop_iter % master_config.get('update_plots_every', 1000) == 0) and (analysis_plot is not None):
+            analysis_input = build_input_dict(analysis_plot, all_configs)
+            progress_plots.update(analysis_input)
+        if run_report_updates is not None and master_loop_iter % master_config.get('update_plots_every', 1000) == 0:
+            run_report_updates.update({'run_dir': os.getcwd(), 'out_dir': master_config.get('run_report_dir'),
+                                       'master_config_path': os.path.abspath(args.master)})
+
+    with loop_timer.phase('print_status'):
+        print("### Active Learning Status at: " + time.ctime() + " ###")
+        print("builder status:")
+        builder_task_queue.print_status()
+        print("sampling status:")
+        sampler_task_queue.print_status()
+        if sampling.status() is not None:
+            print("cohorts: " + json.dumps(sampling.status()))
+        print("QM status:")
+        QM_task_queue.print_status()
+        print("ML status:")
+        ML_task_queue.print_status()
+        sys.stdout.flush()
+
+    with loop_timer.phase('write_status'):
+        write_status(master_config['status_path'], status)
+    with loop_timer.phase('retire_frames'):
+        if frame_retirement is not None:
+            frame_retirement.checkpointed()
+    with loop_timer.phase('executor_check'):
+        stop_if_executor_failed(parsl.dfk())
+
     if not admitting and ML_task_queue.get_number() == 0:
         # Finished labels were paid for, so keep them, although no model trained on them.
-        beyond_budget = store_held_labels(**{STORED_AT_BUDGET_STOP: 'true'}) if held.successful() else 0
+        with loop_timer.phase('store'):
+            beyond_budget = store_held_labels(**{STORED_AT_BUDGET_STOP: 'true'}) if held.successful() else 0
         write_status(master_config['status_path'], status)
         print("Stopping: stored {} labels (maximum_stored_labels is {}), including {} finished labels stored at the "
               "stop without training. Dropped {} builder, {} sampler, and {} unfinished QM structures.".format(
                   status['lifetime_stored_labels'], label_budget, beyond_budget, builder_task_queue.get_number(),
                   sampler_task_queue.get_number(), QM_task_queue.get_number()))
         sys.stdout.flush()
+        end_loop_pass('active', 0)
         break
 
     master_loop_iter += 1
-    time.sleep(labeling.poll_delay(sampling.poll_delay(poll_interval)))
+    delay = labeling.poll_delay(sampling.poll_delay(poll_interval))
+    end_loop_pass('active', delay)
+    time.sleep(delay)
 
 # Release the allocations; a run without a label budget never reaches this.
 parsl.dfk().cleanup()

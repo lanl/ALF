@@ -23,13 +23,33 @@ def _task(stage, start, seconds, outcome="ok", host="node-a", gpu=None):
                 outcome=outcome, host=host, pid=1, slurm_job="7", parsl_block="0", gpu_peak_gb=gpu)
 
 
+def _write_loop(path, passes=300):
+    """Coordinator passes over the run: short and mostly waiting, then busy holding labels and submitting QM."""
+    from alframework.tools.loop_timing import LoopTimer
+    clock = {"now": 0.0, "wall": T0}
+    timer = LoopTimer(str(path), clock=lambda: clock["now"], wall_clock=lambda: clock["wall"])
+    for number in range(passes):
+        busy = 100 <= number < 160
+        started = clock["now"]
+        for phase, seconds in (("reload_config", 0.01), ("sampler_harvest", 0.05), ("qm_submit", 0.6 if busy else 0.02),
+                               ("hold", 4.0 if busy else 0.01), ("write_status", 0.02), ("print_status", 0.01)):
+            with timer.phase(phase):
+                clock["now"] += seconds
+        timer.count(results_held=1 if busy else 0, qm_queue=500 if busy else 0)
+        timer.end_pass("bootstrap" if number < 20 else "active", 1.0)
+        clock["wall"] += 1.0 + clock["now"] - started
+    timer.close()
+
+
 def make_run(run_dir, rounds=3, with_memory=True, excited=False):
     """A run directory with every record a report reads; ``excited``: two selected states, gap spreads, and test
     errors per state, as an excited-state run records them."""
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "master_config.json").write_text(json.dumps(dict(
         h5_path="h5store/data-{:04d}.h5", model_path="models/ensemble-{:04d}",
-        trajectory_summary_path="plots/trajectories.jsonl", gpus_per_node=4)))
+        trajectory_summary_path="plots/trajectories.jsonl", gpus_per_node=4,
+        coordinator_loop_path="coordinator_loop.csv")))
+    _write_loop(run_dir / "coordinator_loop.csv")
     # Tasks: each cycle samples, labels and trains after the previous round finished.
     timeline = run_dir / "task_timeline"
     timeline.mkdir()
@@ -139,7 +159,7 @@ def test_the_report_writes_every_figure_and_a_summary(tmp_path):
     written = run_report.write_report(make_run(tmp_path / "run"), out)
     assert set(written) == {"run-report-stages.png", "run-report-task-times.png", "run-report-spread.png",
                             "run-report-labels.png", "run-report-training.png", "run-report-health.png",
-                            "run_report.json"}
+                            "run-report-loop.png", "run_report.json"}
     summary = json.loads((out / "run_report.json").read_text())
     assert summary["skipped"] == []
     assert summary["stages"]["QM"]["failed"] == 3 and summary["stages"]["sampler"]["tasks"] == 12
@@ -154,6 +174,10 @@ def test_the_report_writes_every_figure_and_a_summary(tmp_path):
     rounds = {row["round"]: row for row in summary["training_rounds"]}
     assert rounds[1]["median_epoch_seconds"] == pytest.approx(4.5)
     assert summary["coordinator_memory"]["peak_coordinator_gib"] == pytest.approx(5.0)
+    loop = summary["coordinator_loop"]
+    assert loop["passes"] == 300 and loop["results_held"] == 60
+    assert loop["longest_seconds"] == pytest.approx(4.69)
+    assert max(loop["busy_share_by_phase"], key=loop["busy_share_by_phase"].get) == "hold"
     for name in written:
         assert (out / name).stat().st_size > 0
 
@@ -252,7 +276,7 @@ def test_no_text_overlaps_in_any_report_figure(tmp_path, monkeypatch, excited):
     from alframework.tools.plot_style import overlapping_text, text_outside
     figures = _rendered_figures(monkeypatch, lambda: run_report.write_report(
         make_run(tmp_path / "run", excited=excited), tmp_path / "report"))
-    assert len(figures) == 6
+    assert len(figures) == len(run_report.FIGURES)
     for name, fig in figures:
         assert overlapping_text(fig) == [], name
         assert text_outside(fig) == [], name

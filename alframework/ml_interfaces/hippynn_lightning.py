@@ -170,14 +170,42 @@ class AlfLightningModule(HippynnLightningModule):
         Path(RECORD).write_text(json.dumps(record, indent=2) + '\n')
 
 
+# The ML_config options below, and the environment variables each falls back to when it isn't set.
+SHARED_DATA_VARIABLE = 'ALF_LIGHTNING_SHARED_DATA'
+STREAM_FINAL_VARIABLE = 'ALF_LIGHTNING_STREAM_FINAL'
+
+
+def option_setting(value, name):
+    """A checked on/off training option: ``True``, ``False``, or ``None`` to use its environment variable."""
+    if value is not None and not isinstance(value, bool):
+        raise ValueError(f'{name} must be true, false or null; received {value!r}.')
+    return value
+
+
+def shared_data_enabled(value=None, environ=None):
+    """``shared_training_data``, or with ``None`` whether ``ALF_LIGHTNING_SHARED_DATA`` is set (not ``0``)."""
+    if option_setting(value, 'shared_training_data') is not None:
+        return value
+    return (os.environ if environ is None else environ).get(SHARED_DATA_VARIABLE, '') not in ('', '0')
+
+
+def stream_final_enabled(value=None, environ=None):
+    """``stream_final_evaluation``, or with ``None`` whether ``ALF_LIGHTNING_STREAM_FINAL`` is ``1``."""
+    if option_setting(value, 'stream_final_evaluation') is not None:
+        return value
+    return (os.environ if environ is None else environ).get(STREAM_FINAL_VARIABLE) == '1'
+
+
 def train_data_parallel(training_modules, database, controller, *, n_devices, accelerator, seed, nodes=1,
-                        launcher=None):
+                        launcher=None, shared_data=None, stream_final=None):
     """Train ``training_modules`` on ``n_devices`` devices, in the current directory; return the metric tracker.
 
     ``accelerator`` is ``'gpu'`` or ``'cpu'``; CPU runs use the gloo backend and exist for testing.
     ``n_devices`` is the total over ``nodes`` nodes, which share it evenly. With ``nodes`` above 1,
     ``launcher`` is the command, as a list of words, that starts one process on each of those nodes,
-    each seeing its node's share of the devices (see ``node_rank``).
+    each seeing its node's share of the devices (see ``node_rank``). ``shared_data`` and ``stream_final``
+    are ML_config's ``shared_training_data`` and ``stream_final_evaluation``; ``None`` uses their
+    environment variables.
     """
     require_lightning()
     import hippynn
@@ -206,7 +234,7 @@ def train_data_parallel(training_modules, database, controller, *, n_devices, ac
           f'{controller.batch_size} per device, {controller.batch_size * n_devices} in total.')
     print(f'Preparation: structure file and training setup took {time.perf_counter() - started:.1f} s')
     stream = None
-    if os.environ.get('ALF_LIGHTNING_STREAM_FINAL') == '1':
+    if stream_final_enabled(stream_final):
         from alframework.ml_interfaces.hippynn_final import FinalEvaluation
 
         stream = FinalEvaluation.from_evaluator(training_modules.evaluator)
@@ -218,11 +246,11 @@ def train_data_parallel(training_modules, database, controller, *, n_devices, ac
         if path is not None:
             settings['final_evaluation_directory'] = path
         return _train_ranks_and_finish(training_modules, database, controller, metric_tracker, settings,
-                                       local_devices, launcher, stream)
+                                       local_devices, launcher, stream, shared_data=shared_data_enabled(shared_data))
 
 
 def _train_ranks_and_finish(training_modules, database, controller, metric_tracker, settings, local_devices, launcher,
-                            stream):
+                            stream, *, shared_data=None):
     import torch
 
     n_devices, nodes = settings['n_devices'], settings['nodes']
@@ -230,7 +258,7 @@ def _train_ranks_and_finish(training_modules, database, controller, metric_track
     sys.stdout.flush()
     # The ranks read the setup from a file. Passing it as process arguments would share its tensors
     # through shared memory, which fails on Linux for empty tensors and can exhaust /dev/shm.
-    splits = _share_splits(database) if os.environ.get('ALF_LIGHTNING_SHARED_DATA', '') not in ('', '0') else None
+    splits = _share_splits(database) if shared_data_enabled(shared_data) else None
     try:
         torch.save(dict(training_modules=training_modules, database=database, controller=controller,
                         metric_tracker=metric_tracker, settings=settings), PAYLOAD)

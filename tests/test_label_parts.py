@@ -354,6 +354,18 @@ def test_a_snapshot_is_sized_by_its_parts_when_choosing_readers(tmp_path, monkey
     assert h5_parallel.workers_for(str(snapshot), 4) > 1, "the parts, not the small snapshot, make it large"
 
 
+def test_the_configured_reader_count_comes_before_the_environment(tmp_path, monkeypatch):
+    from alframework.tools import h5_parallel
+    snapshot = str(_snapshot(tmp_path))
+    monkeypatch.setenv(h5_parallel.READ_WORKERS, '1')
+    assert h5_parallel.workers_for(snapshot, 4) == 1
+    assert h5_parallel.workers_for(snapshot, 4, requested=3) == 3
+    assert h5_parallel.workers_for(snapshot, 2, requested=3) == 2, "never more readers than groups"
+    for wrong in (0, True, 2.5, '4'):
+        with pytest.raises(ValueError, match='h5_read_workers must be a positive integer'):
+            h5_parallel.workers_for(snapshot, 4, requested=wrong)
+
+
 def test_a_mapping_alf_does_not_write_falls_back_to_hdf5(tmp_path):
     from alframework.tools import h5_parallel
     source = tmp_path / 'source.h5'

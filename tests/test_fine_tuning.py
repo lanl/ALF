@@ -63,6 +63,14 @@ def test_settings_resolve_local_files_against_the_master_directory(tmp_path):
     assert settings["foundation_model"] == str(tmp_path / "models/base.model")
     assert settings["replay_file"] == str(tmp_path / "replay/mp.xyz")
     assert (settings["n_models"], settings["seed"], settings["device"]) == (4, 0, "cuda")
+    assert settings["h5_read_workers"] is None
+
+
+def test_settings_take_the_ml_configs_reader_count(tmp_path):
+    block = dict(adapter=FAKE, foundation_model="base.model")
+    assert fine_tune_settings({"fine_tune": block, "h5_read_workers": 4}, str(tmp_path))["h5_read_workers"] == 4
+    with pytest.raises(ValueError, match="h5_read_workers"):
+        fine_tune_settings({"fine_tune": block, "h5_read_workers": 0}, str(tmp_path))
 
 
 @pytest.mark.parametrize("block, message", [

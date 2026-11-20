@@ -32,10 +32,12 @@ def __getattr__(name):
 
     class ALFPyAniDirectoryDB(PyAniDirectoryDB):
         def __init__(self, *args, coordinates_key='coordinates', atom_keys=(),
-                     excited_state_properties=None, retained_indices=None, **kwargs):
+                     excited_state_properties=None, retained_indices=None, read_workers=None, **kwargs):
             self.coordinates_key = coordinates_key
             self.excited_state_properties = excited_state_properties
             self.retained_indices = retained_indices
+            # ML_config's h5_read_workers; set before HIPPYNN's constructor reads the files.
+            self.read_workers = read_workers
             self.alf_frame_manifest = []
             self.atom_keys = tuple(dict.fromkeys(('coordinates', 'forces', 'charges', coordinates_key,
                                                  *(key for key in atom_keys if key is not None))))
@@ -53,7 +55,7 @@ def __getattr__(name):
             from hippynn.databases.h5_pyanitools import numpy_map_elements
             from alframework.tools import h5_parallel
             paths = h5_parallel.group_paths(file)
-            workers = h5_parallel.workers_for(file, len(paths))
+            workers = h5_parallel.workers_for(file, len(paths), getattr(self, 'read_workers', None))
             if workers < 2 and not has_parts:
                 return None
             if workers > 1:
@@ -377,7 +379,10 @@ def train_HIPNN_model(model_dir,
                       remove_high_forces_std = None,
                       gpus_per_member = 1,
                       member_nodes = 1,
-                      member_launcher = None
+                      member_launcher = None,
+                      h5_read_workers = None,
+                      shared_training_data = None,
+                      stream_final_evaluation = None,
                       ):
     """Train one HIPPYNN model on the HDF5 data in a directory.
 
@@ -433,6 +438,13 @@ def train_HIPNN_model(model_dir,
         member_launcher (list): Command, as a list of words, that starts one process on each of the
             member's nodes, each seeing that node's GPUs, such as ``srun`` with one task per node. Each
             process gets its node number from the launcher; see ``hippynn_lightning.NODE_RANK_VARIABLES``.
+        h5_read_workers (int): Processes that read each HDF5 file. ``None`` uses ``ALF_H5_READ_WORKERS``, or
+            decides by the file's size. See ``alframework.tools.h5_parallel.workers_for``.
+        shared_training_data (bool): With ``gpus_per_member`` above 1, the ranks on a node map one copy of the
+            split arrays instead of each loading its own. ``None`` uses ``ALF_LIGHTNING_SHARED_DATA``.
+        stream_final_evaluation (bool): With ``gpus_per_member`` above 1, the final test accumulates errors and
+            histograms on each rank instead of gathering every prediction. ``None`` uses
+            ``ALF_LIGHTNING_STREAM_FINAL``.
         build_lammps_pickle (bool): Whether to build a pickle file for loading the network into LAMMPS
             MLIAP. Requires the LAMMPS Python interface.
         remove_high_energy_cut (float): Remove structures whose energy is farther than this from the mean.
@@ -447,7 +459,12 @@ def train_HIPNN_model(model_dir,
     if ensemble_training.validated_gpus_per_member(gpus_per_member) == 1 and member_nodes != 1:
         raise ValueError(f'member_nodes is {member_nodes!r}, but gpus_per_member is 1: a member on several nodes '
                          'trains on all of their GPUs, so gpus_per_member counts them.')
-    #Import Torch and configure GPU. 
+    from alframework.tools.h5_parallel import read_workers_setting
+    from alframework.ml_interfaces.hippynn_lightning import option_setting
+    read_workers_setting(h5_read_workers)
+    option_setting(shared_training_data, 'shared_training_data')
+    option_setting(stream_final_evaluation, 'stream_final_evaluation')
+    #Import Torch and configure GPU.
     #This must occur after the subprocess fork!!!
     import torch
     device_cuda = _ensemble_member_device(device_string, from_multiprocessing_nGPU)
@@ -720,7 +737,8 @@ def train_HIPNN_model(model_dir,
             database_schema = dict(species_key=species_key, coordinates_key=coordinates_key,
                                    atom_keys=(coordinates_key, force_key, charges_key))
             prepared = _PreparationTimer()
-            database = ALFPyAniDirectoryDB(directory=h5_train_dir,allow_unfound=True,quiet=False,seed=np.random.randint(1e9),inputs=None,targets=None,**database_schema)
+            database = ALFPyAniDirectoryDB(directory=h5_train_dir,allow_unfound=True,quiet=False,seed=np.random.randint(1e9),inputs=None,targets=None,
+                                           read_workers=h5_read_workers, **database_schema)
             prepared('reading the HDF5 data')
             
             #Ensure that species array is int64 for indexing
@@ -870,7 +888,8 @@ def train_HIPNN_model(model_dir,
                 metric_tracker = train_data_parallel(training_modules, database, controller, n_devices=gpus_per_member,
                                                      accelerator='cpu' if device_cuda == 'cpu' else 'gpu',
                                                      seed=int(np.random.randint(2**31 - 1)), nodes=member_nodes,
-                                                     launcher=member_launcher)
+                                                     launcher=member_launcher, shared_data=shared_training_data,
+                                                     stream_final=stream_final_evaluation)
             else:
                 metric_tracker = setup_and_train(
                     training_modules=training_modules,
@@ -1480,6 +1499,9 @@ def validate_excited_state_training_config(
     """Validate the supported multi-state training contract."""
 
     config = dict(ML_config or {})
+    from alframework.ml_interfaces.hippynn_lightning import option_setting
+    for option in ("shared_training_data", "stream_final_evaluation"):
+        option_setting(config.get(option), option)
     state_table = validate_excited_state_training_properties(properties_list)
     n_models = int(config.get("n_models", 0))
     if n_models < 1:
@@ -2472,7 +2494,9 @@ def train_single_excited_state_model(
                                                      n_devices=gpus_per_member, seed=seed,
                                                      accelerator='cpu' if device.type == 'cpu' else 'gpu',
                                                      nodes=config.get('member_nodes', 1),
-                                                     launcher=config.get('member_launcher'))
+                                                     launcher=config.get('member_launcher'),
+                                                     shared_data=config.get('shared_training_data'),
+                                                     stream_final=config.get('stream_final_evaluation'))
             else:
                 setup_params = SetupParams(
                     controller=controller,

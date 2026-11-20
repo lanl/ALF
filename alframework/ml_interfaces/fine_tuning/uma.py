@@ -237,7 +237,8 @@ def fine_tune_uma_member(arguments):
     from alframework.ml_interfaces.fine_tuning import ENERGY_KEY, FORCES_KEY, shard_atoms
 
     settings, seed, member_dir = arguments['settings'], int(arguments['seed']), Path(arguments['member_dir'])
-    frames = shard_atoms(arguments['shards'], settings['energy_dataset'], settings['forces_dataset'])
+    frames = shard_atoms(arguments['shards'], settings['energy_dataset'], settings['forces_dataset'],
+                         settings.get('h5_read_workers'))
     train, valid = split(frames, settings['valid_fraction'], seed)
     write_database(member_dir / 'data' / 'train', train)
     write_database(member_dir / 'data' / 'valid', valid)

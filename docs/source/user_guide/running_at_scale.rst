@@ -269,8 +269,8 @@ The training log reports how long each step of this preparation took, in lines s
 ``Preparation:``: reading the HDF5 data, screening close atoms, conversion and outlier removal, splitting,
 E0 values, and the setup written for the ranks. Reading a large shard decompresses each dataset on one
 thread, so ALF reads the groups of files of 256 MiB or more in parallel processes, one per available core
-up to one per group; the batches are the same, in the same order. ``ALF_H5_READ_WORKERS`` sets the number
-(``1`` reads serially). For the 15 GB shard above, with huge pages off, 8 processes took 93 s and one 133 s,
+up to one per group; the batches are the same, in the same order. The ML configuration's ``h5_read_workers``
+sets the number (``1`` reads serially), or ``ALF_H5_READ_WORKERS`` without it. For the 15 GB shard above, with huge pages off, 8 processes took 93 s and one 133 s,
 and every array was identical. Turning off huge pages (see :ref:`running-at-scale-huge-pages`) mattered
 more.
 
@@ -326,10 +326,12 @@ second). Every rank's median step time agreed within 0.3%, so no rank held the o
 gradient all-reduce wasn't the limit. A larger total batch means fewer optimizer steps per epoch, so check
 accuracy before changing it. Reading and preparing the data (about 7.5 minutes here, with huge pages on) and the final test and
 plots (about 6 to 11 minutes) don't get faster with more GPUs, and each rank held a full copy of the data
-(about 24 GB) unless ``ALF_LIGHTNING_SHARED_DATA`` is set. Size the ML job's walltime for all of these.
+(about 24 GB) unless the ML configuration's ``shared_training_data`` is ``true``. Size the ML job's walltime for
+all of these.
 
-For ALF's standard Lightning loss and plot graphs, set ``ALF_LIGHTNING_STREAM_FINAL=1`` in the ML workers'
-environment to bound memory during final evaluation. Each rank accumulates sums and element counts so RMSE
+For ALF's standard Lightning loss and plot graphs, set the ML configuration's ``stream_final_evaluation`` to
+``true`` (or ``ALF_LIGHTNING_STREAM_FINAL=1`` in the ML workers' environment) to bound memory during final
+evaluation. Each rank accumulates sums and element counts so RMSE
 and combined losses use the whole split. For histogram plots, ranks save only the plotted columns temporarily
 to ``ALF_NODE_LOCAL_DIR`` or the system temporary directory, then use common bin edges and return bin counts.
 Unrecognized loss and plot graphs use the regular whole-split evaluator. The option applies after training

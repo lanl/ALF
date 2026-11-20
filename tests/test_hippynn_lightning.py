@@ -153,10 +153,11 @@ def test_single_node_tasks_refuse_several_gpus_per_member():
         ensemble_training.single_gpu_members({"gpus_per_member": 4})
 
 
-@pytest.mark.parametrize('stream', [False, True])
-def test_the_split_final_test_reports_what_one_device_would(tmp_path, monkeypatch, stream):
+@pytest.mark.parametrize('stream, setting', [(False, 'environment'), (True, 'environment'), (True, 'ML_config')])
+def test_the_split_final_test_reports_what_one_device_would(tmp_path, monkeypatch, stream, setting):
     """The ranks predict every n-th evaluation batch and the parent computes hippynn's metrics over all of them:
-    the same numbers as hippynn's test_model on one device, for every split, after a real two-device training."""
+    the same numbers as hippynn's test_model on one device, for every split, after a real two-device training.
+    Streaming is chosen by ``ALF_LIGHTNING_STREAM_FINAL``, or by ``stream_final_evaluation``, which wins."""
     pytest.importorskip("hippynn")
     pytest.importorskip("pytorch_lightning")
     from hippynn.experiment import test_model
@@ -165,14 +166,15 @@ def test_the_split_final_test_reports_what_one_device_would(tmp_path, monkeypatc
     seen = {}
     train = hl._train_ranks_and_finish
 
-    def recording(modules, database, controller, tracker, settings, local_devices, launcher, plan):
+    def recording(modules, database, controller, tracker, settings, local_devices, launcher, plan, **options):
         seen.update(evaluator=modules.evaluator, database=database, n_devices=settings['n_devices'])
         assert (plan is not None) == stream
-        result = train(modules, database, controller, tracker, settings, local_devices, launcher, plan)
+        result = train(modules, database, controller, tracker, settings, local_devices, launcher, plan, **options)
         seen['split'] = result.other_metric_values['FinalTraining']
         return result
 
-    monkeypatch.setenv('ALF_LIGHTNING_STREAM_FINAL', '1' if stream else '0')
+    by_config = {} if setting == 'environment' else {'stream_final_evaluation': stream}
+    monkeypatch.setenv('ALF_LIGHTNING_STREAM_FINAL', '1' if stream and not by_config else '0')
     monkeypatch.setattr(hl, '_train_ranks_and_finish', recording)
     write_water_shard(tmp_path / "data", frames=25)
     member = tmp_path / "model-00"
@@ -183,7 +185,7 @@ def test_the_split_final_test_reports_what_one_device_would(tmp_path, monkeypatc
                          controller_options=dict(batch_size=4, eval_batch_size=4, max_epochs=2,
                                                  termination_patience=10),
                          scheduler_options=dict(max_batch_size=8, patience=5, factor=0.5),
-                         device_string="cpu", gpus_per_member=2)
+                         device_string="cpu", gpus_per_member=2, **by_config)
     assert seen["n_devices"] == 2
     evaluator = seen["evaluator"]
     evaluator.plot_maker = None
@@ -347,6 +349,24 @@ def test_a_two_node_member_trains_on_shared_node_local_arrays(tmp_path, monkeypa
     assert not list(member.glob('final-evaluation-*'))
     assert list(local.iterdir()) == []
     ml.HIPNN_ASE_calculator(str(member), energy_key="energy", device="cpu")
+
+
+@pytest.mark.parametrize("value, variable, expected", [
+    (None, None, False), (None, "1", True), (None, "0", False), (True, None, True), (True, "0", True),
+    (False, "1", False)])
+def test_training_options_come_from_ml_config_before_the_environment(value, variable, expected):
+    from alframework.ml_interfaces import hippynn_lightning as hl
+    shared = {} if variable is None else {hl.SHARED_DATA_VARIABLE: variable}
+    stream = {} if variable is None else {hl.STREAM_FINAL_VARIABLE: variable}
+    assert hl.shared_data_enabled(value, shared) is expected
+    assert hl.stream_final_enabled(value, stream) is expected
+
+
+@pytest.mark.parametrize("name", ["shared_training_data", "stream_final_evaluation"])
+def test_a_training_option_must_be_true_false_or_null(name):
+    with pytest.raises(ValueError, match=f"{name} must be true, false or null"):
+        ml.train_HIPNN_model("model", "data", energy_key="energy", coordinates_key="coordinates",
+                             species_key="species", **{name: "yes"})
 
 
 @pytest.mark.parametrize("total, batch_size, n_devices", [(10, 3, 2), (10, 3, 3), (9, 3, 4), (1, 4, 2)])

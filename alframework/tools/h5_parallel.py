@@ -143,10 +143,22 @@ def stored_bytes(file):
                       if os.path.exists(os.path.join(directory, part)))
 
 
-def workers_for(file, groups):
-    """How many processes to read ``file``'s ``groups`` groups with; 1 or less means serially."""
+def read_workers_setting(value, name='h5_read_workers'):
+    """A checked ``h5_read_workers`` setting: a positive integer, or ``None`` to decide by file size."""
+    if value is not None and (isinstance(value, bool) or not isinstance(value, int) or value < 1):
+        raise ValueError(f'{name} must be a positive integer or null; received {value!r}.')
+    return value
+
+
+def workers_for(file, groups, requested=None):
+    """How many processes to read ``file``'s ``groups`` groups with; 1 or less means serially.
+
+    ``requested`` (a configuration's ``h5_read_workers``) comes first, then ``ALF_H5_READ_WORKERS``; with
+    neither, files of at least ``PARALLEL_MIN_BYTES`` use one process per available core."""
     setting = os.environ.get(READ_WORKERS, '')
-    if setting:
+    if requested is not None:
+        workers = read_workers_setting(requested)
+    elif setting:
         workers = int(setting)
     elif stored_bytes(file) < PARALLEL_MIN_BYTES:
         workers = 1
@@ -169,9 +181,9 @@ def read_groups(file, paths, workers, keys=None):
         yield from pool.map(read_group, repeat(file), paths, repeat(keys))
 
 
-def read_shard(file, keys=None):
+def read_shard(file, keys=None, workers=None):
     """Every structure group of a stored label file, in order, as :func:`read_group` gives them, read in
-    parallel when the file is large (see :func:`workers_for`).
+    parallel when the file is large or ``workers`` asks for it (see :func:`workers_for`).
 
     A snapshot published over label parts is checked first, so a missing part raises ``FileNotFoundError``
     rather than reading as HDF5's fill values, and its datasets are read from the parts directly.
@@ -181,4 +193,4 @@ def read_shard(file, keys=None):
     with h5py.File(file, 'r') as handle:
         validate_label_parts(handle)
     paths = group_paths(file)
-    return read_groups(file, paths, workers_for(file, len(paths)), keys)
+    return read_groups(file, paths, workers_for(file, len(paths), workers), keys)

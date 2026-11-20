@@ -347,12 +347,22 @@ Several GPUs per member
    ``check_capacity`` counts one worker per ``member_nodes`` nodes when it warns about members that will
    wait. :ref:`running-at-scale-training` has measured epoch times on 1, 2 and 4 nodes.
 
-   Two environment variables help at this size. ``ALF_LIGHTNING_SHARED_DATA=1`` writes the split arrays
-   once, as ``.npy`` files, instead of into the setup file every rank loads, and each rank maps them, so
-   a node holds one copy instead of one per GPU; with ``ALF_NODE_LOCAL_DIR`` set, each node copies them
-   there first. The ranks train on the same arrays with the same sampling. ``ALF_LIGHTNING_STATS=1``
-   writes each rank's node, step and epoch times and peak memory to ``lightning_stats/`` in the member's
-   directory; steps are synchronized when it is on, so their times include the gradient all-reduce.
+   Three ML configuration settings help at this size, for ground- and excited-state members alike. Each
+   is off unless set, and each falls back to an environment variable on the ML workers when it isn't in
+   the configuration:
+
+   - ``shared_training_data`` (``ALF_LIGHTNING_SHARED_DATA=1``): ``true`` writes the split arrays once,
+     as ``.npy`` files, instead of into the setup file every rank loads, and each rank maps them, so a
+     node holds one copy instead of one per GPU; with ``ALF_NODE_LOCAL_DIR`` set, each node copies them
+     there first. The ranks train on the same arrays with the same sampling.
+   - ``stream_final_evaluation`` (``ALF_LIGHTNING_STREAM_FINAL=1``): ``true`` bounds memory during the
+     final test, as described in :ref:`running-at-scale-training`.
+   - ``h5_read_workers`` (``ALF_H5_READ_WORKERS``): how many processes read each HDF5 file, for
+     ground-state members and fine-tuning. By default large files are read with one per core.
+
+   ``ALF_LIGHTNING_STATS=1`` writes each rank's node, step and epoch times and peak memory to
+   ``lightning_stats/`` in the member's directory; steps are synchronized when it is on, so their times
+   include the gradient all-reduce.
 
 More members cost more than training time:
 

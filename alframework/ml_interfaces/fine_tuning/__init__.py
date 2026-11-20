@@ -72,6 +72,9 @@ def fine_tune_settings(ML_config, master_directory=None):
         raise ValueError('fine_tune.seed must be a nonnegative integer.')
     if settings.setdefault('device', 'cuda') not in DEVICES:
         raise ValueError(f"fine_tune.device must be one of {DEVICES}, not {settings['device']!r}.")
+    # How many processes read each shard; ML_config's own setting, shared with HIPPYNN training.
+    from alframework.tools.h5_parallel import read_workers_setting
+    settings['h5_read_workers'] = read_workers_setting((ML_config or {}).get('h5_read_workers'))
     return settings
 
 
@@ -94,7 +97,7 @@ def training_shards(h5_dir):
     return sorted(str(path) for path in Path(h5_dir).glob('*.h5'))
 
 
-def shard_atoms(shards, energy_dataset='energy', forces_dataset='forces'):
+def shard_atoms(shards, energy_dataset='energy', forces_dataset='forces', read_workers=None):
     """Read ALF shards as ``ase.Atoms`` carrying ``REF_energy`` and ``REF_forces``.
 
     A shard's ``total_charge`` and ``spin_multiplicity``, if it has them, go to ``atoms.info`` as
@@ -110,7 +113,7 @@ def shard_atoms(shards, energy_dataset='energy', forces_dataset='forces'):
     keys = {'species', 'coordinates', 'cell', energy_dataset, forces_dataset, *STRUCTURE_STATE_DATASETS}
     frames = []
     for shard in shards:
-        for group in read_shard(shard, keys):
+        for group in read_shard(shard, keys, read_workers):
             if energy_dataset not in group:
                 continue
             symbols = [str(value) for value in group['species']]

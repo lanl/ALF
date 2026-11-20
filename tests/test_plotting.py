@@ -107,10 +107,10 @@ def test_analysis_plot_titles_say_when_uncertainty_is_a_peak(tmp_path, monkeypat
     real = Axes.set_title
     monkeypatch.setattr(Axes, "set_title", lambda self, title, **kw: (titles.append(title), real(self, title, **kw))[1])
     plot(tmp_path, [(0, finished())], "summary")
-    assert "Peak energy uncertainty" in titles
+    assert "Peak Energy Uncertainty" in titles
     titles.clear()
     plot(tmp_path, [(0, dict(LEGACY))], "summary")
-    assert "Energy uncertainty" in titles
+    assert "Energy Uncertainty" in titles
 
 
 def test_analysis_plot_reads_per_task_subdirectories(tmp_path):
@@ -207,9 +207,12 @@ def test_outcome_plot_keeps_each_outcome_on_its_own_color(tmp_path, monkeypatch)
 
     monkeypatch.setattr(Axes, "bar", spy)
     plot(tmp_path, [(0, finished()), (0, rejected_at_once()), (0, rejected_at_once()), (1, rejected_at_once())], "summary")
-    assert bars[0][:3] == ("completed", OUTCOME_COLORS["completed"], [1, 0])
+    # Shares of each model's trajectories: model 0 has one completed and two rejected, model 1 one rejected.
+    assert bars[0][:2] == ("completed", OUTCOME_COLORS["completed"])
+    assert bars[0][2] == pytest.approx([100 / 3, 0])
     assert bars[1][0] == "rejected" and bars[1][1] == OUTCOME_COLORS["rejected"]
-    assert bars[1][2:] == ([2, 1], [1.0, 0.0]), "bars must stack"
+    assert bars[1][2] == pytest.approx([200 / 3, 100]) and bars[1][3] == pytest.approx([100 / 3, 0]), \
+        "bars must stack"
 
 
 def test_outcome_plot_gives_unknown_outcomes_a_color(tmp_path):
@@ -261,3 +264,76 @@ def test_analysis_plot_prefers_the_summary_over_pickles(tmp_path):
 def test_analysis_plot_finds_its_arguments_in_configs():
     arguments = build_input_dict(analysis_plot, [{"plot_dir": "plots/", "builder_task": "x"}, {"meta_dir": "sampling/"}])
     assert arguments == {"plot_dir": "plots/", "meta_dir": "sampling/"}
+
+
+def candidate(**extra):
+    return finished(**{"trajectory_outcome": "eligible", "peak_Es": 0.3, "peak_Fs": 0.05, "peak_Fsmax": 0.06, **extra})
+
+
+CUTOFFS = dict(Escut=0.2, Fscut=0.1)
+
+
+def test_uncertainty_plots_draw_the_sampler_threshold(tmp_path, monkeypatch):
+    lines = []
+    real = Axes.axhline
+    monkeypatch.setattr(Axes, "axhline", lambda self, y=0, **kw: (lines.append(y), real(self, y, **kw))[1])
+    analysis_plot(plot_dir=str(tmp_path / "p"), trajectory_summary_path=write_summary(
+        tmp_path / "s.jsonl", [(0, finished()), (0, candidate())]), **CUTOFFS)
+    # Es at Escut, Fs at Fscut, Fsmax at 3 * Fscut (the samplers' rule), and 1 on the trigger-time plot.
+    for threshold in (0.2, 0.1, 0.3, 1.0):
+        assert any(line == pytest.approx(threshold) for line in lines), threshold
+
+
+def test_tuning_and_trigger_plots_need_the_cutoffs(tmp_path):
+    trajectories = [(0, finished()), (0, candidate()), (1, candidate()), (1, finished())]
+    summary = write_summary(tmp_path / "s.jsonl", trajectories)
+    written = analysis_plot(plot_dir=str(tmp_path / "a"), trajectory_summary_path=summary)
+    assert "cutoff-tuning" not in written and "trigger-time" not in written
+    written = analysis_plot(plot_dir=str(tmp_path / "b"), trajectory_summary_path=summary, **CUTOFFS)
+    assert {"cutoff-tuning", "trigger-time", "sampling-cost"} <= set(written)
+
+
+def test_a_trajectory_triggers_on_its_worst_eligible_signal():
+    from alframework.tools.plotting import _cutoffs, _eligible_signals, _trigger_ratio
+    import pandas as pd
+    thresholds = _cutoffs(Escut=0.2, Fscut=0.1, gap_std_cut=0.05)
+    assert thresholds == {"Es": 0.2, "Fs": 0.1, "Fsmax": pytest.approx(0.3), "gap_std": 0.05}
+    table = pd.DataFrame({"Es": [0.1, 0.1], "Fs": [0.05, 0.25], "Fsmax": [0.06, 0.06], "gap_std": [0.2, 0.0]})
+    default = _eligible_signals(None, thresholds)
+    assert default == ["Es", "Fs", "Fsmax"], "the gap counts only when acquisition.eligibility names it"
+    assert _trigger_ratio(table, default, thresholds).tolist() == pytest.approx([0.5, 2.5])
+    with_gap = _eligible_signals({"eligibility": ["energy", "gap"]}, thresholds)
+    assert with_gap == ["Es", "gap_std"]
+    assert _trigger_ratio(table, with_gap, thresholds).tolist() == pytest.approx([4.0, 0.5])
+
+
+def test_excited_state_gaps_get_one_plot_per_pair_of_states(tmp_path):
+    trajectories = [(0, finished(selected_state=state, gap_std=0.1, peak_gap_std=0.2, gap_std_lower_state=lower))
+                    for state in (1, 2) for lower in (0, 1, 2)]
+    written, _ = plot(tmp_path, trajectories, "summary")
+    assert {"gap_std", "gap_std-states0-1", "gap_std-states1-2", "gap_std-states2-3"} <= set(written)
+    assert "gap_std-state1" not in written, "a gap is a pair's, not the selected state's"
+
+
+def test_ground_state_runs_do_not_report_a_missing_gap_plot(tmp_path, capsys):
+    written, _ = plot(tmp_path, [(0, finished())], "summary")
+    assert "gap_std" not in written and "gap_std" not in capsys.readouterr().out
+
+
+def test_rejections_are_plotted_by_reason(tmp_path):
+    trajectories = [(0, rejected_at_once(screen_reject_reason=reason)) for reason in ("min_distance", "max_force")]
+    written, _ = plot(tmp_path, trajectories, "summary")
+    assert "rejections" in written
+
+
+def test_sampling_cost_needs_candidates(tmp_path):
+    written, _ = plot(tmp_path, [(0, finished())], "summary")
+    assert "sampling-cost" not in written
+    written, _ = plot(tmp_path, [(0, finished()), (0, candidate())], "summary")
+    assert "sampling-cost" in written
+
+
+def test_the_cutoffs_and_acquisition_come_from_the_sampler_config():
+    arguments = build_input_dict(analysis_plot, [{"plot_dir": "plots/"}, {"Escut": 0.2, "Fscut": 0.1,
+                                                                          "acquisition": {"eligibility": ["gap"]}}])
+    assert arguments["Escut"] == 0.2 and arguments["acquisition"] == {"eligibility": ["gap"]}

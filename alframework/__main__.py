@@ -95,6 +95,9 @@ if master_config.get('plotting_utility', None) is not None:
     progress_plots = ProgressPlots(master_config['plotting_utility'])
 else:
     analysis_plot = None
+# Optional: the run report (alframework.tools.run_report), refreshed with the progress plots in its own process.
+run_report_updates = ProgressPlots('alframework.tools.run_report.live_report') if master_config.get('run_report') \
+    else None
 
 # Make needed directories
 for config in all_configs:
@@ -548,6 +551,9 @@ while True:
     if (master_loop_iter % master_config.get('update_plots_every', 1000) == 0) and (analysis_plot is not None):
         analysis_input = build_input_dict(analysis_plot, all_configs)
         progress_plots.update(analysis_input)
+    if run_report_updates is not None and master_loop_iter % master_config.get('update_plots_every', 1000) == 0:
+        run_report_updates.update({'run_dir': os.getcwd(), 'out_dir': master_config.get('run_report_dir'),
+                                   'master_config_path': os.path.abspath(args.master)})
                 
     print("### Active Learning Status at: " + time.ctime() + " ###")
     print("builder status:")

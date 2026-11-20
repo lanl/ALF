@@ -501,18 +501,43 @@ ALF writes these to ``plot_dir``, as ``analysis-plot-<name>.png``:
    * - Name
      - Shows
    * - ``outcomes``
-     - How many trajectories were completed, eligible, rejected, or failed, per model. It's
-       only available from samplers that record an outcome, which includes the multi-trajectory
-       sampler. ``task_failed`` means a whole batched task failed.
+     - The share of each model's trajectories that were completed (ran to the end), eligible (gave QM
+       a candidate), rejected, or failed. It's only available from samplers that record an outcome,
+       which includes the multi-trajectory sampler. ``task_failed`` means a whole batched task failed.
    * - ``simtime``, ``log_simtime``
      - Simulated time per trajectory. This should grow as the model improves.
    * - ``realtime``, ``log_realtime``
      - Wall time per trajectory.
    * - ``Es``, ``Fs``, ``Fsmax``
      - Energy and force uncertainty, using each trajectory's peak when it's recorded. The title
-       says which.
+       says which. With the sampler's cutoffs, a line marks each trigger threshold (``Escut``,
+       ``Fscut``, and ``3 * Fscut`` for ``Fsmax``), and the title says what share of the latest
+       model's trajectories passed it.
+   * - ``gap_std``
+     - Excited states with ``gap_uncertainty``: the spread of the gap, with ``gap_std_cut``.
    * - ``<name>-state<N>``
-     - The same box plots for one selected state, when a run has more than one.
+     - The same box plots for each selected state, when a run has more than one, however many.
+   * - ``sampling-cost``
+     - Simulated time spent per QM candidate, and the share of simulated time in trajectories
+       that gave none. It shows what a cutoff costs in sampling, mostly with
+       ``"trajectory_policy": "stop"``.
+   * - ``rejections``
+     - Each model's rejected trajectories by the reason recorded for them.
+   * - ``cutoff-tuning``
+     - With the cutoffs: for the latest four models, the share of trajectories whose peak would pass
+       the thresholds if every cutoff were multiplied by a factor from 0.25 to 4, for the signals
+       that trigger QM together and one by one. Trajectories stopped at their first trigger have
+       peaks cut short, so above a factor of 1 the shares are lower bounds.
+   * - ``trigger-time``
+     - With the cutoffs: for the latest model, the simulated time when each trajectory stopped
+       against its peak uncertainty over the threshold. Early triggers mean the model fails fast.
+
+Box plots show the middle half of each model's trajectories with the median, whiskers from the 5th to
+the 95th percentile, and a tick at the largest value, so a long tail doesn't hide the rest. The
+cutoffs, ``Escut``, ``Fscut`` and ``gap_std_cut``, are read from the sampler config. Which signals
+trigger QM follows the sampler's ``acquisition.eligibility``: energy and both force signals by default,
+and the gap only when ``"gap"`` is listed (see :doc:`acquisition`). With a cutoff of ``0`` or none,
+its line and the cutoff-tuning and trigger-time plots are left out.
 
 A dashed line marks the first model in each sampling window. A plot with no data is skipped, and
 ALF prints which ones it skipped.

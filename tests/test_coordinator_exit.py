@@ -5,6 +5,7 @@ outside the process. The tasks are small stand-ins. Tests that kill training use
 this machine, so they need ``pgrep``, and they can't show that Slurm releases a real allocation.
 """
 
+import csv
 import json
 import os
 import shutil
@@ -94,8 +95,9 @@ def slow_multinode(current_training_id):
 
 
 def start_coordinator(tmp_path, ml_task, parsl_config="local", arguments=(), trained_labels=True,
-                      builder="builder", sampler="sampler", qm="qm", new_session=False, environ=()):
-    """Start a coordinator. ``trained_labels`` skips the bootstrap by pretending data is already stored."""
+                      builder="builder", sampler="sampler", qm="qm", new_session=False, environ=(), master_extra=()):
+    """Start a coordinator. ``trained_labels`` skips the bootstrap by pretending data is already stored;
+    ``master_extra`` adds master config entries."""
     (tmp_path / "exit_harness.py").write_text(HARNESS)
     master = {
         "master_directory": str(tmp_path),
@@ -113,6 +115,7 @@ def start_coordinator(tmp_path, ml_task, parsl_config="local", arguments=(), tra
         "h5_path": "h5/data-{:04d}.h5",
         "properties_list": {"energy": ["energy", "system", 1.0]},
         "minimum_QM": 0,
+        **dict(master_extra),
     }
     (tmp_path / "master.json").write_text(json.dumps(master))
     for name in ("builder", "sampler", "qm", "ml"):
@@ -166,6 +169,25 @@ def test_coordinator_exit_cleans_up_parsl(tmp_path, ml_task, arguments, expected
     output, _ = coordinator.communicate(timeout=120)
     assert coordinator.returncode == expected_code, output
     assert expected_output in output
+    assert_cleaned_up(tmp_path)
+
+
+@pytest.mark.skipif(not os.path.isdir("/proc"), reason="the memory sampler reads /proc")
+def test_a_coordinator_samples_its_memory_when_asked(tmp_path):
+    coordinator = start_coordinator(tmp_path, "trains", arguments=["--test_ml"],
+                                    master_extra={"coordinator_memory_sample": 0.2,
+                                                  "coordinator_memory_path": "records/memory.csv"})
+    output, _ = coordinator.communicate(timeout=120)
+    assert coordinator.returncode == 0, output
+    deadline = time.monotonic() + 30
+    rows = []
+    while time.monotonic() < deadline:  # The sampler stops on its own once the coordinator has gone.
+        with open(tmp_path / "records" / "memory.csv") as handle:
+            rows = list(csv.DictReader(handle))
+        if rows:
+            break
+        time.sleep(0.2)
+    assert str(coordinator.pid) in {row["pid"] for row in rows}
     assert_cleaned_up(tmp_path)
 
 

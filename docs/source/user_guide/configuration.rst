@@ -192,6 +192,11 @@ The master config controls the workflow wiring. Common fields include:
        appends one row per process per sample (time, PID, parent PID, command, RSS and PSS in
        KiB) to ``coordinator_memory_path``, default ``coordinator_memory.csv``, and stops when
        the coordinator exits. It reads ``/proc``, so it needs Linux. See :ref:`running-at-scale-coordinator-memory`.
+   * - ``run_report``, ``run_report_dir``, ``task_timeline_dir``
+     - Optional. With ``run_report`` true, each progress-plot update also remakes the run report in
+       ``run_report_dir`` (default ``run_report``), in its own process. ``task_timeline_dir`` is where the
+       report reads the task timeline, if not ``ALF_TASK_TIMELINE_DIR`` or ``task_timeline``. See
+       :ref:`monitoring-run-report`.
 
 .. _configuration-property-names:
 
@@ -267,6 +272,10 @@ During a run, ALF writes a standard set of outputs:
        structures.
    * - ``status_plots/``
      - Optional progress plots when a plotting utility is configured.
+   * - ``run_report/``
+     - Optional run report, with ``run_report`` true or from ``python -m alframework.tools.run_report``.
+   * - ``coordinator_memory.csv``
+     - Optional samples of the coordinator's memory, with ``coordinator_memory_sample``.
 
 If ``status.txt`` exists, ALF restarts from it. If no status file exists, ALF
 checks existing model and HDF5 paths to decide whether to bootstrap, start from

@@ -858,20 +858,32 @@ def train_HIPNN_model(model_dir,
             print("Experiment Params:")
             print(experiment_params)
 
+            # Counted before training: shared training data moves the split arrays out of the database.
+            split_counts = {name: len(next(iter(arrays.values()))) for name, arrays in database.splits.items()
+                            if arrays}
             # Parameters describing the training procedure.
             if ensemble_training.validated_gpus_per_member(gpus_per_member) > 1:
                 from alframework.ml_interfaces.hippynn_lightning import train_data_parallel
-                train_data_parallel(training_modules, database, controller, n_devices=gpus_per_member,
-                                    accelerator='cpu' if device_cuda == 'cpu' else 'gpu',
-                                    seed=int(np.random.randint(2**31 - 1)), nodes=member_nodes,
-                                    launcher=member_launcher)
+                metric_tracker = train_data_parallel(training_modules, database, controller, n_devices=gpus_per_member,
+                                                     accelerator='cpu' if device_cuda == 'cpu' else 'gpu',
+                                                     seed=int(np.random.randint(2**31 - 1)), nodes=member_nodes,
+                                                     launcher=member_launcher)
             else:
-                setup_and_train(
+                metric_tracker = setup_and_train(
                     training_modules=training_modules,
                     database=database,
                     setup_params=experiment_params,
                 )
-    
+            # The same record an excited-state member writes, for run reports: metrics per split, per epoch,
+            # and after the final test, with epoch times.
+            Path("training_summary.json").write_text(json.dumps({
+                **training_record(metric_tracker),
+                "epochs": len(metric_tracker.epoch_times),
+                "gpus_per_member": gpus_per_member,
+                "member_nodes": member_nodes,
+                "split_counts": split_counts,
+            }, indent=2, allow_nan=False), encoding="utf-8")
+
             if build_lammps_pickle:
                 from hippynn.interfaces.lammps_interface import MLIAPInterface
                 from hippynn.tools import device_fallback
@@ -2138,6 +2150,34 @@ def _json_safe(value: Any) -> Any:
     return value
 
 
+def _finite(value: Any) -> Any:
+    """``value`` with every non-finite float replaced by ``None``, so it can be written as strict JSON."""
+    if isinstance(value, dict):
+        return {key: _finite(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_finite(item) for item in value]
+    if isinstance(value, float) and not np.isfinite(value):
+        return None
+    return value
+
+
+def training_record(metric_tracker) -> dict[str, Any]:
+    """What a member's hippynn metric tracker says about its training, for ``training_summary.json``.
+
+    ``metric``: the best value of each metric on each split; ``final_metric``: each split's metrics for the
+    best model, from the final test; ``epoch_metric``: each epoch's metrics, in order; ``epoch_seconds``: each
+    epoch's wall time; ``average_epoch_time``. Non-finite values are written as ``null``.
+    """
+    epoch_seconds = [float(seconds) for seconds in metric_tracker.epoch_times]
+    return _finite(_json_safe({
+        "metric": metric_tracker.best_metric_values,
+        "final_metric": metric_tracker.other_metric_values.get("FinalTraining", {}),
+        "epoch_metric": metric_tracker.epoch_metric_values,
+        "epoch_seconds": epoch_seconds,
+        "average_epoch_time": float(np.average(epoch_seconds)) if epoch_seconds else None,
+    }))
+
+
 def model_member_seed(ML_config: dict[str, Any], model_id: int) -> int:
     """Return the deterministic seed assigned to an ensemble member."""
 
@@ -2465,14 +2505,11 @@ def train_single_excited_state_model(
                     "mode": "derived",
                 },
                 "data": data_summary,
-                "metric": _json_safe(metric_tracker.best_metric_values),
+                **training_record(metric_tracker),
                 "epochs": int(controller.current_epoch),
                 "parameters_changed": any(not torch.equal(before.cpu(), after.detach().cpu())
                                           for before, after in zip(initial_parameters, training_modules.model.parameters())),
                 "split_counts": {key: len(values) for key, values in split_indices.items()},
-                "average_epoch_time": float(
-                    np.average(metric_tracker.epoch_times)
-                ),
             }
             Path("training_summary.json").write_text(
                 json.dumps(_json_safe(summary), indent=2, allow_nan=False),

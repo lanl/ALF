@@ -77,6 +77,34 @@ def test_ground_state_member_trains_on_two_devices_inside_a_slurm_step(tmp_path,
     _check_member(member)
     assert ml._ground_state_member_complete(str(member))
     ml.HIPNN_ASE_calculator(str(member), energy_key="energy", device="cpu")
+    _check_training_summary(member, epochs=3, gpus_per_member=2)
+
+
+def _check_training_summary(member, epochs, gpus_per_member):
+    """A ground-state member's training_summary.json: epoch times, metrics per epoch, and the final test."""
+    summary = json.loads((member / "training_summary.json").read_text())
+    assert summary["epochs"] == epochs and len(summary["epoch_seconds"]) == epochs
+    assert len(summary["epoch_metric"]) == epochs and summary["average_epoch_time"] > 0
+    assert summary["gpus_per_member"] == gpus_per_member
+    assert {"train", "valid", "test"} <= set(summary["final_metric"])
+    test = summary["final_metric"]["test"]
+    assert "ForceRMSE" in test and test["ForceRMSE"] >= 0
+    assert summary["split_counts"]["test"] > 0 and summary["metric"]["valid"]
+
+
+def test_a_single_device_ground_state_member_records_its_training(tmp_path):
+    pytest.importorskip("hippynn")
+    write_water_shard(tmp_path / "data")
+    member = tmp_path / "model-00"
+    member.mkdir()
+    ml.train_HIPNN_model(str(member), str(tmp_path / "data"), energy_key="energy", coordinates_key="coordinates",
+                         species_key="species", force_key="forces", network_params=dict(TINY_NETWORK),
+                         valid_size=0.25, test_size=0.25, plot_every=1000,
+                         controller_options=dict(batch_size=4, eval_batch_size=4, max_epochs=2,
+                                                 termination_patience=10, fraction_train_eval=1.0),
+                         scheduler_options=dict(max_batch_size=8, patience=5, factor=0.5),
+                         device_string="cpu", gpus_per_member=1)
+    _check_training_summary(member, epochs=2, gpus_per_member=1)
 
 
 def test_batch_sizes_must_divide_across_devices():

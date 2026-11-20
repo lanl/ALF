@@ -77,8 +77,8 @@ def test_settings_take_the_ml_configs_reader_count(tmp_path):
     (None, "needs a 'fine_tune' block"),
     (dict(foundation_model="x"), "fine_tune.adapter"),
     (dict(adapter=FAKE), "fine_tune.foundation_model"),
-    (dict(adapter=FAKE, foundation_model="x", n_models=1), "at least 2"),
-    (dict(adapter=FAKE, foundation_model="x", n_models=True), "at least 2"),
+    (dict(adapter=FAKE, foundation_model="x", n_models=0), "positive integer"),
+    (dict(adapter=FAKE, foundation_model="x", n_models=True), "positive integer"),
     (dict(adapter=FAKE, foundation_model="x", seed=-1), "seed"),
     (dict(adapter=FAKE, foundation_model="x", device="cuda:1"), "device"),
 ], ids=["missing", "adapter", "foundation", "one_copy", "boolean", "seed", "device"])
@@ -438,8 +438,10 @@ def test_torchsim_ensemble_evaluates_every_copy_on_the_batch():
     charged = TorchSimBatchedEnsemble([FakeModel(1.0), FakeModel(2.0)], device="cpu", dtype="float64", charge=-1, spin=2)
     charged.evaluate(numbers, positions, rows, [False] * 3, [3, 2])
     assert seen[-1].charge.tolist() == [-1, -1] and seen[-1].spin.tolist() == [2, 2]
-    with pytest.raises(ValueError, match="at least two"):
-        MaceBatchedEnsemble("unused", device="cpu", models=[FakeModel(1.0)])
+    # One copy loads; a run whose acquisition reads the copies' spread refuses it (acquisition.require_members).
+    assert MaceBatchedEnsemble("unused", device="cpu", models=[FakeModel(1.0)]).n_models == 1
+    with pytest.raises(ValueError, match="No fine-tuned copies"):
+        MaceBatchedEnsemble("unused", device="cpu", models=[])
 
 
 def test_mace_example_configuration_is_valid():

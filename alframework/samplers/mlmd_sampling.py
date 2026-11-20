@@ -21,9 +21,10 @@ from alframework.tools.velocities import initialize_velocities, kinetic_temperat
 
 #For now I will take a dictionary with all sample parameters.
 #We may want to make this explicit. Ying Wai, what do you think? 
-def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Escut, Fscut, Ncheck, Tamp, Tper, Tsrt, Tend, Ramp, Rper,
+def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Ncheck, Tamp, Tper, Tsrt, Tend, Ramp, Rper,
                   Rend, meta_dir=None, use_potential_specific_code=None, trajectory_interval=None, distcut=1.2, min_time=0,
-                  velocity_initialization='preserve', random_seed=None, initial_velocity_temperature_K=None):
+                  velocity_initialization='preserve', random_seed=None, initial_velocity_temperature_K=None,
+                  Escut=None, Fscut=None, acquisition=None):
     """Uncertainty based MD sampling.
 
     The idea is that if the MD fails because the NNPs didn't agree on the energies and forces, then this function
@@ -62,6 +63,14 @@ def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Escut, Fscut, Nchec
                            the failed configuration, otherwise it will store None.
     """
     assert isinstance(molecule_object, MoleculesObject), 'molecule_object must be an instance of MoleculesObject'
+    # The same frame decision as the multi-trajectory sampler: the ensemble's spread against Escut and Fscut, and any
+    # terms of the run's own on the uncertainty its calculators report (acquisition.terms).
+    from alframework.samplers.acquisition import acquisition_settings, assess_frame, custom_terms
+    criteria = {key: value for key, value in dict(Escut=Escut, Fscut=Fscut, distcut=distcut, min_time=min_time,
+                                                  acquisition=acquisition).items() if value is not None}
+    settings = acquisition_settings(criteria)
+    own_uncertainty = sorted({term['uncertainty'] for term in custom_terms(criteria).values()})
+    max_uncertainty = {}
 
     ase_atoms = molecule_object.get_atoms()
     T = annealing_schedule(0.0, maxt, Tamp, Tper, Tsrt, Tend)
@@ -115,19 +124,18 @@ def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Escut, Fscut, Nchec
             Es = ase_atoms.calc.Estddev * 1000
             Fs, Fsmax = ase_atoms.calc.get_Fstddev()
 
-        Ecrit = Es > Escut
-        Fcrit = Fs > Fscut
-        Fmcrit = Fsmax > 3*Fscut # this is the maximum standard deviation for any force in the system
+        signals = {'Es': Es, 'Fs': Fs, 'Fsmax': Fsmax,
+                   **(getattr(ase_atoms.calc, 'results', {}).get('alf_uncertainty') or {})}
+        for name in own_uncertainty:
+            if name in signals:
+                max_uncertainty[name] = max(signals[name], max_uncertainty.get(name, signals[name]))
         dist_min = minimum_distance(ase_atoms)
-        distcrit = dist_min < distcut
-
-        if (i*Ncheck*dt/1000) >= min_time:
-            if Ecrit or Fcrit or Fmcrit or distcrit:
-                # print('MD FAIL (',model_id,',',self.counter,',',"{0:.4f}".format(time.time()-self.str_time),') -- Uncertainty:', "{0:.4f}".format(Es), "{0:.4f}".format(Fs), "{0:.4f}".format(Fsmax), (i*Ncheck*dt)/1000)
-                # last_bad = Atoms(ase_atoms.get_chemical_symbols(), positions=ase_atoms.get_positions(wrap=True),
-                #                  cell=ase_atoms.get_cell(), pbc=ase_atoms.get_pbc())
-                failed = True
-                break
+        # Ecrit, Fcrit and Fmcrit: the energy, mean-force and max-force spreads above Escut, Fscut and 3 Fscut.
+        decision = assess_frame(signals, dist_min, i * Ncheck * dt / 1000, criteria, settings)
+        Ecrit, Fcrit, Fmcrit, distcrit = (decision[key] for key in ('Ecrit', 'Fcrit', 'Fmcrit', 'distcrit'))
+        if decision['outcome'] != 'continue':  # rejected for distcut, or a frame to label, once min_time has passed
+            failed = True
+            break
 
         # Set the temperature
         set_temp = annealing_schedule((i * Ncheck * dt) / 1000, maxt, Tamp, Tper, Tsrt, Tend)
@@ -172,6 +180,8 @@ def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Escut, Fscut, Nchec
                     "positions" : ase_atoms.get_positions(wrap=True),
                     "cell" : ase_atoms.get_cell()
                 }
+    if max_uncertainty:
+        meta_dict['max_uncertainty'] = max_uncertainty
 
     meta_dict.update(molecule_object.get_metadata())
     meta_dict.update(kinetic_temperature_K=kinetic_temperature(ase_atoms),
@@ -271,6 +281,8 @@ def simple_mlmd_sampling_task(molecule_object, sampler_config, model_path, curre
         device = sampling_device(dict(sampler_config, device=sampler_config.get('device') or 'cuda'),
                                  gpus_per_node)
         calculator_list = calc_class(model_path.format(current_model_id) + '/', device=device)
+        from alframework.samplers.acquisition import require_members
+        require_members(calculator_list, sampler_config)
         ase_calculator = MLMD_calculator(calculator_list, **sampler_config['MLMD_calculator_options'])
         
     if sampler_config.get('translate_to_center', False):

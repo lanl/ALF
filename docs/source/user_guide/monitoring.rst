@@ -127,7 +127,8 @@ A *cycle* below is the model the run had when a task started, the same number as
        stage waited for.
    * - ``run-report-spread.png``
      - The ensemble's energy, force and (excited states) gap spread per cycle, using each trajectory's peak:
-       the median and 90th percentile, or one line per selected state when a run has several. Then the share
+       the median and 90th percentile, or one line per selected state when a run has several, and a panel for each
+       uncertainty the model reports of its own (:ref:`acquisition-own-uncertainty`). Then the share
        of trajectories that gave QM a candidate, and the sampling GPU time per candidate, from the cycle's
        sampler tasks in the task timeline. All should fall as the models improve.
    * - ``run-report-labels.png``

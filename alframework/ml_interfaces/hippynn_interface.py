@@ -1283,8 +1283,9 @@ class HippynnBatchedEnsemble:
         self.device = torch.device(device)
         self.energy_key, self.force_key = energy_key, force_key
         directories = sorted(glob.glob(os.path.join(str(model_directory), "model-*/")))
-        if len(directories) < 2:
-            raise ValueError(f"An uncertainty ensemble requires at least two model-* members in {model_directory}.")
+        # One member is allowed; a run whose acquisition reads the spread refuses it (acquisition.require_members).
+        if not directories:
+            raise ValueError(f"No model-* members in {model_directory}.")
         self._members = [_load_member(directory, self.device) for directory in directories]
         self.n_models = len(self._members)
         self._graphs = {}
@@ -1379,8 +1380,8 @@ class HippynnExcitedStateEnsemble:
                 raise ValueError('Excited-state inference requires finite positive property scales')
             self._scales.append(scales)
         directories = sorted(Path(model_directory).glob('model-*/'))
-        if len(directories) < 2:
-            raise ValueError('Excited-state uncertainty requires at least two model-* members')
+        if not directories:
+            raise ValueError(f'No model-* members in {model_directory}')
         for directory in directories:
             composition = sorted(_member_atomic_numbers(directory))
             if self._composition is not None and self._composition != composition:

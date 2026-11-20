@@ -38,6 +38,7 @@ from alframework.tools.plot_style import GRID, MUTED, NOTE, RC, SHADE as QUEUE_S
 from alframework.tools.plot_style import figure as _figure, key, label_end as _label_end, panel as _panel
 from alframework.tools.plot_style import save
 from alframework.tools.run_records import load_master_config, run_records
+from alframework.tools.trajectory_summary import OWN_UNCERTAINTY_PREFIX
 
 # Stages in pipeline order, each with a fixed color from the reference palette.
 STAGES = (("builder", "Builders", "#898781"), ("sampler", "Sampling", "#2a78d6"), ("QM", "QM labeling", "#eb6834"),
@@ -141,6 +142,11 @@ def _peak(group, name):
     return group[f"peak_{name}"].where(group[f"peak_{name}"].notna(), group[name])
 
 
+def own_uncertainty_columns(trajectories):
+    """The trajectory summary's ``max_uncertainty_<name>`` columns, in name order."""
+    return sorted(column for column in trajectories.columns if str(column).startswith(OWN_UNCERTAINTY_PREFIX))
+
+
 def spread_per_cycle(trajectories, tasks=None):
     """Per model: trajectories, QM candidates and their share, the spread percentiles (using each trajectory's peak),
     per selected state when a run has several, the gap spread per pair of states when the pair is recorded, and the
@@ -156,6 +162,10 @@ def spread_per_cycle(trajectories, tasks=None):
         for name, _, _ in SPREADS:
             if name in group and _peak(group, name).notna().any():
                 row[name] = _percentiles(_peak(group, name))
+        # The largest values of the model's own uncertainty the run's acquisition terms read, such as a single model's.
+        for name in own_uncertainty_columns(trajectories):
+            if group[name].notna().any():
+                row[name] = _percentiles(group[name])
         if len(states) > 1:
             row["states"] = {}
             for state in states:
@@ -330,12 +340,16 @@ def plot_spread(records, out_dir, written):
     models = np.array([row["model"] for row in rows])
     states = sorted({state for row in rows for state in row.get("states", {})}, key=lambda state: (len(state), state))
     spreads = [(name, title, unit) for name, title, unit in SPREADS if name != "Fsmax" and any(name in row for row in rows)]
+    own = [name for name in own_uncertainty_columns(records["trajectories"]) if any(name in row for row in rows)]
+    spreads += [(name, "Model's own uncertainty", "") for name in own]
     gpu = np.array([row.get("sampling_gpu_hours_per_candidate", np.nan) for row in rows])
     panels = len(spreads) + 1 + int(np.isfinite(gpu).any())
     by_state = " Per-state lines use the state a trajectory ran on; gap lines, the pair of states." if states else ""
+    own_note = (" The model's own uncertainty is the largest value during each trajectory of an uncertainty the model "
+                "reports itself, which the run's acquisition.terms read." if own else "")
     figure, axes = _figure(panels, "Ensemble spread per ALF iteration",
                            "Spread is each trajectory's peak disagreement between the ensemble's members. All of these "
-                           "should fall as the models improve." + by_state, height=1.5)
+                           "should fall as the models improve." + by_state + own_note, height=1.5)
     ends = {}  # Each panel's key entries, for the lines drawn per state or pair.
     pairs = sorted({lower for row in rows for lower in row.get("gap_pairs", {})}, key=int)
     for axis, (name, title, unit) in zip(axes, spreads):
@@ -364,7 +378,10 @@ def plot_spread(records, out_dir, written):
             axis.plot(models, medians, color=MEMBER_COLOR, lw=1.6, marker="o", ms=4)
             key(axis, [("Median", dict(color=MEMBER_COLOR, lw=1.6, marker="o", ms=4)),
                        ("90th percentile", dict(color=MEMBER_COLOR, lw=1, ls=(0, (4, 2))))])
-            _panel(axis, title, f"last iteration: median {medians[-1]:.3g} {unit}, 90% below {p90[-1]:.3g} {unit}", unit)
+            # A model's own uncertainty keeps the name it reports, as written, in the numbers line.
+            named = f"{name[len(OWN_UNCERTAINTY_PREFIX):]}, " if name.startswith(OWN_UNCERTAINTY_PREFIX) else ""
+            _panel(axis, title, f"{named}last iteration: median {medians[-1]:.3g} {unit}, 90% below {p90[-1]:.3g} "
+                   f"{unit}".replace(" ,", ",").rstrip(), unit or None)
         axis.set_ylim(bottom=0)
     shares = np.array([100 * row["candidate_share"] if row["candidate_share"] is not None else np.nan
                        for row in rows])

@@ -205,7 +205,8 @@ sections below add each family's own:
        for HIPPYNN. A relative path is taken from the master directory, as are other settings ending
        in ``_file``.
    * - ``n_models``
-     - Copies per round, at least 2. The default is 4.
+     - Copies per round. The default is 4. Their disagreement chooses frames, so a run needs two or more
+       unless it chooses them by the model's own uncertainty (see :ref:`acquisition-own-uncertainty`).
    * - ``seed``
      - Copy ``i`` uses ``seed + i``. The default is 0.
    * - ``device``

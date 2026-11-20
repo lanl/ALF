@@ -216,8 +216,9 @@ the sampler config instead:
 
 ``load_hippynn_batched_ensemble(model_directory, device="cuda:0", energy_key="energy",
 force_key="forces")`` evaluates each ensemble member on a whole batch of structures
-at once. It needs at least two ``model-*`` members, and a checkpoint trained with a
-cell requires fully periodic systems. ``batched_calculator_options`` can set:
+at once. It needs two or more ``model-*`` members for a run that chooses frames by their spread, and one is
+enough for a run that uses only the model's own uncertainty (see :ref:`acquisition-own-uncertainty`). A
+checkpoint trained with a cell requires fully periodic systems. ``batched_calculator_options`` can set:
 
 .. list-table::
    :header-rows: 1
@@ -428,7 +429,9 @@ Sampler loader signature
           return calculators
 
 For the generic MLMD path, each calculator should behave like an ASE
-calculator and provide at least ``energy`` and ``forces``. ALF will wrap the
+calculator and provide at least ``energy`` and ``forces``. A model with uncertainty of its
+own, such as one member with an uncertainty head, also puts it in
+``results["alf_uncertainty"]``; see :ref:`acquisition-own-uncertainty`. ALF will wrap the
 returned list with ``MLMD_calculator`` and add ``energy_stdev``,
 ``forces_stdev_mean``, and ``forces_stdev_max``.
 

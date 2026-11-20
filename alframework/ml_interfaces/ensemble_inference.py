@@ -10,6 +10,12 @@ Prediction layout, for ``n_models`` members and ``n_systems`` structures:
 - ``energies``: ``[n_models, n_systems]`` in eV.
 - ``forces``: a list of ``n_systems`` arrays shaped ``[n_models, n_atoms_i, 3]``
   in eV/Angstrom. Structures may have different sizes.
+- ``uncertainty`` (optional): a list of ``n_systems`` dicts of named numbers, the evaluator's own uncertainty (from
+  dropout, an uncertainty head, a latent-space distance, a neural tangent kernel, ...). The evaluator reduces per-atom
+  values to one number per structure. Acquisition reads them through ``acquisition.terms``. An ASE calculator reports
+  the same in ``results["alf_uncertainty"]``, and ASE ensembles average what their members report.
+
+An evaluator may have one member: the spread is then 0, and only its own uncertainty chooses frames.
 """
 
 import numpy as np
@@ -53,8 +59,8 @@ class ASEEnsembleEvaluator:
     """
 
     def __init__(self, calculators):
-        if len(calculators) < 2:
-            raise ValueError("An uncertainty ensemble requires at least two calculators.")
+        if not calculators:
+            raise ValueError("An ensemble needs at least one calculator.")
         self.calculators = list(calculators)
 
     @property
@@ -63,7 +69,7 @@ class ASEEnsembleEvaluator:
 
     def predict(self, atoms_list):
         energies = np.empty((self.n_models, len(atoms_list)))
-        forces = []
+        forces, uncertainty = [], []
         for system, atoms in enumerate(atoms_list):
             member_forces = np.empty((self.n_models, len(atoms), 3))
             for member, calculator in enumerate(self.calculators):
@@ -71,7 +77,21 @@ class ASEEnsembleEvaluator:
                 energies[member, system] = calculator.results["energy"]
                 member_forces[member] = calculator.results["forces"]
             forces.append(member_forces)
-        return {"energies": energies, "forces": forces}
+            uncertainty.append(member_uncertainty(calculator.results for calculator in self.calculators))
+        prediction = {"energies": energies, "forces": forces}
+        if any(uncertainty):
+            prediction["uncertainty"] = uncertainty
+        return prediction
+
+
+def member_uncertainty(results):
+    """The ``alf_uncertainty`` that ASE calculators report in their ``results``, each value averaged over the members
+    reporting it."""
+    reported = {}
+    for result in results:
+        for name, value in (result.get("alf_uncertainty") or {}).items():
+            reported.setdefault(name, []).append(float(value))
+    return {name: float(np.mean(values)) for name, values in reported.items()}
 
 
 def ensemble_statistics(prediction):
@@ -83,6 +103,9 @@ def ensemble_statistics(prediction):
     = root mean square of the same per-component force std.
     """
     energies = np.asarray(prediction["energies"], dtype=float)
+    own = prediction.get("uncertainty")
+    if own is not None and len(own) != energies.shape[1]:
+        raise ValueError(f"An evaluator returned uncertainty for {len(own)} structures, not {energies.shape[1]}.")
     rows = []
     for system, member_forces in enumerate(prediction["forces"]):
         force_std = np.abs(np.std(np.asarray(member_forces, dtype=float), axis=0))
@@ -93,6 +116,13 @@ def ensemble_statistics(prediction):
             "Fsrms": float(np.sqrt(np.mean(force_std ** 2))),
             "energy": float(np.mean(energies[:, system])),
         })
+    for row, values in zip(rows, own or ()):
+        for name, value in (values or {}).items():
+            if name in row:
+                raise ValueError(f"An evaluator's uncertainty {name!r} has the name of a built-in signal.")
+            if isinstance(value, bool) or not np.isfinite(float(value)):
+                raise ValueError(f"An evaluator's uncertainty {name!r} is {value!r}, not a finite number.")
+            row[name] = float(value)
     if 'state_energies' in prediction:
         from alframework.tools.excited_state_schema import gap_key_for_pair
         state_energies = np.asarray(prediction['state_energies'], dtype=float)

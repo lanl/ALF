@@ -50,7 +50,7 @@ trajectories were grouped into tasks or the order in which tasks finished.
 
 import numpy as np
 
-STRATEGIES = ("uncertainty", "summed")
+STRATEGIES = ("uncertainty", "summed", "largest")
 TRAJECTORY_POLICIES = ("stop", "continue")
 SELECTION_MODES = ("first_trigger", "cohort_top_k")
 COHORT_SELECTORS = ("top_k", "fps")
@@ -65,6 +65,78 @@ SCORE_TERMS = {
 }
 UNCERTAINTY_TERMS = ("energy", "force_mean", "force_max")
 WEIGHT_SHORTHAND = {"w_energy": "energy", "w_force": "force_rms"}
+# The settings each built-in term needs, for runs that use only terms of their own.
+SPREAD_CUTOFFS = ("Escut", "Fscut")
+
+
+def custom_terms(sampler_config):
+    """The run's own acquisition terms, ``acquisition.terms``: ``{name: {"uncertainty": key, "cutoff": value}}``.
+
+    A term reads the named per-structure ``uncertainty`` an evaluator or ASE calculator reports of its own (see
+    :mod:`alframework.ml_interfaces.ensemble_inference`) and is normalized by ``cutoff``, like the built-in terms.
+    Names can't reuse a built-in term's.
+    """
+    block = (sampler_config.get("acquisition") or {}).get("terms")
+    if block is None:
+        return {}
+    if not isinstance(block, dict):
+        raise ValueError('acquisition.terms must map names to {"uncertainty": ..., "cutoff": ...}.')
+    terms = {}
+    for name, term in block.items():
+        if name in SCORE_TERMS:
+            raise ValueError(f"acquisition.terms {name!r} is a built-in term; choose another name.")
+        if not isinstance(term, dict) or set(term) != {"uncertainty", "cutoff"}:
+            raise ValueError(f'acquisition.terms {name!r} must be {{"uncertainty": ..., "cutoff": ...}}.')
+        if not isinstance(term["uncertainty"], str) or not term["uncertainty"]:
+            raise ValueError(f"acquisition.terms {name!r} uncertainty must name what the model reports.")
+        cutoff = term["cutoff"]
+        if isinstance(cutoff, bool) or not isinstance(cutoff, (int, float)) or not np.isfinite(cutoff) or cutoff <= 0:
+            raise ValueError(f"acquisition.terms {name!r} cutoff must be a positive number; received {cutoff!r}.")
+        terms[name] = {"uncertainty": term["uncertainty"], "cutoff": float(cutoff)}
+    return terms
+
+
+def term_signal_and_cutoff(term, sampler_config):
+    """The signal a term reads and the cutoff that normalizes it."""
+    if term in SCORE_TERMS:
+        signal, cutoff_key, multiplier = SCORE_TERMS[term]
+        return signal, multiplier * sampler_config[cutoff_key]
+    custom = (sampler_config.get("acquisition") or {}).get("terms") or {}
+    if term not in custom:
+        raise ValueError(f"Unknown acquisition term {term!r}.")
+    return custom[term]["uncertainty"], float(custom[term]["cutoff"])
+
+
+def used_terms(settings):
+    """Every term a run's acquisition reads: its eligibility, its ranking, and its positive weights."""
+    ranking = {"uncertainty": UNCERTAINTY_TERMS, "largest": settings["eligibility"],
+               "summed": [term for term, weight in settings.get("weights", {}).items() if weight > 0]}
+    return set(settings["eligibility"]) | set(ranking[settings["strategy"]])
+
+
+def uses_spread(sampler_config):
+    """Whether a run's acquisition reads the ensemble's spread (any built-in term), so needs two or more members."""
+    return any(term in SCORE_TERMS for term in used_terms(acquisition_settings(sampler_config)))
+
+
+SINGLE_MEMBER = ("{what} has one member, so no spread, but this run's acquisition reads the ensemble's spread "
+                 "(the default energy and force terms, Escut and Fscut, or another built-in term). Train two or more "
+                 "members, or choose frames by the model's own uncertainty: name it in acquisition.terms "
+                 "and use only those terms in acquisition.eligibility.")
+
+
+def member_count(models):
+    """How many members a loaded ensemble has: its ``n_models``, the length of a list of calculators, or ``None``."""
+    count = getattr(models, 'n_models', None)
+    if count is None and isinstance(models, (list, tuple)):
+        count = len(models)
+    return count
+
+
+def require_members(models, sampler_config, what='The sampler\'s model'):
+    """Refuse a one-member model for a run whose acquisition reads the ensemble's spread."""
+    if member_count(models) == 1 and uses_spread(sampler_config):
+        raise ValueError(SINGLE_MEMBER.format(what=what))
 
 
 def _nonnegative(value, name):
@@ -79,7 +151,7 @@ def _positive_integer(value, name):
     return int(value)
 
 
-def _summed_weights(block):
+def _summed_weights(block, known=tuple(SCORE_TERMS)):
     weights = dict(block.get("weights") or {})
     shorthand = {WEIGHT_SHORTHAND[key]: block[key] for key in WEIGHT_SHORTHAND if key in block}
     if weights and shorthand:
@@ -91,9 +163,9 @@ def _summed_weights(block):
     if shorthand and set(shorthand) != set(WEIGHT_SHORTHAND.values()):
         missing = [key for key, term in WEIGHT_SHORTHAND.items() if term not in shorthand]
         raise ValueError(f"acquisition.strategy 'summed' requires acquisition.{missing[0]}.")
-    unknown = set(weights) - set(SCORE_TERMS)
+    unknown = set(weights) - set(known)
     if unknown:
-        raise ValueError(f"Unknown acquisition score terms: {sorted(unknown)}; available: {sorted(SCORE_TERMS)}.")
+        raise ValueError(f"Unknown acquisition score terms: {sorted(unknown)}; available: {sorted(known)}.")
     weights = {term: _nonnegative(value, f"acquisition weight {term!r}") for term, value in weights.items()}
     if not any(weights.values()):
         raise ValueError("acquisition.strategy 'summed' requires at least one positive weight.")
@@ -141,30 +213,33 @@ def _selection(block):
 def acquisition_settings(sampler_config):
     """Return validated acquisition settings; ``uncertainty``/``first_trigger`` when unconfigured."""
     block = dict(sampler_config.get("acquisition") or {})
-    unknown = set(block) - {"strategy", "weights", "trajectory_policy", "selection", "eligibility", *WEIGHT_SHORTHAND}
+    unknown = set(block) - {"strategy", "weights", "trajectory_policy", "selection", "eligibility", "terms",
+                            *WEIGHT_SHORTHAND}
     if unknown:
         raise ValueError(f"Unknown acquisition settings: {sorted(unknown)}.")
     strategy = block.get("strategy", "uncertainty")
     if strategy not in STRATEGIES:
         raise ValueError(f"acquisition.strategy must be one of {STRATEGIES}; received {strategy!r}.")
-    for cutoff in ("Escut", "Fscut"):
-        if cutoff not in sampler_config:
-            raise ValueError(f"Sampler configuration requires {cutoff}.")
+    custom = custom_terms(sampler_config)
+    known = {*SCORE_TERMS, *custom}
     settings = {"strategy": strategy}
     eligibility = block.get('eligibility', list(UNCERTAINTY_TERMS))
     if not isinstance(eligibility, (list, tuple)) or not eligibility or any(not isinstance(t, str) for t in eligibility) or len(set(eligibility)) != len(eligibility):
         raise ValueError('acquisition.eligibility requires distinct named score terms')
-    if set(eligibility) - set(SCORE_TERMS):
-        raise ValueError('Unknown acquisition eligibility terms')
+    if set(eligibility) - known:
+        raise ValueError(f'Unknown acquisition eligibility terms {sorted(set(eligibility) - known)}; '
+                         f'available: {sorted(known)}.')
     settings['eligibility'] = list(eligibility)
     if 'eligibility' in block:
-        for term in eligibility:
+        for term in (term for term in eligibility if term in SCORE_TERMS):
             cutoff = SCORE_TERMS[term][1]
             if not np.isfinite(float(sampler_config.get(cutoff, 0))) or sampler_config.get(cutoff, 0) <= 0:
                 raise ValueError(f'Explicit eligibility requires a positive finite {cutoff}')
     if strategy == "summed":
-        settings["weights"] = _summed_weights(block)
+        settings["weights"] = _summed_weights(block, known)
         for term, weight in settings["weights"].items():
+            if term not in SCORE_TERMS:
+                continue
             cutoff_key = SCORE_TERMS[term][1]
             if weight > 0 and (not np.isfinite(float(sampler_config.get(cutoff_key, 0))) or sampler_config.get(cutoff_key, 0) <= 0):
                 # Normalizing by a nonpositive cutoff would invert or break the ranking.
@@ -181,6 +256,10 @@ def acquisition_settings(sampler_config):
         states = state_settings(sampler_config)
         if states is None or states['gap_pair'] is None:
             raise ValueError('Gap acquisition requires excited_state mode and gap_uncertainty.pair or .pairs')
+    # Escut and Fscut are needed by the built-in terms; a run that uses only terms of its own can leave them out.
+    for cutoff in sorted({SCORE_TERMS[term][1] for term in used_terms(settings) if term in SCORE_TERMS}):
+        if cutoff not in sampler_config:
+            raise ValueError(f"Sampler configuration requires {cutoff}.")
     settings["selection"] = _selection(block)
     if settings['selection'].get('group_by_selected_state') and sampler_config.get('model_mode') != 'excited_state':
         raise ValueError('State-grouped cohorts require model_mode excited_state')
@@ -206,12 +285,11 @@ def uncertainty_flags(signals, Escut, Fscut):
 
 def score_term(term, signals, sampler_config):
     """Return one normalized score term."""
-    signal, cutoff_key, multiplier = SCORE_TERMS[term]
+    signal, cutoff = term_signal_and_cutoff(term, sampler_config)
     if signal not in signals:
         raise ValueError(f"Acquisition score term {term!r} requires the {signal!r} signal from inference.")
     if not np.isfinite(signals[signal]):
         raise ValueError(f'Nonfinite acquisition signal {signal!r}')
-    cutoff = multiplier * sampler_config[cutoff_key]
     # A nonpositive cutoff always triggers; rank such channels above every finite ratio.
     return signals[signal] / cutoff if cutoff > 0 else np.inf
 
@@ -220,7 +298,8 @@ def ranking_score(signals, settings, sampler_config):
     if settings["strategy"] == "summed":
         return float(sum(weight * score_term(term, signals, sampler_config)
                          for term, weight in settings["weights"].items() if weight > 0))
-    return float(max(score_term(term, signals, sampler_config) for term in UNCERTAINTY_TERMS))
+    terms = settings["eligibility"] if settings["strategy"] == "largest" else UNCERTAINTY_TERMS
+    return float(max(score_term(term, signals, sampler_config) for term in terms))
 
 
 def assess_frame(signals, min_distance, time_ps, sampler_config, settings):
@@ -232,18 +311,19 @@ def assess_frame(signals, min_distance, time_ps, sampler_config, settings):
         the uncertainty flags, ``distcrit``, and, for eligible frames,
         ``ranking_score``.
     """
-    Escut, Fscut = sampler_config["Escut"], sampler_config["Fscut"]
-    flags = uncertainty_flags(signals, Escut, Fscut)
+    if all(key in sampler_config for key in SPREAD_CUTOFFS) and all(key in signals for key in ("Es", "Fs", "Fsmax")):
+        flags = uncertainty_flags(signals, sampler_config["Escut"], sampler_config["Fscut"])
+    else:  # a run that uses only terms of its own
+        flags = {"Ecrit": False, "Fcrit": False, "Fmcrit": False}
     terms = settings.get('eligibility', UNCERTAINTY_TERMS)
-    trigger_flags = {}
+    trigger_flags, cutoffs = {}, {}
     for term in terms:
         score_term(term, signals, sampler_config)  # Validate the requested signal.
-        signal, cutoff, multiplier = SCORE_TERMS[term]
-        trigger_flags[term] = bool(signals[signal] > sampler_config[cutoff] * multiplier)
+        signal, cutoffs[term] = term_signal_and_cutoff(term, sampler_config)
+        trigger_flags[term] = bool(signals[signal] > cutoffs[term])
     flags['uncertain'] = any(trigger_flags.values())
     flags['acquisition_trigger_flags'] = trigger_flags
-    flags['acquisition_cutoffs'] = {term: sampler_config[SCORE_TERMS[term][1]] * SCORE_TERMS[term][2]
-                                     for term in terms}
+    flags['acquisition_cutoffs'] = cutoffs
     flags["distcrit"] = bool(min_distance < sampler_config.get("distcut", 1.2))
     checked = time_ps >= sampler_config.get("min_time", 0)
     if checked and flags["distcrit"]:
@@ -251,7 +331,8 @@ def assess_frame(signals, min_distance, time_ps, sampler_config, settings):
     elif checked and flags["uncertain"]:
         flags["outcome"] = "eligible"
         flags["ranking_score"] = ranking_score(signals, settings, sampler_config)
-        weighted = settings.get('weights', {term: 1. for term in UNCERTAINTY_TERMS})
+        ranked = terms if settings.get('strategy') == 'largest' else UNCERTAINTY_TERMS
+        weighted = settings.get('weights', {term: 1. for term in ranked})
         flags['acquisition_score_terms'] = {term: weight * score_term(term, signals, sampler_config)
                                             for term, weight in weighted.items() if weight > 0}
     else:

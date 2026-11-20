@@ -19,6 +19,9 @@ NUMBERS = {"simtime": "simulationtime", "realtime": "realtime_simulation", "Es":
 LABELS = {"outcome": "trajectory_outcome", "reason": "screen_reject_reason", "state": "selected_state",
           "window": "sampling_window", "gap_lower_state": "gap_std_lower_state"}
 COLUMNS = ("model", *LABELS, *NUMBERS)
+# A row also holds ``max_uncertainty_<name>``, the largest value during the trajectory, for each uncertainty of the
+# model's own that the run's acquisition terms read.
+OWN_UNCERTAINTY_PREFIX = "max_uncertainty_"
 TASK_FAILED = "task_failed"
 
 
@@ -55,6 +58,9 @@ def trajectory_row(moleculeid, metadata, outcome=None):
     row = {"id": str(moleculeid), "model": int(match.group(1)) if match else None}
     row.update({column: _label(metadata.get(key)) for column, key in LABELS.items()})
     row.update({column: _number(metadata.get(key)) for column, key in NUMBERS.items()})
+    # The largest values of the model's own uncertainty the run's acquisition terms read (acquisition.terms).
+    for name, largest in (metadata.get("max_uncertainty") or {}).items():
+        row[OWN_UNCERTAINTY_PREFIX + str(name)] = _number(largest)
     if outcome is not None:
         row["outcome"] = outcome
     return row
@@ -109,10 +115,11 @@ def read_trajectory_summary(path):
         path (str): The summary file.
 
     Returns:
-        (dict): For each name in ``COLUMNS``, a list of labels or an array of floats with NaN for
-        missing values, all the same length.
+        (dict): For each name in ``COLUMNS``, and each ``max_uncertainty_<name>`` any row has, a list of labels or an
+        array of floats with NaN for missing values, all the same length.
     """
     columns = {name: array("d") if name in NUMBERS else [] for name in COLUMNS}
+    own = {}  # max_uncertainty_<name> columns, created when a row first has one
     positions = {}
     shared = {}
 
@@ -131,10 +138,18 @@ def read_trajectory_summary(path):
             except (ValueError, TypeError, KeyError):
                 continue
             if position is None:
-                positions[row["id"]] = len(columns["model"])
+                position = positions[row["id"]] = len(columns["model"])
                 for name, item in zip(COLUMNS, values):
                     columns[name].append(item)
+                for name in own:
+                    own[name].append(math.nan)
             else:
                 for name, item in zip(COLUMNS, values):
                     columns[name][position] = item
+            for name, item in row.items():
+                if name.startswith(OWN_UNCERTAINTY_PREFIX) and isinstance(item, (int, float)):
+                    if name not in own:
+                        own[name] = array("d", [math.nan] * len(columns["model"]))
+                    own[name][position] = item
+    columns.update(own)
     return columns

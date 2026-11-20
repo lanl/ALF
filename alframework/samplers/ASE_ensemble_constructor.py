@@ -151,6 +151,12 @@ class MLMD_calculator(Calculator):
             self.results['forces_stdev_mean'] = np.mean(np.abs(force_stdev))
             self.results['forces_stdev_max'] = np.max(np.abs(force_stdev))
 
+        # Uncertainty the members report of their own (see ensemble_inference.member_uncertainty).
+        from alframework.ml_interfaces.ensemble_inference import member_uncertainty
+        own = member_uncertainty(getattr(model, 'results', {}) for model in self.models[:self.N_models])
+        if own:
+            self.results['alf_uncertainty'] = own
+
         if self.udd_bias_weight is not None:
             self._apply_udd_bias()
 

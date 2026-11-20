@@ -73,8 +73,10 @@ def test_mixed_molecule_sizes_evaluate_together():
     prediction = ASEEnsembleEvaluator(fake_ensemble(3)).predict([WATER, METHANE])
     assert prediction["energies"].shape == (3, 2)
     assert [forces.shape for forces in prediction["forces"]] == [(3, 3, 3), (3, 5, 3)]
-    with pytest.raises(ValueError, match="at least two"):
-        ASEEnsembleEvaluator(fake_ensemble(1))
+    # One member is allowed: whether a run can use it depends on its acquisition (see uses_spread).
+    assert ASEEnsembleEvaluator(fake_ensemble(1)).predict([WATER])["energies"].shape == (1, 1)
+    with pytest.raises(ValueError, match="at least one calculator"):
+        ASEEnsembleEvaluator([])
 
 
 @pytest.mark.parametrize(

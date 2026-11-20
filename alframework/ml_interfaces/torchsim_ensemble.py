@@ -19,8 +19,9 @@ class TorchSimBatchedEnsemble:
         self._torch = torch
         self.device = torch.device(device)
         self.dtype = torch.float64 if dtype == 'float64' else torch.float32
-        if len(models) < 2:
-            raise ValueError(f'An uncertainty ensemble requires at least two fine-tuned copies in {source}.')
+        # One copy is allowed; a run whose acquisition reads the spread refuses it (acquisition.require_members).
+        if not models:
+            raise ValueError(f'No fine-tuned copies in {source}.')
         self._members = list(models)
         self.n_models = len(self._members)
         self.charge, self.spin = charge, spin

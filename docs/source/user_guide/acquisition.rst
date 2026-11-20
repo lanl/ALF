@@ -17,16 +17,19 @@ The settings on this page go in an ``acquisition`` block in the sampler config.
 They apply to ``alframework.samplers.batched_mlmd.mlmd_trajectories_task``; see
 :ref:`samplers-multi-trajectory`.
 
-``simple_mlmd_sampling_task`` and ``simple_udd_sampling_task`` always use the
-default eligibility rule and return the first eligible frame. They stop at startup
-if given ``acquisition.selection``, and they ignore the rest of the block.
+``simple_mlmd_sampling_task`` and ``simple_udd_sampling_task`` run one trajectory per
+task and return its first eligible frame. They make the same eligibility decision,
+from ``eligibility`` and ``terms`` below, and stop at startup if given
+``acquisition.selection``.
 
 Eligibility
 -----------
 
 A frame is eligible when any of its eligibility terms exceeds that term's cutoff.
-All signals are standard deviations across the ensemble, computed from unbiased
-predictions, so UDD and well-potential forces never affect them.
+The built-in terms are standard deviations across the ensemble, computed from
+unbiased predictions, so UDD and well-potential forces never affect them. Terms of
+your own can read uncertainty the model reports itself (see
+:ref:`acquisition-own-uncertainty`).
 
 .. list-table::
    :header-rows: 1
@@ -94,6 +97,9 @@ signal is divided by its cutoff.
    * - ``"summed"``
      - A weighted sum of the terms named in ``weights``. Every term with a
        positive weight needs a positive cutoff.
+   * - ``"largest"``
+     - The largest of the run's ``eligibility`` terms, which suits a run whose
+       terms are its own.
 
 .. code-block:: json
 
@@ -114,6 +120,56 @@ affects ranking but doesn't trigger labeling.
 
 Equal scores are ordered by trajectory ID and then step, so results don't depend
 on the order in which tasks finish.
+
+.. _acquisition-own-uncertainty:
+
+A Model's Own Uncertainty
+-------------------------
+
+An ensemble's spread is one measure of uncertainty. A model can also report
+uncertainty of its own, as one number per structure: from MC dropout, an evidential
+or mean-variance head, last-layer, Laplace or Gaussian-process variance, a neural
+tangent kernel, a distance in its latent space to the training data, or a committee
+of different architectures.
+
+**What the model reports.** A batched evaluator (``batched_calculator``) adds
+``"uncertainty"`` to what ``predict`` returns: one dict of named numbers per structure.
+From ``evaluate``, which the packed engines call, it sets ``last_uncertainty`` to the
+same list. An ASE calculator (``ase_calculator``) puts the dict in
+``results["alf_uncertainty"]``; an ensemble of calculators averages what its members
+report. Each value is one number per structure, so reduce per-atom values first, for
+example to their maximum. See :mod:`alframework.ml_interfaces.ensemble_inference`.
+
+**What the run reads.** ``terms`` names each one, with the cutoff that normalizes it
+like the built-in terms, and ``eligibility`` and the ranking can then use it:
+
+.. code-block:: json
+
+   {
+     "acquisition": {
+       "terms": {"dropout": {"uncertainty": "dropout_std", "cutoff": 0.05}},
+       "eligibility": ["dropout"],
+       "strategy": "largest"
+     }
+   }
+
+The terms mix freely with the built-in ones, such as
+``"eligibility": ["energy", "force_mean", "dropout"]``. ``Escut`` and ``Fscut`` are
+needed only when a built-in term is used, as it is by default.
+
+**One model.** A run that uses only terms of its own doesn't need an ensemble:
+``n_models`` (or ``fine_tune.n_models``) can be ``1``. A single member's spread is 0,
+so a run whose eligibility or ranking reads the spread stops at startup with one
+member, and its sampler tasks refuse a one-member model as well.
+
+**Records.** Each trajectory records the largest value each of these reached during
+the trajectory, as ``max_uncertainty`` in its metadata and ``max_uncertainty_<name>``
+in the trajectory summary. The run report adds a panel for each beside the spread
+(see :doc:`monitoring`).
+
+This covers both sampler families, with every engine. Dynamics on a modified
+potential, UDD and gap-seeking, use the ensemble's spread as their bias and still
+need an ensemble.
 
 Selection
 ---------

@@ -62,6 +62,8 @@ class ASECalculatorBatch:
                             pbc=np.asarray(pbc.cpu() if hasattr(pbc, "cpu") else pbc))
                       for start, end, cell in zip(offsets[:-1], offsets[1:], cells)]
         prediction = self.evaluator.predict(atoms_list)
+        # The members' own uncertainty, one dict per system, which the engine passes on (see PackedMLMDEngine).
+        self.last_uncertainty = prediction.get("uncertainty")
         return (torch.as_tensor(prediction["energies"]),
                 torch.as_tensor(np.concatenate(prediction["forces"], axis=1)))
 
@@ -151,9 +153,11 @@ class PackedMLMDEngine:
             if getattr(self, '_state_members', None) is not None:
                 se, sf = self._state_members
                 self._state_members = (se[:, :, selection], sf[:, :, atom_mask])
+            if getattr(self, '_uncertainty', None) is not None:
+                self._uncertainty = [self._uncertainty[row] for row in keep]
         else:
             self.state, self._members = None, None
-            self._state_members = None
+            self._state_members = self._uncertainty = None
         self._host = self._distances = None
         self._layout()
 
@@ -186,6 +190,11 @@ class PackedMLMDEngine:
         forces = forces.to(self.device, self.dtype)
         self._members = (energies, forces)
         self._state_members = getattr(self.evaluator, 'last_states', None)
+        # An evaluator's own uncertainty: after evaluate, its last_uncertainty holds one dict per system, in order.
+        self._uncertainty = getattr(self.evaluator, 'last_uncertainty', None)
+        if self._uncertainty is not None and len(self._uncertainty) != len(self._rows):
+            raise ValueError(f'The evaluator reported uncertainty for {len(self._uncertainty)} systems, not '
+                             f'{len(self._rows)}.')
         self._host = self._distances = None
         self._stale = False
         energy, force = energies.mean(0), forces.mean(0)
@@ -321,6 +330,8 @@ class PackedMLMDEngine:
             prediction.update(state_energies=energies[:, :, [self._position[index]]].cpu().numpy(),
                               state_forces=[forces[:, :, selection].cpu().numpy()],
                               selected_state=self.evaluator.selected_state, gap_pair=self.evaluator.gap_pair)
+        if getattr(self, '_uncertainty', None) is not None:
+            prediction["uncertainty"] = [self._uncertainty[self._position[index]]]
         return {"prediction": prediction, "min_distance": self._minimum_distance(index)}
 
     def _minimum_distance(self, index):

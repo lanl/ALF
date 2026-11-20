@@ -313,3 +313,24 @@ def test_no_text_overlaps_in_any_progress_plot(tmp_path, monkeypatch):
         assert overlapping_text(fig) == [], name
         assert text_outside(fig) == [], name
         plt.close(fig)
+
+
+def test_a_models_own_uncertainty_gets_its_own_spread_panel(tmp_path, monkeypatch):
+    import matplotlib.pyplot as plt
+    from alframework.tools.plot_style import overlapping_text, text_outside
+    run = make_run(tmp_path / "run")
+    path = run / "plots" / "trajectories.jsonl"
+    rows = [json.loads(line) for line in path.read_text().splitlines()]
+    for row in rows:
+        row["max_uncertainty_dropout_std"] = 0.2 / (row["model"] + 1)
+    path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+    summary = run_report.spread_per_cycle(run_records.run_records(run)["trajectories"])
+    assert summary[0]["max_uncertainty_dropout_std"]["median"] == pytest.approx(0.2)
+    figures = dict(_rendered_figures(monkeypatch, lambda: run_report.write_report(run, tmp_path / "report")))
+    spread = figures["run-report-spread.png"]
+    titles = [axis.get_title(loc="left") for axis in spread.axes]
+    assert "Model's Own Uncertainty" in titles, titles
+    numbers = [text.get_text() for axis in spread.axes for text in axis.texts]
+    assert any(line.startswith("dropout_std, last iteration: median 0.0667") for line in numbers), numbers
+    assert overlapping_text(spread) == [] and text_outside(spread) == []
+    plt.close("all")

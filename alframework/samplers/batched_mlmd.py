@@ -51,7 +51,8 @@ from alframework.tools.task_timeline import timed
 from alframework.tools.capabilities import declares
 
 from alframework.ml_interfaces.ensemble_inference import ensemble_statistics, SelectedStateEvaluator
-from alframework.samplers.acquisition import acquisition_settings, assess_frame, frame_id, top_k, worker_retention_limit
+from alframework.samplers.acquisition import (acquisition_settings, assess_frame, custom_terms, frame_id,
+                                              require_members, top_k, worker_retention_limit)
 # Keep the old paths importable, including for previously pickled calculators.
 from alframework.samplers.engines.ase import ASEEngine, OBSERVED_PROPERTIES, _PredictedMember, _StateMeanCalculator
 from alframework.samplers.engines.factory import make_engine
@@ -110,6 +111,8 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
         (list): The input ``MoleculesObject`` instances, updated in place.
     """
     settings = acquisition_settings(sampler_config)
+    # The model's own uncertainty the run's acquisition terms read, whose largest values each trajectory records.
+    own_uncertainty = tuple(sorted({term['uncertainty'] for term in custom_terms(sampler_config).values()}))
     cohort = settings['selection']['mode'] == 'cohort_top_k'
     keep_running = settings['trajectory_policy'] == 'continue'
     dt, maxt, Ncheck = sampler_config['dt'], sampler_config['maxt'], sampler_config['Ncheck']
@@ -256,7 +259,7 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
                 decision = assess_frame(signals, observation['min_distance'], time_ps, sampler_config, settings)
                 entry.update(signals=signals, decision=decision, min_distance=observation['min_distance'],
                              check=check)
-                for key in PEAK_SIGNALS:
+                for key in (*PEAK_SIGNALS, *own_uncertainty):
                     if key in signals:  # gap_std only with a gap_uncertainty pair.
                         entry['peaks'][key] = max(signals[key], entry['peaks'].get(key, signals[key]))
                 if cohort and decision['outcome'] == 'eligible':
@@ -365,6 +368,9 @@ def _record(molecule, entry, schedule, sampler_config, settings, engine, index, 
     meta_dict.update(kinetic_temperature_K=entry.get('finished_kinetic_temperature_K'),
                      thermostat_temperature_K=entry['temps'][-1] if entry['temps'] else schedule['Tsrt'])
     meta_dict.update(signals)
+    own = {name: peak for name, peak in entry['peaks'].items() if name not in PEAK_SIGNALS}
+    if own:
+        meta_dict['max_uncertainty'] = own
     for key in ('acquisition_trigger_flags', 'acquisition_cutoffs', 'acquisition_score_terms'):
         if key in decision:
             meta_dict[key] = decision[key]
@@ -495,6 +501,7 @@ def sample_trajectories(molecule_objects, models, sampler_config, engine_class=N
     sampler_config = dict(sampler_config, meta_dir=task_meta_dir(sampler_config, list(molecule_objects)))
     driver = driver_settings(sampler_config)
     states = state_settings(sampler_config)
+    require_members(models, sampler_config)
     from alframework.tools.molecular_topology import load_reference_topology, validate_fixed_topology, topology_metadata
     from alframework.tools.force_screen import validated_force_cutoff
     from alframework.tools.screen_audit import RuntimeScreenAudit

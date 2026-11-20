@@ -35,6 +35,7 @@ from alframework.tools.label_parts import hold_ready
 from alframework.tools.loop_timing import coordinator_loop_timer
 from alframework.tools.capabilities import validate_task_config
 from alframework.tools.capacity import capacity_report, task_slots
+from alframework.samplers.acquisition import SINGLE_MEMBER, uses_spread
 from alframework.tools.sizing import apply_sizing, derive_sizing, describe as describe_sizing, sizing_block
 from alframework.tools.scaling import SCALING, apply_scaling, describe as describe_scaling, large_run_warning
 from alframework.tools.builder_outputs import builder_outputs
@@ -188,6 +189,15 @@ validate_task_config(ml_task, ML_config, master_config)
 # What the run keeps in flight against what its Parsl executors can run, with warnings where they disagree.
 # Ensemble tasks that submit one app per member (join apps) are counted per member.
 ml_members = ML_config.get('n_models') if 'n_models' in ML_config else (ML_config.get('fine_tune') or {}).get('n_models')
+# One member has no spread: refuse it here, before the bootstrap, when the run's acquisition reads the spread. (A
+# sampler that doesn't use ALF's acquisition settings has nothing to check; its tasks check what they load.)
+if ml_members == 1:
+    try:
+        reads_spread = uses_spread(sampler_config)
+    except ValueError:
+        reads_spread = False
+    if reads_spread:
+        raise ValueError(SINGLE_MEMBER.format(what='The ML configuration (n_models 1)'))
 capacity_lines, capacity_warnings = capacity_report(
     master_config, parsl_executors,
     builder_labels=builder_task.executors, builder_width=master_config.get('maximum_builder_structures', 1),

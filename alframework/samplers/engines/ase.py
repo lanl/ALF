@@ -138,6 +138,8 @@ class ASEEngine:
         results = atoms.calc.results
         prediction = {'energies': np.array(results['energy_contributions'][:self.n_models], dtype=float)[:, None],
                       'forces': [np.array(results['forces_contributions'][:self.n_models], dtype=float)]}
+        if results.get('alf_uncertainty'):
+            prediction['uncertainty'] = [results['alf_uncertainty']]
         return {'prediction': prediction, 'min_distance': minimum_distance(atoms)}
 
     def atoms(self, index):

@@ -65,9 +65,10 @@ def fine_tune_settings(ML_config, master_directory=None):
         if key.endswith('_file') and isinstance(value, str) and value:
             settings[key] = str(_resolve(value, master_directory))
     n_models = settings.setdefault('n_models', 4)
-    if isinstance(n_models, bool) or not isinstance(n_models, int) or n_models < 2:
-        raise ValueError('fine_tune.n_models must be an integer of at least 2, because the copies\' disagreement '
-                         'is what selects new samples.')
+    # One copy suits a run that chooses frames by the model's own uncertainty; the coordinator refuses one for a run
+    # whose acquisition reads the copies' disagreement (alframework.samplers.acquisition.uses_spread).
+    if isinstance(n_models, bool) or not isinstance(n_models, int) or n_models < 1:
+        raise ValueError('fine_tune.n_models must be a positive integer.')
     seed = settings.setdefault('seed', 0)
     if isinstance(seed, bool) or not isinstance(seed, int) or seed < 0:
         raise ValueError('fine_tune.seed must be a nonnegative integer.')

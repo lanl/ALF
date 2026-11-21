@@ -91,3 +91,28 @@ def test_serial_shard_reuses_one_file_handle(tmp_path, monkeypatch, workers):
     assert not handles[0].id.valid
     assert [group["path"] for group in groups] == ["/CH4", "/H2O", "/NH3"]
     assert all(set(group) == {"path", "species", "energy"} for group in groups)
+
+
+@pytest.mark.parametrize("workers", [1, 2])
+def test_nested_groups_and_single_values_read_like_any_group(tmp_path, workers):
+    import h5py
+
+    path = tmp_path / "data.h5"
+    with h5py.File(path, "w") as handle:
+        water = handle.create_group("water")
+        water.create_dataset("species", data=np.array([b"O", b"H", b"H"]))
+        water.create_dataset("energy", data=np.array([-76.0, -75.9]))
+        ammonia = handle.create_group("outer").create_group("ammonia")
+        ammonia.create_dataset("species", data=np.array([b"N", b"H", b"H", b"H"]))
+        ammonia.create_dataset("charge", data=0)
+
+    groups = list(h5_parallel.read_shard(path, workers=workers))
+    assert [group["path"] for group in groups] == ["/outer/ammonia", "/water"]
+    assert groups[0]["species"] == ["N", "H", "H", "H"] and groups[0]["charge"] == 0
+    assert groups[1]["species"] == ["O", "H", "H"]
+    np.testing.assert_array_equal(groups[1]["energy"], [-76.0, -75.9])
+
+
+def test_a_missing_file_raises_when_read(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        list(h5_parallel.read_shard(tmp_path / "missing.h5"))

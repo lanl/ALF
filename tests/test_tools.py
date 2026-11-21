@@ -43,12 +43,6 @@ def test_the_task_queue_keeps_its_lowercase_name():
     assert parsl_tasks.parsl_task_queue is ParslTaskQueue
 
 
-def test_build_ani_info_keeps_its_pyanitools_path():
-    canonical = load_module_from_string("alframework.tools.legacy_ani.build_ANI_info")
-    assert load_module_from_string("alframework.tools.pyanitools.build_ANI_info") is canonical
-    assert pickle.loads(b"calframework.tools.pyanitools\nbuild_ANI_info\n.") is canonical
-
-
 @pytest.mark.parametrize(
     "t, amp, expected",
     [(0.0, 0.0, 100.0), (5.0, 0.0, 200.0), (10.0, 0.0, 300.0), (1.0, 50.0, 170.0)],

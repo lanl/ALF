@@ -73,8 +73,10 @@ def test_coordinator_writes_status_only_through_write_status():
               and "status_path" in ast.unparse(node.args[0])
               and "w" in ast.unparse(node.args[1:2] or [ast.Constant("r")])]
     assert direct == []
-    # Startup, two in --test_ml, each bootstrap loop, after bootstrap training starts, each loop, and the budget stop.
-    assert MAIN.read_text().count("write_status(master_config['status_path'], status)") == 7
+    # Startup writes directly; then two in --test_ml, each bootstrap loop, after bootstrap training starts, each
+    # loop, and the budget stop go through StatusFile, which writes with write_status.
+    assert MAIN.read_text().count("write_status(master_config['status_path'], status)") == 1
+    assert MAIN.read_text().count("status_file.write(master_config['status_path'], status)") == 6
 
 
 def test_store_current_data_leaves_nothing_when_a_store_fails(tmp_path, monkeypatch):

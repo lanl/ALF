@@ -297,3 +297,40 @@ def find_empty_directory(pattern):
 def write_status(status_path, status):
     """Save the coordinator's status all at once, so a crash mid-write can't stop a restart."""
     write_json_atomic(status_path, status)
+
+
+# The master configuration's opt-in: skip rewriting a status file that hasn't changed.
+STATUS_ON_CHANGE = 'write_status_on_change'
+
+
+def status_on_change_setting(master_config):
+    """The checked ``write_status_on_change`` setting, ``False`` unless set."""
+    value = (master_config or {}).get(STATUS_ON_CHANGE, False)
+    if not isinstance(value, bool):
+        raise ValueError(f'{STATUS_ON_CHANGE} must be true or false; received {value!r}.')
+    return value
+
+
+class StatusFile:
+    """Writes the coordinator's status file, by default on every call.
+
+    With ``only_on_change`` (the master configuration's ``write_status_on_change``), a call whose status and path
+    match the last one written skips the write. Every change is still written when it's passed in, so a restart
+    finds the same status; what's skipped is rewriting the same bytes, each a sync and a rename on the shared
+    filesystem, on the passes where nothing happened, such as while a stage waits for its nodes.
+    """
+
+    def __init__(self, only_on_change=False):
+        self.only_on_change = only_on_change
+        self._written = None
+        self.skipped = 0
+
+    def write(self, status_path, status):
+        """Write ``status`` to ``status_path``, unless it's skipped as unchanged; returns whether it was written."""
+        written = (status_path, json.dumps(status, sort_keys=True, default=str))
+        if self.only_on_change and written == self._written:
+            self.skipped += 1
+            return False
+        write_status(status_path, status)
+        self._written = written
+        return True

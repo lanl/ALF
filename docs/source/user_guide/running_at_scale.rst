@@ -63,6 +63,11 @@ metadata files or compact returns off gets a warning naming them.
      - master
      - Returns the coordinator's freed heap to the system after each stored shard: about 1.7 GiB freed in
        0.07 s per generation of 131,072 labels.
+   * - ``write_status_on_change``
+     - master
+     - The status file is rewritten only on passes where it changed. Each rewrite is a sync and a rename on the
+       shared filesystem, about 20 ms at the median, and up to 11.7 s while the filesystem was busy, blocking the
+       pass; most passes, such as those waiting for nodes, change nothing.
    * - ``disable_transparent_huge_pages``
      - master
      - The coordinator and its child processes opt out of huge pages, which made large allocations 30 to 60

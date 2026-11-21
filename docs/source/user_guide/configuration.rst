@@ -181,6 +181,10 @@ The master config controls the workflow wiring. Common fields include:
      - Optional boolean, default ``false``. After publishing a nonempty label snapshot,
        collect Python garbage and release free coordinator heap pages on Linux with glibc.
        The coordinator logs elapsed time and its PSS before and after when available.
+   * - ``write_status_on_change``
+     - Optional boolean, default ``false``. Rewrite the status file (``status_path``) only on the loop passes
+       where it changed, instead of on every pass. Each change is still written in the pass that made it, so a
+       restart finds the same status.
    * - ``disable_transparent_huge_pages``
      - Optional boolean, default ``false``. On Linux, turn off transparent huge pages for the
        coordinator and the processes it starts, such as Parsl's interchanges, before Parsl

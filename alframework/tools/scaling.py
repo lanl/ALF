@@ -23,7 +23,7 @@ SCALING = 'scaling'
 MASTER_SETTINGS = ('parsl_data_serializer', 'poll_interval', 'coordinator_trim_after_snapshot',
                    'disable_transparent_huge_pages', 'label_storage_batch_size', 'label_h5_layout',
                    'data_by_reference', 'trajectory_summary_path', 'coordinator_memory_sample',
-                   'coordinator_memory_path', 'coordinator_loop_path')
+                   'coordinator_memory_path', 'coordinator_loop_path', 'write_status_on_change')
 SAMPLER_SETTINGS = ('returned_metadata', 'returned_momenta', 'metadata_files')
 ML_SETTINGS = ('shared_training_data', 'stream_final_evaluation', 'h5_read_workers')
 # Where each sizing setting belongs instead, for the error that names it.

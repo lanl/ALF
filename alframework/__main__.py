@@ -27,7 +27,8 @@ from alframework.tools.pyanitools import anidataloader
 from alframework.tools.molecules import MoleculesObject
 from alframework.tools.bootstrap import bootstrap_spare_count, next_bootstrap_ids
 from alframework.tools.restarts import (
-    STORED_AT_BUDGET_STOP, find_empty_directory, open_held_labels, reconcile_status, write_status,
+    STORED_AT_BUDGET_STOP, StatusFile, find_empty_directory, open_held_labels, reconcile_status,
+    status_on_change_setting, write_status,
 )
 from alframework.tools.labeling_coordinator import LabelingCoordinator
 from alframework.tools.label_validation import screen_labels
@@ -249,6 +250,8 @@ spare_seeds = bootstrap_spare_count(master_config)
 storage_batch_size = master_config.get('label_storage_batch_size')
 # Optional: how long each phase of each loop pass takes (alframework.tools.loop_timing).
 loop_timer = coordinator_loop_timer(master_config)
+# Optional: rewrite the status file only when it changes (write_status_on_change).
+status_file = StatusFile(only_on_change=status_on_change_setting(master_config))
 
 
 def end_loop_pass(loop, delay):
@@ -391,7 +394,7 @@ if args.test_ml:
                                   raise_on_fail=True)
     ML_task_queue.add_task(ml_task(**task_input))
     status['current_training_id'] = status['current_training_id'] + 1
-    write_status(master_config['status_path'], status)
+    status_file.write(master_config['status_path'], status)
     ml_result = ML_task_queue.task_list[0].result()
     queue_output = ML_task_queue.get_task_results()
     returned_models = queue_output[0]
@@ -401,7 +404,7 @@ if args.test_ml:
         if all(network[0]) and (network[1] > status['current_model_id']):
             print('New Model: {:04d}'.format(network[1]))
             status['current_model_id'] = network[1]
-    write_status(master_config['status_path'], status)
+    status_file.write(master_config['status_path'], status)
     testing=True
     
 if testing:
@@ -506,7 +509,7 @@ if status['current_h5_id'] == 0 and status['current_model_id'] < 0:
             QM_task_queue.print_status()
 
         with loop_timer.phase('write_status'):
-            write_status(master_config['status_path'], status)
+            status_file.write(master_config['status_path'], status)
         with loop_timer.phase('executor_check'):
             stop_if_executor_failed(parsl.dfk())
 
@@ -529,7 +532,7 @@ if status['current_model_id'] < 0:
     
     status['current_training_id'] = status['current_training_id'] + 1
     
-    write_status(master_config['status_path'], status)
+    status_file.write(master_config['status_path'], status)
     network = ML_task_queue.task_list[0].result()
     if all(network[0]):
         status['current_model_id'] = network[1]
@@ -691,7 +694,7 @@ while True:
         sys.stdout.flush()
 
     with loop_timer.phase('write_status'):
-        write_status(master_config['status_path'], status)
+        status_file.write(master_config['status_path'], status)
     with loop_timer.phase('retire_frames'):
         if frame_retirement is not None:
             frame_retirement.checkpointed()
@@ -702,7 +705,7 @@ while True:
         # Finished labels were paid for, so keep them, although no model trained on them.
         with loop_timer.phase('store'):
             beyond_budget = store_held_labels(**{STORED_AT_BUDGET_STOP: 'true'}) if held.successful() else 0
-        write_status(master_config['status_path'], status)
+        status_file.write(master_config['status_path'], status)
         print("Stopping: stored {} labels (maximum_stored_labels is {}), including {} finished labels stored at the "
               "stop without training. Dropped {} builder, {} sampler, and {} unfinished QM structures.".format(
                   status['lifetime_stored_labels'], label_budget, beyond_budget, builder_task_queue.get_number(),

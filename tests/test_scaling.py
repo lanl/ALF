@@ -30,7 +30,7 @@ BLOCK = {'parsl_data_serializer': 'pickle', 'poll_interval': 1, 'coordinator_tri
          'data_by_reference': {'directory': 'frames', 'sampler_frames': True},
          'trajectory_summary_path': 'records/trajectories.jsonl', 'coordinator_memory_sample': 30,
          'coordinator_memory_path': '/shared/records/memory.csv', 'coordinator_loop_path': 'records/loop.csv',
-         'returned_metadata': 'compact', 'returned_momenta': False, 'metadata_files': 'per_task',
+         'write_status_on_change': True, 'returned_metadata': 'compact', 'returned_momenta': False, 'metadata_files': 'per_task',
          'shared_training_data': True, 'stream_final_evaluation': True, 'h5_read_workers': 8}
 
 

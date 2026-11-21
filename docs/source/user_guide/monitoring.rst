@@ -73,6 +73,11 @@ task's end, without the time a block spends idle. Tasks in your own modules are 
 decorated with ``alframework.tools.task_timeline.timed(stage)`` under ``@python_app``. With the variable
 unset, nothing is written, and a line that can't be written is skipped without failing the task.
 
+A task can also time its own parts with ``with alframework.tools.task_timeline.phase(name):``. Its line then
+has ``phases``, seconds per part, and ``phase_imports``, the modules each part imported, which shows a part
+spending its time on first imports. QM tasks that read sampled frames by reference (``data_by_reference``)
+record ``read_frames``, ``load_labeler`` and ``label``.
+
 .. _monitoring-coordinator-loop:
 
 Coordinator Loop

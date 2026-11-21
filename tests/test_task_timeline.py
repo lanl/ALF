@@ -215,3 +215,34 @@ def test_gpu_peak_is_recorded_only_where_torch_uses_a_gpu(tmp_path, monkeypatch)
     assert first["gpu_peak_gb"] is None, "a task never imports torch to measure it"
     assert second["gpu_peak_gb"] == 3.0, "the device that used the most"
     assert cuda.resets == [0, 1], "each task's peak starts at that task"
+
+
+@timed("QM")
+def _phased(molecules):
+    from alframework.tools.task_timeline import phase
+    with phase("read"):
+        import tests.helpers.timeline_phase_module  # noqa: F401  (a module only this phase imports)
+    for _ in range(2):
+        with phase("label"):
+            pass
+    return molecules
+
+
+def test_a_task_records_the_parts_it_times(tmp_path, monkeypatch):
+    import sys
+    sys.modules.pop("tests.helpers.timeline_phase_module", None)
+    monkeypatch.setenv(ENV, str(tmp_path / "timeline"))
+    assert _phased([1]) == [1]
+    [record] = read_timeline(str(tmp_path / "timeline"))
+    assert set(record["phases"]) == {"read", "label"} and all(v >= 0 for v in record["phases"].values())
+    assert record["phase_imports"]["read"] >= 1 and record["phase_imports"]["label"] == 0
+    assert _sample([1]) == [1]
+    assert "phases" not in read_timeline(str(tmp_path / "timeline"))[-1], "a task without phases has none"
+
+
+def test_a_phase_outside_a_timed_task_does_nothing(tmp_path, monkeypatch):
+    from alframework.tools.task_timeline import phase
+    monkeypatch.setenv(ENV, str(tmp_path / "timeline"))
+    with phase("alone"):
+        pass
+    assert not (tmp_path / "timeline").exists()

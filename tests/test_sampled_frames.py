@@ -185,3 +185,21 @@ def test_retire_only_after_the_last_input_and_its_outcome_are_recorded(tmp_path,
     lifecycle.snapshot_published()
     lifecycle.checkpointed()
     assert not list(tmp_path.iterdir())
+
+
+def test_a_reference_qm_task_records_reading_loading_and_labeling(tmp_path, monkeypatch):
+    from alframework.tools.task_timeline import ENV, read_timeline
+    gas = MoleculesObject(Atoms('He', positions=[[0, 1, 2]]), 'gas')
+    [frame] = stage_sampled_frames([gas], tmp_path, 1)
+
+    class Labeler:
+        @staticmethod
+        def func(molecule_objects, QM_config):
+            return molecule_objects
+
+    monkeypatch.setattr(sampled_frames, 'load_module_from_string', lambda path: Labeler)
+    monkeypatch.setenv(ENV, str(tmp_path / 'timeline'))
+    label_sampled_frames([frame], 'fixture.labeler', {'QM_config': {}})
+    [record] = read_timeline(str(tmp_path / 'timeline'))
+    assert record['stage'] == 'QM' and set(record['phases']) == {'read_frames', 'load_labeler', 'label'}
+    assert set(record['phase_imports']) == set(record['phases'])

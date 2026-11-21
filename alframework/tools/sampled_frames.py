@@ -9,7 +9,7 @@ from tempfile import NamedTemporaryFile
 from typing import NamedTuple, Optional
 
 from alframework.tools.config import load_module_from_string
-from alframework.tools.task_timeline import timed
+from alframework.tools.task_timeline import phase, timed
 from alframework.tools.trajectory_summary import trajectory_row
 
 # The master configuration's opt-in handoff of data by reference through shared files, and what it can hand off.
@@ -154,18 +154,22 @@ def label_sampled_frames(molecule_objects, task_path, task_inputs):
 
     batches = {}
     inputs = []
-    for frame in molecule_objects:
-        if not isinstance(frame, SampledFrame):
-            inputs.append(frame)
-            continue
-        if frame.path not in batches:
-            with open(frame.path, 'rb') as stream:
-                batches[frame.path] = pickle.load(stream)
-        molecule = batches[frame.path][frame.index]
-        if molecule.get_moleculeid() != frame.get_moleculeid():
-            raise ValueError(f'Sampled frame ID does not match the receipt for {frame.get_moleculeid()}.')
-        inputs.append(molecule)
-    result = load_module_from_string(task_path).func(molecule_objects=inputs, **task_inputs)
+    with phase('read_frames'):
+        for frame in molecule_objects:
+            if not isinstance(frame, SampledFrame):
+                inputs.append(frame)
+                continue
+            if frame.path not in batches:
+                with open(frame.path, 'rb') as stream:
+                    batches[frame.path] = pickle.load(stream)
+            molecule = batches[frame.path][frame.index]
+            if molecule.get_moleculeid() != frame.get_moleculeid():
+                raise ValueError(f'Sampled frame ID does not match the receipt for {frame.get_moleculeid()}.')
+            inputs.append(molecule)
+    with phase('load_labeler'):
+        labeler = load_module_from_string(task_path).func
+    with phase('label'):
+        result = labeler(molecule_objects=inputs, **task_inputs)
     if isinstance(result, RemoteExceptionWrapper):
         result.reraise()
     return result

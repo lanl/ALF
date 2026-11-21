@@ -8,7 +8,8 @@ process, so thousands of workers never share a file and no locking is needed on 
 argument, 1 for a single one), ``start``/``end`` (Unix seconds) and ``seconds``, ``outcome`` (``ok`` or the
 exception's class name), ``host``, ``pid``, ``slurm_job``, ``parsl_block``, ``parsl_pool``, ``parsl_rank``, and
 ``gpu_peak_gb``: the most GPU memory PyTorch had allocated during the task, on the device that used the most, in
-a worker that uses a GPU through PyTorch (``None`` otherwise).
+a worker that uses a GPU through PyTorch (``None`` otherwise). A task that times parts of itself with :func:`phase`
+also has ``phases`` (seconds per part) and ``phase_imports`` (modules each part imported).
 
 Stage times then come from the tasks themselves (first start to last end), rather than from Parsl's file
 timestamps, which depend on job names and count a block's idle time.
@@ -29,6 +30,8 @@ HUGE_PAGES_ENV = 'ALF_THP_DISABLE'
 # this module: Parsl serializes a decorated task's wrapper by value, with this module's globals, so they must
 # all be picklable (a threading.local is not).
 _FLAG = '_alf_timed_task_running'
+# The running timed task's phases, {name: [seconds, modules imported]}, also on the thread.
+_PHASES = '_alf_timed_task_phases'
 
 
 def _begin_outermost():
@@ -42,6 +45,31 @@ def _begin_outermost():
 
 def _end_outermost():
     setattr(threading.current_thread(), _FLAG, False)
+
+
+class phase:
+    """Time one part of a running timed task, as ``with phase('read_frames'): ...``.
+
+    The task's timeline record gets the part's seconds in ``phases`` and the number of modules it imported in
+    ``phase_imports``, summed over repeats. Outside a timed task, or with the timeline off, it does nothing.
+    """
+
+    def __init__(self, name):
+        self.name = name
+        self._phases = None
+
+    def __enter__(self):
+        self._phases = getattr(threading.current_thread(), _PHASES, None)
+        if self._phases is not None:
+            self._start, self._modules = time.time(), len(sys.modules)
+        return self
+
+    def __exit__(self, *exc):
+        if self._phases is not None:
+            entry = self._phases.setdefault(self.name, [0.0, 0])
+            entry[0] += time.time() - self._start
+            entry[1] += len(sys.modules) - self._modules
+        return False
 
 
 def _items(args, kwargs):
@@ -105,6 +133,8 @@ def timed(stage):
             if not directory or not _begin_outermost():
                 return function(*args, **kwargs)
             _reset_gpu_peak()
+            phases = {}
+            setattr(threading.current_thread(), _PHASES, phases)
             start, outcome = time.time(), 'ok'
             try:
                 return function(*args, **kwargs)
@@ -113,7 +143,12 @@ def timed(stage):
                 raise
             finally:
                 _end_outermost()
+                setattr(threading.current_thread(), _PHASES, None)
                 end = time.time()
+                extra = {}
+                if phases:
+                    extra = {'phases': {name: round(seconds, 3) for name, (seconds, _) in phases.items()},
+                             'phase_imports': {name: imported for name, (_, imported) in phases.items()}}
                 try:
                     write_record(directory, {
                         'stage': stage, 'task': function.__name__, 'items': _items(args, kwargs),
@@ -121,7 +156,7 @@ def timed(stage):
                         'host': socket.gethostname(), 'pid': os.getpid(), 'slurm_job': os.environ.get('SLURM_JOB_ID'),
                         'parsl_block': os.environ.get('PARSL_WORKER_BLOCK_ID'),
                         'parsl_pool': os.environ.get('PARSL_WORKER_POOL_ID'),
-                        'parsl_rank': os.environ.get('PARSL_WORKER_RANK'), 'gpu_peak_gb': _gpu_peak_gb()})
+                        'parsl_rank': os.environ.get('PARSL_WORKER_RANK'), 'gpu_peak_gb': _gpu_peak_gb(), **extra})
                 except OSError:
                     pass  # A timeline that cannot be written must never fail the task itself.
         return wrapper

@@ -5,9 +5,9 @@ import os
 import numpy as np
 from ase.geometry import complete_cell
 
-from alframework.tools import pyanitools as pyt
 from alframework.tools.atom_order import TOPOLOGY_ATOM_IDS, validated_atom_ids
 from alframework.tools.files import fsync_file
+from alframework.tools.label_hdf5 import LabelH5Writer
 from alframework.tools.label_sources import LabelSourceCollector, write_shard_label_sources
 from alframework.tools.label_validation import validate_label
 from alframework.tools.molecules import MoleculesObject
@@ -253,7 +253,7 @@ def store_current_data(h5path, system_data, properties, attributes=None, *, h5_o
     partial = h5path + PARTIAL_SUFFIX
     try:
         # Mode 'w' overwrites a .partial left by a crash.
-        dpack = pyt.datapacker(partial, mode='w', **(h5_options or {}))
+        dpack = LabelH5Writer(partial, mode='w', **(h5_options or {}))
         try:
             for key in data_dict:
                 dpack.store_data(key, **data_dict[key])

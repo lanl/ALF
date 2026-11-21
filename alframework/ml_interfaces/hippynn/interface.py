@@ -85,7 +85,7 @@ def __getattr__(name):
         def extract_full_file(self, file, species_key='species', permit_only=None):
             import h5py
             from alframework.tools.h5_parallel import read_datasets
-            from alframework.tools.pyanitools import LABEL_PARTS, validate_label_parts
+            from alframework.tools.label_hdf5 import LABEL_PARTS, validate_label_parts
 
             # Newer HIPPYNN passes permit_only; older releases do not accept it.
             if self.excited_state_properties is None:

@@ -8,7 +8,7 @@ import h5py
 import numpy as np
 
 from alframework.tools.files import fsync_file
-from alframework.tools.pyanitools import LABEL_PARTS, validate_label_parts
+from alframework.tools.label_hdf5 import LABEL_PARTS, LabelH5Writer, validate_label_parts
 from alframework.tools.restarts import HeldLabels, shard_frames
 from alframework.tools.data_shards import PAIR_INDEX_DATASET, STRUCTURE_STATE_DATASETS, store_current_data
 from alframework.tools.label_sources import LEGACY_LABEL_PROVENANCE, SHARD_LABEL_SOURCES, write_shard_label_sources
@@ -122,7 +122,6 @@ def merge_label_parts(job):
     holds. The part is written to ``target`` all at once, and records ``lines`` (``MERGED_FROM``). Returns
     ``target`` and the converged labels it holds.
     """
-    from alframework.tools import pyanitools as pyt
     target, sources, rejected, schema, h5_options, lines = job
     groups, label_sources = {}, {}
     for path, excluded in sources:
@@ -145,8 +144,8 @@ def merge_label_parts(job):
     stored = 0
     partial = Path(str(target) + '.partial')
     try:
-        packer = pyt.datapacker(str(partial), mode='w', **{'libver': 'latest', 'track_order': True,
-                                                            **(h5_options or {})})
+        packer = LabelH5Writer(str(partial), mode='w', **{'libver': 'latest', 'track_order': True,
+                                                       **(h5_options or {})})
         try:
             for formula, merged in groups.items():
                 pieces = merged['pieces']

@@ -13,8 +13,8 @@ from pathlib import Path
 import h5py
 
 from alframework.tools.files import write_bytes_atomic, write_json_atomic
+from alframework.tools.label_hdf5 import validate_label_parts
 from alframework.tools.label_validation import reject_label
-from alframework.tools.pyanitools import validate_label_parts
 
 HELD_PIECES = 'held_pieces'
 # Marks the shard stored when a label budget stops a run. No model trained on it.
@@ -37,7 +37,7 @@ LABEL_LAYOUT_KEYS = {'compression': 'complib', 'level': 'complevel', 'shuffle': 
 
 
 def label_h5_options(master_config):
-    """``datapacker`` options from the optional ``label_h5_layout``: how stored label datasets are compressed
+    """HDF5 writer options from the optional ``label_h5_layout``: how stored label datasets are compressed
     and chunked. All choices are lossless; without it labels are written with gzip level 6, as always."""
     layout = master_config.get('label_h5_layout')
     if layout is None:

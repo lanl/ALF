@@ -148,7 +148,7 @@ def test_the_coordinator_runs_with_the_block_as_with_each_setting_in_place(tmp_p
     labels the same way, and the block's loop timing, trim and bounded storage all take effect."""
     from tests.helpers.driver import run_alf_driver
     from tests.test_restarts import LOOP, restart_tasks
-    from alframework.tools.pyanitools import LABEL_PARTS
+    from alframework.tools.label_hdf5 import LABEL_PARTS
 
     import h5py
     settings = dict(label_storage_batch_size=2, coordinator_trim_after_snapshot=True, poll_interval=1,

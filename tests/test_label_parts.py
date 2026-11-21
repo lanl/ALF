@@ -5,8 +5,9 @@ import h5py
 import numpy as np
 import pytest
 
-from alframework.tools import label_parts, pyanitools
+from alframework.tools import label_parts
 from alframework.tools.batching import BatchedTaskQueue
+from alframework.tools.h5_parallel import read_shard
 from alframework.tools.label_parts import HDF5HeldLabels, part_directory
 from alframework.tools.restarts import open_held_labels, shard_frames
 from alframework.tools.data_shards import store_current_data
@@ -46,7 +47,7 @@ def test_snapshot_matches_legacy_layout_and_moves_with_its_parts(tmp_path):
 
     next(part_directory(snapshot).glob('part-*.h5')).unlink()
     with pytest.raises(FileNotFoundError, match='required label part'):
-        pyanitools.anidataloader(str(snapshot))
+        list(read_shard(snapshot, workers=1))
     with pytest.raises(FileNotFoundError, match='required label part'):
         shard_frames(snapshot)
 
@@ -225,7 +226,7 @@ def test_a_label_layout_stores_exactly_the_default_values(tmp_path, layout):
         for key, value in expected.items():
             assert found[key].dtype == value.dtype and np.array_equal(found[key], value), (path.name, key)
         assert shard_frames(path) == 3
-        assert len(list(pyanitools.anidataloader(str(path)))) == len(list(pyanitools.anidataloader(str(control))))
+        assert len(list(read_shard(path, workers=1))) == len(list(read_shard(control, workers=1)))
     with h5py.File(tmp_path / 'legacy.h5') as handle:
         coordinates = next(iter(handle.values()))['coordinates']
         assert coordinates.compression == layout['compression']

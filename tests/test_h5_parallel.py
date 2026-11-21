@@ -31,7 +31,7 @@ def test_each_group_reads_as_hippynns_loader_reads_it(tmp_path):
     loader = AniDataLoader(file)
     expected = list(loader)
     loader.store.close()
-    found = list(h5_parallel.read_groups(file, h5_parallel.group_paths(file), 2))
+    found = list(h5_parallel.read_shard(file, workers=2))
     assert [group["path"] for group in found] == [group["path"] for group in expected]
     for got, want in zip(found, expected):
         assert got.keys() == want.keys()
@@ -68,3 +68,26 @@ def test_small_files_read_serially_unless_asked(tmp_path, monkeypatch):
     assert h5_parallel.workers_for(file, 3) == 1
     monkeypatch.setenv(h5_parallel.READ_WORKERS, "8")
     assert h5_parallel.workers_for(file, 3) == 3
+
+
+@pytest.mark.parametrize("workers", [None, 1])
+def test_serial_shard_reuses_one_file_handle(tmp_path, monkeypatch, workers):
+    import h5py
+
+    _write_shard(tmp_path / "data")
+    path = tmp_path / "data" / "data.h5"
+    monkeypatch.delenv(h5_parallel.READ_WORKERS, raising=False)
+    open_file = h5py.File
+    handles = []
+
+    def track_open(*args, **kwargs):
+        handle = open_file(*args, **kwargs)
+        handles.append(handle)
+        return handle
+
+    monkeypatch.setattr(h5py, "File", track_open)
+    groups = list(h5_parallel.read_shard(path, keys={"species", "energy"}, workers=workers))
+    assert len(handles) == 1
+    assert not handles[0].id.valid
+    assert [group["path"] for group in groups] == ["/CH4", "/H2O", "/NH3"]
+    assert all(set(group) == {"path", "species", "energy"} for group in groups)

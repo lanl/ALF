@@ -13,8 +13,9 @@ import h5py
 import numpy as np
 import pytest
 
-from alframework.tools import files, pyanitools, restarts
+from alframework.tools import files, restarts
 from alframework.tools.data_shards import store_current_data
+from alframework.tools.label_hdf5 import LabelH5Writer
 from alframework.tools.label_sources import LABEL_SOURCE, write_label_sources
 from alframework.tools.molecules import MoleculesObject
 from alframework.tools.restarts import find_empty_directory, write_status
@@ -34,13 +35,13 @@ def labeled(name="water-0", energy=-1.0):
 
 def crash_inside_store_data(monkeypatch):
     """Fail after the first group is written, as a crash partway through a store would."""
-    original = pyanitools.datapacker.store_data
+    original = LabelH5Writer.store_data
 
     def store_then_crash(self, store_loc, **kwargs):
         original(self, store_loc, **kwargs)
         raise OSError("disk quota exceeded")
 
-    monkeypatch.setattr(pyanitools.datapacker, "store_data", store_then_crash)
+    monkeypatch.setattr(LabelH5Writer, "store_data", store_then_crash)
 
 
 def test_write_status_replaces_the_file(tmp_path):

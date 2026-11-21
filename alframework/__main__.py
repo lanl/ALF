@@ -23,7 +23,7 @@ from alframework.tools.files import hold_lock
 from alframework.tools import memory_sampler
 from alframework.tools.memory import coordinator_huge_pages, snapshot_memory_trim
 from alframework.tools.progress_plots import ProgressPlots
-from alframework.tools.pyanitools import anidataloader
+from alframework.tools.h5_parallel import read_shard
 from alframework.tools.molecules import MoleculesObject
 from alframework.tools.bootstrap import bootstrap_spare_count, next_bootstrap_ids
 from alframework.tools.restarts import (
@@ -389,11 +389,12 @@ if args.test_qm:
             sys.stdout.write(property_key + ':\n' + np.array_str(test_configuration[2][property_key],precision=4) + '\n')
         else:
             sys.stdout.write(property_key + ': ' + str(test_configuration[2][property_key]) + '\n')
-    if os.path.exists(master_config['master_directory'] + '/qm_test.h5'):
-        os.remove(master_config['master_directory'] + '/qm_test.h5')
-    store_current_data(master_config['master_directory'] + '/qm_test.h5',queue_output,master_config['properties_list'])
-    test_db = anidataloader(master_config['master_directory'] + '/qm_test.h5')
-    
+    qm_test_path = master_config['master_directory'] + '/qm_test.h5'
+    if os.path.exists(qm_test_path):
+        os.remove(qm_test_path)
+    store_current_data(qm_test_path, queue_output, master_config['properties_list'])
+    test_db = read_shard(qm_test_path, workers=1)
+
     print("Data written to qm_test.h5:")
     for test_data in test_db:
         sys.stdout.write('Species: ' + " ".join(test_data['species']) + '\n')

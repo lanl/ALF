@@ -76,7 +76,11 @@ def open_held_labels(master_config, current_h5_id):
         return HeldLabels(legacy, h5_options=label_h5_options(master_config))
     if any(legacy.glob('held-*.pkl')):
         raise ValueError('Held pickle files exist. Resume with the original storage mode to commit them first.')
-    return HDF5HeldLabels(snapshot, master_config['properties_list'], size, h5_options=label_h5_options(master_config))
+    from alframework.tools.sampled_frames import data_by_reference_settings
+    reference = data_by_reference_settings(master_config) or {}
+    return HDF5HeldLabels(snapshot, master_config['properties_list'], size, h5_options=label_h5_options(master_config),
+                          merge_workers=reference.get('merge_workers', 1),
+                          keep_worker_parts=bool(reference.get('keep_files')))
 
 
 class HeldLabels:

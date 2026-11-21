@@ -14,8 +14,8 @@ from alframework.tools.trajectory_summary import trajectory_row
 
 # The master configuration's opt-in handoff of data by reference through shared files, and what it can hand off.
 DATA_BY_REFERENCE = 'data_by_reference'
-HANDOFFS = ('sampler_frames',)
-REFERENCE_SETTINGS = ('directory', *HANDOFFS, 'keep_files')
+HANDOFFS = ('sampler_frames', 'labels')
+REFERENCE_SETTINGS = ('directory', *HANDOFFS, 'keep_files', 'merge_workers')
 RENAMED = {'sampler_frame_spool': 'data_by_reference with "directory" and "sampler_frames": true',
            'keep_sampler_frames': 'data_by_reference "keep_files"'}
 
@@ -23,11 +23,15 @@ RENAMED = {'sampler_frame_spool': 'data_by_reference with "directory" and "sampl
 def data_by_reference_settings(master_config):
     """The checked ``data_by_reference`` block, or ``None`` when the run doesn't hand data off by reference.
 
-    ``{"directory": <shared path>, "sampler_frames": true, "keep_files": false}``: with ``sampler_frames``, each
-    sampler task writes its eligible frames to a file in ``directory`` and returns references, which QM workers
-    resolve. ``directory`` is relative to ``master_directory`` unless absolute, and every worker that writes or
-    reads the files must see it at the same path. ``keep_files`` keeps every file after the run, for debugging.
-    Each handoff is off unless set to ``true``, and a block that turns none on is refused.
+    ``{"directory": <shared path>, "sampler_frames": true, "labels": true, "keep_files": false}``: with
+    ``sampler_frames``, each sampler task writes its eligible frames to a file in ``directory`` and returns
+    references, which QM workers resolve. ``directory`` is relative to ``master_directory`` unless absolute, and
+    every worker that writes or reads the files must see it at the same path; only ``sampler_frames`` needs it.
+    With ``labels``, each QM task writes
+    its labels as an HDF5 part beside the label store and returns a receipt, and ``merge_workers`` processes
+    (default 16) merge the parts into parts of ``label_storage_batch_size`` before each snapshot is published.
+    ``keep_files`` keeps every file after the run, for debugging. Each handoff is off unless set to ``true``, and
+    a block that turns none on is refused.
     """
     master_config = master_config or {}
     for old, new in RENAMED.items():
@@ -42,15 +46,23 @@ def data_by_reference_settings(master_config):
     if unknown:
         raise ValueError(f'{DATA_BY_REFERENCE} has unknown settings {unknown}; it takes {list(REFERENCE_SETTINGS)}.')
     directory = block.get('directory')
-    if not isinstance(directory, str) or not directory.strip():
+    if (block.get('sampler_frames') or directory is not None) and (not isinstance(directory, str)
+                                                                    or not directory.strip()):
         raise ValueError(f'{DATA_BY_REFERENCE}.directory must name a shared directory.')
     for key in (*HANDOFFS, 'keep_files'):
         if not isinstance(block.get(key, False), bool):
             raise ValueError(f'{DATA_BY_REFERENCE}.{key} must be true or false.')
     if not any(block.get(key, False) for key in HANDOFFS):
         raise ValueError(f'{DATA_BY_REFERENCE} hands nothing off: set one of {list(HANDOFFS)} to true.')
-    return dict(directory=str(Path(master_config.get('master_directory') or '.') / directory),
-                **{key: block.get(key, False) for key in (*HANDOFFS, 'keep_files')})
+    from alframework.tools.label_parts import MERGE_WORKERS
+    workers = block.get('merge_workers', MERGE_WORKERS)
+    if isinstance(workers, bool) or not isinstance(workers, int) or workers < 1:
+        raise ValueError(f'{DATA_BY_REFERENCE}.merge_workers must be a positive integer.')
+    if block.get('labels', False) and master_config.get('label_storage_batch_size') is None and \
+            'label_storage_batch_size' not in (master_config.get('scaling') or {}):
+        raise ValueError(f'{DATA_BY_REFERENCE} labels needs bounded label storage: set label_storage_batch_size.')
+    return dict(directory=str(Path(master_config.get('master_directory') or '.') / directory) if directory else None,
+                **{key: block.get(key, False) for key in (*HANDOFFS, 'keep_files')}, merge_workers=workers)
 
 
 class SampledFrame(NamedTuple):
@@ -148,8 +160,13 @@ def stage_sampled_frames(molecules, directory, batch):
 
 
 @timed('QM')
-def label_sampled_frames(molecule_objects, task_path, task_inputs):
-    """Resolve frames on the native QM worker, then call the configured labeler."""
+def label_sampled_frames(molecule_objects, task_path, task_inputs, label_parts=None):
+    """Resolve frames on the native QM worker, then call the configured labeler.
+
+    With ``label_parts`` (``data_by_reference`` labels), the labels are written as one part and a
+    :class:`~alframework.tools.label_parts.LabelReceipt` is returned instead
+    (:func:`~alframework.tools.label_parts.write_label_part`, given ``label_parts`` as keywords).
+    """
     from parsl.app.errors import RemoteExceptionWrapper
 
     batches = {}
@@ -172,4 +189,8 @@ def label_sampled_frames(molecule_objects, task_path, task_inputs):
         result = labeler(molecule_objects=inputs, **task_inputs)
     if isinstance(result, RemoteExceptionWrapper):
         result.reraise()
+    if label_parts is not None:
+        from alframework.tools.label_parts import write_label_part
+        with phase('write_labels'):
+            return write_label_part(result, **label_parts)
     return result

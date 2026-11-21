@@ -76,7 +76,8 @@ unset, nothing is written, and a line that can't be written is skipped without f
 A task can also time its own parts with ``with alframework.tools.task_timeline.phase(name):``. Its line then
 has ``phases``, seconds per part, and ``phase_imports``, the modules each part imported, which shows a part
 spending its time on first imports. QM tasks that read sampled frames by reference (``data_by_reference``)
-record ``read_frames``, ``load_labeler`` and ``label``.
+record ``read_frames``, ``load_labeler`` and ``label``, and ``write_labels`` when they also write their labels by
+reference.
 
 .. _monitoring-coordinator-loop:
 

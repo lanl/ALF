@@ -248,6 +248,8 @@ class BatchedTaskQueue(ParslTaskQueue):
         # Inputs of tasks that failed as a whole, for callers that track members.
         self.failed_inputs = []
         self._inputs = {}
+        # What a finished task may return; data_by_reference labels add label receipts.
+        self.output_types = (MoleculesObject,)
 
     def _weight(self, task):
         return self.widths.width(task)
@@ -280,7 +282,8 @@ class BatchedTaskQueue(ParslTaskQueue):
         return int(self._count('failed', lambda task: task.task_status() in FAILED_TASK_STATUSES))
 
     def get_task_results(self, max_items=None, *, on_finished_inputs=None):
-        return self._harvest(self._take_finished(max_items=max_items), on_finished_inputs=on_finished_inputs)
+        return self._harvest(self._take_finished(max_items=max_items), self.output_types,
+                             on_finished_inputs=on_finished_inputs)
 
     def _harvest(self, taken, output_types=(MoleculesObject,), *, on_finished_inputs=None):
         results_list = []

@@ -129,7 +129,10 @@ def test_keep_files_preserves_the_spool_and_logs_its_size(tmp_path, capsys):
     ({'sampler_frames': True}, 'directory must name a shared directory'),
     ({'directory': 'frames', 'sampler_frames': 'yes'}, 'sampler_frames must be true or false'),
     ({'directory': 'frames', 'sampler_frames': True, 'qm': True}, r"unknown settings \['qm'\]"),
-], ids=['not_a_block', 'nothing_on', 'only_keep_files', 'no_directory', 'not_boolean', 'unknown'])
+    ({'directory': 'frames', 'labels': True}, 'labels needs bounded label storage'),
+    ({'directory': 'frames', 'labels': True, 'merge_workers': 0}, 'merge_workers must be a positive integer'),
+], ids=['not_a_block', 'nothing_on', 'only_keep_files', 'no_directory', 'not_boolean', 'unknown', 'labels_unbounded',
+        'merge_workers'])
 def test_data_by_reference_settings_refuse_mistakes(block, message):
     with pytest.raises(ValueError, match=message):
         sampled_frames.data_by_reference_settings({'data_by_reference': block})
@@ -145,7 +148,8 @@ def test_data_by_reference_is_off_without_its_block_and_resolves_its_directory(t
     assert sampled_frames.data_by_reference_settings({}) is None
     settings = sampled_frames.data_by_reference_settings(
         {'master_directory': str(tmp_path), 'data_by_reference': {'directory': 'frames', 'sampler_frames': True}})
-    assert settings == {'directory': str(tmp_path / 'frames'), 'sampler_frames': True, 'keep_files': False}
+    assert settings == {'directory': str(tmp_path / 'frames'), 'sampler_frames': True, 'labels': False,
+                        'keep_files': False, 'merge_workers': 16}
     absolute = sampled_frames.data_by_reference_settings(
         {'master_directory': str(tmp_path), 'data_by_reference': {'directory': '/shared/frames', 'sampler_frames': True}})
     assert absolute['directory'] == '/shared/frames'

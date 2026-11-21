@@ -27,12 +27,12 @@ from alframework.tools.pyanitools import anidataloader
 from alframework.tools.molecules import MoleculesObject
 from alframework.tools.bootstrap import bootstrap_spare_count, next_bootstrap_ids
 from alframework.tools.restarts import (
-    STORED_AT_BUDGET_STOP, StatusFile, find_empty_directory, open_held_labels, reconcile_status,
+    STORED_AT_BUDGET_STOP, StatusFile, find_empty_directory, label_h5_options, open_held_labels, reconcile_status,
     status_on_change_setting, write_status,
 )
 from alframework.tools.labeling_coordinator import LabelingCoordinator
 from alframework.tools.label_validation import screen_labels
-from alframework.tools.label_parts import hold_ready
+from alframework.tools.label_parts import LabelReceipt, hold_ready, incoming_directory, remove_orphan_worker_parts
 from alframework.tools.loop_timing import coordinator_loop_timer
 from alframework.tools.capabilities import validate_task_config
 from alframework.tools.capacity import capacity_report, task_slots
@@ -41,7 +41,7 @@ from alframework.tools.sizing import apply_sizing, derive_sizing, describe as de
 from alframework.tools.scaling import SCALING, apply_scaling, describe as describe_scaling, large_run_warning
 from alframework.tools.builder_outputs import builder_outputs
 from alframework.tools.sampler_coordinator import SamplerCoordinator
-from alframework.tools.sampled_frames import SampledFrame
+from alframework.tools.sampled_frames import SampledFrame, data_by_reference_settings
 #import logging
 #logging.basicConfig(level=logging.DEBUG)
 
@@ -173,9 +173,20 @@ qm_task = load_module_from_string(master_config['QM_task'])
 for cur_Exec in qm_task.executors:
     if cur_Exec.replace('_executor', '_standby_executor') in executor_list:
         qm_task.executors.append(cur_Exec.replace('_executor', '_standby_executor'))
+# Optional: data_by_reference labels. QM workers write their labels as HDF5 parts beside the label store and
+# return receipts; the coordinator records the receipts and merges the parts before each snapshot is published.
+# A --test_qm check prints the labeled structure, so it labels the usual way.
+reference_settings = data_by_reference_settings(master_config) or {}
+label_handoff = None
+if reference_settings.get('labels') and not args.test_qm:
+    label_handoff = dict(directory=str(incoming_directory(Path(master_config['h5_path'].format(0)).resolve())),
+                         properties=master_config['properties_list'],
+                         schema=json.dumps(master_config['properties_list'], sort_keys=True),
+                         h5_options=label_h5_options(master_config))
 # Without a 'batching' block in QM_config, labeling submits one QM task per structure as before.
 labeling = LabelingCoordinator(qm_task, master_config['QM_task'], QM_config, master_config,
-                               sampled_frame_handoff=sampling.frame_directory is not None)
+                               sampled_frame_handoff=sampling.frame_directory is not None,
+                               label_handoff=label_handoff)
 QM_task_queue = labeling.queue
 print("QM labeling: " + labeling.describe())
 
@@ -238,6 +249,10 @@ else:
     status['lifetime_failed_QM_tasks'] = 0
 
 held = open_held_labels(master_config, status['current_h5_id'])
+if label_handoff is not None and not reference_settings.get('keep_files'):
+    orphans = remove_orphan_worker_parts(held)
+    if orphans:
+        print(f'Restart: removed {orphans} label parts written by QM workers but never recorded.', flush=True)
 if restarting:
     for change in reconcile_status(status, master_config, held):
         print('Restart: ' + change)
@@ -273,11 +288,16 @@ def hold_finished_labels(*, drain=False):
             results, failed = QM_task_queue.get_task_results(max_items=storage_batch_size)
         else:
             results, failed, succeeded_files, failed_files = labeling.take_finished_with_references(storage_batch_size)
+        receipts = [result for result in results if isinstance(result, LabelReceipt)]
+        if receipts:
+            results = [result for result in results if not isinstance(result, LabelReceipt)]
         screen_labels(results, properties)
-        loop_timer.count(results_held=len(results))
+        loop_timer.count(results_held=len(results) + sum(len(receipt) for receipt in receipts))
         lost = labeling.take_failed_structures(failed)
         status['lifetime_failed_QM_tasks'] = status['lifetime_failed_QM_tasks'] + failed
         status['lifetime_failed_QM_structures'] = status.get('lifetime_failed_QM_structures', 0) + lost
+        if receipts:
+            held.adopt(receipts)
         held.hold(results, lost)
         if frame_retirement is not None:
             frame_retirement.labels_held(succeeded_files, failed_files, durable=storage_batch_size is not None)

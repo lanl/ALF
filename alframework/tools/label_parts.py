@@ -23,6 +23,156 @@ PROPERTY_SCHEMA = 'alf_label_properties'
 # With bounded storage, the longest a coordinator loop pass spends writing label parts beyond its first one.
 HOLD_SECONDS = 30.0
 
+# data_by_reference "labels": QM workers write their labels as parts here, and return receipts.
+INCOMING = 'incoming'
+# The receipts a generation has adopted, one JSON line each, in its part directory.
+MANIFEST = 'parts.jsonl'
+# On a merged part: the manifest lines (receipts) it holds, so a restart doesn't count them twice.
+MERGED_FROM = 'alf_merged_from'
+# Processes that merge worker parts into parts of label_storage_batch_size before a snapshot is published.
+MERGE_WORKERS = 16
+PERIODICITY_CONFLICT = ('the next shard already holds {kind} {formula} frames, and a formula group cannot mix '
+                        'periodic and nonperiodic frames.')
+
+
+def incoming_directory(snapshot):
+    """Where QM workers write label parts for the snapshots beside ``snapshot``, whatever their generation."""
+    return part_directory(snapshot).parent / INCOMING
+
+
+class LabelReceipt:
+    """What a QM worker returns for the labels it wrote as one part, instead of the labeled structures.
+
+    ``path`` is the part (``None`` when no label converged), ``formulas`` maps each formula group to its IDs and
+    periodicity, and ``rejected`` maps each unconverged or invalid label's ID to the reason.
+    """
+
+    def __init__(self, path, formulas, rejected):
+        self.path = path
+        self.formulas = formulas
+        self.rejected = rejected
+
+    def ids(self):
+        return [i for group in self.formulas.values() for i in group['ids']] + list(self.rejected)
+
+    def __len__(self):
+        return sum(len(group['ids']) for group in self.formulas.values()) + len(self.rejected)
+
+    def as_record(self):
+        return {'path': self.path, 'formulas': self.formulas, 'rejected': self.rejected}
+
+    @classmethod
+    def from_record(cls, record):
+        return cls(record['path'], record['formulas'], record['rejected'])
+
+    def __reduce__(self):
+        return (LabelReceipt, (self.path, self.formulas, self.rejected))
+
+
+def _failure_reason(molecule):
+    metadata = molecule.get_metadata() or {}
+    return str(metadata.get('labeling_error') or metadata.get('qm_error') or 'the label did not converge')
+
+
+def write_label_part(results, directory, properties, schema, h5_options=None):
+    """On a QM worker: screen ``results`` as the coordinator would, store the converged ones as one part in
+    ``directory``, and return a :class:`LabelReceipt`.
+
+    Labels that can't be stored are marked unconverged first (``screen_labels``), and a formula group keeps one
+    periodicity within the part, as ``HDF5HeldLabels`` does across parts.
+    """
+    import uuid
+    from alframework.tools.batching import flatten_molecule_output
+    from alframework.tools.data_shards import compute_empirical_formula
+    from alframework.tools.label_validation import reject_label, screen_labels
+
+    results = flatten_molecule_output(results)
+    screen_labels(results, properties)
+    formulas, rejected, accepted = {}, {}, []
+    for result in results:
+        if result.check_convergence():
+            atoms = result.get_atoms()
+            formula = compute_empirical_formula(atoms.get_chemical_symbols())
+            periodic = bool(atoms.pbc.all())
+            group = formulas.setdefault(formula, {'ids': [], 'periodic': periodic})
+            if group['periodic'] != periodic:
+                reject_label(result, PERIODICITY_CONFLICT.format(
+                    kind='periodic' if group['periodic'] else 'nonperiodic', formula=formula))
+            else:
+                group['ids'].append(result.get_moleculeid())
+                accepted.append(result)
+                continue
+        rejected[result.get_moleculeid()] = _failure_reason(result)
+    formulas = {formula: group for formula, group in formulas.items() if group['ids']}
+    path = None
+    if accepted:
+        Path(directory).mkdir(parents=True, exist_ok=True)
+        path = str(Path(directory) / f'task-{uuid.uuid4().hex}.h5')
+        store_current_data(path, accepted, properties,
+                           attributes={REJECTED_IDS: json.dumps(sorted(rejected)), PROPERTY_SCHEMA: schema},
+                           h5_options={'libver': 'latest', 'track_order': True, **(h5_options or {})})
+    return LabelReceipt(path, formulas, rejected)
+
+
+def merge_label_parts(job):
+    """Merge worker parts into one part: each source read once, its formula groups appended in order.
+
+    ``job`` is ``(target, sources, rejected, schema, h5_options, lines)``, where ``sources`` lists
+    ``(path, excluded)`` with the formula groups to leave out of that part and ``lines`` the manifest lines it
+    holds. The part is written to ``target`` all at once, and records ``lines`` (``MERGED_FROM``). Returns
+    ``target`` and the converged labels it holds.
+    """
+    from alframework.tools import pyanitools as pyt
+    target, sources, rejected, schema, h5_options, lines = job
+    groups, label_sources = {}, {}
+    for path, excluded in sources:
+        with h5py.File(path, 'r') as handle:
+            recorded = handle.attrs.get(SHARD_LABEL_SOURCES, handle.attrs.get(LEGACY_LABEL_PROVENANCE, '[]'))
+            for source in json.loads(recorded):
+                label_sources.setdefault(json.dumps(source, sort_keys=True, default=str), source)
+            for formula, group in handle.items():
+                if formula in excluded:
+                    continue
+                columns = {key: dataset[()] for key, dataset in group.items()}
+                merged = groups.setdefault(formula, {'static': {}, 'pieces': []})
+                for key in STATIC.intersection(columns):
+                    value = columns.pop(key)
+                    if key in merged['static'] and not np.array_equal(merged['static'][key], value):
+                        raise ValueError(f'{path}:{formula} has species or pair ordering that differs from the '
+                                         'other parts of its formula.')
+                    merged['static'][key] = value
+                merged['pieces'].append(columns)
+    stored = 0
+    partial = Path(str(target) + '.partial')
+    try:
+        packer = pyt.datapacker(str(partial), mode='w', **{'libver': 'latest', 'track_order': True,
+                                                            **(h5_options or {})})
+        try:
+            for formula, merged in groups.items():
+                pieces = merged['pieces']
+                keys = set().union(*pieces)
+                if any(set(piece) - STATE_DEFAULTS.keys() != keys - STATE_DEFAULTS.keys() for piece in pieces):
+                    raise ValueError(f'{formula} has different datasets in different worker parts.')
+                data = dict(merged['static'])
+                for key in sorted(keys):
+                    data[key] = np.concatenate([
+                        piece[key] if key in piece else np.full(len(piece['_id']), STATE_DEFAULTS[key])
+                        for piece in pieces])
+                stored += len(data['_id'])
+                packer.store_data(formula, **data)
+            write_shard_label_sources(packer.store, list(label_sources.values()))
+            packer.store.attrs[REJECTED_IDS] = json.dumps(sorted(rejected))
+            packer.store.attrs[PROPERTY_SCHEMA] = schema
+            packer.store.attrs[MERGED_FROM] = json.dumps(list(lines))
+        finally:
+            packer.cleanup()
+        fsync_file(partial)
+        os.replace(partial, target)
+    except BaseException:
+        partial.unlink(missing_ok=True)
+        raise
+    return str(target), stored
+
 
 def hold_ready(take_one_part, waiting, batch_size, *, drain=False, seconds=HOLD_SECONDS, clock=None):
     """Write label parts until enough are written for this loop pass; returns how many were written.
@@ -49,31 +199,44 @@ def part_directory(snapshot):
 
 
 class HDF5HeldLabels(HeldLabels):
-    """Each held batch is an immutable file in its generation's private directory."""
+    """Each held batch is an immutable file in its generation's private directory.
 
-    def __init__(self, snapshot, properties, batch_size, h5_options=None):
+    With ``data_by_reference`` labels, QM workers write their own parts and the coordinator adopts their receipts
+    (:meth:`adopt`) into the generation's manifest; :meth:`commit` merges those parts into parts of
+    ``batch_size`` labels, with ``merge_workers`` processes, before publishing, so readers see the same layout.
+    """
+
+    def __init__(self, snapshot, properties, batch_size, h5_options=None, *, merge_workers=MERGE_WORKERS,
+                 keep_worker_parts=False):
         self.h5_options = dict(h5_options or {})
         self.properties = properties
         self.schema = json.dumps(properties, sort_keys=True)
         self.batch_size = batch_size
+        self.merge_workers = merge_workers
+        self.keep_worker_parts = keep_worker_parts
         self.select_snapshot(snapshot)
 
     def select_snapshot(self, snapshot):
         self.directory = part_directory(snapshot)
         self.failed_since_store = 0
         self._successful = self._converged = self._ids = self._periodic = None
+        self._receipts = None
         self._next_piece = 0
 
     def pieces(self):
         return sorted(path.name for path in self.directory.glob('part-*.h5'))
 
+    def manifest(self):
+        return self.directory / MANIFEST
+
     def _scan(self):
-        converged, rejected, ids, periodicity = 0, 0, set(), {}
+        converged, rejected, ids, periodicity, merged = 0, 0, set(), {}, set()
         pieces = self.pieces()
         for name in pieces:
             with h5py.File(self.directory / name, 'r') as handle:
                 if handle.attrs[PROPERTY_SCHEMA] != self.schema:
                     raise ValueError(f'{handle.filename}: resume with the same label properties and units.')
+                merged.update(json.loads(handle.attrs.get(MERGED_FROM, '[]')))
                 failed_ids = json.loads(handle.attrs[REJECTED_IDS])
                 rejected += len(failed_ids)
                 ids.update(failed_ids)
@@ -85,6 +248,39 @@ class HDF5HeldLabels(HeldLabels):
         self._successful = converged + rejected
         self._converged, self._ids, self._periodic = converged, ids, periodicity
         self._next_piece = int(Path(pieces[-1]).stem.split('-')[-1]) + 1 if pieces else 0
+        # Adopted receipts not yet merged; a merged part already counts the ones it holds.
+        self._receipts = []
+        records = self._manifest_records()
+        self._manifest_lines = len(records)
+        for line, record in enumerate(records):
+            if line not in merged:
+                record['_line'] = line
+                self._count_receipt(record)
+
+    def _manifest_records(self):
+        """The manifest's receipts. A last line a crash cut short was never adopted: it is cut off, so the next
+        append starts a line of its own."""
+        path = self.manifest()
+        if not path.exists():
+            return []
+        data = path.read_bytes()
+        if data and not data.endswith(b'\n'):
+            data = data[:data.rfind(b'\n') + 1]
+            with open(path, 'r+b') as stream:
+                stream.truncate(len(data))
+                os.fsync(stream.fileno())
+        return [json.loads(line) for line in data.decode().splitlines()]
+
+    def _count_receipt(self, record):
+        excluded = record.get('excluded', {})
+        for formula, group in record['formulas'].items():
+            if formula not in excluded:
+                self._periodic.setdefault(formula, group['periodic'])
+                self._converged += len(group['ids'])
+        self._successful += sum(len(group['ids']) for group in record['formulas'].values()) + len(record['rejected'])
+        self._ids.update(i for group in record['formulas'].values() for i in group['ids'])
+        self._ids.update(record['rejected'])
+        self._receipts.append(record)
 
     def hold(self, results, failed=0):
         if self._ids is None:
@@ -94,11 +290,49 @@ class HDF5HeldLabels(HeldLabels):
             chunk = results[start:start + self.batch_size]
             self._write_piece(chunk)
 
-    def _write_piece(self, results):
+    def adopt(self, receipts, failed=0):
+        """Record QM workers' parts by their receipts, with one sync of the manifest for the call.
+
+        A formula group whose periodicity conflicts with what this generation already holds is left out of the
+        part when it is merged, and its labels count as rejected, as :meth:`hold` would hold them.
+        """
+        if self._ids is None:
+            self._scan()
+        self.failed_since_store += failed
+        if not receipts:
+            return
+        self._ensure_directory()
+        records = []
+        for receipt in receipts:
+            record = receipt.as_record()
+            excluded = {}
+            for formula, group in record['formulas'].items():
+                held = self._periodic.get(formula, group['periodic'])
+                if held != group['periodic']:
+                    excluded[formula] = PERIODICITY_CONFLICT.format(kind='periodic' if held else 'nonperiodic',
+                                                                    formula=formula)
+            if excluded:
+                record['excluded'] = excluded
+            records.append(record)
+        first = self._manifest_lines
+        with open(self.manifest(), 'a') as stream:
+            for record in records:
+                stream.write(json.dumps(record) + '\n')
+            stream.flush()
+            os.fsync(stream.fileno())
+        self._manifest_lines += len(records)
+        for line, record in enumerate(records, first):
+            record['_line'] = line
+            self._count_receipt(record)
+
+    def _ensure_directory(self):
         if not self.directory.is_dir():
             self.directory.mkdir(parents=True)
             fsync_file(self.directory.parent)
             fsync_file(self.directory.parent.parent)
+
+    def _write_piece(self, results):
+        self._ensure_directory()
         accepted, rejected = [], []
         for result in results:
             self._keep_one_periodicity(result)
@@ -120,15 +354,88 @@ class HDF5HeldLabels(HeldLabels):
         self._converged += stored
         self._ids.update(result.get_moleculeid() for result in results)
 
+    def merge_jobs(self):
+        """The adopted receipts, in manifest order, as merges of about ``batch_size`` converged labels each."""
+        if self._ids is None:
+            self._scan()
+        jobs, sources, rejected, lines, labels = [], [], {}, [], 0
+
+        def close():
+            if lines:
+                target = self.directory / f'part-{self._next_piece + len(jobs):08d}.h5'
+                jobs.append((str(target), list(sources), dict(rejected), self.schema, self.h5_options, list(lines)))
+                sources.clear()
+                rejected.clear()
+                lines.clear()
+
+        for record in self._receipts:
+            lines.append(record['_line'])
+            excluded = record.get('excluded', {})
+            rejected.update(record['rejected'])
+            for formula, reason in excluded.items():
+                rejected.update(dict.fromkeys(record['formulas'][formula]['ids'], reason))
+            kept = sum(len(group['ids']) for formula, group in record['formulas'].items() if formula not in excluded)
+            if record['path'] is not None:
+                sources.append((record['path'], sorted(excluded)))
+                labels += kept
+            if labels >= self.batch_size:
+                close()
+                labels = 0
+        close()
+        return jobs
+
+    def merge(self):
+        """Merge the adopted worker parts into this generation's parts, in parallel; returns how many."""
+        jobs = self.merge_jobs()
+        if not jobs:
+            return 0
+        if len(jobs) == 1 or self.merge_workers <= 1:
+            for job in jobs:
+                merge_label_parts(job)
+        else:
+            import concurrent.futures
+            import multiprocessing
+            # Spawned, not forked: the coordinator holds Parsl's threads and sockets.
+            context = multiprocessing.get_context('spawn')
+            with concurrent.futures.ProcessPoolExecutor(max_workers=min(self.merge_workers, len(jobs)),
+                                                        mp_context=context) as pool:
+                list(pool.map(merge_label_parts, jobs))
+        fsync_file(self.directory)
+        self._ids = None  # The merged parts now hold what the receipts described.
+        return len(jobs)
+
     def commit(self, snapshot, properties, attributes):
         if json.dumps(properties, sort_keys=True) != self.schema:
             raise ValueError('Label properties and units must stay fixed while a generation is being written.')
+        if self._ids is None:
+            self._scan()
+        worker_parts = [record['path'] for record in self._receipts if record['path'] is not None]
+        self.merge()
         parts = [self.directory / name for name in self.pieces()]
-        return publish_snapshot(Path(snapshot), parts, attributes)
+        stored = publish_snapshot(Path(snapshot), parts, attributes)
+        if not self.keep_worker_parts:
+            for path in worker_parts:
+                Path(path).unlink(missing_ok=True)
+        return stored
 
     def recover_snapshot(self, snapshot):
         # Published views still reference these files. Restart must keep them.
         return shard_frames(snapshot)
+
+
+def remove_orphan_worker_parts(held):
+    """Remove worker parts that ``held``'s generation hasn't adopted: a worker wrote them, but the coordinator
+    stopped before recording their receipts, or after publishing the snapshot that merged them. Returns how many."""
+    incoming = held.directory.parent / INCOMING
+    if not incoming.is_dir():
+        return 0
+    adopted = {record['path'] for record in held._manifest_records()}
+    removed = 0
+    for path in incoming.glob('task-*.h5'):
+        if str(path) not in adopted:
+            path.unlink(missing_ok=True)
+            removed += 1
+    return removed
 
 
 def publish_snapshot(path, parts, attributes):

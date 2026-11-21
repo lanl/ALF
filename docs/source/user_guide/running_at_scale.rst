@@ -84,8 +84,11 @@ metadata files or compact returns off gets a warning naming them.
        faster.
    * - ``data_by_reference``
      - master
-     - Sampled frames go to QM through shared files rather than through the coordinator
-       (:ref:`by reference <running-at-scale-data-by-reference>`). It also needs ``maximum_stored_labels``.
+     - Sampled frames go to QM, and labels come back, through shared files rather than through the
+       coordinator (:ref:`by reference <running-at-scale-data-by-reference>`). Sampled frames also need
+       ``maximum_stored_labels``. For 2,097,152 labels, labels by reference replace about 15 minutes of the
+       coordinator writing parts with about 30 s of merging the QM workers' parts, offline
+       (:ref:`labels by reference <running-at-scale-labels-by-reference>`).
    * - ``trajectory_summary_path``, ``coordinator_memory_sample``, ``coordinator_memory_path``,
        ``coordinator_loop_path``
      - master
@@ -248,6 +251,28 @@ For debugging exact QM inputs, add ``"keep_files": true`` to ``data_by_reference
 preserves all staged batches and prints the path, file count, and bytes at normal exit. Size a retained
 spool for the full debug run. The earlier names of these settings, ``sampler_frame_spool`` and
 ``keep_sampler_frames``, are refused with a message naming ``data_by_reference``.
+
+.. _running-at-scale-labels-by-reference:
+
+Labels can come back by reference too, with ``"labels": true``. It needs native batched QM and bounded
+label storage (``label_storage_batch_size``), and doesn't need ``directory`` or a finite workflow:
+
+.. code-block:: json
+
+   "data_by_reference": {"directory": "sampling-frames", "sampler_frames": true, "labels": true}
+
+Each QM task then screens its labels as the coordinator would, writes the converged ones as one HDF5 part
+under ``.alf-label-parts/incoming/`` beside the label store, and returns a receipt with the IDs, the reason
+for each rejected label, and each formula's periodicity. The coordinator appends the receipts to the
+generation's manifest (``parts.jsonl``), with one sync per pass, so it no longer receives, holds or writes
+the labels themselves. Before a snapshot is published, ``merge_workers`` processes (default 16) merge the
+worker parts into parts of ``label_storage_batch_size`` labels, so the snapshot and every reader see the
+same layout as before, and the worker parts are removed (kept with ``keep_files``). A restart counts each
+receipt once, whether or not its part was merged, and removes worker parts no receipt names.
+
+Measured offline on a round of 2,097,152 labels written as 8,192 parts of 256: a worker's part took
+0.07 s to write, merging took 29 s with 16 processes, and the published snapshot read in 53 s, against 95 s
+for the coordinator's own parts. Unmerged, the same 8,192 parts read in 783 s, which is why they are merged.
 
 Durable labels become visible through the atomically published HDF5 snapshot. HIPPYNN training and
 fine-tuning read its backing parts directly in serial and parallel, keeping at most one part open per

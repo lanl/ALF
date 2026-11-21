@@ -114,12 +114,16 @@ class LabelingCoordinator(BatchedSubmitter):
     :class:`BatchedTaskQueue` (counting structures) otherwise.
     """
 
-    def __init__(self, qm_task, qm_task_path, QM_config, master_config=None, sampled_frame_handoff=False):
+    def __init__(self, qm_task, qm_task_path, QM_config, master_config=None, sampled_frame_handoff=False,
+                 label_handoff=None):
         settings = labeling_batch_settings(QM_config, qm_task)
         self._reference_task = None
-        if sampled_frame_handoff:
-            if settings is None or settings['mode'] != 'native':
-                raise ValueError('data_by_reference sampler_frames requires native QM batching.')
+        # data_by_reference labels: write_label_part's keywords, for the QM workers.
+        self._label_parts = label_handoff
+        for handoff, name in ((sampled_frame_handoff, 'sampler_frames'), (label_handoff, 'labels')):
+            if handoff and (settings is None or settings['mode'] != 'native'):
+                raise ValueError(f'data_by_reference {name} requires native QM batching.')
+        if sampled_frame_handoff or label_handoff:
             self._reference_task = python_app(executors=list(qm_task.executors))(label_sampled_frames)
         if settings is not None:
             mode = settings["mode"]
@@ -138,6 +142,10 @@ class LabelingCoordinator(BatchedSubmitter):
         # A labeler can check its own configuration, so that a mistake stops ALF at launch.
         validate_task_config(qm_task, QM_config, master_config)
         super().__init__(qm_task, settings)
+        if label_handoff:
+            from alframework.tools.label_parts import LabelReceipt
+            from alframework.tools.molecules import MoleculesObject
+            self.queue.output_types = (MoleculesObject, LabelReceipt)
         self._startup_settings = StartupSettings(QM_config, ("batching",), "QM")
         self.qm_task = qm_task
         self.qm_task_path = qm_task_path
@@ -161,11 +169,12 @@ class LabelingCoordinator(BatchedSubmitter):
 
     def _group_task(self, group, input_dicts):
         if self.settings["mode"] == "native":
-            if self._reference_task is not None and any(isinstance(frame, SampledFrame) for frame in group):
+            if self._reference_task is not None and (
+                    self._label_parts is not None or any(isinstance(frame, SampledFrame) for frame in group)):
                 task_input = build_input_dict(self.qm_task.func, [{"molecule_objects": group}, *input_dicts],
                                               raise_on_fail=True)
                 task_input.pop('molecule_objects')
-                return self._reference_task(group, self.qm_task_path, task_input)
+                return self._reference_task(group, self.qm_task_path, task_input, self._label_parts)
             return super()._group_task(group, input_dicts)
         task_input = build_input_dict(self.qm_task.func, [{"molecule_object": None}, *input_dicts],
                                       raise_on_fail=True)

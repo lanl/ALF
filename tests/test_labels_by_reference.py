@@ -1,0 +1,245 @@
+"""data_by_reference labels: QM workers write their labels as parts and return receipts; the coordinator adopts the
+receipts and merges the parts before publishing. Snapshots must hold exactly what the coordinator's own parts would."""
+import json
+
+import h5py
+import numpy as np
+import pytest
+from ase import Atoms
+
+from alframework.tools.label_parts import (
+    INCOMING, MANIFEST, MERGED_FROM, HDF5HeldLabels, LabelReceipt, incoming_directory, part_directory,
+    remove_orphan_worker_parts, write_label_part)
+from alframework.tools.molecules import MoleculesObject
+from tests.helpers.molecules import WATER
+from tests.test_restarts import PROPERTIES, labeled
+
+SCHEMA = json.dumps(PROPERTIES, sort_keys=True)
+
+
+def _labels(count, prefix='mol'):
+    return [labeled(f'{prefix}-{index:04d}', energy=-1.0 - index) for index in range(count)]
+
+
+def _write(results, snapshot):
+    return write_label_part(results, incoming_directory(snapshot), PROPERTIES, SCHEMA)
+
+
+def _contents(snapshot):
+    with h5py.File(snapshot) as handle:
+        return {formula: {name: dataset[()] for name, dataset in group.items()} for formula, group in handle.items()}
+
+
+def _assert_same(first, second):
+    assert set(first) == set(second)
+    for formula, columns in first.items():
+        assert set(columns) == set(second[formula])
+        for name, value in columns.items():
+            np.testing.assert_array_equal(value, second[formula][name])
+
+
+def test_a_worker_part_screens_labels_and_records_why_each_was_rejected(tmp_path):
+    snapshot = tmp_path / 'h5' / 'data-0000.h5'
+    good = _labels(2)
+    unconverged = labeled('mol-unconverged')
+    unconverged.set_converged_flag(False)
+    unconverged.update_metadata({'labeling_error': 'SCF did not converge'})
+    invalid = MoleculesObject(WATER.copy(), 'mol-invalid')
+    invalid.store_results({'energy': -1.0})  # no forces
+    invalid.set_converged_flag(True)
+    periodic = labeled('mol-periodic')
+    periodic.get_atoms().set_cell([10, 10, 10])
+    periodic.get_atoms().set_pbc(True)
+    receipt = _write(good + [unconverged, invalid, periodic], snapshot)
+    assert receipt.formulas == {'H02_O01': {'ids': ['mol-0000', 'mol-0001'], 'periodic': False}}
+    assert receipt.rejected['mol-unconverged'] == 'SCF did not converge'
+    assert 'forces' in receipt.rejected['mol-invalid']
+    assert 'cannot mix periodic and nonperiodic' in receipt.rejected['mol-periodic']
+    assert len(receipt) == 5 and sorted(receipt.ids()) == sorted(m.get_moleculeid() for m in
+                                                                 good + [unconverged, invalid, periodic])
+    with h5py.File(receipt.path) as handle:
+        assert list(handle['H02_O01']['_id'].asstr()[:]) == ['mol-0000', 'mol-0001']
+        assert sorted(json.loads(handle.attrs['alf_rejected_label_ids'])) == sorted(receipt.rejected)
+    nothing = labeled('mol-x')
+    nothing.set_converged_flag(False)
+    assert _write([nothing], snapshot).path is None, 'no part without a converged label'
+
+
+@pytest.mark.parametrize('merge_workers', [1, 2])
+def test_merged_worker_parts_publish_the_same_snapshot_as_the_coordinators_parts(tmp_path, merge_workers):
+    samples = _labels(7)
+    samples[2].update_metadata({'charge': -1})  # charge and multiplicity in some parts only
+    rejected = labeled('mol-rejected')
+    rejected.set_converged_flag(False)
+
+    control = tmp_path / 'control' / 'data-0000.h5'
+    held = HDF5HeldLabels(control, PROPERTIES, batch_size=3)
+    for chunk in (samples[:2], samples[2:5] + [rejected], samples[5:]):
+        held.hold([m.copy() if hasattr(m, 'copy') else m for m in chunk])
+    assert held.commit(control, PROPERTIES, {}) == 7
+
+    snapshot = tmp_path / 'by_reference' / 'data-0000.h5'
+    held = HDF5HeldLabels(snapshot, PROPERTIES, batch_size=3, merge_workers=merge_workers)
+    receipts = [_write(chunk, snapshot) for chunk in (samples[:2], samples[2:5] + [rejected], samples[5:])]
+    held.adopt(receipts[:2])
+    held.adopt(receipts[2:])
+    assert (held.successful(), held.converged()) == (8, 7)
+    assert held.molecule_ids() == {m.get_moleculeid() for m in samples} | {'mol-rejected'}
+    assert held.commit(snapshot, PROPERTIES, {}) == 7
+    _assert_same(_contents(snapshot), _contents(control))
+    assert not list(incoming_directory(snapshot).glob('task-*.h5')), 'worker parts go once merged and published'
+    merged = sorted(part_directory(snapshot).glob('part-*.h5'))
+    assert len(merged) <= 3, 'merged into parts of about batch_size labels'
+
+
+def test_a_restart_counts_adopted_receipts_once_before_and_after_the_merge(tmp_path):
+    snapshot = tmp_path / 'h5' / 'data-0000.h5'
+    held = HDF5HeldLabels(snapshot, PROPERTIES, batch_size=2)
+    failed = labeled('mol-failed')
+    failed.set_converged_flag(False)
+    held.adopt([_write(_labels(3), snapshot), _write([failed], snapshot)])
+    counts = (held.successful(), held.converged(), held.molecule_ids())
+
+    restarted = HDF5HeldLabels(snapshot, PROPERTIES, batch_size=2)
+    assert (restarted.successful(), restarted.converged(), restarted.molecule_ids()) == counts
+    restarted.merge()  # a crash after merging, before publishing
+    again = HDF5HeldLabels(snapshot, PROPERTIES, batch_size=2)
+    assert (again.successful(), again.converged(), again.molecule_ids()) == counts
+    assert again.merge_jobs() == [], 'merged receipts are not merged again'
+    with h5py.File(sorted(part_directory(snapshot).glob('part-*.h5'))[0]) as handle:
+        assert json.loads(handle.attrs[MERGED_FROM])
+    assert again.commit(snapshot, PROPERTIES, {}) == 3
+
+
+def test_a_manifest_line_cut_short_by_a_crash_was_never_adopted(tmp_path):
+    snapshot = tmp_path / 'h5' / 'data-0000.h5'
+    held = HDF5HeldLabels(snapshot, PROPERTIES, batch_size=4)
+    held.adopt([_write(_labels(2), snapshot)])
+    with open(part_directory(snapshot) / MANIFEST, 'a') as stream:
+        stream.write('{"path": "cut sh')
+    restarted = HDF5HeldLabels(snapshot, PROPERTIES, batch_size=4)
+    assert restarted.converged() == 2
+    restarted.adopt([_write(_labels(1, 'more'), snapshot)])
+    assert HDF5HeldLabels(snapshot, PROPERTIES, batch_size=4).converged() == 3
+    assert restarted.commit(snapshot, PROPERTIES, {}) == 3
+
+
+def test_a_formula_that_changes_periodicity_across_parts_is_rejected_from_the_later_part(tmp_path):
+    snapshot = tmp_path / 'h5' / 'data-0000.h5'
+    held = HDF5HeldLabels(snapshot, PROPERTIES, batch_size=8)
+    periodic = labeled('mol-periodic')
+    periodic.get_atoms().set_cell([10, 10, 10])
+    periodic.get_atoms().set_pbc(True)
+    held.adopt([_write(_labels(2), snapshot)])
+    held.adopt([_write([periodic], snapshot)])
+    assert (held.successful(), held.converged()) == (3, 2)
+    assert held.commit(snapshot, PROPERTIES, {}) == 2
+    with h5py.File(snapshot) as handle:
+        assert 'cell' not in handle['H02_O01']
+
+
+def test_worker_parts_no_generation_adopted_are_removed_at_startup(tmp_path):
+    snapshot = tmp_path / 'h5' / 'data-0000.h5'
+    held = HDF5HeldLabels(snapshot, PROPERTIES, batch_size=4)
+    adopted = _write(_labels(1), snapshot)
+    held.adopt([adopted])
+    orphan = _write(_labels(1, 'orphan'), snapshot)
+    assert remove_orphan_worker_parts(HDF5HeldLabels(snapshot, PROPERTIES, batch_size=4)) == 1
+    assert not __import__('os').path.exists(orphan.path) and __import__('os').path.exists(adopted.path)
+
+
+def test_keep_files_keeps_the_worker_parts(tmp_path):
+    snapshot = tmp_path / 'h5' / 'data-0000.h5'
+    held = HDF5HeldLabels(snapshot, PROPERTIES, batch_size=4, keep_worker_parts=True)
+    receipt = _write(_labels(2), snapshot)
+    held.adopt([receipt])
+    held.commit(snapshot, PROPERTIES, {})
+    assert __import__('os').path.exists(receipt.path)
+
+
+def test_a_receipt_travels_as_a_small_record():
+    import pickle
+    receipt = LabelReceipt('/x/task-1.h5', {'H2_O': {'ids': ['a', 'b'], 'periodic': False}}, {'c': 'reason'})
+    copy = pickle.loads(pickle.dumps(receipt))
+    assert copy.as_record() == receipt.as_record() and len(copy) == 3
+    assert LabelReceipt.from_record(receipt.as_record()).ids() == ['a', 'b', 'c']
+
+
+def test_labels_by_reference_needs_native_qm_batching():
+    from tests.test_labeling_coordinator import native_qm, single_qm
+    from alframework.tools.labeling_coordinator import LabelingCoordinator
+    handoff = dict(directory='/tmp/x', properties=PROPERTIES, schema=SCHEMA)
+    with pytest.raises(ValueError, match='data_by_reference labels requires native QM batching'):
+        LabelingCoordinator(single_qm, 'test.single_qm', {}, label_handoff=handoff)
+    coordinator = LabelingCoordinator(native_qm, 'test.native_qm', {'batching': {'mode': 'native', 'batch_size': 2}},
+                                      label_handoff=handoff)
+    assert LabelReceipt in coordinator.queue.output_types
+
+
+def test_the_coordinator_stores_the_same_labels_with_labels_by_reference(tmp_path, monkeypatch):
+    """The same finite bootstrap, labeled the usual way and by reference, stores the same labels in its first
+    shard; by reference, the QM workers wrote them and the coordinator only merged them."""
+    from alframework.tools import config as workflow_config, sampled_frames
+    from tests.helpers.driver import run_alf_driver, stored_ids
+    from tests.test_labeling_coordinator import native_qm
+    from tests.test_restarts import LOOP, restart_tasks
+
+    first = {}
+    for arm in ('coordinator', 'by_reference'):
+        run_dir = tmp_path / arm
+        run_dir.mkdir()
+        extra = {} if arm == 'coordinator' else {'data_by_reference': {'labels': True, 'merge_workers': 2}}
+        with monkeypatch.context() as patch:
+            # The by-reference QM wrapper looks its labeler up by name, as the driver's stand-ins are.
+            patch.setattr(sampled_frames, 'load_module_from_string',
+                          lambda path: workflow_config.load_module_from_string(path))
+            tasks = restart_tasks(run_dir, [])
+            tasks['qm'] = native_qm
+            run = run_alf_driver(run_dir, patch, **tasks, **LOOP, finite_bootstrap=True, label_storage_batch_size=2,
+                                 qm_config={'batching': {'mode': 'native', 'batch_size': 2,
+                                                         'partial_policy': 'timeout', 'max_wait_seconds': 0.1}},
+                                 **extra)
+        assert run.status['lifetime_stored_labels'] > 0
+        with h5py.File(run_dir / 'h5' / 'data-0000.h5') as handle:
+            first[arm] = sorted(i.decode() for group in handle.values() for i in group['_id'][()])
+        if arm == 'by_reference':
+            incoming = run_dir / 'h5' / '.alf-label-parts' / INCOMING
+            assert incoming.is_dir(), 'QM workers wrote parts'
+            ids = stored_ids(run_dir / 'h5')
+            assert len(ids) == len(set(ids)), 'no label was stored twice'
+    assert first['by_reference'] == first['coordinator']
+
+
+def test_a_real_parsl_worker_writes_the_part_and_returns_its_receipt(tmp_path, monkeypatch):
+    """On a worker process, as at scale: the receipt crosses Parsl's serialization and the labeler is imported
+    by its path in the worker."""
+    import parsl
+    from parsl import python_app
+    from parsl.config import Config
+    from parsl.executors import HighThroughputExecutor
+    from parsl.providers import LocalProvider
+    from alframework.tools.sampled_frames import label_sampled_frames
+
+    import os
+    import sys
+    root = str(__import__('pathlib').Path(__file__).resolve().parents[1])
+    monkeypatch.setenv('PYTHONPATH', root + os.pathsep + os.environ.get('PYTHONPATH', ''))
+    # Parsl starts its interchange and worker pool from PATH: this interpreter's, wherever it is installed.
+    monkeypatch.setenv('PATH', os.path.dirname(sys.executable) + os.pathsep + os.environ.get('PATH', ''))
+    config = Config(run_dir=str(tmp_path / 'runinfo'), executors=[HighThroughputExecutor(
+        label='alf_QM_executor', address='127.0.0.1', max_workers_per_node=1, cores_per_worker=1,
+        provider=LocalProvider(init_blocks=1, min_blocks=0, max_blocks=1))])
+    snapshot = tmp_path / 'h5' / 'data-0000.h5'
+    handoff = dict(directory=str(incoming_directory(snapshot)), properties=PROPERTIES, schema=SCHEMA)
+    parsl.load(config)
+    try:
+        task = python_app(executors=['alf_QM_executor'])(label_sampled_frames)
+        structures = [MoleculesObject(WATER.copy(), f'mol-{index:04d}') for index in range(3)]
+        receipt = task(structures, 'tests.test_labeling_coordinator.native_qm', {'QM_config': {}}, handoff).result(
+            timeout=120)
+    finally:
+        parsl.dfk().cleanup()
+    assert isinstance(receipt, LabelReceipt) and len(receipt) == 3
+    held = HDF5HeldLabels(snapshot, PROPERTIES, batch_size=8)
+    held.adopt([receipt])
+    assert held.commit(snapshot, PROPERTIES, {}) == 3

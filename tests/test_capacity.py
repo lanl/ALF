@@ -3,9 +3,10 @@ from types import SimpleNamespace
 
 import pytest
 from parsl.executors import HighThroughputExecutor, ThreadPoolExecutor
+from parsl.launchers import AprunLauncher, MpiExecLauncher, SimpleLauncher, SrunLauncher
 from parsl.providers import SlurmProvider
 
-from alframework.tools.capacity import capacity_report, executor_slots, task_slots
+from alframework.tools.capacity import capacity_report, executor_slots, pools_per_node, task_slots
 
 
 def _htex(label, workers, nodes, blocks):
@@ -21,6 +22,36 @@ def test_slots_come_from_workers_nodes_and_blocks():
     assert task_slots(['a', 'b'], executors) == 28
     assert task_slots(['a', 'x'], executors) is None, 'one unknown executor makes the total unknown'
     assert task_slots(['missing'], executors) is None
+
+
+def _pooled(launcher, workers=1, nodes=128):
+    return HighThroughputExecutor(label='p', max_workers_per_node=workers, available_accelerators=workers,
+                                  provider=SlurmProvider(nodes_per_block=nodes, max_blocks=1, launcher=launcher))
+
+
+@pytest.mark.parametrize('launcher, pools', [
+    # One pool per GPU, as a per-GPU layout starts them: Parsl counts one per node.
+    (SrunLauncher(overrides='--nodes=128 --ntasks 1024 --ntasks-per-node=8 -c 7 --gpus-per-task=1'), 8),
+    (SrunLauncher(overrides='--ntasks-per-node 4'), 4),
+    (SrunLauncher(overrides='--ntasks 1 --ntasks 256'), 2),  # srun keeps the last --ntasks; 256 over 128 nodes
+    (SrunLauncher(overrides='-n 100'), 1),  # doesn't divide over the nodes, so not counted
+    (SrunLauncher(overrides='--ntasks-per-node=1 -c 56'), 1),
+    (SrunLauncher(), 1),
+    (MpiExecLauncher(overrides='-ppn 8 --depth 7'), 8),
+    (AprunLauncher(overrides='-N 6'), 6),
+    (SimpleLauncher(), 1),
+])
+def test_a_launcher_that_starts_several_pools_per_node_is_counted(launcher, pools):
+    assert pools_per_node(_pooled(launcher).provider) == pools
+    assert executor_slots(_pooled(launcher)) == 128 * pools
+
+
+def test_another_launcher_can_say_how_many_pools_it_starts():
+    launcher = SimpleLauncher()
+    launcher.pools_per_node = 8
+    assert executor_slots(_pooled(launcher)) == 1024
+    launcher.pools_per_node = True
+    assert executor_slots(_pooled(launcher)) == 128, 'only a positive integer counts'
 
 
 def _report(master, **overrides):

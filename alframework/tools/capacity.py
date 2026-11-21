@@ -7,13 +7,72 @@ when the coordinator starts, and warns where they disagree, such as sampler GPUs
 leave idle. It only reports; nothing it finds changes the run.
 """
 import math
+import shlex
+
+# The launcher options that start several worker pools on each node, by the Parsl launcher that reads them. A
+# launcher of another kind can say how many it starts with a ``pools_per_node`` attribute.
+POOLS_PER_NODE_OPTIONS = {'SrunLauncher': ('--ntasks-per-node',),
+                          'MpiExecLauncher': ('-ppn', '--ppn', '-npernode', '--npernode'),
+                          'AprunLauncher': ('-N',)}
+SRUN_TASK_OPTIONS = ('--ntasks', '-n')
+
+
+def _option(words, names):
+    """The last value given for any of ``names`` in ``words`` (``--name=value`` or ``--name value``), or ``None``."""
+    found = None
+    for index, word in enumerate(words):
+        name, equals, value = word.partition('=')
+        if name in names:
+            found = value if equals else (words[index + 1] if index + 1 < len(words) else None)
+    return found
+
+
+def _positive(value):
+    if isinstance(value, bool):
+        return None
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number > 0 else None
+
+
+def pools_per_node(provider):
+    """How many worker pools ``provider``'s launcher starts on each node: 1 unless the launcher says more.
+
+    Parsl counts one pool per node, so a launcher that starts one per GPU (``srun --ntasks-per-node=8``) runs
+    several times the workers Parsl reports. This reads ``SrunLauncher``'s ``--ntasks-per-node`` (or its
+    ``--ntasks`` over the block's nodes), ``MpiExecLauncher``'s ``-ppn`` and ``AprunLauncher``'s ``-N`` from their
+    overrides, and a ``pools_per_node`` attribute on any other launcher.
+    """
+    launcher = getattr(provider, 'launcher', None)
+    declared = _positive(getattr(launcher, 'pools_per_node', None))
+    if declared:
+        return declared
+    kinds = [kind.__name__ for kind in type(launcher).__mro__]
+    names = next((POOLS_PER_NODE_OPTIONS[kind] for kind in kinds if kind in POOLS_PER_NODE_OPTIONS), None)
+    overrides = getattr(launcher, 'overrides', '')
+    if names is None or not isinstance(overrides, str):
+        return 1
+    try:
+        words = shlex.split(overrides)
+    except ValueError:
+        return 1
+    per_node = _positive(_option(words, names))
+    if per_node:
+        return per_node
+    if 'SrunLauncher' in kinds:
+        tasks, nodes = _positive(_option(words, SRUN_TASK_OPTIONS)), _positive(getattr(provider, 'nodes_per_block', 1))
+        if tasks and nodes and tasks % nodes == 0:
+            return tasks // nodes
+    return 1
 
 
 def executor_slots(executor):
     """How many tasks ``executor`` can run at once, or ``None`` when its configuration doesn't say.
 
-    A thread pool runs ``max_threads``; a high-throughput executor runs its workers per node on each node of each
-    block, up to ``max_blocks``.
+    A thread pool runs ``max_threads``; a high-throughput executor runs its workers per node in each worker pool
+    its launcher starts on a node (:func:`pools_per_node`), on each node of each block, up to ``max_blocks``.
     """
     threads = getattr(executor, 'max_threads', None)
     if isinstance(threads, int) and not isinstance(threads, bool):
@@ -23,7 +82,8 @@ def executor_slots(executor):
     blocks = getattr(provider, 'max_blocks', None)
     if provider is None or not isinstance(workers, (int, float)) or not math.isfinite(workers) or blocks is None:
         return None
-    return int(workers) * int(getattr(provider, 'nodes_per_block', 1) or 1) * int(blocks)
+    return (int(workers) * pools_per_node(provider) * int(getattr(provider, 'nodes_per_block', 1) or 1)
+            * int(blocks))
 
 
 def task_slots(labels, executors):

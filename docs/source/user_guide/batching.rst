@@ -242,8 +242,13 @@ ALF prints the batching it will use at startup, for example:
 .. _batching-capacity:
 
 It then sets what the run keeps in flight beside what its Parsl executors can run: each
-stage's tasks at once (workers per node, times nodes per block, times ``max_blocks``),
-times structures per task, against its queue setting. For example:
+stage's tasks at once (workers per node, times the worker pools the launcher starts on
+each node, times nodes per block, times ``max_blocks``), times structures per task,
+against its queue setting. Parsl itself counts one pool per node; ALF reads more from
+``SrunLauncher``'s ``--ntasks-per-node`` (or ``--ntasks`` over the block's nodes),
+``MpiExecLauncher``'s ``-ppn`` and ``AprunLauncher``'s ``-N``, as a layout with one pool
+per GPU sets them, and from a ``pools_per_node`` attribute on a launcher of your own.
+For example:
 
 .. code-block:: text
 

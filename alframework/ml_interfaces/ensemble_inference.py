@@ -19,6 +19,11 @@ Prediction layout, for ``n_models`` members and ``n_systems`` structures:
   ``results["alf_atomic_uncertainty"]``. These arrays are diagnostics for the sampled frame.
 
 An evaluator may have one member: the spread is then 0, and only its own uncertainty chooses frames.
+
+Packed evaluators may provide ``observe_uncertainty(numbers, positions, cell, pbc)``, called with the
+current tensors of one structure at acquisition checks. It returns a mapping with optional
+``uncertainty`` and ``atomic_uncertainty`` mappings for that structure. Names can be added to the
+ones reported by ``evaluate``.
 """
 
 from collections.abc import Mapping
@@ -139,6 +144,33 @@ def member_atomic_uncertainty(results, n_atoms):
             reported.setdefault(name, []).append(array)
     return {name: np.add.reduce([array / len(arrays) for array in arrays])
             for name, arrays in reported.items()}
+
+
+def add_observed_uncertainty(prediction, evaluator, frames):
+    """Add the optional packed observation scores to the per-structure prediction."""
+    observe = getattr(evaluator, "observe_uncertainty", None)
+    if observe is None:
+        return
+    reported = {"uncertainty": [], "atomic_uncertainty": []}
+    for index, (numbers, positions, cell, pbc) in enumerate(frames):
+        observation = observe(numbers, positions, cell, pbc)
+        if not isinstance(observation, Mapping):
+            raise ValueError("observe_uncertainty must return a mapping of score fields.")
+        for field, rows in reported.items():
+            values = observation.get(field, {})
+            if not isinstance(values, Mapping):
+                raise ValueError(f"observe_uncertainty {field!r} must be a mapping.")
+            if field == "atomic_uncertainty":
+                values = {name: array.copy() for name, array in atomic_uncertainty_arrays(values, len(numbers)).items()}
+            previous = prediction.get(field)
+            base = {} if previous is None else (previous[index] or {})
+            duplicates = base.keys() & values.keys()
+            if duplicates:
+                raise ValueError(f"Score names reported by both evaluate and observe_uncertainty: {sorted(duplicates)}.")
+            rows.append({**base, **values})
+    for field, rows in reported.items():
+        if any(rows):
+            prediction[field] = rows
 
 
 def ensemble_statistics(prediction):

@@ -37,7 +37,8 @@ from ase import units
 from ase.constraints import FixCom
 from ase.io.trajectory import Trajectory
 
-from alframework.ml_interfaces.ensemble_inference import ASEEnsembleEvaluator, atomic_uncertainty_batch
+from alframework.ml_interfaces.ensemble_inference import (ASEEnsembleEvaluator, add_observed_uncertainty,
+                                                          atomic_uncertainty_batch)
 from alframework.tools.geometry import batched_minimum_distances, minimum_distance
 from alframework.tools.gap_seeking import gap_seeking_energy_forces
 
@@ -325,11 +326,19 @@ class PackedMLMDEngine:
         return failures
 
     def observe(self, index):
+        return self._observe(index, score_uncertainty=True)
+
+    def observe_physical(self, index):
+        """Read the current physical predictions for screening before dynamics."""
+        return self._observe(index, score_uncertainty=False)
+
+    def _observe(self, index, *, score_uncertainty):
         if self._stale:
             self._evaluate()
         host = self._host_arrays()
         selection = self._slices[index]
-        prediction = {"energies": host["energies"][:, [self._position[index]]].astype(float),
+        row = self._position[index]
+        prediction = {"energies": host["energies"][:, [row]].astype(float),
                       "forces": [host["forces"][:, selection].astype(float)]}
         if self._state_members is not None:
             energies, forces = self._state_members
@@ -340,6 +349,11 @@ class PackedMLMDEngine:
             prediction["uncertainty"] = [self._uncertainty[self._position[index]]]
         if self._atomic_uncertainty is not None:
             prediction["atomic_uncertainty"] = [self._atomic_uncertainty[self._position[index]]]
+        if score_uncertainty:
+            state = self.state
+            add_observed_uncertainty(prediction, self.evaluator, [
+                (state.atomic_numbers[selection], state.positions[selection], state.cell[row].T, state.pbc)
+            ])
         return {"prediction": prediction, "min_distance": self._minimum_distance(index)}
 
     def _minimum_distance(self, index):

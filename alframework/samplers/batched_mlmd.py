@@ -225,9 +225,10 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
 
     active = list(range(count))
     if screening:
+        observe_physical = getattr(engine, "observe_physical", engine.observe)
         for index in list(active):
             try:
-                observation = engine.observe(index)
+                observation = observe_physical(index)
                 report, reason = inspect_frame(index, observation, 0.)
                 if reason:
                     state[index].update(decision=dict(outcome='rejected'),

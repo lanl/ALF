@@ -148,6 +148,13 @@ after ``evaluate``, as a list of mappings in structure order. Supply arrays
 on the host and use an empty mapping for any structure with no atom scores.
 ASE ensembles average each named array over the members that report it.
 
+Packed providers with expensive scoring can instead define
+``observe_uncertainty(numbers, positions, cell, pbc)``. ALF calls it with the
+current device tensors of one structure at an acquisition check. Return a
+mapping with optional ``uncertainty`` and ``atomic_uncertainty`` mappings for
+that structure. Use distinct names for any scores also returned from
+``evaluate``.
+
 A provider can expose multiple scores, for example:
 
 .. code-block:: python
@@ -219,20 +226,33 @@ its calculator:
 .. code-block:: python
 
    from hippynn import custom_kernels
-   from alframework.ml_interfaces.hippynn.ntk import EnergyForceNTK, NTKASECalculator
+   from alframework.ml_interfaces.hippynn.ntk import (
+       EnergyForceNTK, NTKASECalculator, NTKPackedEvaluator,
+   )
 
    custom_kernels.set_custom_kernels(False)
    estimator = EnergyForceNTK(energy_graph, training_atoms,
-                              energy_scale=0.1, force_scale=1.0, seed=7)
+                              energy_scale=0.1, force_scale=1.0, seed=7,
+                              device=device)
    calculators = [NTKASECalculator(estimator)]
 
 Use a graph that takes atomic numbers and positions in Å and returns the
 total energy in eV as its first output of shape ``[batch, 1]``. Training and
 query structures are nonperiodic ASE ``Atoms``. The energy and force scales
 weight training observations in eV and eV/Å. Fit a new estimator after
-retraining the model. This implementation uses CPU float64 and native PyTorch
-kernels. Force scores require a parameter gradient for each Cartesian force
-component, which adds cost at every calculator evaluation.
+retraining the model. Pass the ``device`` argument supplied by ALF to the
+loader. The estimator uses native PyTorch kernels and defaults to float64 on
+CPU and float32 on GPU. Use ``dtype=torch.float64`` to request double precision
+on CUDA or ROCm. MPS uses float32. Recalibrate cutoffs for the deployed model
+and precision.
+
+For TorchSim or ALCHEMI, return ``NTKPackedEvaluator(estimator)`` from a
+``batched_calculator`` loader. It computes ordinary batched energy and forces
+at each step and NTK scores only at acquisition checks. The graph and sketch
+use the estimator's precision and the engines keep their integration
+precision. Use TorchSim for ROCm, TorchSim or ALCHEMI for NVIDIA CUDA, and
+ASE for Apple MPS. Force scores require a parameter gradient for each
+Cartesian force component. The ASE adapter computes them on each evaluation.
 
 ``predict_energy_forces(atoms)`` returns the predicted energy and forces
 along with scores for energy, force components, and atoms. The ASE adapter
@@ -245,12 +265,26 @@ reference energies or forces and check them on held-out structures.
 
 The :download:`NTK replay example <../../../examples/atom_resolved_uncertainty/ntk_replay.py>`
 generates an analytic bond dataset in memory, trains HIP-NN from scratch, and
-compares standalone scores with ALF replay on six held-out structures. Run it
-from the repository root after installing PyTorch and HIPPYNN.
+compares standalone scores with ALF replay on six held-out structures. It
+also runs two short trajectories and checks the saved atom scores at the
+selected geometries. Run these checks from the repository root after
+installing PyTorch and HIPPYNN.
 
 .. code-block:: sh
 
    python examples/atom_resolved_uncertainty/ntk_replay.py
+   PYTORCH_ENABLE_MPS_FALLBACK=0 python examples/atom_resolved_uncertainty/ntk_replay.py --device mps
+
+For native GPU qualification on Linux, use a PyTorch build for the target
+hardware and install ALF's ``torchsim`` extra, plus ``alchemi`` for NVIDIA
+ALCHEMI checks. PyTorch uses the device spelling ``cuda`` for both CUDA and
+ROCm. Run the first two commands on NVIDIA and AMD, and the third on NVIDIA.
+
+.. code-block:: sh
+
+   ALF_TEST_NTK_DEVICE=cuda:0 python -m pytest tests/test_hippynn_ntk.py
+   python examples/atom_resolved_uncertainty/ntk_replay.py --device cuda:0 --engine torchsim
+   python examples/atom_resolved_uncertainty/ntk_replay.py --device cuda:0 --engine alchemi
 
 Selection
 ---------

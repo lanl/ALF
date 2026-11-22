@@ -167,6 +167,15 @@ For ground-state MLMD, selected frames carry the score arrays under
 retained candidate carries its own arrays and the selected frame inherits them.
 Enable the sampling metadata writer to keep these records on disk.
 
+Try the :download:`two-source CPU replay <../../../examples/atom_resolved_uncertainty/replay.py>`
+from the repository root. The two score sources trigger independently on
+synthetic structures.
+
+.. code-block:: sh
+
+   python -m pip install -e .
+   python examples/atom_resolved_uncertainty/replay.py
+
 **What the run reads.** ``terms`` names each one, with the cutoff that normalizes it
 like the built-in terms, and ``eligibility`` and the ranking can then use it:
 
@@ -197,6 +206,51 @@ in the trajectory summary. The run report adds a panel for each beside the sprea
 This covers both sampler families, with every engine. Dynamics on a modified
 potential, UDD and gap-seeking, use the ensemble's spread as their bias and still
 need an ensemble.
+
+HIPPYNN energy and force NTK
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The optional ``alframework.ml_interfaces.hippynn.ntk`` module estimates uncertainty
+from the parameter sensitivities of a fitted molecular energy graph. In your
+``ase_calculator`` loader, load the graph and the geometries that supplied its
+energy and force training labels, fit one estimator, and return a list containing
+its calculator:
+
+.. code-block:: python
+
+   from hippynn import custom_kernels
+   from alframework.ml_interfaces.hippynn.ntk import EnergyForceNTK, NTKASECalculator
+
+   custom_kernels.set_custom_kernels(False)
+   estimator = EnergyForceNTK(energy_graph, training_atoms,
+                              energy_scale=0.1, force_scale=1.0, seed=7)
+   calculators = [NTKASECalculator(estimator)]
+
+Use a graph that takes atomic numbers and positions in Å and returns the
+total energy in eV as its first output of shape ``[batch, 1]``. Training and
+query structures are nonperiodic ASE ``Atoms``. The energy and force scales
+weight training observations in eV and eV/Å. Fit a new estimator after
+retraining the model. This implementation uses CPU float64 and native PyTorch
+kernels. Force scores require a parameter gradient for each Cartesian force
+component, which adds cost at every calculator evaluation.
+
+``predict_energy_forces(atoms)`` returns the predicted energy and forces
+along with scores for energy, force components, and atoms. The ASE adapter
+reports ``ntk_energy`` and ``ntk_force_max`` as scalar signals, and
+``ntk_force`` as an array. For example, configure a force trigger with
+``"terms": {"force_ntk": {"uncertainty": "ntk_force_max", "cutoff": 0.2}}``,
+``"eligibility": ["force_ntk"]``, and ``"strategy": "largest"`` inside
+``acquisition``. The cutoff is illustrative. Choose thresholds using independent
+reference energies or forces and check them on held-out structures.
+
+The :download:`NTK replay example <../../../examples/atom_resolved_uncertainty/ntk_replay.py>`
+generates an analytic bond dataset in memory, trains HIP-NN from scratch, and
+compares standalone scores with ALF replay on six held-out structures. Run it
+from the repository root after installing PyTorch and HIPPYNN.
+
+.. code-block:: sh
+
+   python examples/atom_resolved_uncertainty/ntk_replay.py
 
 Selection
 ---------

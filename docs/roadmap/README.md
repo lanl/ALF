@@ -6,6 +6,9 @@ This is the plan for ALF's `development` branch: what has been built, what has b
 real hardware, the decisions that shape it, and what comes next. Detailed work logs and validation
 evidence are kept outside the repository.
 
+The [uncertainty integration guide](uncertainty-integration.md) tracks the
+feature branch for atom-resolved uncertainty and its qualification runs.
+
 ## Status
 
 "Shown on GPUs" means a bounded run on real hardware that exercised the workflow end to end at small

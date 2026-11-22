@@ -300,7 +300,7 @@ Selection
        frame is labeled. The score is only recorded.
    * - ``"cohort_top_k"``
      - Eligible frames from a group of trajectories, called a cohort, are pooled,
-       and only the ``k`` highest-scoring frames are labeled.
+       and a selector chooses up to ``k`` frames to label.
 
 Use ``cohort_top_k`` when QM is expensive compared with sampling, so that QM goes
 to the most uncertain frames rather than to whichever frames triggered first:
@@ -330,12 +330,13 @@ to the most uncertain frames rather than to whichever frames triggered first:
    * - ``selection.k``
      - Required. Number of frames to label from each cohort.
    * - ``selection.max_candidates_per_trajectory``
-     - Optional. The most frames one trajectory can keep in the pool. Only its
-       highest-scoring frames are kept. Each trajectory is always limited to at
-       most ``k``.
+     - The most frames one trajectory can keep in the pool. Required for
+       ``fps`` and ``adaptive_ntk``. With ``top_k``, a trajectory keeps at most
+       ``k`` frames and the cap can reduce that limit.
    * - ``selection.selector``
-     - Optional. ``"top_k"`` (default) picks the highest-scoring frames. ``"fps"``
-       picks a geometrically varied set; see below.
+     - Optional. ``"top_k"`` (default) uses fixed scores. ``"fps"`` uses geometry
+       to diversify the batch. ``"adaptive_ntk"`` updates the remaining energy
+       NTK scores after each choice.
    * - ``selection.group_by_selected_state``
      - Optional. ``true`` keeps a separate cohort for each selected state, so each
        state gets its own ``k`` frames rather than competing with the others. It
@@ -354,7 +355,7 @@ How cohorts run:
   model arrives, the open cohort finishes with its original model, and the next
   cohort uses the new one.
 * **Finishing:** once a full cohort's trajectories have all finished, its selector
-  sends ``k`` frames to QM. A trajectory finishes as ``eligible``, ``completed``,
+  sends up to ``k`` frames to QM. A trajectory finishes as ``eligible``, ``completed``,
   ``rejected``, or ``failed``.
 * **Failures:** frames a trajectory contributed before ending remain in the pool.
   Frames held inside a worker that crashes are lost.
@@ -388,6 +389,96 @@ Diverse selection
    Each trajectory keeps that many of its highest-scoring frames for the pool, so a
    larger value gives the selector more to choose from and uses more memory. ALF
    stops with an error if a cohort's frames mix compositions or are periodic.
+
+Adaptive energy NTK selection
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The ``adaptive_ntk`` selector uses energy gradients with respect to model
+parameters, as in the `AdaptNTK acquisition method
+<https://arxiv.org/html/2609.00488v1#S4.SS2>`_. The first choice has the highest
+initial energy score. After each choice, the coordinator updates the precision
+matrix with that geometry's feature row and recomputes the scores of the remaining
+candidates. Similar rows can drop in rank when they carry information already
+represented by a selected frame. Selection runs before any of the cohort's QM
+labels are available.
+
+For each finished HIPPYNN checkpoint, fit and save a basis using the exact
+geometries used to train that checkpoint:
+
+.. code-block:: python
+
+   from hippynn import custom_kernels
+   from alframework.ml_interfaces.hippynn.ntk import EnergyNTK, NTKPackedEvaluator
+
+   custom_kernels.set_custom_kernels(False)
+   EnergyNTK(energy_graph, training_atoms, seed=7, device=device).save_basis(basis_path)
+
+Publish the checkpoint and its basis together to the ALF workers. In the
+``batched_calculator`` loader, load the same energy graph, then return
+``NTKPackedEvaluator(EnergyNTK.from_basis(energy_graph, basis_path, device=device))``.
+The loader checks the model and sketch against the saved basis. A cohort uses
+one immutable basis. The basis stores the precision used for scoring, so fit
+in the precision you intend to deploy. The graph contract and precision
+defaults are the same as above. To retain per-atom force diagnostics, also
+pass an ``EnergyForceNTK`` for the same checkpoint, device, and dtype as
+``force_diagnostics`` to the evaluator.
+
+Use a ground-state packed sampler with TorchSim (CUDA or ROCm) or ALCHEMI
+(NVIDIA CUDA). For example, if your loader is ``load_adaptive_ntk`` in
+``my_project.models``:
+
+.. code-block:: json
+
+   {
+     "driver": {"engine": "torchsim"},
+     "batched_calculator": "my_project.models.load_adaptive_ntk",
+     "acquisition": {
+       "terms": {"check": {"uncertainty": "ntk_energy", "cutoff": 0.2}},
+       "eligibility": ["check"],
+       "strategy": "largest",
+       "trajectory_policy": "continue",
+       "selection": {
+         "mode": "cohort_top_k",
+         "selector": "adaptive_ntk",
+         "cohort_size": 50,
+         "k": 16,
+         "max_candidates_per_trajectory": 8
+       }
+     }
+   }
+
+The cutoff is illustrative. ALF first applies the configured eligibility checks.
+Workers keep up to the explicit cap per trajectory, ranked by initial energy
+NTK score. The coordinator fills the budget from the retained pool. A higher
+cap gives it more alternatives and uses more memory. Each selected frame's
+sampling metadata includes ``cohort_candidates_pruned`` and an ``adaptive_ntk``
+record with the basis ID, initial score, score at selection, and zero-based
+selection order. These two scores are variances in eV². The scalar signal
+``ntk_energy`` is their initial square root in eV.
+
+The :download:`adaptive NTK replay example <../../../examples/atom_resolved_uncertainty/adaptive_ntk_replay.py>`
+fits a scratch-trained HIP-NN model and compares fixed top-k with adaptive
+selection on the same full geometry pool. Use ``--pool`` to replay every frame
+of a nonperiodic hydrogen geometry file readable by ASE, and ``--budget`` to set
+the shared label budget. With an engine specified, the example also
+checks which frames two MD trajectories contribute and which frames the
+coordinator sends to labeling.
+
+.. code-block:: sh
+
+   python examples/atom_resolved_uncertainty/adaptive_ntk_replay.py
+   PYTORCH_ENABLE_MPS_FALLBACK=0 python examples/atom_resolved_uncertainty/adaptive_ntk_replay.py --device mps
+   python examples/atom_resolved_uncertainty/adaptive_ntk_replay.py --device cpu --engine torchsim
+
+For native GPU review, use a PyTorch build for the target hardware and install
+the relevant engine extra. Run the first two commands on NVIDIA CUDA and AMD
+ROCm. Run the ALCHEMI command on NVIDIA CUDA.
+
+.. code-block:: sh
+
+   ALF_TEST_NTK_DEVICE=cuda:0 python -m pytest tests/test_hippynn_ntk.py tests/test_adaptive_ntk.py
+   python examples/atom_resolved_uncertainty/adaptive_ntk_replay.py --device cuda:0 --engine torchsim
+   python examples/atom_resolved_uncertainty/adaptive_ntk_replay.py --device cuda:0 --engine alchemi
 
 Checking Results
 ----------------

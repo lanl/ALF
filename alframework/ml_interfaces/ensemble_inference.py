@@ -23,7 +23,8 @@ An evaluator may have one member: the spread is then 0, and only its own uncerta
 Packed evaluators may provide ``observe_uncertainty(numbers, positions, cell, pbc)``, called with the
 current tensors of one structure at acquisition checks. It returns a mapping with optional
 ``uncertainty`` and ``atomic_uncertainty`` mappings for that structure. Names can be added to the
-ones reported by ``evaluate``.
+ones reported by ``evaluate``. An optional ``energy_ntk`` payload carries a whitened energy
+gradient row, basis ID, and ridge for adaptive cohort selection.
 """
 
 from collections.abc import Mapping
@@ -152,10 +153,12 @@ def add_observed_uncertainty(prediction, evaluator, frames):
     if observe is None:
         return
     reported = {"uncertainty": [], "atomic_uncertainty": []}
+    energy_ntk = []
     for index, (numbers, positions, cell, pbc) in enumerate(frames):
         observation = observe(numbers, positions, cell, pbc)
         if not isinstance(observation, Mapping):
             raise ValueError("observe_uncertainty must return a mapping of score fields.")
+        energy_ntk.append(observation.get("energy_ntk"))
         for field, rows in reported.items():
             values = observation.get(field, {})
             if not isinstance(values, Mapping):
@@ -171,6 +174,8 @@ def add_observed_uncertainty(prediction, evaluator, frames):
     for field, rows in reported.items():
         if any(rows):
             prediction[field] = rows
+    if any(row is not None for row in energy_ntk):
+        prediction["energy_ntk"] = energy_ntk
 
 
 def ensemble_statistics(prediction):

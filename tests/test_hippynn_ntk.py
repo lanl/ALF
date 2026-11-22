@@ -14,7 +14,8 @@ from hippynn import custom_kernels
 from hippynn.graphs import GraphModule, inputs, networks, targets
 
 from alframework.ml_interfaces.hippynn.compat import system_energy
-from alframework.ml_interfaces.hippynn.ntk import EnergyForceNTK, NTKASECalculator, NTKPackedEvaluator
+from alframework.ml_interfaces.hippynn.ntk import EnergyForceNTK, EnergyNTK, NTKASECalculator, NTKPackedEvaluator
+from alframework.samplers.adaptive_ntk import initial_energy_score
 from alframework.samplers.engines.packed import PackedMLMDEngine
 from alframework.testing import check_evaluator
 
@@ -192,3 +193,47 @@ def test_packed_ntk_scores_are_lazy_and_follow_active_atom_order(graph, atoms, m
     np.testing.assert_allclose(observed, expected, rtol=3e-5, atol=1e-6)
     assert check_evaluator(evaluator, [remaining])[0]["ntk_force_max"] == pytest.approx(float(expected.max()))
     engine.finish(1)
+
+
+@pytest.mark.parametrize("device", list(dict.fromkeys(("cpu", os.environ.get("ALF_TEST_NTK_DEVICE", "cpu")))))
+def test_energy_basis_round_trip_and_model_identity(graph, atoms, device, tmp_path, monkeypatch):
+    stretched = atoms.copy()
+    stretched.positions[1] *= 1.13
+    options = dict(sketch_dim=16, seed=13, ridge=0.2)
+    cpu = EnergyNTK(graph, [atoms, stretched], **options)
+
+    def no_force_graph(*args, **kwargs):
+        raise AssertionError("Energy-only scoring should never differentiate coordinates.")
+
+    monkeypatch.setattr(EnergyNTK, "_energy_forces", no_force_graph)
+    with torch.inference_mode():
+        fitted = EnergyNTK(graph, [atoms, stretched], **options, device=device)
+        original = fitted.candidate_features(stretched.numbers, stretched.positions, stretched.pbc)
+    path = tmp_path / "energy_ntk.npz"
+    fitted.save_basis(path)
+    restored = EnergyNTK.from_basis(graph, path, device=device)
+    observed = restored.candidate_features(stretched.numbers, stretched.positions, stretched.pbc)
+    reference = cpu.candidate_features(stretched.numbers, stretched.positions, stretched.pbc)
+    assert restored.basis_id == observed["basis_id"] == fitted.basis_id
+    np.testing.assert_allclose(observed["row"], original["row"], rtol=3e-5, atol=1e-6)
+    assert initial_energy_score({"energy_ntk": observed}) == pytest.approx(
+        initial_energy_score({"energy_ntk": reference}), rel=3e-3, abs=5e-5)
+    changed = copy.deepcopy(graph)
+    with torch.no_grad():
+        next(p for p in changed.parameters() if p.requires_grad).add_(1.0)
+    with pytest.raises(ValueError, match="model snapshot"):
+        EnergyNTK.from_basis(changed, path, device=device)
+
+
+def test_packed_energy_selection_can_also_report_force_diagnostics(graph, atoms):
+    energy = EnergyNTK(graph, [atoms], sketch_dim=16)
+    forces = EnergyForceNTK(graph, [atoms], energy_scale=0.2, force_scale=0.8, sketch_dim=16)
+    evaluator = NTKPackedEvaluator(energy, force_diagnostics=forces)
+    with torch.inference_mode():
+        observation = evaluator.observe_uncertainty(
+            torch.tensor(atoms.numbers), torch.tensor(atoms.positions), None, torch.tensor(atoms.pbc))
+    reference = forces.predict_energy_forces(atoms)
+    assert observation["energy_ntk"]["basis_id"] == energy.basis_id
+    assert observation["uncertainty"]["ntk_energy"] ** 2 == pytest.approx(initial_energy_score(observation))
+    assert observation["uncertainty"]["ntk_force_max"] == pytest.approx(float(reference["max_force_uncertainty_score"]))
+    np.testing.assert_allclose(observation["atomic_uncertainty"]["ntk_force"], reference["force_uncertainty_score"])

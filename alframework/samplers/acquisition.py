@@ -53,7 +53,7 @@ import numpy as np
 STRATEGIES = ("uncertainty", "summed", "largest")
 TRAJECTORY_POLICIES = ("stop", "continue")
 SELECTION_MODES = ("first_trigger", "cohort_top_k")
-COHORT_SELECTORS = ("top_k", "fps")
+COHORT_SELECTORS = ("top_k", "fps", "adaptive_ntk")
 
 # name: (signal key from ensemble statistics, cutoff key in sampler_config, cutoff multiplier)
 SCORE_TERMS = {
@@ -380,18 +380,22 @@ def fps_select(candidates, k):
 
 def select_candidates(candidates, selection):
     """Return the frames a finished cohort sends to QM, in rank order."""
-    if selection.get("selector", "top_k") == "fps":
+    selector = selection.get("selector", "top_k")
+    if selector == "fps":
         return fps_select(candidates, selection["k"])
+    if selector == "adaptive_ntk":
+        from alframework.samplers.adaptive_ntk import select_ntk_candidates
+        return select_ntk_candidates(candidates, selection["k"])
     return top_k(candidates, selection["k"])
 
 
 def worker_retention_limit(selection):
     """Return how many frames one trajectory must keep for this selection.
 
-    Top-K can never select a frame outside a trajectory's own best ``k``. FPS can, so it keeps
-    what ``max_candidates_per_trajectory`` allows, choosing the highest-scoring frames.
+    Top-K can never select a frame outside a trajectory's own best ``k``. FPS and adaptive
+    NTK can, so they keep what the explicit per-trajectory cap allows.
     """
     cap = selection.get("max_candidates_per_trajectory")
-    if selection.get("selector", "top_k") == "fps":
+    if selection.get("selector", "top_k") in ("fps", "adaptive_ntk"):
         return cap
     return selection["k"] if cap is None else min(selection["k"], cap)

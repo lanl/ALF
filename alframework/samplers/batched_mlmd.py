@@ -114,6 +114,7 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
     # The model's own uncertainty the run's acquisition terms read, whose largest values each trajectory records.
     own_uncertainty = tuple(sorted({term['uncertainty'] for term in custom_terms(sampler_config).values()}))
     cohort = settings['selection']['mode'] == 'cohort_top_k'
+    adaptive_ntk = settings['selection'].get('selector') == 'adaptive_ntk'
     keep_running = settings['trajectory_policy'] == 'continue'
     dt, maxt, Ncheck = sampler_config['dt'], sampler_config['maxt'], sampler_config['Ncheck']
     meta_dir = sampler_config.get('meta_dir')
@@ -127,7 +128,7 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
             (1.66054e-24 / 1.0e-24) * (np.sum(atoms.get_masses()) / atoms.get_volume())
         state.append({'temps': [], 'denss': [], 'rho0': rho0, 'decision': None, 'signals': None,
                       'min_distance': None, 'check': 0, 'outcome': None, 'error': None,
-                      'candidates': [], 'peaks': {}, 'finished_at': None,
+                      'candidates': [], 'candidates_pruned': 0, 'peaks': {}, 'finished_at': None,
                       'step_times': {}})
 
     def finish(index, outcome, error=None):
@@ -272,11 +273,17 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
                         if atomic:
                             diagnostics['atomic_uncertainty'] = {name: values.copy() for name, values in atomic.items()}
                     if cohort:
-                        entry['candidates'].append(_candidate(
+                        candidate = _candidate(
                             molecule_objects[index], engine, index, signals, decision, time_ps,
-                            entry['temps'][-1] if entry['temps'] else schedule['Tsrt'], diagnostics=diagnostics))
-                        # A frame outside this trajectory's best can never be selected, so don't hold its geometry.
+                            entry['temps'][-1] if entry['temps'] else schedule['Tsrt'], diagnostics=diagnostics)
+                        if adaptive_ntk:
+                            from alframework.samplers.adaptive_ntk import energy_ntk_row
+                            basis, ridge, row = energy_ntk_row(prediction.get('energy_ntk', [None])[0])
+                            candidate['energy_ntk'] = {'basis_id': basis, 'ridge': ridge, 'row': row.copy()}
+                        entry['candidates'].append(candidate)
+                        before = len(entry['candidates'])
                         entry['candidates'] = _prune(entry['candidates'], settings['selection'])
+                        entry['candidates_pruned'] += before - len(entry['candidates'])
                         if keep_running:
                             # Keep sampling; the cohort selects among this trajectory's frames later.
                             decision = dict(decision, outcome='continue')
@@ -373,6 +380,8 @@ def _record(molecule, entry, schedule, sampler_config, settings, engine, index, 
         meta_dict['ranking_score'] = decision['ranking_score']
     if cohort:
         meta_dict['acquisition_candidates'] = entry['candidates']
+        if settings['selection'].get('selector') == 'adaptive_ntk':
+            meta_dict['acquisition_candidates_pruned'] = entry['candidates_pruned']
     if entry['error'] is not None:
         meta_dict['sampling_error'] = entry['error']
     meta_dict.update(molecule.get_metadata())
@@ -423,8 +432,12 @@ def _candidate(molecule, engine, index, signals, decision, time_ps, thermostat_t
 
 
 def _prune(candidates, selection):
-    """Keep a trajectory's best frames; never more than the cohort can select from one trajectory."""
-    return top_k(candidates, worker_retention_limit(selection))
+    """Keep a trajectory's best frames within the selector's retention limit."""
+    limit = worker_retention_limit(selection)
+    if selection.get('selector') == 'adaptive_ntk':
+        from alframework.samplers.adaptive_ntk import initial_energy_score
+        return sorted(candidates, key=lambda c: (-initial_energy_score(c), c['trajectory_id'], c['step']))[:limit]
+    return top_k(candidates, limit)
 
 
 METADATA_FILES = ('per_trajectory', 'per_task', 'none')
@@ -515,6 +528,11 @@ def sample_trajectories(molecule_objects, models, sampler_config, engine_class=N
     sampler_config = dict(sampler_config, meta_dir=task_meta_dir(sampler_config, list(molecule_objects)))
     driver = driver_settings(sampler_config)
     states = state_settings(sampler_config)
+    selection = acquisition_settings(sampler_config)['selection']
+    if selection.get('selector') == 'adaptive_ntk' and (
+            not callable(getattr(models, 'observe_uncertainty', None))
+            or states is not None or (driver['engine'] == 'ase' and engine_class is None)):
+        raise ValueError("Adaptive NTK needs a ground-state packed evaluator that reports energy_ntk rows.")
     require_members(models, sampler_config)
     from alframework.tools.molecular_topology import load_reference_topology, validate_fixed_topology, topology_metadata
     from alframework.tools.force_screen import validated_force_cutoff

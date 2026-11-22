@@ -39,6 +39,7 @@ class _Cohort:
         self.members = []
         self.outcomes = {}
         self.candidates = []
+        self.candidates_pruned = 0
 
 
 class CohortPool:
@@ -101,6 +102,8 @@ class CohortPool:
             raise ValueError(f"Trajectory {trajectory_id!r} reported non-terminal outcome {outcome!r}.")
         cohort.outcomes[trajectory_id] = outcome
         cohort.candidates.extend(metadata.get("acquisition_candidates", []))
+        if self.selection.get("selector") == "adaptive_ntk":
+            cohort.candidates_pruned += metadata.get("acquisition_candidates_pruned", 0)
 
     def record_failed(self, molecules):
         """Mark members of a task that failed as a whole; they returned no candidates."""
@@ -127,6 +130,8 @@ class CohortPool:
                 "cohort_id": cohort.cohort_id, "model_id": cohort.model_id, "members": len(cohort.members),
                 "selected_state": cohort.selected_state,
                 "outcomes": dict(Counter(cohort.outcomes.values())), "candidates": len(cohort.candidates),
+                **({"candidates_pruned": cohort.candidates_pruned}
+                   if self.selection.get("selector") == "adaptive_ntk" else {}),
                 "selected": [candidate["frame_id"] for candidate in chosen]})
             self._finished_total += 1
             self._selected_total += len(chosen)
@@ -151,6 +156,9 @@ class CohortPool:
                                "ranking_score": candidate["ranking_score"], "cohort_rank": rank,
                                "cohort_candidates": len(cohort.candidates), **candidate["signals"],
                                **candidate["flags"]})
+        if "adaptive_ntk" in candidate:
+            frame.update_metadata({"adaptive_ntk": candidate["adaptive_ntk"],
+                                   "cohort_candidates_pruned": cohort.candidates_pruned})
         return frame
 
     def status(self):

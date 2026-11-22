@@ -214,6 +214,45 @@ This covers both sampler families, with every engine. Dynamics on a modified
 potential, UDD and gap-seeking, use the ensemble's spread as their bias and still
 need an ensemble.
 
+PNNL per-atom uncertainty with MACE
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For ground-state ASE MD, use the optional MACE loader
+``alframework.ml_interfaces.uq_mlip.load_mace_uq`` as ``ase_calculator``.
+Install the tested `PNNL UQ-MLIP revision
+<https://github.com/pnnl/UQ-MLIP/tree/61ae6e171db4f64382b81df34673b93edc4cee42>`_
+with its ``mace`` extra in the sampler environment. Put a single MACE ASE
+checkpoint at ``mace.model`` in the ALF model-generation directory or in its
+single ``model-*`` member directory. Before making that generation available
+to workers, fit and save the quantile regressor using representative structures:
+
+.. code-block:: python
+
+   from ase.io import read
+   from alframework.ml_interfaces.uq_mlip import fit_mace_uq
+
+   fit_mace_uq(model_directory, read("validation.extxyz", index=":"))
+
+Fit a fresh regressor for each new checkpoint. Keep the fitted directory with
+that checkpoint. The loader checks both files against the manifest. MACE
+inference and embedding extraction run on the sampler's device. The
+regressor runs on the CPU and returns one interval half-width per atom under
+``uq_mlip``. This is an internal atomic-energy score. The
+`interface study <https://doi.org/10.1038/s41524-026-02051-8>`_ uses a
+different normalization. Calibrate a cutoff on the score you actually deploy.
+
+To acquire frames by their highest atom score, set ``acquisition.terms`` to
+``{"uq": {"uncertainty": "uq_mlip_max", "cutoff": 0.2}}``, set
+``eligibility`` to ``["uq"]``, and use the ``largest`` strategy. The cutoff
+is illustrative. For a region-specific trigger, a provider can keep the full
+atom array and add another named scalar computed over the chosen atoms. For
+example, mask the array to sodium ions in the interface region, report their
+maximum under ``uq_mlip_interface_max``, and define a term for that name.
+
+The :download:`MACE and UQ-MLIP replay example <../../../examples/atom_resolved_uncertainty/uq_mlip_replay.py>`
+checks molecular and periodic structures, first-trigger MD, and a fixed-score
+cohort with a local MACE checkpoint.
+
 HIPPYNN energy and force NTK
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

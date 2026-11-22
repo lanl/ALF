@@ -134,8 +134,9 @@ def _check_prediction(prediction, members, atoms_list, where):
         clash = sorted({name for row in own for name in row} & set(BUILT_IN_SIGNALS))
         if clash:
             raise ContractError(f'Uncertainty names {clash} are taken by built-in signals; choose others.')
-    from alframework.ml_interfaces.ensemble_inference import ensemble_statistics
+    from alframework.ml_interfaces.ensemble_inference import atomic_uncertainty_batch, ensemble_statistics
     try:
+        atomic_uncertainty_batch(prediction.get('atomic_uncertainty'), [len(atoms) for atoms in atoms_list])
         return ensemble_statistics(prediction)
     except ValueError as exc:
         raise ContractError(str(exc)) from exc
@@ -162,6 +163,8 @@ def _evaluate_packed(evaluator, atoms_list):
                   'forces': [forces[:, start:end] for start, end in zip(offsets[:-1], offsets[1:])]}
     if getattr(evaluator, 'last_uncertainty', None) is not None:
         prediction['uncertainty'] = evaluator.last_uncertainty
+    if getattr(evaluator, 'last_atomic_uncertainty', None) is not None:
+        prediction['atomic_uncertainty'] = evaluator.last_atomic_uncertainty
     return prediction
 
 
@@ -172,7 +175,8 @@ def check_evaluator(evaluator, atoms_list):
     describes), ``evaluate(numbers, positions, cells, pbc, counts)`` on the packed tensors the ``torchsim`` and
     ``alchemi`` engines pass, returning energies ``[n_models, structures]`` and forces ``[n_models, atoms, 3]``, or
     both; each one it provides is checked, with any uncertainty of its own (``predict``'s ``"uncertainty"``, or
-    ``last_uncertainty`` after ``evaluate``). Returns the per-structure signals acquisition would read.
+    ``last_uncertainty`` after ``evaluate``) and optional atom scores (``"atomic_uncertainty"`` or
+    ``last_atomic_uncertainty``). Returns the per-structure signals acquisition would read.
     """
     members = getattr(evaluator, 'n_models', None)
     if isinstance(members, bool) or not isinstance(members, int) or members < 1:

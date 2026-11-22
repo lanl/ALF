@@ -97,6 +97,10 @@ class _Evaluator:
     ({"energies": np.full((2, 2), np.nan)}, "nonfinite energies"),
     ({"uncertainty": [{"Es": 1.0}, {"Es": 1.0}]}, r"\['Es'\] are taken by built-in signals"),
     ({"uncertainty": [{"x": 1.0}]}, "one dict of named numbers per structure"),
+    ({"atomic_uncertainty": [{}]}, "one mapping per structure"),
+    ({"atomic_uncertainty": [{"local": [0., 1.]}, {}]}, "array of shape"),
+    ({"atomic_uncertainty": [{"local": [0., -1., 2.]}, {}]}, "finite and nonnegative"),
+    ({"atomic_uncertainty": [{"local": [0., np.nan, 2.]}, {}]}, "finite and nonnegative"),
 ])
 def test_an_evaluator_that_breaks_the_layout_is_named(changes, message):
     with pytest.raises(ContractError, match=message):

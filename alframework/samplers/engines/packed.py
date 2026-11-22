@@ -37,7 +37,7 @@ from ase import units
 from ase.constraints import FixCom
 from ase.io.trajectory import Trajectory
 
-from alframework.ml_interfaces.ensemble_inference import ASEEnsembleEvaluator
+from alframework.ml_interfaces.ensemble_inference import ASEEnsembleEvaluator, atomic_uncertainty_batch
 from alframework.tools.geometry import batched_minimum_distances, minimum_distance
 from alframework.tools.gap_seeking import gap_seeking_energy_forces
 
@@ -64,6 +64,7 @@ class ASECalculatorBatch:
         prediction = self.evaluator.predict(atoms_list)
         # The members' own uncertainty, one dict per system, which the engine passes on (see PackedMLMDEngine).
         self.last_uncertainty = prediction.get("uncertainty")
+        self.last_atomic_uncertainty = prediction.get("atomic_uncertainty")
         return (torch.as_tensor(prediction["energies"]),
                 torch.as_tensor(np.concatenate(prediction["forces"], axis=1)))
 
@@ -155,9 +156,12 @@ class PackedMLMDEngine:
                 self._state_members = (se[:, :, selection], sf[:, :, atom_mask])
             if getattr(self, '_uncertainty', None) is not None:
                 self._uncertainty = [self._uncertainty[row] for row in keep]
+            if self._atomic_uncertainty is not None:
+                self._atomic_uncertainty = [self._atomic_uncertainty[row] for row in keep]
         else:
             self.state, self._members = None, None
             self._state_members = self._uncertainty = None
+            self._atomic_uncertainty = None
         self._host = self._distances = None
         self._layout()
 
@@ -195,6 +199,8 @@ class PackedMLMDEngine:
         if self._uncertainty is not None and len(self._uncertainty) != len(self._rows):
             raise ValueError(f'The evaluator reported uncertainty for {len(self._uncertainty)} systems, not '
                              f'{len(self._rows)}.')
+        self._atomic_uncertainty = atomic_uncertainty_batch(
+            getattr(self.evaluator, 'last_atomic_uncertainty', None), self._counts)
         self._host = self._distances = None
         self._stale = False
         energy, force = energies.mean(0), forces.mean(0)
@@ -332,6 +338,8 @@ class PackedMLMDEngine:
                               selected_state=self.evaluator.selected_state, gap_pair=self.evaluator.gap_pair)
         if getattr(self, '_uncertainty', None) is not None:
             prediction["uncertainty"] = [self._uncertainty[self._position[index]]]
+        if self._atomic_uncertainty is not None:
+            prediction["atomic_uncertainty"] = [self._atomic_uncertainty[self._position[index]]]
         return {"prediction": prediction, "min_distance": self._minimum_distance(index)}
 
     def _minimum_distance(self, index):

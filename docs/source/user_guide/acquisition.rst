@@ -140,6 +140,33 @@ same list. An ASE calculator (``ase_calculator``) puts the dict in
 report. Each value is one number per structure, so reduce per-atom values first, for
 example to their maximum. See :mod:`alframework.ml_interfaces.ensemble_inference`.
 
+**Atom scores.** For diagnostics, the calculator can also report
+``results["alf_atomic_uncertainty"]``, a mapping from score name to a finite,
+nonnegative array with one value per atom in input order. A batched evaluator
+uses ``"atomic_uncertainty"`` from ``predict`` or ``last_atomic_uncertainty``
+after ``evaluate``, as a list of mappings in structure order. Supply arrays
+on the host and use an empty mapping for any structure with no atom scores.
+ASE ensembles average each named array over the members that report it.
+
+A provider can expose multiple scores, for example:
+
+.. code-block:: python
+
+   self.results["alf_atomic_uncertainty"] = {
+       "force_spread": force_spread_by_atom,
+       "embedding_distance": embedding_distance_by_atom,
+   }
+   self.results["alf_uncertainty"] = {
+       "force_spread_max": float(max(force_spread_by_atom)),
+       "embedding_distance_max": float(max(embedding_distance_by_atom)),
+   }
+
+Configure each scalar reduction you want to use as an acquisition term.
+For ground-state MLMD, selected frames carry the score arrays under
+``atomic_uncertainty`` in their sampling metadata. With cohort selection, each
+retained candidate carries its own arrays and the selected frame inherits them.
+Enable the sampling metadata writer to keep these records on disk.
+
 **What the run reads.** ``terms`` names each one, with the cutoff that normalizes it
 like the built-in terms, and ``eligibility`` and the ranking can then use it:
 

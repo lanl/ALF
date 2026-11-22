@@ -50,7 +50,7 @@ from alframework.tools.task_failure_cleanup import releases_memory_on_failure
 from alframework.tools.task_timeline import timed
 from alframework.tools.capabilities import declares
 
-from alframework.ml_interfaces.ensemble_inference import ensemble_statistics, SelectedStateEvaluator
+from alframework.ml_interfaces.ensemble_inference import atomic_uncertainty_batch, ensemble_statistics, SelectedStateEvaluator
 from alframework.samplers.acquisition import (acquisition_settings, assess_frame, custom_terms, frame_id,
                                               require_members, top_k, worker_retention_limit)
 # Keep the old paths importable, including for previously pickled calculators.
@@ -253,7 +253,8 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
                                               **{k:v for k,v in report.items() if k == 'Fmeanmax' or k.startswith('physical_F')}})
                         finish(index, 'rejected')
                         continue
-                signals = ensemble_statistics(observation['prediction'])[0]
+                prediction = observation['prediction']
+                signals = ensemble_statistics(prediction)[0]
                 if screening:
                     signals.update({k:v for k,v in report.items() if k == 'Fmeanmax' or k.startswith('physical_F')})
                 decision = assess_frame(signals, observation['min_distance'], time_ps, sampler_config, settings)
@@ -262,15 +263,24 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
                 for key in (*PEAK_SIGNALS, *own_uncertainty):
                     if key in signals:  # gap_std only with a gap_uncertainty pair.
                         entry['peaks'][key] = max(signals[key], entry['peaks'].get(key, signals[key]))
-                if cohort and decision['outcome'] == 'eligible':
-                    entry['candidates'].append(_candidate(molecule_objects[index], engine, index, signals,
-                                                          decision, time_ps,
-                                                          entry['temps'][-1] if entry['temps'] else schedule['Tsrt']))
-                    # A frame outside this trajectory's best can never be selected, so don't hold its geometry.
-                    entry['candidates'] = _prune(entry['candidates'], settings['selection'])
-                    if keep_running:
-                        # Keep sampling; the cohort selects among this trajectory's frames later.
-                        decision = dict(decision, outcome='continue')
+                if decision['outcome'] == 'eligible':
+                    diagnostics = {}
+                    if prediction.get('atomic_uncertainty') is not None:
+                        [atomic] = atomic_uncertainty_batch(prediction['atomic_uncertainty'],
+                                                            [len(engine.atoms(index))])
+                        if atomic:
+                            diagnostics['atomic_uncertainty'] = {name: values.copy() for name, values in atomic.items()}
+                    if cohort:
+                        entry['candidates'].append(_candidate(
+                            molecule_objects[index], engine, index, signals, decision, time_ps,
+                            entry['temps'][-1] if entry['temps'] else schedule['Tsrt'], diagnostics=diagnostics))
+                        # A frame outside this trajectory's best can never be selected, so don't hold its geometry.
+                        entry['candidates'] = _prune(entry['candidates'], settings['selection'])
+                        if keep_running:
+                            # Keep sampling; the cohort selects among this trajectory's frames later.
+                            decision = dict(decision, outcome='continue')
+                    else:
+                        entry.update(diagnostics)
                 if decision['outcome'] != 'continue':
                     finish(index, decision['outcome'])
                     continue
@@ -368,6 +378,8 @@ def _record(molecule, entry, schedule, sampler_config, settings, engine, index, 
     meta_dict.update(kinetic_temperature_K=entry.get('finished_kinetic_temperature_K'),
                      thermostat_temperature_K=entry['temps'][-1] if entry['temps'] else schedule['Tsrt'])
     meta_dict.update(signals)
+    if entry['outcome'] == 'eligible' and 'atomic_uncertainty' in entry:
+        meta_dict['atomic_uncertainty'] = entry['atomic_uncertainty']
     own = {name: peak for name, peak in entry['peaks'].items() if name not in PEAK_SIGNALS}
     if own:
         meta_dict['max_uncertainty'] = own
@@ -389,7 +401,7 @@ def _record(molecule, entry, schedule, sampler_config, settings, engine, index, 
     return meta_dict
 
 
-def _candidate(molecule, engine, index, signals, decision, time_ps, thermostat_temperature_K=None):
+def _candidate(molecule, engine, index, signals, decision, time_ps, thermostat_temperature_K=None, *, diagnostics=None):
     atoms = engine.atoms(index)
     step = engine.steps[index]
     return {"trajectory_id": molecule.get_moleculeid(), "step": int(step),
@@ -400,6 +412,7 @@ def _candidate(molecule, engine, index, signals, decision, time_ps, thermostat_t
             "numbers": atoms.get_atomic_numbers().copy(), "positions": atoms.get_positions().copy(),
             "cell": np.array(atoms.get_cell()), "pbc": atoms.get_pbc().copy(),
             "metadata": {**copy.deepcopy(molecule.get_metadata()),
+                         **(diagnostics or {}),
                          "kinetic_temperature_K": kinetic_temperature(atoms),
                          "thermostat_temperature_K": thermostat_temperature_K,
                          **{key: decision[key] for key in ('acquisition_trigger_flags', 'acquisition_cutoffs',

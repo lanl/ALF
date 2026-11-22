@@ -14,9 +14,14 @@ Prediction layout, for ``n_models`` members and ``n_systems`` structures:
   dropout, an uncertainty head, a latent-space distance, a neural tangent kernel, ...). The evaluator reduces per-atom
   values to one number per structure. Acquisition reads them through ``acquisition.terms``. An ASE calculator reports
   the same in ``results["alf_uncertainty"]``, and ASE ensembles average what their members report.
+- ``atomic_uncertainty`` (optional): one mapping per structure from score name to a nonnegative array
+  of shape ``[n_atoms_i]`` in input atom order. ASE calculators report their mapping as
+  ``results["alf_atomic_uncertainty"]``. These arrays are diagnostics for the sampled frame.
 
 An evaluator may have one member: the spread is then 0, and only its own uncertainty chooses frames.
 """
+
+from collections.abc import Mapping
 
 import numpy as np
 
@@ -69,7 +74,7 @@ class ASEEnsembleEvaluator:
 
     def predict(self, atoms_list):
         energies = np.empty((self.n_models, len(atoms_list)))
-        forces, uncertainty = [], []
+        forces, uncertainty, atomic = [], [], []
         for system, atoms in enumerate(atoms_list):
             member_forces = np.empty((self.n_models, len(atoms), 3))
             for member, calculator in enumerate(self.calculators):
@@ -77,10 +82,14 @@ class ASEEnsembleEvaluator:
                 energies[member, system] = calculator.results["energy"]
                 member_forces[member] = calculator.results["forces"]
             forces.append(member_forces)
-            uncertainty.append(member_uncertainty(calculator.results for calculator in self.calculators))
+            member_results = [calculator.results for calculator in self.calculators]
+            uncertainty.append(member_uncertainty(member_results))
+            atomic.append(member_atomic_uncertainty(member_results, len(atoms)))
         prediction = {"energies": energies, "forces": forces}
         if any(uncertainty):
             prediction["uncertainty"] = uncertainty
+        if any(atomic):
+            prediction["atomic_uncertainty"] = atomic
         return prediction
 
 
@@ -92,6 +101,44 @@ def member_uncertainty(results):
         for name, value in (result.get("alf_uncertainty") or {}).items():
             reported.setdefault(name, []).append(float(value))
     return {name: float(np.mean(values)) for name, values in reported.items()}
+
+
+def atomic_uncertainty_arrays(values, n_atoms):
+    """Validate one structure's named atom scores in input order."""
+    if not isinstance(values, Mapping):
+        raise ValueError("Atomic uncertainty must map score names to arrays.")
+    arrays = {}
+    for name, value in values.items():
+        if not isinstance(name, str) or not name:
+            raise ValueError("Atomic uncertainty names must be nonempty strings.")
+        array = np.asarray(value)
+        if array.shape != (n_atoms,) or array.dtype.kind not in 'iuf':
+            raise ValueError(f"Atomic uncertainty {name!r} must be a real array of shape ({n_atoms},).")
+        array = array.astype(float, copy=False)
+        if not np.isfinite(array).all() or np.any(array < 0):
+            raise ValueError(f"Atomic uncertainty {name!r} must be finite and nonnegative.")
+        arrays[name] = array
+    return arrays
+
+
+def atomic_uncertainty_batch(values, counts):
+    """Validate optional per-structure mappings against the evaluator's batch."""
+    if values is None:
+        return None
+    if not isinstance(values, (list, tuple)) or len(values) != len(counts):
+        raise ValueError("Atomic uncertainty must supply one mapping per structure.")
+    return [atomic_uncertainty_arrays(row, count) for row, count in zip(values, counts)]
+
+
+def member_atomic_uncertainty(results, n_atoms):
+    """Average each named array over the ASE members reporting that name."""
+    reported = {}
+    for result in results:
+        arrays = atomic_uncertainty_arrays(result.get("alf_atomic_uncertainty", {}), n_atoms)
+        for name, array in arrays.items():
+            reported.setdefault(name, []).append(array)
+    return {name: np.add.reduce([array / len(arrays) for array in arrays])
+            for name, arrays in reported.items()}
 
 
 def ensemble_statistics(prediction):

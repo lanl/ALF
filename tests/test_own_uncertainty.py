@@ -1,6 +1,9 @@
 """Uncertainty a model reports of its own, besides an ensemble's spread, chooses frames in both sampler families."""
+import pickle
+
 import numpy as np
 import pytest
+from ase import Atoms
 
 from alframework.ml_interfaces.ensemble_inference import ASEEnsembleEvaluator, ensemble_statistics, member_uncertainty
 from alframework.samplers import acquisition
@@ -117,6 +120,122 @@ def test_ase_ensembles_average_what_their_members_report():
 SAMPLER = dict(dt=0.5, maxt=0.5, Ncheck=5, distcut=0.3, min_time=0.0, random_seed=5,
                srt_temp=[3000.0, 3000.0], end_temp=[3000.0, 3000.0], amp_temp=[0.0, 0.0], per_temp=[1.0, 1.0],
                amp_dens=None, per_dens=None, end_dens=None)
+
+
+def atom_scores(atoms):
+    return {'position_score': np.abs(atoms.positions[:, 0]), 'species_score': atoms.numbers / 10.}
+
+
+class AtomScoreSpring(PairSpringCalculator):
+    def __init__(self, scale=1., names=('position_score', 'species_score')):
+        super().__init__(3.5)
+        self.scale, self.names = scale, names
+
+    def calculate(self, atoms=None, properties=('energy',), system_changes=()):
+        super().calculate(atoms, properties, system_changes or ['positions'])
+        scores = atom_scores(atoms)
+        self.results['alf_atomic_uncertainty'] = {name: self.scale * scores[name] for name in self.names}
+        self.results['alf_uncertainty'] = {
+            name + '_max': float(values.max()) for name, values in self.results['alf_atomic_uncertainty'].items()
+        }
+
+
+def test_ase_replay_preserves_two_sources_and_can_trigger_either_one():
+    atoms = SPRING_WATER.copy()
+    prediction = ASEEnsembleEvaluator([AtomScoreSpring()]).predict([atoms])
+    scores = atom_scores(atoms)
+    for name, values in scores.items():
+        np.testing.assert_array_equal(prediction['atomic_uncertainty'][0][name], values)
+    [signals] = ensemble_statistics(prediction)
+    assert signals['Fsmax'] == 0.
+    for triggered in scores:
+        terms = {name: {'uncertainty': name + '_max', 'cutoff': 0.01 if name == triggered else 100.}
+                 for name in scores}
+        config = {'acquisition': {'terms': terms, 'eligibility': list(terms), 'strategy': 'largest'}}
+        decision = assess_frame(signals, 2., 0., config, acquisition_settings(config))
+        assert decision['outcome'] == 'eligible'
+        assert decision['acquisition_trigger_flags'] == {name: name == triggered for name in scores}
+
+
+def test_ase_averages_only_members_with_the_same_atom_score_name():
+    atoms = SPRING_WATER.copy()
+    models = [AtomScoreSpring(), AtomScoreSpring(scale=3., names=('position_score',))]
+    scores = atom_scores(atoms)
+    evaluator = ASEEnsembleEvaluator(models)
+    [observed] = evaluator.predict([atoms])['atomic_uncertainty']
+    calculator = MLMD_calculator(models)
+    calculator.calculate(atoms, properties=['energy', 'forces'])
+    for values in (observed, calculator.results['alf_atomic_uncertainty']):
+        np.testing.assert_allclose(values['position_score'], 2 * scores['position_score'])
+        np.testing.assert_array_equal(values['species_score'], scores['species_score'])
+
+
+@pytest.mark.parametrize('mode', ['serial', 'first_trigger', 'cohort'])
+def test_selected_atom_scores_round_trip_with_their_frame(tmp_path, mode):
+    from alframework.samplers.batched_mlmd import sample_trajectories
+    from alframework.samplers.mlmd_sampling import mlmd_sampling
+    from alframework.tools.cohorts import CohortPool
+
+    terms = {'local': {'uncertainty': 'position_score_max', 'cutoff': 0.01}}
+    acquisition = {'terms': terms, 'eligibility': ['local'], 'strategy': 'largest'}
+    [molecule] = _molecules(1)
+    source = AtomScoreSpring()
+    molecule_id = molecule.get_moleculeid()
+    config = dict(SAMPLER, maxt=0.01, meta_dir=str(tmp_path), meta_dir_layout='flat', acquisition=acquisition)
+    if mode == 'serial':
+        sampler_keys = ('dt', 'maxt', 'Ncheck', 'distcut', 'min_time', 'meta_dir', 'acquisition')
+        frame = mlmd_sampling(molecule, MLMD_calculator([source]),
+                              **{key: config[key] for key in sampler_keys},
+                              Tamp=0., Tper=1., Tsrt=3000., Tend=3000., Ramp=None, Rper=None, Rend=None)
+    else:
+        if mode == 'cohort':
+            selection = {'mode': 'cohort_top_k', 'k': 2, 'cohort_size': 1}
+            acquisition.update(selection=selection, trajectory_policy='continue')
+            pool = CohortPool(selection)
+            pool.admit(molecule, 0)
+        [frame] = sample_trajectories([molecule], [source], config)
+        if mode == 'cohort':
+            pool.record(frame)
+            frames = pool.ready()
+            assert len(frames) == 2
+            frame = frames[0]
+    metadata = frame.get_metadata()
+    assert metadata['acquisition_trigger_flags'] == {'local': True}
+    assert metadata['acquisition_cutoffs'] == {'local': 0.01}
+    expected = atom_scores(frame.get_atoms())
+    signals = metadata['uncertainty'] if mode == 'serial' else metadata
+    assert signals['position_score_max'] == pytest.approx(expected['position_score'].max())
+    with (tmp_path / f'metadata-{molecule_id}.p').open('rb') as stream:
+        persisted = pickle.load(stream)
+    if mode == 'cohort':
+        persisted = next(candidate['metadata'] for candidate in persisted['acquisition_candidates']
+                         if candidate['frame_id'] == metadata['frame_id'])
+    for name, values in expected.items():
+        np.testing.assert_array_equal(metadata['atomic_uncertainty'][name], values)
+        np.testing.assert_array_equal(persisted['atomic_uncertainty'][name], values)
+    assert 'atomic_uncertainty' not in trajectory_row(molecule_id, metadata)
+
+
+def test_packed_engine_keeps_atom_scores_aligned_after_retiring_a_system():
+    pytest.importorskip('torch')
+    from alframework.samplers.engines.packed import PackedMLMDEngine
+    from alframework.testing import check_evaluator
+
+    atoms = [SPRING_WATER.copy(), Atoms('H2', positions=[[0., 0., 0.], [1.2, 0., 0.]])]
+    engine = PackedMLMDEngine(atoms, [AtomScoreSpring()], 0.5, [300., 300.],
+                              [np.random.RandomState(0), np.random.RandomState(1)])
+    before = engine.observe(1)['prediction']['atomic_uncertainty'][0]
+    engine.finish(0)
+    retained = engine.observe(1)['prediction']['atomic_uncertainty'][0]
+    for name, values in before.items():
+        np.testing.assert_array_equal(retained[name], values)
+    engine.scale_cell(1, 1.1)
+    after = engine.observe(1)['prediction']['atomic_uncertainty'][0]
+    for name, values in atom_scores(engine.atoms(1)).items():
+        np.testing.assert_array_equal(after[name], values)
+    # The evaluator checker also reads the packed-only return path.
+    assert check_evaluator(engine.evaluator, [engine.atoms(1)])[0]['species_score_max'] == 0.1
+    engine.finish(1)
 
 
 def _molecules(count):

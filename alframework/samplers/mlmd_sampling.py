@@ -12,6 +12,7 @@ from alframework.tools.task_timeline import timed
 from alframework.tools.annealing import annealing_schedule
 from alframework.tools.config import load_module_from_config
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator
+from alframework.ml_interfaces.ensemble_inference import atomic_uncertainty_arrays
 from alframework.tools.geometry import minimum_distance
 from alframework.tools.config import build_input_dict
 from alframework.tools.molecules import MoleculesObject
@@ -124,8 +125,9 @@ def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Ncheck, Tamp, Tper,
             Es = ase_atoms.calc.Estddev * 1000
             Fs, Fsmax = ase_atoms.calc.get_Fstddev()
 
-        signals = {'Es': Es, 'Fs': Fs, 'Fsmax': Fsmax,
-                   **(getattr(ase_atoms.calc, 'results', {}).get('alf_uncertainty') or {})}
+        results = getattr(ase_atoms.calc, 'results', {})
+        own_scores = results.get('alf_uncertainty') or {}
+        signals = {'Es': Es, 'Fs': Fs, 'Fsmax': Fsmax, **own_scores}
         for name in own_uncertainty:
             if name in signals:
                 max_uncertainty[name] = max(signals[name], max_uncertainty.get(name, signals[name]))
@@ -186,6 +188,14 @@ def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Ncheck, Tamp, Tper,
     meta_dict.update(molecule_object.get_metadata())
     meta_dict.update(kinetic_temperature_K=kinetic_temperature(ase_atoms),
                      thermostat_temperature_K=temps[-1] if temps else T)
+    if failed and decision['outcome'] == 'eligible':
+        atomic = atomic_uncertainty_arrays(results.get('alf_atomic_uncertainty', {}), len(ase_atoms))
+        if atomic:
+            meta_dict['atomic_uncertainty'] = {name: values.copy() for name, values in atomic.items()}
+        if atomic or own_scores:
+            meta_dict['uncertainty'] = dict(own_scores)
+            for key in ('acquisition_trigger_flags', 'acquisition_cutoffs', 'acquisition_score_terms'):
+                meta_dict[key] = decision[key]
 
     if meta_dir is not None:
         pkl.dump(meta_dict, open(meta_dir + "/metadata-" + molecule_object.get_moleculeid() + '.p', "wb"))

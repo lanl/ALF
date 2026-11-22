@@ -140,6 +140,8 @@ class ASEEngine:
                       'forces': [np.array(results['forces_contributions'][:self.n_models], dtype=float)]}
         if results.get('alf_uncertainty'):
             prediction['uncertainty'] = [results['alf_uncertainty']]
+        if results.get('alf_atomic_uncertainty'):
+            prediction['atomic_uncertainty'] = [results['alf_atomic_uncertainty']]
         return {'prediction': prediction, 'min_distance': minimum_distance(atoms)}
 
     def atoms(self, index):

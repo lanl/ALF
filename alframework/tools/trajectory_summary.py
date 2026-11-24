@@ -23,6 +23,8 @@ COLUMNS = ("model", *LABELS, *NUMBERS)
 # model's own that the run's acquisition terms read.
 OWN_UNCERTAINTY_PREFIX = "max_uncertainty_"
 TASK_FAILED = "task_failed"
+# The reason of a trajectory rejected because two atoms came closer than the sampler's distcut.
+DISTCUT = "distcut"
 
 
 def _number(value):
@@ -57,6 +59,8 @@ def trajectory_row(moleculeid, metadata, outcome=None):
     match = MODEL_IN_ID.match(str(moleculeid))
     row = {"id": str(moleculeid), "model": int(match.group(1)) if match else None}
     row.update({column: _label(metadata.get(key)) for column, key in LABELS.items()})
+    if row["reason"] is None and row["outcome"] == "rejected" and metadata.get("distcrit"):
+        row["reason"] = DISTCUT  # atoms closer than distcut, rather than a screen
     row.update({column: _number(metadata.get(key)) for column, key in NUMBERS.items()})
     # The largest values of the model's own uncertainty the run's acquisition terms read (acquisition.terms).
     for name, largest in (metadata.get("max_uncertainty") or {}).items():

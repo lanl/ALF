@@ -491,8 +491,8 @@ def test_the_large_scale_example_applies_its_scaling_block_to_the_tasks_it_names
     qm = read(folder / "qm_config.json")
     # The sampler template's default: 4 nodes of 4 GPU workers, so 16 sampler tasks at once.
     apply_sizing(derive_sizing(sizing_block(master), sampler_slots=16, builder_batches=True), master, sampler, qm)
-    assert (master["parallel_samplers"], master["target_queued_QM"], master["save_h5_threshold"]) == \
-        (16 * 256, 16384, 16383)
+    assert (master["parallel_samplers"], master["target_queued_QM"], master["retraining"]) == \
+        (16 * 256, 16384, {"after": 16384, "counts": "labels"})
     block = apply_scaling(master, sampler, ml)
     assert block == read(folder / "master_config.json")["scaling"]
     assert large_run_warning(master, sampler, batched_mlmd.mlmd_trajectories_task) is None, \

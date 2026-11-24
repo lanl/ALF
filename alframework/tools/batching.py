@@ -233,7 +233,7 @@ class BatchedTaskQueue(ParslTaskQueue):
     """Task queue whose counts are in input structures rather than tasks.
 
     This keeps ALF's structure-based limits (``bootstrap_set``,
-    ``target_queued_QM``, ``save_h5_threshold``, ...) meaningful when one task
+    ``target_queued_QM``, ``retraining.after``, ...) meaningful when one task
     holds several structures. Molecules waiting in ``buffer`` count as queued.
     :meth:`get_task_results` flattens batch results into one list of
     ``MoleculesObject`` and still reports the number of failed *tasks*;

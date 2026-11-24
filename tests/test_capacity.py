@@ -71,7 +71,7 @@ def test_a_run_sized_to_its_executors_gets_no_warnings():
     assert lines == ['sampling: 16 tasks at once of up to 256 structures = 4,096; parallel_samplers 4,096',
                      'builders: 256 structures per task, 16 tasks to fill sampling',
                      'QM: 8 tasks at once of up to 256 structures = 2,048; target_queued_QM 2,048',
-                     'retraining: once more than 4,095 new labels are held',
+                     'retraining: once 4,096 new labels are held',
                      'ML: 4 ensemble members, 4 trained at once']
 
 

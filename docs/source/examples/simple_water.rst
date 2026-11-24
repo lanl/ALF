@@ -11,7 +11,7 @@ new ALF run. The example connects all major ALF stages:
 4. Sample new structures with ML-driven molecular dynamics.
 5. Send selected high-uncertainty configurations to ORCA for QM labeling.
 6. Store labeled data in HDF5 files.
-7. Retrain a HIPPYNN ensemble once the number of new converged labels exceeds ``save_h5_threshold``.
+7. Retrain a HIPPYNN ensemble once ``retraining.after`` new converged labels are held.
 
 The files needed to run the example are located in ``examples/simple_water``.
 
@@ -244,9 +244,9 @@ loop.
        ``h5store/data-0000.h5``.
    * - ``model_path``
      - Output pattern for trained models, such as ``models/model-0000``.
-   * - ``target_queued_QM``, ``minimum_QM``, ``save_h5_threshold``
-     - Queue thresholds controlling when ALF launches QM tasks and stores new
-       labeled data.
+   * - ``target_queued_QM``, ``minimum_QM``, ``retraining``
+     - Queue thresholds controlling when ALF launches QM tasks, and when it stores new
+       labeled data and retrains.
    * - ``parallel_samplers``
      - Target number of builder/sampler candidates ALF tries to keep active.
        This is a queue-depth target, not the number of GPUs or nodes requested.

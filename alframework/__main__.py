@@ -30,6 +30,7 @@ from alframework.tools.restarts import (
 from alframework.tools.label_validation import screen_labels
 from alframework.tools.label_parts import LabelReceipt, hold_ready, remove_orphan_worker_parts
 from alframework.tools.preflight import check_workflow, reapply_settings
+from alframework.tools.retraining import SAMPLED_WITHOUT_LABEL, ready_to_retrain, retraining_settings
 from alframework.tools.scaling import SCALING
 from alframework.tools.builder_outputs import builder_outputs, builder_width
 from alframework.tools.sampled_frames import SampledFrame
@@ -82,6 +83,8 @@ run_report_updates = ProgressPlots('alframework.tools.run_report.live_report') i
 scaling_settings, sizing_derived = startup.scaling, startup.sizing
 poll_interval, label_budget, spare_seeds = startup.poll_interval, startup.label_budget, startup.spare_seeds
 trim_snapshot_memory = startup.trim_snapshot_memory
+# When to retrain (alframework.tools.retraining); a reload can change it.
+retraining = startup.retraining
 builder_task, sampler_task, qm_task, ml_task = startup.builder, startup.sampler, startup.qm, startup.ml
 sampling, labeling = startup.sampling, startup.labeling
 sampling.start_frame_spool()
@@ -184,6 +187,7 @@ def store_held_labels(**attributes):
         frame_retirement.snapshot_published()
     status['lifetime_stored_labels'] = status.get('lifetime_stored_labels', 0) + stored
     status['current_h5_id'] = status['current_h5_id'] + 1
+    status[SAMPLED_WITHOUT_LABEL] = 0
     held.select_snapshot(master_config['h5_path'].format(status['current_h5_id']))
     if stored and trim_snapshot_memory is not None:
         trim_snapshot_memory()
@@ -453,6 +457,7 @@ while True:
             sampling.check_reloaded(reloaded.master)
             labeling.check_reloaded(reloaded.master)
             builder_width(builder_task, reloaded.master)
+            retraining_new = retraining_settings(reloaded.master)
             poll_interval_new = coordinator_poll_interval(reloaded.master)
         except Exception as e:
             print("Failed to re-load configuration files; the run keeps its previous configuration:")
@@ -460,6 +465,7 @@ while True:
         else:
             master_config = reloaded.master
             poll_interval = poll_interval_new
+            retraining = retraining_new
             builder_config = reloaded.builder
             sampler_config = sampling.apply_window(sampling.keep_startup_settings(reloaded.sampler),
                                                    status.get('lifetime_stored_labels', 0))
@@ -508,12 +514,15 @@ while True:
         if admitting and sampler_task_queue.get_completed_number() > master_config['minimum_QM']:
             sampler_results, failed = sampler_task_queue.get_task_results()
             status['lifetime_failed_sampler_tasks'] = status['lifetime_failed_sampler_tasks'] + failed
-            status['lifetime_failed_sampler_structures'] = status.get('lifetime_failed_sampler_structures', 0) + sampling.take_failed_structures(failed)
+            lost = sampling.take_failed_structures(failed)
+            status['lifetime_failed_sampler_structures'] = status.get('lifetime_failed_sampler_structures', 0) + lost
             for structure in sampler_results: #may need [0]
                 assert isinstance(structure, (MoleculesObject, SampledFrame)), 'invalid sampled frame'
             # Without cohort selection this is every result whose atoms is set, as before.
             for structure in sampling.harvest(sampler_results):
                 labeling.submit(structure, [{"QM_config": QM_config}, master_config, *all_configs, status])
+            # Structures whose sampling ended without a frame to label, for retraining that counts them.
+            status[SAMPLED_WITHOUT_LABEL] = status.get(SAMPLED_WITHOUT_LABEL, 0) + sampling.take_without_label(lost)
             # Labeling holds what it needs; releasing these lets each structure go once its QM task finishes,
             # instead of the whole harvest staying in memory for the rest of the run.
             sampler_results = structure = None
@@ -526,7 +535,9 @@ while True:
 
     # Train more models
     with loop_timer.phase('store'):
-        if admitting and (held.converged() > master_config['save_h5_threshold']) and (ML_task_queue.get_number() < 1):
+        if admitting and ML_task_queue.get_number() < 1 and ready_to_retrain(
+                retraining, converged=held.converged(), finished=held.finished(),
+                sampled_without_label=status.get(SAMPLED_WITHOUT_LABEL, 0)):
             store_held_labels()
             task_input = build_input_dict(ml_task.func,
                                           [{"ML_config": ML_config}, *all_configs, status],

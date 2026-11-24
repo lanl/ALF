@@ -31,7 +31,9 @@ With ``trajectory_summary_path`` set in the master configuration, the coordinato
 trajectory: how it ended, when, its peak uncertainties, and its electronic state. This is the file to
 tune uncertainty cutoffs from: if almost every trajectory triggers at once, the cutoffs are too low for
 the current model; if most run to the end without triggering, QM runs short of work. The progress plots
-in :ref:`samplers-progress-plots` are drawn from the same data.
+in :ref:`samplers-progress-plots` are drawn from the same data. A rejected trajectory's ``reason`` says why:
+``distcut``, when two atoms came closer than the sampler's ``distcut``, or the reason a topology or physical-force
+screen gave.
 
 The scalar and multi-trajectory MLMD samplers also record the initial and final
 kinetic temperatures and the last thermostat target as

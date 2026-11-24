@@ -1,6 +1,6 @@
 """How much work a run keeps in flight against what its Parsl executors can run, checked at startup.
 
-ALF's queue settings count structures (``parallel_samplers``, ``target_queued_QM``, ``save_h5_threshold``) and its
+ALF's queue settings count structures (``parallel_samplers``, ``target_queued_QM``, ``retraining.after``) and its
 task widths count structures per task (``maximum_builder_structures`` and each ``batching.batch_size``), while the
 Parsl configuration decides how many tasks can run at once. :func:`capacity_report` sets them side by side, once,
 when the coordinator starts, and warns where they disagree, such as sampler GPUs that ``parallel_samplers`` would
@@ -8,6 +8,8 @@ leave idle. It only reports; nothing it finds changes the run.
 """
 import math
 import shlex
+
+from alframework.tools.retraining import OLDER_THRESHOLD, RETRAINING, describe as describe_retraining, retraining_settings
 
 # The launcher options that start several worker pools on each node, by the Parsl launcher that reads them. A
 # launcher of another kind can say how many it starts with a ``pools_per_node`` attribute.
@@ -196,9 +198,8 @@ def capacity_report(master_config, executors, *, builder_labels, builder_width, 
         warnings.append(f'target_queued_QM {target:,} fills {busy:,} of {qm_slots:,} QM task slots, so '
                         f'{qm_slots - busy:,} stay idle; {qm_slots * qm_width:,} would fill them all.')
 
-    threshold = master_config.get('save_h5_threshold')
-    if threshold is not None:
-        lines.append(f'retraining: once more than {threshold:,} new labels are held')
+    if RETRAINING in master_config or OLDER_THRESHOLD in master_config:
+        lines.append(describe_retraining(retraining_settings(master_config)))
 
     if n_models is not None:
         counts = [member_slots(executors[label], member_nodes) for label in ml_labels if label in executors]

@@ -25,7 +25,7 @@
   "status_path": "status.txt",
   "target_queued_QM": 32,
   "minimum_QM": 0,
-  "save_h5_threshold": 32,
+  "retraining": {"after": 33},
   "parallel_samplers": 32,
   "bootstrap_set": 64,
   "parsl_configuration": "parsl_configs.config_1node",

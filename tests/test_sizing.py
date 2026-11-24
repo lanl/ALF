@@ -11,19 +11,20 @@ def test_the_block_fills_in_the_widths_and_queue_limits():
     master, sampler, qm = {}, {'batching': {'partial_policy': 'timeout', 'max_wait_seconds': 30}}, {}
     apply_sizing(derived, master, sampler, qm)
     assert master == {'parallel_samplers': 64 * 256, 'maximum_builder_structures': 256, 'target_queued_QM': 16384,
-                      'save_h5_threshold': 16383}
+                      'retraining': {'after': 16384, 'counts': 'labels'}}
     assert sampler == {'batching': {'partial_policy': 'timeout', 'max_wait_seconds': 30, 'batch_size': 256}}
     assert qm == {'batching': {'batch_size': 128}}
     assert describe(BLOCK, derived) == (
         'Sizing: sampler batching.batch_size 256, maximum_builder_structures 256, parallel_samplers 16,384 '
-        '(64 sampler tasks at once), QM batching.batch_size 128, target_queued_QM 16,384, save_h5_threshold 16,383 '
+        '(64 sampler tasks at once), QM batching.batch_size 128, target_queued_QM 16,384, retraining.after 16,384 '
         '(retrain once 16,384 new labels are held)')
 
 
 def test_each_key_fills_in_only_its_own_settings():
     master, sampler, qm = {}, {}, {}
     apply_sizing(derive_sizing({'labels_per_round': 100}), master, sampler, qm)
-    assert master == {'target_queued_QM': 100, 'save_h5_threshold': 99} and sampler == {} and qm == {}
+    assert master == {'target_queued_QM': 100, 'retraining': {'after': 100, 'counts': 'labels'}}
+    assert sampler == {} and qm == {}
     assert derive_sizing(None) == {'master': {}, 'sampler': {}, 'QM': {}}
 
 
@@ -56,6 +57,20 @@ def test_settings_given_in_their_own_place_must_agree():
         apply_sizing(derived, {}, {'batching': {'batch_size': 32}}, {})
 
 
+def test_the_older_threshold_or_a_retraining_block_must_agree_with_the_round():
+    derived = derive_sizing({'labels_per_round': 100})
+    older = {'save_h5_threshold': 99}
+    apply_sizing(derived, older, {}, {})
+    assert older == {'save_h5_threshold': 99, 'target_queued_QM': 100}, 'a configuration keeps its older spelling'
+    block = {'retraining': {'after': 100}}
+    apply_sizing(derived, block, {}, {})
+    assert block['retraining'] == {'after': 100}
+    with pytest.raises(ValueError, match="save_h5_threshold retrains after 101 labels, but sizing makes it 100 labels"):
+        apply_sizing(derived, {'save_h5_threshold': 100}, {}, {})
+    with pytest.raises(ValueError, match='retraining retrains after 100 sampled structures, but sizing makes it 100 labels'):
+        apply_sizing(derived, {'retraining': {'after': 100, 'counts': 'sampled'}}, {}, {})
+
+
 @pytest.mark.parametrize('block, message', [
     ([], 'must be a dictionary'), ({'labels': 1}, "unknown settings \\['labels'\\]"),
     ({'labels_per_round': 0}, 'positive integer'), ({'labels_per_round': True}, 'positive integer')])
@@ -69,7 +84,7 @@ def test_a_reload_gets_the_derived_values_again():
     for _ in range(2):  # the coordinator's startup, then a reload of unedited files
         master, qm = {}, {'batching': {'partial_policy': 'timeout'}}
         apply_sizing(derived, master, {}, qm)
-        assert master['save_h5_threshold'] == 7 and qm['batching'] == {'partial_policy': 'timeout', 'batch_size': 4}
+        assert master['retraining'] == {'after': 8, 'counts': 'labels'} and qm['batching'] == {'partial_policy': 'timeout', 'batch_size': 4}
 
 
 def test_the_coordinator_runs_sized_by_the_block_as_by_hand(tmp_path, monkeypatch, capsys):
@@ -95,7 +110,7 @@ def test_the_coordinator_runs_sized_by_the_block_as_by_hand(tmp_path, monkeypatc
         with h5py.File(run_dir / 'h5' / 'data-0000.h5') as handle:
             first[arm] = sorted(value.decode() for group in handle.values() for value in group['_id'][()])
     out = capsys.readouterr().out
-    assert 'Sizing: QM batching.batch_size 2, target_queued_QM 4, save_h5_threshold 3 (retrain once 4 new labels' in out
+    assert 'Sizing: QM batching.batch_size 2, target_queued_QM 4, retraining.after 4 (retrain once 4 new labels' in out
     assert first['sized'] == first['by_hand'] and len(first['sized']) == LOOP['bootstrap_set']
 
 
@@ -104,8 +119,8 @@ def test_the_qm_queue_can_be_sized_for_the_qm_hardware_apart_from_retraining():
     block = dict(BLOCK, qm_tasks_at_once=32)
     derived = derive_sizing(block, sampler_slots=64, builder_batches=True)
     assert derived['master']['target_queued_QM'] == 32 * 128
-    assert derived['master']['save_h5_threshold'] == 16383
-    assert 'target_queued_QM 4,096 (32 QM tasks at once), save_h5_threshold 16,383' in describe(block, derived)
+    assert derived['master']['retraining'] == {'after': 16384, 'counts': 'labels'}
+    assert 'target_queued_QM 4,096 (32 QM tasks at once), retraining.after 16,384' in describe(block, derived)
     only_queue = {'structures_per_qm_task': 64, 'qm_tasks_at_once': 8}
     assert derive_sizing(only_queue)['master'] == {'target_queued_QM': 512}
     assert describe(only_queue, derive_sizing(only_queue)).endswith('target_queued_QM 512 (8 QM tasks at once)')
@@ -154,9 +169,10 @@ def test_tools_and_reloads_resolve_the_settings_as_startup_does(tmp_path):
               'labels_per_round': 100}
     master = _write_run(tmp_path, {'sizing': sizing, 'scaling': {'poll_interval': 2}})
     configs = resolve_settings(load_workflow_configs(master, base=tmp_path))
-    assert {key: configs.master[key] for key in ('parallel_samplers', 'target_queued_QM', 'save_h5_threshold',
+    assert {key: configs.master[key] for key in ('parallel_samplers', 'target_queued_QM', 'retraining',
                                                 'poll_interval')} == {'parallel_samplers': 64, 'target_queued_QM': 100,
-                                                                      'save_h5_threshold': 99, 'poll_interval': 2}
+                                                                      'retraining': {'after': 100, 'counts': 'labels'},
+                                                                      'poll_interval': 2}
     assert configs.sampler['batching'] == {'partial_policy': 'timeout', 'batch_size': 32}
     assert configs.QM['batching'] == {'batch_size': 8}
     reloaded = load_workflow_configs(master, base=tmp_path)

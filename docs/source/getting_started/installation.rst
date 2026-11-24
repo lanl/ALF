@@ -89,6 +89,10 @@ install the Python packages that ALF can pull in directly:
    * - ``torchsim``
      - ``torch-sim-atomistic``
      - The TorchSim dynamics engine. Needs Python 3.12 or newer.
+   * - ``vesin``
+     - ``vesin``
+     - Vesin's neighbor search, ``neighbor_backend: "vesin"``, for the pair list of batched HIPPYNN
+       sampling; see :doc:`../user_guide/ml_interfaces`.
    * - ``alchemi``
      - ``nvalchemi-toolkit``
      - The ALCHEMI dynamics engine. Needs Python 3.11 or newer.

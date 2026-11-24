@@ -1100,7 +1100,10 @@ def load_hippynn_batched_ensemble(model_directory, device="cuda:0", energy_key="
 
     ``hippynn_kernel`` and ``pair_skin`` (Angstrom) can be set through the sampler's
     ``batched_calculator_options``. A zero ``pair_skin`` rebuilds the shared list at every evaluation.
-    ``neighbor_backend`` is ``"ase"`` (default) or the optional ``"vesin"`` package. ASE avoids a
+    ``neighbor_backend`` names the search that builds the shared list, from ALF's batched neighbor searches
+    (:func:`alframework.tools.geometry.neighbor_search`): ``"ase"`` (default) or ``"vesin"`` one system at a time
+    on the CPU, or TorchSim's ``"torch_linked_cell"`` or ``"torch_n2"`` on the device, ``"alchemiops"`` on NVIDIA
+    GPUs, or ``"auto"`` for the fastest on-device one installed. Every one finds the same pairs. ASE avoids a
     Vesin thread-pool teardown/fork interaction seen with a site's XALT exit hook on an HPC system.
     """
     return HippynnBatchedEnsemble(model_directory, device=device, energy_key=energy_key, force_key=force_key,
@@ -1208,19 +1211,6 @@ def _member_graph(model, energy_key, force_key, periodic):
     return GraphModule([species, positions, cell, first, second, shifts], outputs), cutoff
 
 
-def _periodic_neighbors(points, box, cutoff, backend="ase"):
-    """(i, j, S) for all pairs within ``cutoff`` in a fully periodic box, both directions and self-images
-    included: the pair vector is points[j] - points[i] + S @ box."""
-    if backend == "vesin":
-        import vesin
-        i, j, shifts = vesin.NeighborList(cutoff=cutoff, full_list=True).compute(
-            points=points, box=box, periodic=True, quantities="ijS")
-    else:
-        from ase.neighborlist import primitive_neighbor_list
-        i, j, shifts = primitive_neighbor_list("ijS", [True] * 3, box, points, cutoff, self_interaction=False)
-    return np.asarray(i, dtype=np.int64), np.asarray(j, dtype=np.int64), np.asarray(shifts, dtype=np.float64)
-
-
 class VerletPairs:
     """Periodic pairs of a packed batch within ``cutoff + skin``, shared by all members.
 
@@ -1246,19 +1236,17 @@ class VerletPairs:
 
     def _build(self, numbers, positions, cells, counts):
         import torch
-        points = positions.detach().cpu().double().numpy()
-        boxes = cells.detach().cpu().double().numpy()
-        firsts, seconds, shifts, offset = [], [], [], 0
-        for system, count in enumerate(counts):
-            i, j, cell_shifts = _periodic_neighbors(points[offset:offset + count], boxes[system],
-                                                    self.cutoff + self.skin, self.backend)
-            firsts.append(i + offset)
-            seconds.append(j + offset)
-            shifts.append(cell_shifts @ boxes[system])
-            offset += count
-        self._pairs = (torch.as_tensor(np.concatenate(firsts), device=self.device),
-                       torch.as_tensor(np.concatenate(seconds), device=self.device),
-                       torch.as_tensor(np.concatenate(shifts), dtype=torch.float32, device=self.device))
+        from alframework.tools.geometry import neighbor_search
+        # The search ALF's batched code shares (alframework.tools.geometry); "auto" without TorchSim uses ASE.
+        search = neighbor_search(self.backend) or neighbor_search("ase")
+        points, boxes = positions.detach().double(), cells.detach().double()
+        system_idx = torch.repeat_interleave(torch.arange(len(counts), device=points.device),
+                                             torch.as_tensor(counts, device=points.device))
+        pbc = torch.ones((len(counts), 3), dtype=torch.bool, device=points.device)
+        (first, second), systems, cell_shifts = search(points, boxes, pbc, self.cutoff + self.skin, system_idx)
+        shifts = torch.einsum("pi,pij->pj", cell_shifts.to(boxes.dtype), boxes[systems])
+        self._pairs = (first.to(self.device, torch.long), second.to(self.device, torch.long),
+                       shifts.to(self.device, torch.float32))
         self._counts, self._numbers = counts, numbers.detach().clone()
         self._cells, self._positions = cells.detach().clone(), positions.detach().clone()
         self.builds += 1
@@ -1278,8 +1266,8 @@ class HippynnBatchedEnsemble:
         import hippynn
         hippynn.custom_kernels.set_custom_kernels(hippynn_kernel)
         self.pair_skin = pair_skin
-        if neighbor_backend not in {"ase", "vesin"}:
-            raise ValueError("neighbor_backend must be 'ase' or 'vesin'.")
+        from alframework.tools.geometry import neighbor_search
+        neighbor_search(neighbor_backend)  # check the name, and that its library is installed, now
         self.neighbor_backend = neighbor_backend
         self.pairs = None  # VerletPairs, once a periodic graph is built
         self.device = torch.device(device)

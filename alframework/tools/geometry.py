@@ -37,21 +37,82 @@ def _all_pairs_minimum(atoms):
     return float(distances.min())
 
 
-def _batched_neighbor_search():
-    """A batched neighbor search over a packed batch, on the batch's device: ALCHEMI's when installed,
-    else TorchSim's pure-PyTorch cell list (which runs on CUDA, ROCm and CPU). ``None`` without TorchSim."""
+# The neighbor searches ALF's batched code can use, by the name a configuration gives (such as a batched
+# evaluator's neighbor_backend). Every one finds the same pairs: both directions, and an atom's own periodic images.
+NEIGHBOR_BACKENDS = ('auto', 'alchemiops', 'torch_linked_cell', 'torch_n2', 'vesin', 'ase')
+
+
+def _system_neighbors(points, box, cutoff, backend):
+    """(i, j, S) for all pairs within ``cutoff`` of one fully periodic system, with ASE or vesin on the CPU."""
+    if backend == 'vesin':
+        import vesin
+        i, j, shifts = vesin.NeighborList(cutoff=cutoff, full_list=True).compute(
+            points=points, box=box, periodic=True, quantities='ijS')
+    else:
+        from ase.neighborlist import primitive_neighbor_list
+        i, j, shifts = primitive_neighbor_list('ijS', [True] * 3, box, points, cutoff, self_interaction=False)
+    return np.asarray(i, dtype=np.int64), np.asarray(j, dtype=np.int64), np.asarray(shifts, dtype=np.float64)
+
+
+def _per_system_search(backend):
+    """A search with TorchSim's batched interface that runs ASE or vesin one system at a time on the CPU, for
+    fully periodic systems. It returns each system's pairs in turn, in that library's order."""
+    def search(positions, cells, pbc, cutoff, system_idx, self_interaction=False):
+        import torch
+        points, boxes = positions.detach().cpu().double().numpy(), cells.detach().cpu().double().numpy()
+        counts = torch.bincount(system_idx, minlength=len(boxes)).tolist()
+        firsts, seconds, systems, shifts, offset = [], [], [], [], 0
+        for system, count in enumerate(counts):
+            i, j, cell_shifts = _system_neighbors(points[offset:offset + count], boxes[system], cutoff, backend)
+            firsts.append(i + offset)
+            seconds.append(j + offset)
+            systems.append(np.full(len(i), system, dtype=np.int64))
+            shifts.append(cell_shifts)
+            offset += count
+        device = positions.device
+        mapping = torch.as_tensor(np.stack([np.concatenate(firsts), np.concatenate(seconds)]), device=device)
+        return (mapping, torch.as_tensor(np.concatenate(systems), device=device),
+                torch.as_tensor(np.concatenate(shifts), device=device))
+    return search
+
+
+def neighbor_search(backend='auto'):
+    """A batched neighbor search, by name (:data:`NEIGHBOR_BACKENDS`), with TorchSim's interface.
+
+    ``search(positions, cells, pbc, cutoff, system_idx)`` takes a packed batch, ``positions`` [atoms, 3], ``cells``
+    [systems, 3, 3] in ASE's row-vector convention, ``pbc`` [systems, 3] and each atom's system, and returns
+    ``(mapping, system_mapping, shifts)``: the pairs [2, pairs], each pair's system, and its periodic shift in
+    cell vectors, so a pair's vector is ``positions[second] - positions[first] + shift @ cell``.
+
+    - ``auto``: on the batch's device, ALCHEMI's cell list when installed (NVIDIA), else TorchSim's PyTorch cell
+      list, which runs on CUDA, ROCm and CPU. ``None`` without TorchSim, so a caller can fall back.
+    - ``alchemiops``, ``torch_linked_cell``, ``torch_n2`` (all pairs within each system): TorchSim's, on the device.
+    - ``vesin``, ``ase``: one system at a time on the CPU, for fully periodic systems, without TorchSim.
+    """
+    if backend not in NEIGHBOR_BACKENDS:
+        raise ValueError(f'neighbor_backend must be one of {list(NEIGHBOR_BACKENDS)}; received {backend!r}.')
+    if backend == 'vesin':
+        try:
+            import vesin  # noqa: F401
+        except ImportError:
+            raise ValueError("neighbor_backend 'vesin' needs vesin; install ALF's vesin extra.") from None
+    if backend in ('vesin', 'ase'):
+        return _per_system_search(backend)
     try:
         from torch_sim.neighbors.alchemiops import ALCHEMIOPS_AVAILABLE
-        if ALCHEMIOPS_AVAILABLE:
-            from torch_sim.neighbors.alchemiops import alchemiops_nl_cell_list
-            return alchemiops_nl_cell_list
-        from torch_sim.neighbors.torch_nl import torch_nl_linked_cell
-        return torch_nl_linked_cell
+        from torch_sim.neighbors import alchemiops_nl_cell_list, torch_nl_linked_cell, torch_nl_n2
     except ImportError:
-        return None
+        if backend == 'auto':
+            return None
+        raise ValueError(f'neighbor_backend {backend!r} needs TorchSim (torch-sim-atomistic).') from None
+    if backend == 'alchemiops' or (backend == 'auto' and ALCHEMIOPS_AVAILABLE):
+        if not ALCHEMIOPS_AVAILABLE:
+            raise ValueError("neighbor_backend 'alchemiops' needs nvalchemi-toolkit-ops, which runs on NVIDIA GPUs.")
+        return alchemiops_nl_cell_list
+    return torch_nl_n2 if backend == 'torch_n2' else torch_nl_linked_cell
 
 
-def batched_minimum_distances(positions, cells, system_idx, n_systems):
+def batched_minimum_distances(positions, cells, system_idx, n_systems, backend='auto'):
     """Each fully periodic system's minimum interatomic distance, for a whole packed batch at once.
 
     ``positions`` [atoms, 3] and ``cells`` [systems, 3, 3] (ASE's row-vector convention) are torch tensors on
@@ -59,10 +120,10 @@ def batched_minimum_distances(positions, cells, system_idx, n_systems):
     ``minimum_distance``, found with one batched neighbor search within ``SEARCH_RADIUS``: a system with
     no pair that close gets infinity, and callers fall back to ``minimum_distance`` for it. Returns
     ``None`` when no batched search is available. Values agree with ``minimum_distance`` to float64
-    rounding (the order of operations differs).
+    rounding (the order of operations differs). ``backend`` names the search (:func:`neighbor_search`).
     """
     import torch
-    search = _batched_neighbor_search()
+    search = neighbor_search(backend)
     if search is None:
         return None
     positions, cells = positions.to(torch.float64), cells.to(torch.float64)

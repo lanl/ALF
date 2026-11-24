@@ -400,10 +400,11 @@ def test_periodic_trained_hippynn_uses_shared_pairs(trained_periodic_ensemble):
         _batched_and_reference(batched, trained_periodic_ensemble, systems)
 
 
-@pytest.mark.parametrize("backend", ["ase", "vesin"])
+@pytest.mark.parametrize("backend", ["ase", "vesin", "torch_linked_cell", "torch_n2", "auto"])
 def test_zero_skin_rebuilds_neighbors_even_for_identical_coordinates(trained_periodic_ensemble, backend):
-    if backend == "vesin":
-        pytest.importorskip("vesin")
+    """Every shared neighbor search gives HIPPYNN's own ASE calculators' results, in a skewed cell and one smaller
+    than the cutoff."""
+    pytest.importorskip("vesin" if backend == "vesin" else "torch_sim" if backend != "ase" else "ase")
     batched = load_hippynn_batched_ensemble(str(trained_periodic_ensemble), device=DEVICE, pair_skin=0,
                                           neighbor_backend=backend)
     systems = _periodic_waters(8, SKEWED_AND_SMALL)
@@ -640,7 +641,7 @@ def test_batched_distance_screen_falls_back_without_a_batched_search(engine_name
     from alframework.tools import geometry
     from alframework.tools.geometry import minimum_distance
 
-    monkeypatch.setattr(geometry, "_batched_neighbor_search", lambda: None)
+    monkeypatch.setattr(geometry, "neighbor_search", lambda backend="auto": None)
     engine = _screened_engine(engine_name)
     for index in range(3):
         assert engine.observe(index)["min_distance"] == pytest.approx(minimum_distance(engine.atoms(index)),
@@ -672,3 +673,51 @@ def test_packed_engines_hold_each_center_of_mass_at_rest(engine_name):
             assert engine.atoms(index).get_number_of_degrees_of_freedom() == 3 * 5 - 3
     engine.finish(0)
     assert engine.atoms(0).constraints == []
+
+
+def _pair_set(search, positions, cells, counts, cutoff):
+    import torch
+    system_idx = torch.repeat_interleave(torch.arange(len(counts)), torch.as_tensor(counts))
+    pbc = torch.ones((len(counts), 3), dtype=torch.bool)
+    (first, second), systems, shifts = search(positions, cells, pbc, cutoff, system_idx)
+    offsets = np.concatenate([[0], np.cumsum(counts)[:-1]])
+    return {(int(s), int(a) - offsets[int(s)], int(b) - offsets[int(s)], *map(int, x))
+            for a, b, s, x in zip(first.tolist(), second.tolist(), systems.tolist(), shifts.round().long().tolist())}
+
+
+@pytest.mark.parametrize("backend", ["vesin", "torch_linked_cell", "torch_n2", "auto"])
+def test_every_neighbor_backend_finds_the_same_pairs(backend):
+    """Both directions and an atom's own periodic images, in a skewed cell, one smaller than the cutoff, and a
+    large one."""
+    import torch
+    from alframework.tools.geometry import neighbor_search
+    pytest.importorskip("vesin" if backend == "vesin" else "torch_sim")
+    rng = np.random.default_rng(0)
+    boxes = [np.array([[7.0, 0, 0], [2.0, 6.5, 0], [1.0, 1.5, 6.0]]), np.eye(3) * 5.0, np.eye(3) * 12.0]
+    counts = [30, 3, 60]
+    positions = torch.as_tensor(np.concatenate([rng.uniform(0, 1, (n, 3)) @ b for n, b in zip(counts, boxes)]))
+    cells = torch.as_tensor(np.stack(boxes))
+    reference = _pair_set(neighbor_search("ase"), positions, cells, counts, 6.0)
+    assert len(reference) > 1000
+    assert _pair_set(neighbor_search(backend), positions, cells, counts, 6.0) == reference
+
+
+def test_a_neighbor_backend_is_named_and_installed():
+    from alframework.tools.geometry import neighbor_search
+    with pytest.raises(ValueError, match="neighbor_backend must be one of"):
+        neighbor_search("cells")
+    try:
+        from torch_sim.neighbors.alchemiops import ALCHEMIOPS_AVAILABLE
+    except ImportError:
+        ALCHEMIOPS_AVAILABLE = False
+    if not ALCHEMIOPS_AVAILABLE:
+        with pytest.raises(ValueError, match="alchemiops' needs nvalchemi-toolkit-ops|needs TorchSim"):
+            neighbor_search("alchemiops")
+
+
+def test_a_missing_vesin_names_the_extra(monkeypatch):
+    import sys
+    from alframework.tools.geometry import neighbor_search
+    monkeypatch.setitem(sys.modules, "vesin", None)
+    with pytest.raises(ValueError, match="vesin extra"):
+        neighbor_search("vesin")

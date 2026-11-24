@@ -245,9 +245,19 @@ checkpoint trained with a cell requires fully periodic systems. ``batched_calcul
        cells change. ``0`` rebuilds it at every evaluation. A larger skin rebuilds less often but
        finds more pairs each time.
    * - ``neighbor_backend``
-     - Fully periodic systems only. How that list is built: ``"ase"`` (default) or ``"vesin"``, which
-       is usually faster but must be installed separately. The default is ASE because Vesin's thread
-       pool can hang a forked process at exit, which has been seen with the exit hooks an HPC site adds to every process.
+     - Fully periodic systems only. How that list is built, by one of ALF's batched neighbor searches; every
+       one finds the same pairs. (The sampler's and training's distance screens use ``"auto"``.)
+
+       - ``"ase"`` (default) or ``"vesin"``: one system at a time on the CPU. Vesin is usually faster; install it
+         with the ``vesin`` extra (:doc:`../getting_started/installation`).
+       - ``"torch_linked_cell"`` or ``"torch_n2"`` (all pairs within each system): TorchSim's, on the GPU,
+         on NVIDIA and AMD alike.
+       - ``"alchemiops"``: ALCHEMI's cell list, on NVIDIA GPUs.
+       - ``"auto"``: ``"alchemiops"`` when installed, else ``"torch_linked_cell"``; without TorchSim, ASE.
+
+       When atoms move enough to rebuild the list often, a search on the GPU, or Vesin, can be much faster
+       than ASE for a large batch. The default is ASE because Vesin's thread pool can hang a forked process
+       at exit, which has been seen with the exit hooks an HPC site adds to every process.
 
 See :ref:`samplers-multi-trajectory`.
 

@@ -211,7 +211,8 @@ The master config controls the workflow wiring. Common fields include:
        configuration that uses it. Read once, at startup. See :ref:`running-at-scale-settings`.
    * - ``sizing``
      - Optional. Size the run by ``trajectories_per_sampler_task``, ``structures_per_qm_task``
-       and ``labels_per_round``; ALF derives the batch sizes, ``maximum_builder_structures``,
+       and ``labels_per_round``, with optional ``sampler_tasks_at_once`` and
+       ``qm_tasks_at_once``; ALF derives the batch sizes, ``maximum_builder_structures``,
        ``parallel_samplers``, ``target_queued_QM`` and ``save_h5_threshold``. Read once, at
        startup. See :ref:`batching-sizing`.
    * - ``plotting_utility``, ``plot_dir``, ``update_plots_every``

@@ -52,13 +52,17 @@ and ALF fills them in:
    * - QM ``batching.batch_size``
      - ``structures_per_qm_task``. The mode comes from the QM task unless given.
    * - ``target_queued_QM``
-     - ``labels_per_round``.
+     - ``qm_tasks_at_once`` times ``structures_per_qm_task``, which keeps that many QM
+       tasks queued or running. Without ``qm_tasks_at_once``, ``labels_per_round``.
    * - ``save_h5_threshold``
      - ``labels_per_round`` minus one: a retraining starts once more than
        ``save_h5_threshold`` labels are held, so once ``labels_per_round`` are.
 
 Each key is optional and fills in only its own settings. ``trajectories_per_sampler_task``
 needs a sampler task that takes ``molecule_objects``, such as ``mlmd_trajectories_task``.
+``qm_tasks_at_once`` needs ``structures_per_qm_task``. Set it to size the QM queue for the
+QM hardware, for example the QM task slots of the capacity report, apart from how often
+the run retrains: ``labels_per_round`` then sets only ``save_h5_threshold``.
 A setting also given in its own place must have the same value; a different one stops
 the coordinator, naming both. ``minimum_QM``, ``bootstrap_set``,
 ``maximum_completed_QM`` and ``maximum_stored_labels`` stay yours. The coordinator

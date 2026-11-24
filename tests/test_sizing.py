@@ -97,3 +97,24 @@ def test_the_coordinator_runs_sized_by_the_block_as_by_hand(tmp_path, monkeypatc
     out = capsys.readouterr().out
     assert 'Sizing: QM batching.batch_size 2, target_queued_QM 4, save_h5_threshold 3 (retrain once 4 new labels' in out
     assert first['sized'] == first['by_hand'] and len(first['sized']) == LOOP['bootstrap_set']
+
+
+def test_the_qm_queue_can_be_sized_for_the_qm_hardware_apart_from_retraining():
+    """qm_tasks_at_once keeps that many QM tasks' structures in the queue; labels_per_round still sets retraining."""
+    block = dict(BLOCK, qm_tasks_at_once=32)
+    derived = derive_sizing(block, sampler_slots=64, builder_batches=True)
+    assert derived['master']['target_queued_QM'] == 32 * 128
+    assert derived['master']['save_h5_threshold'] == 16383
+    assert 'target_queued_QM 4,096 (32 QM tasks at once), save_h5_threshold 16,383' in describe(block, derived)
+    only_queue = {'structures_per_qm_task': 64, 'qm_tasks_at_once': 8}
+    assert derive_sizing(only_queue)['master'] == {'target_queued_QM': 512}
+    assert describe(only_queue, derive_sizing(only_queue)).endswith('target_queued_QM 512 (8 QM tasks at once)')
+
+
+def test_the_qm_tasks_need_their_width_and_agree_with_an_explicit_queue():
+    with pytest.raises(ValueError, match='needs structures_per_qm_task too'):
+        sizing_block({'sizing': {'qm_tasks_at_once': 8, 'labels_per_round': 100}})
+    derived = derive_sizing({'structures_per_qm_task': 64, 'qm_tasks_at_once': 8})
+    apply_sizing(derived, {'target_queued_QM': 512}, {}, {})
+    with pytest.raises(ValueError, match='target_queued_QM is 100 in the master configuration but sizing makes it 512'):
+        apply_sizing(derived, {'target_queued_QM': 100}, {}, {})

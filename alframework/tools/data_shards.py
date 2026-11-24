@@ -7,7 +7,7 @@ from ase.geometry import complete_cell
 
 from alframework.tools.atom_order import TOPOLOGY_ATOM_IDS, validated_atom_ids
 from alframework.tools.files import fsync_file
-from alframework.tools.label_hdf5 import LabelH5Writer
+from alframework.tools.label_hdf5 import LabelH5Writer, label_schema_attributes
 from alframework.tools.label_sources import LabelSourceCollector, write_shard_label_sources
 from alframework.tools.label_validation import validate_label
 from alframework.tools.molecules import MoleculesObject
@@ -101,7 +101,7 @@ def store_pair_index(group, system, properties):
         )
 
 
-def store_current_data(h5path, system_data, properties, attributes=None, *, h5_options=None):
+def store_current_data(h5path, system_data, properties, attributes=None, *, h5_options=None, label_units=None):
     """Stores the key results of the QM calculations in the database.
 
     Args:
@@ -111,6 +111,7 @@ def store_current_data(h5path, system_data, properties, attributes=None, *, h5_o
                            from the QM calculations and store in the database.
         attributes (dict): Optional strings to record as attributes on the shard.
         h5_options (dict): Optional HDF5 file creation settings.
+        label_units (dict): Explicit units of the stored property datasets.
 
     When any converged structure has ``charge`` or ``mult`` metadata, every structure in the shard
     gets ``total_charge`` and ``spin_multiplicity`` datasets, which default to 0 and 1.
@@ -258,8 +259,7 @@ def store_current_data(h5path, system_data, properties, attributes=None, *, h5_o
             for key in data_dict:
                 dpack.store_data(key, **data_dict[key])
             write_shard_label_sources(dpack.store, sources.sources)
-            for name, value in (attributes or {}).items():
-                dpack.store.attrs[name] = value
+            dpack.store.attrs.update({**(attributes or {}), **label_schema_attributes(properties, label_units)})
         finally:
             dpack.cleanup()
         fsync_file(partial)

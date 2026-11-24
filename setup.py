@@ -39,6 +39,9 @@ torchsim_requirements = [
 # Training one ensemble member on several GPUs (gpus_per_member above 1), in the ML worker environment.
 lightning_requirements = ["pytorch-lightning>=2.0"]
 
+# Vesin's CPU neighbor search, for neighbor_backend "vesin" in the sampler worker environment.
+vesin_requirements = ["vesin>=0.6"]
+
 # Qualified separately from TorchSim; sampler workers need Python 3.11+.
 alchemi_requirements = ["nvalchemi-toolkit==0.3.0"]
 
@@ -60,7 +63,7 @@ setuptools.setup(
     python_requires=">3.9",
     install_requires=install_requirements,
     extras_require={"docs": doc_requirements, "full": full_requirements, "tests": test_requirements,
-                    "torchsim": torchsim_requirements, "alchemi": alchemi_requirements, "lightning": lightning_requirements, "topology": ["rdkit"],
+                    "torchsim": torchsim_requirements, "vesin": vesin_requirements, "alchemi": alchemi_requirements, "lightning": lightning_requirements, "topology": ["rdkit"],
                     "teacher-mace": mace_teacher_requirements, "teacher-uma": uma_teacher_requirements,
                     "pyscf": pyscf_requirements, "gpu4pyscf": gpu4pyscf_requirements},
     license="BSD 3-Clause License",

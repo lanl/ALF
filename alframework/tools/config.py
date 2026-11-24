@@ -1,6 +1,7 @@
 """Load workflow settings, resolve configured names, and bind task arguments."""
 
 import inspect
+from dataclasses import dataclass
 import json
 import os
 from importlib import import_module
@@ -9,12 +10,14 @@ from pathlib import Path
 import numpy as np
 
 
-def load_config_file(path, master_directory=None):
+def load_config_file(path, master_directory=None, *, working_directory=None):
     """Extracts the main parameters to run ALF from the master json file.
 
     Args:
         path (str): Path of the master json file.
         master_directory (str): Master directory to run ALF.
+        working_directory (str): The directory a ``"master_directory": "pwd"`` means; by default the current one,
+            which is the run directory when the coordinator runs in it.
 
     Returns:
         (dict): Dictionary containing the main parameters needed to configure ALF.
@@ -23,7 +26,7 @@ def load_config_file(path, master_directory=None):
         config = json.load(input_file)
     if master_directory is None and "master_directory" in config:
         if config["master_directory"] == 'pwd':
-            master_directory = os.getcwd() + '/'
+            master_directory = str(working_directory or os.getcwd()) + '/'
         else:
             master_directory = config["master_directory"] + '/'
         config["master_directory"] = master_directory
@@ -79,6 +82,52 @@ def load_module_from_config(config, module_field):
 
     """
     return _resolve_dotted_name(config[module_field])
+
+
+# The task configurations a master configuration names, by the key that holds each one's path.
+WORKFLOW_CONFIG_PATHS = (('builder', 'builder_config_path'), ('sampler', 'sampler_config_path'),
+                         ('QM', 'QM_config_path'), ('ML', 'ML_config_path'))
+
+
+@dataclass
+class WorkflowConfigs:
+    """A run's five configurations as loaded from their files, before the ``scaling`` and ``sizing`` blocks apply."""
+    master: dict
+    builder: dict
+    sampler: dict
+    QM: dict
+    ML: dict
+
+    def as_list(self):
+        """The configurations in the order tasks' arguments are looked up in: master, builder, sampler, QM, ML."""
+        return [self.master, self.builder, self.sampler, self.QM, self.ML]
+
+
+def load_workflow_configs(master_path, base=None, *, required=True):
+    """Load the master configuration at ``master_path`` and the four it names, as the coordinator does.
+
+    Relative configuration paths are read from the working directory, or from ``base`` when given (such as a
+    run directory). With ``required`` false, a configuration the master doesn't name, or that doesn't exist, is
+    an empty dictionary instead of an error.
+    """
+    with open(master_path) as handle:
+        names_directory = 'master_directory' in json.load(handle)
+    # Without master_directory, relative paths are read from base or the working directory, as open() reads them.
+    master = load_config_file(master_path, None if names_directory else str(base or os.getcwd()) + '/',
+                              working_directory=base)
+    master.setdefault('master_directory', None)
+    loaded = {}
+    for name, key in WORKFLOW_CONFIG_PATHS:
+        path = master.get(key)
+        if path is not None and base is not None and not os.path.isabs(path):
+            path = os.path.join(base, path)
+        if path is None or not os.path.exists(path):
+            if required:
+                raise FileNotFoundError(f'The master configuration\'s {key} {master.get(key)!r} does not name a file.')
+            loaded[name] = {}
+            continue
+        loaded[name] = load_config_file(path, master['master_directory'])
+    return WorkflowConfigs(master=master, **loaded)
 
 
 def build_input_dict(function, dictionary_list, use_local_space=False, raise_on_fail=False):

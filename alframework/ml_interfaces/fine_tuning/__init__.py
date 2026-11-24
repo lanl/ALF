@@ -75,8 +75,9 @@ def fine_tune_settings(ML_config, master_directory=None):
     if settings.setdefault('device', 'cuda') not in DEVICES:
         raise ValueError(f"fine_tune.device must be one of {DEVICES}, not {settings['device']!r}.")
     # How many processes read each shard; ML_config's own setting, shared with HIPPYNN training.
-    from alframework.tools.h5_parallel import read_workers_setting
+    from alframework.tools.h5_parallel import read_budget_setting, read_workers_setting
     settings['h5_read_workers'] = read_workers_setting((ML_config or {}).get('h5_read_workers'))
+    settings['h5_read_max_inflight_bytes'] = read_budget_setting((ML_config or {}).get('h5_read_max_inflight_bytes'))
     return settings
 
 
@@ -94,12 +95,14 @@ def validate_fine_tune_config(ML_config, master_config=None):
     load_adapter(settings).validate(master_config)
 
 
-def training_shards(h5_dir):
-    """Every shard trainers read: each ``*.h5`` file in ``h5_dir``, in name order."""
-    return sorted(str(path) for path in Path(h5_dir).glob('*.h5'))
+def _label_targets(settings):
+    return (settings.get('energy_dataset', settings.get('energy_key', 'energy')),
+            settings.get('forces_dataset', settings.get('force_key', 'forces')),
+            settings.get('quadrupole_key'))
 
 
-def shard_atoms(shards, energy_dataset='energy', forces_dataset='forces', read_workers=None):
+def shard_atoms(shards, energy_dataset='energy', forces_dataset='forces', read_workers=None, *,
+                max_inflight_bytes=None):
     """Read ALF shards as ``ase.Atoms`` carrying ``REF_energy`` and ``REF_forces``.
 
     A shard's ``total_charge`` and ``spin_multiplicity``, if it has them, go to ``atoms.info`` as
@@ -115,7 +118,7 @@ def shard_atoms(shards, energy_dataset='energy', forces_dataset='forces', read_w
     keys = {'species', 'coordinates', 'cell', energy_dataset, forces_dataset, *STRUCTURE_STATE_DATASETS}
     frames = []
     for shard in shards:
-        for group in read_shard(shard, keys, read_workers):
+        for group in read_shard(shard, keys, read_workers, max_inflight_bytes=max_inflight_bytes):
             if energy_dataset not in group:
                 continue
             symbols = [str(value) for value in group['species']]
@@ -217,8 +220,7 @@ def fine_tune_ensemble(ML_config, h5_dir, model_path, current_training_id, gpus_
                        current_h5_id=None, master_directory=None):
     """Fine-tune every copy on this worker, one per GPU at a time. Returns ``(completed, training_id)``."""
     settings = fine_tune_settings(ML_config, master_directory)
-    ensemble_training.wait_for_shards(ensemble_training.expected_shards(h5_path, current_h5_id))
-    shards = training_shards(h5_dir)
+    shards = ensemble_training.training_shards(h5_dir, h5_path, current_h5_id, targets=_label_targets(settings))
     ensemble_dir = model_path.format(int(current_training_id))
     root = Path(ensemble_dir)
     if root.exists() and any(root.iterdir()):
@@ -242,12 +244,12 @@ def fine_tune_ensemble(ML_config, h5_dir, model_path, current_training_id, gpus_
         completed = list(pool.map(run, range(settings['n_models'])))
     write_lineage(ensemble_dir, settings, shards, completed)
     from alframework.tools.label_sources import write_label_sources
-    write_label_sources(ensemble_dir, h5_dir)
+    write_label_sources(ensemble_dir, shards=shards)
     return completed, int(current_training_id)
 
 
 @python_app(executors=['alf_ML_executor'])
-@declares('h5_read_workers')
+@declares('h5_read_workers', 'h5_read_max_inflight_bytes')
 @timed('ML')
 def fine_tune_ensemble_task(ML_config, h5_dir, model_path, current_training_id, gpus_per_node=None,
                             h5_path=None, current_h5_id=None, master_directory=None):
@@ -279,9 +281,9 @@ def _fine_tune_member_task(settings, shards, member_dir, member, gpus_per_node, 
 
 
 @join_app
-@declares('h5_read_workers')
+@declares('h5_read_workers', 'h5_read_max_inflight_bytes')
 def fine_tune_ensemble_multinode_task(ML_config, h5_dir, model_path, current_training_id, gpus_per_node=None,
-                                      master_directory=None, member_retries=1):
+                                      master_directory=None, member_retries=1, h5_path=None, current_h5_id=None):
     """Fine-tune each copy as its own app, so a round can span any number of nodes.
 
     This body runs on the coordinator and doesn't train. Failed members are retried as for the
@@ -292,7 +294,7 @@ def fine_tune_ensemble_multinode_task(ML_config, h5_dir, model_path, current_tra
     root = Path(ensemble_dir)
     if root.exists() and any(root.iterdir()):
         raise FileExistsError(f'Refusing to overwrite nonempty ensemble directory {root}')
-    shards = training_shards(h5_dir)
+    shards = ensemble_training.training_shards(h5_dir, h5_path, current_h5_id, targets=_label_targets(settings))
     executor = None
     try:
         import parsl
@@ -312,7 +314,7 @@ def fine_tune_ensemble_multinode_task(ML_config, h5_dir, model_path, current_tra
             latest = max(attempts, key=lambda record: record['attempt'], default={})
             completed.append(bool(latest.get('completed', False)))
         write_lineage(ensemble_dir, settings, shards, completed)
-        write_label_sources(ensemble_dir, h5_dir)
+        write_label_sources(ensemble_dir, shards=shards)
 
     return ensemble_training.train_ensemble_across_nodes(
         lambda member, attempt: _fine_tune_member_task(settings, shards, _member_dir(ensemble_dir, member), member,
@@ -324,3 +326,9 @@ def fine_tune_ensemble_multinode_task(ML_config, h5_dir, model_path, current_tra
 # __main__ calls this at startup. The docs build replaces the apps with plain functions.
 for _task in (fine_tune_ensemble_task, fine_tune_ensemble_multinode_task):
     getattr(_task, 'func', _task).validate_config = validate_fine_tune_config
+
+getattr(fine_tune_ensemble_multinode_task, 'func', fine_tune_ensemble_multinode_task).member_executors = (
+    'alf_ML_executor',)
+# Each copy trains on one GPU of the configured device, as fine_tune_ensemble_multinode_task submits it.
+getattr(fine_tune_ensemble_multinode_task, 'func', fine_tune_ensemble_multinode_task).member_layout = (
+    lambda ML_config: ((ML_config.get('fine_tune') or {}).get('device', 'cuda'), 1, 1))

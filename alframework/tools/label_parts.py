@@ -8,7 +8,10 @@ import h5py
 import numpy as np
 
 from alframework.tools.files import fsync_file
-from alframework.tools.label_hdf5 import LABEL_PARTS, LabelH5Writer, validate_label_parts
+from alframework.tools.label_hdf5 import (
+    LABEL_PARTS, LABEL_UNITS, PROPERTY_SCHEMA, SCHEMA_VERSION, LabelH5Writer, label_schema_attributes,
+    validate_label_parts,
+)
 from alframework.tools.restarts import HeldLabels, shard_frames
 from alframework.tools.data_shards import PAIR_INDEX_DATASET, STRUCTURE_STATE_DATASETS, store_current_data
 from alframework.tools.label_sources import LEGACY_LABEL_PROVENANCE, SHARD_LABEL_SOURCES, write_shard_label_sources
@@ -17,7 +20,6 @@ from alframework.tools.label_sources import LEGACY_LABEL_PROVENANCE, SHARD_LABEL
 STATIC = frozenset(('species', PAIR_INDEX_DATASET))
 STATE_DEFAULTS = dict(zip(STRUCTURE_STATE_DATASETS, (0, 1)))
 REJECTED_IDS = 'alf_rejected_label_ids'
-PROPERTY_SCHEMA = 'alf_label_properties'
 
 
 # With bounded storage, the longest a coordinator loop pass spends writing label parts beyond its first one.
@@ -74,7 +76,7 @@ def _failure_reason(molecule):
     return str(metadata.get('labeling_error') or metadata.get('qm_error') or 'the label did not converge')
 
 
-def write_label_part(results, directory, properties, schema, h5_options=None):
+def write_label_part(results, directory, properties, schema, h5_options=None, label_units=None):
     """On a QM worker: screen ``results`` as the coordinator would, store the converged ones as one part in
     ``directory``, and return a :class:`LabelReceipt`.
 
@@ -106,26 +108,39 @@ def write_label_part(results, directory, properties, schema, h5_options=None):
     formulas = {formula: group for formula, group in formulas.items() if group['ids']}
     path = None
     if accepted:
+        if json.loads(schema) != json.loads(json.dumps(properties)):
+            raise ValueError('Worker label properties differ from the configured generation schema.')
         Path(directory).mkdir(parents=True, exist_ok=True)
         path = str(Path(directory) / f'task-{uuid.uuid4().hex}.h5')
-        store_current_data(path, accepted, properties,
-                           attributes={REJECTED_IDS: json.dumps(sorted(rejected)), PROPERTY_SCHEMA: schema},
+        store_current_data(path, accepted, properties, label_units=label_units,
+                           attributes={REJECTED_IDS: json.dumps(sorted(rejected))},
                            h5_options={'libver': 'latest', 'track_order': True, **(h5_options or {})})
+        fsync_file(directory)
     return LabelReceipt(path, formulas, rejected)
+
+
+def _validate_part_schema(handle, metadata):
+    if handle.attrs.get(SCHEMA_VERSION, metadata[SCHEMA_VERSION]) != metadata[SCHEMA_VERSION]:
+        raise ValueError(f'{handle.filename}: unsupported label schema version for this generation.')
+    for attribute, default in ((PROPERTY_SCHEMA, None), (LABEL_UNITS, '{}')):
+        recorded = handle.attrs.get(attribute, default)
+        if recorded is None or json.loads(recorded) != json.loads(metadata.get(attribute, default)):
+            raise ValueError(f'{handle.filename}: label properties or units differ from this generation.')
 
 
 def merge_label_parts(job):
     """Merge worker parts into one part: each source read once, its formula groups appended in order.
 
-    ``job`` is ``(target, sources, rejected, schema, h5_options, lines)``, where ``sources`` lists
+    ``job`` is ``(target, sources, rejected, metadata, h5_options, lines)``, where ``sources`` lists
     ``(path, excluded)`` with the formula groups to leave out of that part and ``lines`` the manifest lines it
     holds. The part is written to ``target`` all at once, and records ``lines`` (``MERGED_FROM``). Returns
     ``target`` and the converged labels it holds.
     """
-    target, sources, rejected, schema, h5_options, lines = job
+    target, sources, rejected, metadata, h5_options, lines = job
     groups, label_sources = {}, {}
     for path, excluded in sources:
         with h5py.File(path, 'r') as handle:
+            _validate_part_schema(handle, metadata)
             recorded = handle.attrs.get(SHARD_LABEL_SOURCES, handle.attrs.get(LEGACY_LABEL_PROVENANCE, '[]'))
             for source in json.loads(recorded):
                 label_sources.setdefault(json.dumps(source, sort_keys=True, default=str), source)
@@ -161,7 +176,7 @@ def merge_label_parts(job):
                 packer.store_data(formula, **data)
             write_shard_label_sources(packer.store, list(label_sources.values()))
             packer.store.attrs[REJECTED_IDS] = json.dumps(sorted(rejected))
-            packer.store.attrs[PROPERTY_SCHEMA] = schema
+            packer.store.attrs.update(metadata)
             packer.store.attrs[MERGED_FROM] = json.dumps(list(lines))
         finally:
             packer.cleanup()
@@ -206,10 +221,12 @@ class HDF5HeldLabels(HeldLabels):
     """
 
     def __init__(self, snapshot, properties, batch_size, h5_options=None, *, merge_workers=MERGE_WORKERS,
-                 keep_worker_parts=False):
+                 keep_worker_parts=False, label_units=None):
         self.h5_options = dict(h5_options or {})
         self.properties = properties
-        self.schema = json.dumps(properties, sort_keys=True)
+        self.label_units = label_units
+        self.schema_attributes = label_schema_attributes(properties, label_units)
+        self.schema = self.schema_attributes[PROPERTY_SCHEMA]
         self.batch_size = batch_size
         self.merge_workers = merge_workers
         self.keep_worker_parts = keep_worker_parts
@@ -233,8 +250,7 @@ class HDF5HeldLabels(HeldLabels):
         pieces = self.pieces()
         for name in pieces:
             with h5py.File(self.directory / name, 'r') as handle:
-                if handle.attrs[PROPERTY_SCHEMA] != self.schema:
-                    raise ValueError(f'{handle.filename}: resume with the same label properties and units.')
+                _validate_part_schema(handle, self.schema_attributes)
                 merged.update(json.loads(handle.attrs.get(MERGED_FROM, '[]')))
                 failed_ids = json.loads(handle.attrs[REJECTED_IDS])
                 rejected += len(failed_ids)
@@ -297,16 +313,17 @@ class HDF5HeldLabels(HeldLabels):
         """
         if self._ids is None:
             self._scan()
-        self.failed_since_store += failed
         if not receipts:
+            self.failed_since_store += failed
             return
         self._ensure_directory()
         records = []
+        periodicity = self._periodic.copy()
         for receipt in receipts:
             record = receipt.as_record()
             excluded = {}
             for formula, group in record['formulas'].items():
-                held = self._periodic.get(formula, group['periodic'])
+                held = periodicity.setdefault(formula, group['periodic'])
                 if held != group['periodic']:
                     excluded[formula] = PERIODICITY_CONFLICT.format(kind='periodic' if held else 'nonperiodic',
                                                                     formula=formula)
@@ -314,11 +331,16 @@ class HDF5HeldLabels(HeldLabels):
                 record['excluded'] = excluded
             records.append(record)
         first = self._manifest_lines
-        with open(self.manifest(), 'a') as stream:
+        manifest = self.manifest()
+        created = not manifest.exists()
+        with open(manifest, 'a') as stream:
             for record in records:
                 stream.write(json.dumps(record) + '\n')
             stream.flush()
             os.fsync(stream.fileno())
+        if created:
+            fsync_file(self.directory)
+        self.failed_since_store += failed
         self._manifest_lines += len(records)
         for line, record in enumerate(records, first):
             record['_line'] = line
@@ -342,7 +364,7 @@ class HDF5HeldLabels(HeldLabels):
         path = self.directory / f'part-{self._next_piece:08d}.h5'
         try:
             stored = store_current_data(str(path), accepted, self.properties,
-                                        attributes={REJECTED_IDS: json.dumps(rejected), PROPERTY_SCHEMA: self.schema},
+                                        attributes={REJECTED_IDS: json.dumps(rejected)}, label_units=self.label_units,
                                         h5_options={'libver': 'latest', 'track_order': True, **self.h5_options})
             fsync_file(self.directory)
         except BaseException:
@@ -362,7 +384,8 @@ class HDF5HeldLabels(HeldLabels):
         def close():
             if lines:
                 target = self.directory / f'part-{self._next_piece + len(jobs):08d}.h5'
-                jobs.append((str(target), list(sources), dict(rejected), self.schema, self.h5_options, list(lines)))
+                jobs.append((str(target), list(sources), dict(rejected), self.schema_attributes,
+                             self.h5_options, list(lines)))
                 sources.clear()
                 rejected.clear()
                 lines.clear()
@@ -411,7 +434,7 @@ class HDF5HeldLabels(HeldLabels):
         worker_parts = [record['path'] for record in self._receipts if record['path'] is not None]
         self.merge()
         parts = [self.directory / name for name in self.pieces()]
-        stored = publish_snapshot(Path(snapshot), parts, attributes)
+        stored = publish_snapshot(Path(snapshot), parts, {**attributes, **self.schema_attributes})
         if not self.keep_worker_parts:
             for path in worker_parts:
                 Path(path).unlink(missing_ok=True)

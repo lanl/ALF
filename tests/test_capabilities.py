@@ -42,9 +42,9 @@ def test_the_built_in_tasks_declare_what_they_read():
                                                             'frame_spool'}
     assert declared(mlmd_sampling.simple_mlmd_sampling_task) == set()
     assert declared(hippynn_interface.train_HIPPYNN_ensemble_multinode_task) == {
-        'shared_training_data', 'stream_final_evaluation', 'h5_read_workers'}
-    assert declared(hippynn_interface.train_HIPPYNN_ensemble_task) == {'h5_read_workers'}
-    assert declared(fine_tuning.fine_tune_ensemble_task) == {'h5_read_workers'}
+        'shared_training_data', 'stream_final_evaluation', 'h5_read_workers', 'h5_read_max_inflight_bytes'}
+    assert declared(hippynn_interface.train_HIPPYNN_ensemble_task) == {'h5_read_workers', 'h5_read_max_inflight_bytes'}
+    assert declared(fine_tuning.fine_tune_ensemble_task) == {'h5_read_workers', 'h5_read_max_inflight_bytes'}
 
 
 def test_validate_task_config_calls_the_hook_when_there_is_one():
@@ -56,6 +56,15 @@ def test_validate_task_config_calls_the_hook_when_there_is_one():
     task.validate_config = lambda config, master: seen.append((config, master))
     validate_task_config(SimpleNamespace(func=task), {'a': 1}, {'b': 2})
     assert seen == [({'a': 1}, {'b': 2})]
+
+
+def test_preflight_checks_the_executor_a_training_join_uses_for_its_members():
+    from alframework.tools.preflight import bind_task
+
+    task = 'alframework.ml_interfaces.hippynn.interface.train_HIPPYNN_ensemble_multinode_task'
+    with pytest.raises(ValueError, match='unconfigured Parsl executors.*alf_ML_executor'):
+        bind_task(task, {})
+    assert bind_task(task, {'alf_ML_executor': object()}).join
 
 
 @pytest.mark.parametrize('role', ['builder', 'sampler'])

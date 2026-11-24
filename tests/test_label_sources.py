@@ -64,6 +64,21 @@ def test_the_old_names_still_import_from_tools_tools():
     assert tools.write_label_sources is label_sources.write_label_sources
 
 
+def test_label_provenance_uses_the_frozen_inventory(tmp_path):
+    from alframework.tools.ensemble_training import training_shards
+
+    h5 = tmp_path / "h5"
+    h5.mkdir()
+    seed = h5 / "seed.hdf5"
+    store_current_data(str(seed), [labeled(SOURCE)], PROPERTIES)
+    shards = training_shards(h5)
+    store_current_data(str(h5 / "later.h5"), [labeled()], PROPERTIES)
+    label_sources.write_label_sources(tmp_path / "model", shards=shards)
+    record = json.loads((tmp_path / "model" / "label_sources.json").read_text())
+    assert shards == record["training_shards"] == [str(seed)]
+    assert record["label_sources"] == [SOURCE]
+
+
 def test_sources_are_compared_by_value_whatever_their_key_order():
     collector = label_sources.LabelSourceCollector()
     for source in ({"a": 1, "b": np.float64(2.0)}, {"b": 2.0, "a": 1}):

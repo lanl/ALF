@@ -14,8 +14,12 @@ and ALF fills in (see :func:`derive_sizing`):
   the sampler tasks the Parsl configuration runs at once times T, which keeps every sampler slot busy. Set
   ``sampler_tasks_at_once`` where the Parsl configuration doesn't say, or to use fewer;
 - from ``structures_per_qm_task`` (Q): the QM ``batching.batch_size`` Q, with its mode chosen from the QM task;
-- from ``labels_per_round`` (L): ``target_queued_QM`` L, and ``save_h5_threshold`` L - 1, since a retraining starts
-  once more than ``save_h5_threshold`` labels are held: once L new labels are.
+- from ``labels_per_round`` (L): ``save_h5_threshold`` L - 1, since a retraining starts once more than
+  ``save_h5_threshold`` labels are held: once L new labels are; and ``target_queued_QM`` L, unless
+  ``qm_tasks_at_once`` is set;
+- from ``qm_tasks_at_once`` (N), with ``structures_per_qm_task``: ``target_queued_QM`` N × Q, which keeps N QM tasks
+  of Q structures queued or running. It sizes the QM queue for the QM hardware, apart from how often the run
+  retrains.
 
 Each key is optional, and fills in only its own settings. A setting given in its own place with the same value is
 fine; a different value stops the coordinator, naming both, so neither wins silently. ``minimum_QM``,
@@ -24,7 +28,8 @@ when the coordinator starts, which prints what it derived, and the same values a
 """
 
 SIZING = 'sizing'
-SIZING_KEYS = ('trajectories_per_sampler_task', 'structures_per_qm_task', 'labels_per_round', 'sampler_tasks_at_once')
+SIZING_KEYS = ('trajectories_per_sampler_task', 'structures_per_qm_task', 'labels_per_round', 'sampler_tasks_at_once',
+               'qm_tasks_at_once')
 
 
 def sizing_block(master_config):
@@ -43,6 +48,8 @@ def sizing_block(master_config):
     if 'sampler_tasks_at_once' in block and 'trajectories_per_sampler_task' not in block:
         raise ValueError(f'{SIZING}.sampler_tasks_at_once sizes parallel_samplers, which needs '
                          'trajectories_per_sampler_task too.')
+    if 'qm_tasks_at_once' in block and 'structures_per_qm_task' not in block:
+        raise ValueError(f'{SIZING}.qm_tasks_at_once sizes target_queued_QM, which needs structures_per_qm_task too.')
     return dict(block)
 
 
@@ -74,6 +81,8 @@ def derive_sizing(block, *, sampler_slots=None, builder_batches=False, sampler_b
     if 'labels_per_round' in block:
         derived['master']['target_queued_QM'] = block['labels_per_round']
         derived['master']['save_h5_threshold'] = block['labels_per_round'] - 1
+    if 'qm_tasks_at_once' in block:
+        derived['master']['target_queued_QM'] = block['qm_tasks_at_once'] * block['structures_per_qm_task']
     return derived
 
 
@@ -118,7 +127,11 @@ def describe(block, derived):
     if 'batch_size' in derived['QM']:
         parts.append(f'QM batching.batch_size {derived["QM"]["batch_size"]:,}')
     if 'target_queued_QM' in derived['master']:
-        parts.append(f'target_queued_QM {derived["master"]["target_queued_QM"]:,}')
+        line = f'target_queued_QM {derived["master"]["target_queued_QM"]:,}'
+        if 'qm_tasks_at_once' in block:
+            line += f' ({block["qm_tasks_at_once"]:,} QM tasks at once)'
+        parts.append(line)
+    if 'save_h5_threshold' in derived['master']:
         parts.append(f'save_h5_threshold {derived["master"]["save_h5_threshold"]:,} (retrain once '
                      f'{block["labels_per_round"]:,} new labels are held)')
     return 'Sizing: ' + ', '.join(parts)

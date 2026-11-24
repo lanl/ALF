@@ -25,7 +25,7 @@ MASTER_SETTINGS = ('parsl_data_serializer', 'poll_interval', 'coordinator_trim_a
                    'data_by_reference', 'trajectory_summary_path', 'coordinator_memory_sample',
                    'coordinator_memory_path', 'coordinator_loop_path', 'write_status_on_change')
 SAMPLER_SETTINGS = ('returned_metadata', 'returned_momenta', 'metadata_files')
-ML_SETTINGS = ('shared_training_data', 'stream_final_evaluation', 'h5_read_workers')
+ML_SETTINGS = ('shared_training_data', 'stream_final_evaluation', 'h5_read_workers', 'h5_read_max_inflight_bytes')
 # Where each sizing setting belongs instead, for the error that names it.
 STAGE_SETTINGS = {
     'batching': 'the sampler or QM configuration, each of which has its own',

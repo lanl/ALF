@@ -1,10 +1,9 @@
 Units And Property Conversion
 =============================
 
-ALF has no global unit system, and it does not record or check units at
-runtime. Each run has to keep its QM results, HDF5 training data, ML model, and
-sampler settings consistent. This page describes where the one conversion
-happens and which units each part of ALF expects.
+Each ALF run chooses the units of its HDF5 training data. Keep the QM results,
+HDF5 data, ML model, and sampler settings consistent. ALF can record your
+declared stored units and check them before training.
 
 ALF Data Path
 -------------
@@ -132,17 +131,30 @@ engine; see :doc:`fine_tuning`.
 ``Escut`` and ``Fscut`` are compared with the model's predictions, so they are
 in the training units, usually eV and eV/Å.
 
+Units In Stored Shards
+----------------------
+
+New shards record the property mapping and conversion factors. To declare the
+units after conversion, add ``label_units`` to the master configuration. Use
+the stored HDF5 dataset names as keys, for example
+``"label_units": {"energy": "eV", "forces": "eV/Å"}``.
+
+HIPPYNN training and fine-tuning reject conflicting declarations for a target
+and warn when a training round combines declared and unknown units. Existing
+shards can still be read in place. Check the engine's raw units and
+``properties_list``, since the declaration does not change the conversion.
+
 What ALF Does Not Check
 -----------------------
 
-* Shards don't record their units. The one exception is a teacher's label
-  source, which records eV and eV/Å with the teacher.
-* A seeded run trains on whatever shards are in ``h5_dir``. Seed shards must
-  already be in the run's units, or the model trains on mixed units with no
-  warning.
-* Apart from teachers, nothing compares a factor with the engine's units.
-  Copying a QM config from an example that uses a different engine is the usual
-  way to get this wrong.
+* ``label_units`` is optional. Without it, shards record only the property
+  mapping, and nothing compares units between shards.
+* A seed shard without declared units trains alongside declared ones with a
+  warning, not an error. Seed shards must already be in the run's units.
+* Apart from teachers, which record eV and eV/Å with their label source,
+  nothing compares a conversion factor with the engine's units. Copying a QM
+  config from an example that uses a different engine is the usual way to get
+  this wrong.
 
 Practical Checks
 ----------------

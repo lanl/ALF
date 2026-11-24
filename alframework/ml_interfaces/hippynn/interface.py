@@ -24,58 +24,84 @@ from alframework.tools.excited_state_schema import derive_state_property_table, 
 from alframework.tools.data_shards import STRUCTURE_STATE_DATASETS
 
 
+def _species_numbers(values):
+    from ase.data import atomic_numbers
+
+    species = np.asarray(values)
+    if species.dtype.kind in 'SUO':
+        species = np.array([atomic_numbers[value.decode('utf-8') if isinstance(value, bytes) else str(value)]
+                            for value in species.flat]).reshape(species.shape)
+    return species[None] if species.ndim == 1 else species
+
+
+def _detect_species_key(group):
+    try:
+        from hippynn.databases.utils import auto_detect_key
+    except ImportError:
+        matches = [key for key in group if key.lower() in ('species', 'atomic_numbers', 'numbers', 'z')]
+        if len(matches) != 1:
+            raise ValueError(f'Cannot determine the species dataset from {list(group)}. Set species_key explicitly.')
+        return matches[0]
+    return auto_detect_key(list(group), 'species', required=True)
+
+
 def __getattr__(name):
     # Keep HIPPYNN/Torch imports after the training worker's device setup while
     # exposing the database class at a stable module path for checkpoint reload.
     if name != 'ALFPyAniDirectoryDB':
         raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
-    from hippynn.databases.h5_pyanitools import PyAniDirectoryDB
+    from hippynn.databases import PyAniDirectoryDB
+    from alframework.tools.h5_parallel import READ_WORKERS, read_shard
+    from alframework.tools.label_hdf5 import discover_label_shards
 
     class ALFPyAniDirectoryDB(PyAniDirectoryDB):
-        def __init__(self, *args, coordinates_key='coordinates', atom_keys=(),
-                     excited_state_properties=None, retained_indices=None, read_workers=None, **kwargs):
+        def __init__(self, directory, *args, coordinates_key='coordinates', atom_keys=(),
+                     excited_state_properties=None, retained_indices=None, read_workers=None,
+                     max_inflight_bytes=None, files=None, **kwargs):
             self.coordinates_key = coordinates_key
             self.excited_state_properties = excited_state_properties
             self.retained_indices = retained_indices
             # ML_config's h5_read_workers; set before HIPPYNN's constructor reads the files.
             self.read_workers = read_workers
+            self.max_inflight_bytes = max_inflight_bytes
             self.alf_frame_manifest = []
             self.atom_keys = tuple(dict.fromkeys(('coordinates', 'forces', 'charges', coordinates_key,
                                                  *(key for key in atom_keys if key is not None))))
-            super().__init__(*args, **kwargs)
+            if not files:
+                files = discover_label_shards(directory)
+                if not files:
+                    raise FileNotFoundError(f"No ALF HDF5 shards were found in {str(directory)!r}.")
+            super().__init__(directory, *args, files=files, **kwargs)
             # HIPPYNN persists this restarter in checkpoints; retain custom schema.
             self.restarter.kwargs.update(coordinates_key=coordinates_key, atom_keys=self.atom_keys,
+                                        read_workers=read_workers, max_inflight_bytes=max_inflight_bytes,
                                         allow_unfound=kwargs.get('allow_unfound', False))
             if excited_state_properties is not None:
                 self.restarter.kwargs.update(excited_state_properties=excited_state_properties,
                                             retained_indices=retained_indices)
 
-        def _extract_groups(self, file, species_key, permit_only, *, has_parts):
-            """Read ALF snapshots and use parallel group reads for large ordinary files."""
-            import collections
-            from hippynn.databases.h5_pyanitools import numpy_map_elements
-            from alframework.tools import h5_parallel
-            paths = h5_parallel.group_paths(file)
-            workers = h5_parallel.workers_for(file, len(paths), getattr(self, 'read_workers', None))
-            if workers < 2 and not has_parts:
-                return None
-            if workers > 1:
-                print(f'Reading {len(paths)} groups of {file} with {workers} processes', flush=True)
-            keys = set(permit_only) | {species_key} if permit_only else None
-            n_atoms_max, batches, counter = 0, [], collections.Counter()
-            for group in h5_parallel.read_groups(file, paths, workers, keys):
+        def _extract_groups(self, file, species_key, permit_only):
+            from collections import Counter
+            wanted = set(self.inputs or ()) | set(self.targets or ())
+            dropped = set(STRUCTURE_STATE_DATASETS) - wanted
+            keys = set(permit_only) | {species_key} if permit_only and species_key is not None else None
+            group_keys = {self.coordinates_key, species_key} - {None}
+            n_atoms_max, batches, counter = 0, [], Counter()
+            for group in read_shard(file, keys, self.read_workers, group_keys=group_keys,
+                                    max_inflight_bytes=self.max_inflight_bytes):
+                if species_key is None:
+                    species_key = self.species_key = _detect_species_key(group)
                 if species_key not in group:
                     raise ValueError(f"Species key '{species_key}' not found' in file {file}!\n"
                                      f"\tFound keys: {set(group.keys())}")
                 batch = {}
                 for key, value in group.items():
-                    if key in self._IGNORE_KEYS or (permit_only and key not in permit_only):
+                    if key in self._IGNORE_KEYS or key in dropped or (permit_only and key != species_key
+                                                                     and key not in permit_only):
                         continue
                     value = value if np.isscalar(value) else np.asarray(value)
                     if key == species_key:
-                        value = np.expand_dims(value, 0)
-                        if (not isinstance(value.dtype, type)) and issubclass(value.dtype.type, np.str_):
-                            value = numpy_map_elements(value)
+                        value = _species_numbers(value)
                         n_atoms_max = max(n_atoms_max, value.shape[1])
                     counter[key] += value.shape[0]
                     batch[key] = value
@@ -83,70 +109,31 @@ def __getattr__(name):
             return batches, n_atoms_max, (max(counter.values()) if counter else 0)
 
         def extract_full_file(self, file, species_key='species', permit_only=None):
-            import h5py
-            from alframework.tools.h5_parallel import read_datasets
-            from alframework.tools.label_hdf5 import LABEL_PARTS, validate_label_parts
-
-            # Newer HIPPYNN passes permit_only; older releases do not accept it.
             if self.excited_state_properties is None:
-                with h5py.File(file, 'r') as handle:
-                    validate_label_parts(handle)
-                    has_parts = LABEL_PARTS in handle.attrs
-                extra = {} if permit_only is None else {'permit_only': permit_only}
-                batches, n_atoms_max, count = (self._extract_groups(file, species_key, permit_only, has_parts=has_parts)
-                                               if species_key is not None else None) or \
-                    super().extract_full_file(file, species_key=species_key, **extra)
-                # Charge and spin describe a structure, not a target, and only some shards have them. Kept,
-                # they would make shards with and without them disagree on their keys.
-                wanted = set(self.inputs or ()) | set(self.targets or ())
-                dropped = [key for key in STRUCTURE_STATE_DATASETS if key not in wanted]
-                for batch in batches:
-                    for key in dropped:
-                        batch.pop(key, None)
-                return batches, n_atoms_max, count
+                return self._extract_groups(file, species_key, permit_only)
             # The excited-state path selects its datasets explicitly below.
             states = validate_excited_state_training_properties(self.excited_state_properties)
             gaps = derive_gap_property_table(self.excited_state_properties)
             # Select datasets before reading: pair indices/NACs and optics may
             # have unrelated axes and can be much larger than training targets.
-            from ase.data import atomic_numbers
             keys = {self.coordinates_key, species_key, TOPOLOGY_ATOM_IDS, '_id', 'pbc'}
             keys.update(row[key] for row in states for key in ('energy_db_name', 'force_db_name'))
             keys.update(row['gap_db_name'] for row in gaps)
-            batches, paths = [], []
-            with h5py.File(file, 'r') as handle:
-                validate_label_parts(handle)
-                names = []
-                if self.coordinates_key in handle or species_key in handle:
-                    names.append('/')
-                handle.visititems(lambda name, obj: names.append(name)
-                                  if isinstance(obj, h5py.Group) and
-                                  (self.coordinates_key in obj or species_key in obj) else None)
-                for name in sorted(names):
-                    group = handle[name]
-                    if self.coordinates_key not in group or species_key not in group:
-                        raise KeyError(f'{file}:{name}: missing required coordinates/species datasets')
-                    batch = read_datasets(handle, group, keys)
-                    species = np.asarray(batch[species_key])
-                    if species.dtype.kind in 'SUO':
-                        species = np.array([atomic_numbers[v.decode() if isinstance(v, bytes) else str(v)]
-                                            for v in species.reshape(-1)]).reshape(species.shape)
-                    if species.ndim == 1:
-                        species = species[None]
-                    batch[species_key] = species
-                    batches.append(batch)
-                    paths.append(name)
-            if not batches:
-                raise ValueError(f'No structure groups in {file}')
-            n_atoms_max = max(b[species_key].shape[-1] for b in batches)
             selected = []
-            for group_index, batch in enumerate(batches):
-                context = f'{file}:{paths[group_index]}'
+            workers = self.read_workers
+            if workers is None and not os.environ.get(READ_WORKERS):
+                workers = 1
+            for batch in read_shard(file, keys, workers, group_keys={self.coordinates_key, species_key},
+                                    sort_groups=True, max_inflight_bytes=self.max_inflight_bytes):
+                name = batch.pop('path').lstrip('/') or '/'
+                context = f'{file}:{name}'
+                if self.coordinates_key not in batch or species_key not in batch:
+                    raise KeyError(f'{context}: missing required coordinates/species datasets')
                 coordinates = np.asarray(batch[self.coordinates_key], dtype=np.float64)
                 if coordinates.ndim != 3 or coordinates.shape[-1] != 3 or min(coordinates.shape[:2]) < 1:
                     raise ValueError(f'{context}: coordinates must be nonempty [frames, atoms, 3]')
                 count, atoms = coordinates.shape[:2]
-                species = np.asarray(batch[species_key])
+                species = _species_numbers(batch[species_key])
                 if species.shape != (1, atoms):
                     raise ValueError(f'{context}: species must describe one composition per group')
                 species_rows = np.broadcast_to(species, (count, atoms)).copy()
@@ -193,10 +180,13 @@ def __getattr__(name):
                 source_ids = np.asarray(batch.get('_id', [f'{context}:{i}' for i in range(count)])).reshape(-1)
                 if len(source_ids) != count:
                     raise ValueError(f'{context}: ID count does not match coordinates')
-                self.alf_frame_manifest.extend(dict(file=str(Path(file).resolve()), group=paths[group_index],
+                self.alf_frame_manifest.extend(dict(file=str(Path(file).resolve()), group=name,
                                                     frame=i, id=v.decode() if isinstance(v, bytes) else str(v))
                                                for i, v in enumerate(source_ids))
                 selected.append(out)
+            if not selected:
+                raise ValueError(f'No structure groups in {file}')
+            n_atoms_max = max(b[species_key].shape[-1] for b in selected)
             return selected, n_atoms_max, sum(len(b[self.coordinates_key]) for b in selected)
 
         def load_arrays(self, allow_unfound=False, quiet=False):
@@ -382,8 +372,10 @@ def train_HIPNN_model(model_dir,
                       member_nodes = 1,
                       member_launcher = None,
                       h5_read_workers = None,
+                      h5_read_max_inflight_bytes = None,
                       shared_training_data = None,
                       stream_final_evaluation = None,
+                      shards = None,
                       ):
     """Train one HIPPYNN model on the HDF5 data in a directory.
 
@@ -460,9 +452,10 @@ def train_HIPNN_model(model_dir,
     if ensemble_training.validated_gpus_per_member(gpus_per_member) == 1 and member_nodes != 1:
         raise ValueError(f'member_nodes is {member_nodes!r}, but gpus_per_member is 1: a member on several nodes '
                          'trains on all of their GPUs, so gpus_per_member counts them.')
-    from alframework.tools.h5_parallel import read_workers_setting
+    from alframework.tools.h5_parallel import read_budget_setting, read_workers_setting
     from alframework.ml_interfaces.hippynn.lightning import option_setting
     read_workers_setting(h5_read_workers)
+    read_budget_setting(h5_read_max_inflight_bytes)
     option_setting(shared_training_data, 'shared_training_data')
     option_setting(stream_final_evaluation, 'stream_final_evaluation')
     #Import Torch and configure GPU.
@@ -736,10 +729,11 @@ def train_HIPNN_model(model_dir,
             model, loss_module, model_evaluator= training_modules
         
             database_schema = dict(species_key=species_key, coordinates_key=coordinates_key,
-                                   atom_keys=(coordinates_key, force_key, charges_key))
+                                   atom_keys=(coordinates_key, force_key, charges_key), read_workers=h5_read_workers,
+                                   max_inflight_bytes=h5_read_max_inflight_bytes)
             prepared = _PreparationTimer()
-            database = ALFPyAniDirectoryDB(directory=h5_train_dir,allow_unfound=True,quiet=False,seed=np.random.randint(1e9),inputs=None,targets=None,
-                                           read_workers=h5_read_workers, **database_schema)
+            database = ALFPyAniDirectoryDB(directory=h5_train_dir,files=shards,allow_unfound=True,quiet=False,seed=np.random.randint(1e9),inputs=None,targets=None,
+                                           **database_schema)
             prepared('reading the HDF5 data')
             
             #Ensure that species array is int64 for indexing
@@ -984,6 +978,12 @@ def _ground_state_member_params(ML_config, h5_dir, model_path, current_training_
     return params_list
 
 
+def _ground_state_shards(ML_config, h5_dir, h5_path, current_h5_id):
+    targets = [ML_config.get(key) for key in ('energy_key', 'force_key', 'charges_key', 'dipole_key',
+                                              'quadrupole_key')]
+    return ensemble_training.training_shards(h5_dir, h5_path, current_h5_id, targets=targets)
+
+
 def _ground_state_member_complete(model_dir):
     log = open(model_dir + '/training_log.txt','r').read()
     return len(re.findall('Training complete', log)) == 1
@@ -1016,7 +1016,7 @@ def _single_node_training_devices(ML_config, gpus_per_node):
 
 
 @python_app(executors=['alf_ML_executor'])
-@declares('h5_read_workers')
+@declares('h5_read_workers', 'h5_read_max_inflight_bytes')
 @timed('ML')
 def train_HIPPYNN_ensemble_task(ML_config,h5_dir,model_path,current_training_id,gpus_per_node,remove_existing=False,h5_test_dir=None,
                                 h5_path=None,current_h5_id=None):
@@ -1026,15 +1026,17 @@ def train_HIPPYNN_ensemble_task(ML_config,h5_dir,model_path,current_training_id,
     stored is visible on this node, so a stale directory listing can't silently leave one out.
     """
     ensemble_training.single_gpu_members(ML_config)
-    ensemble_training.wait_for_shards(ensemble_training.expected_shards(h5_path, current_h5_id))
     if remove_existing:
         raise ValueError('remove_existing=True is unsafe for ensemble training; use a fresh model directory.')
+    shards = _ground_state_shards(ML_config, h5_dir, h5_path, current_h5_id)
     params_list = _ground_state_member_params(ML_config, h5_dir, model_path, current_training_id,
                                             gpus_per_node, h5_test_dir)
+    for member in params_list:
+        member['shards'] = shards
     devices = _single_node_training_devices(ML_config, gpus_per_node)
     completed = ensemble_training.run_members_in_slots(_ground_state_member_child, params_list, devices)
     from alframework.tools.label_sources import write_label_sources
-    write_label_sources(model_path.format(current_training_id), h5_dir)
+    write_label_sources(model_path.format(current_training_id), shards=shards)
     return(completed, current_training_id)
 
 
@@ -1098,7 +1100,10 @@ def load_hippynn_batched_ensemble(model_directory, device="cuda:0", energy_key="
 
     ``hippynn_kernel`` and ``pair_skin`` (Angstrom) can be set through the sampler's
     ``batched_calculator_options``. A zero ``pair_skin`` rebuilds the shared list at every evaluation.
-    ``neighbor_backend`` is ``"ase"`` (default) or the optional ``"vesin"`` package. ASE avoids a
+    ``neighbor_backend`` names the search that builds the shared list, from ALF's batched neighbor searches
+    (:func:`alframework.tools.geometry.neighbor_search`): ``"ase"`` (default) or ``"vesin"`` one system at a time
+    on the CPU, or TorchSim's ``"torch_linked_cell"`` or ``"torch_n2"`` on the device, ``"alchemiops"`` on NVIDIA
+    GPUs, or ``"auto"`` for the fastest on-device one installed. Every one finds the same pairs. ASE avoids a
     Vesin thread-pool teardown/fork interaction seen with a site's XALT exit hook on an HPC system.
     """
     return HippynnBatchedEnsemble(model_directory, device=device, energy_key=energy_key, force_key=force_key,
@@ -1206,19 +1211,6 @@ def _member_graph(model, energy_key, force_key, periodic):
     return GraphModule([species, positions, cell, first, second, shifts], outputs), cutoff
 
 
-def _periodic_neighbors(points, box, cutoff, backend="ase"):
-    """(i, j, S) for all pairs within ``cutoff`` in a fully periodic box, both directions and self-images
-    included: the pair vector is points[j] - points[i] + S @ box."""
-    if backend == "vesin":
-        import vesin
-        i, j, shifts = vesin.NeighborList(cutoff=cutoff, full_list=True).compute(
-            points=points, box=box, periodic=True, quantities="ijS")
-    else:
-        from ase.neighborlist import primitive_neighbor_list
-        i, j, shifts = primitive_neighbor_list("ijS", [True] * 3, box, points, cutoff, self_interaction=False)
-    return np.asarray(i, dtype=np.int64), np.asarray(j, dtype=np.int64), np.asarray(shifts, dtype=np.float64)
-
-
 class VerletPairs:
     """Periodic pairs of a packed batch within ``cutoff + skin``, shared by all members.
 
@@ -1244,19 +1236,17 @@ class VerletPairs:
 
     def _build(self, numbers, positions, cells, counts):
         import torch
-        points = positions.detach().cpu().double().numpy()
-        boxes = cells.detach().cpu().double().numpy()
-        firsts, seconds, shifts, offset = [], [], [], 0
-        for system, count in enumerate(counts):
-            i, j, cell_shifts = _periodic_neighbors(points[offset:offset + count], boxes[system],
-                                                    self.cutoff + self.skin, self.backend)
-            firsts.append(i + offset)
-            seconds.append(j + offset)
-            shifts.append(cell_shifts @ boxes[system])
-            offset += count
-        self._pairs = (torch.as_tensor(np.concatenate(firsts), device=self.device),
-                       torch.as_tensor(np.concatenate(seconds), device=self.device),
-                       torch.as_tensor(np.concatenate(shifts), dtype=torch.float32, device=self.device))
+        from alframework.tools.geometry import neighbor_search
+        # The search ALF's batched code shares (alframework.tools.geometry); "auto" without TorchSim uses ASE.
+        search = neighbor_search(self.backend) or neighbor_search("ase")
+        points, boxes = positions.detach().double(), cells.detach().double()
+        system_idx = torch.repeat_interleave(torch.arange(len(counts), device=points.device),
+                                             torch.as_tensor(counts, device=points.device))
+        pbc = torch.ones((len(counts), 3), dtype=torch.bool, device=points.device)
+        (first, second), systems, cell_shifts = search(points, boxes, pbc, self.cutoff + self.skin, system_idx)
+        shifts = torch.einsum("pi,pij->pj", cell_shifts.to(boxes.dtype), boxes[systems])
+        self._pairs = (first.to(self.device, torch.long), second.to(self.device, torch.long),
+                       shifts.to(self.device, torch.float32))
         self._counts, self._numbers = counts, numbers.detach().clone()
         self._cells, self._positions = cells.detach().clone(), positions.detach().clone()
         self.builds += 1
@@ -1276,8 +1266,8 @@ class HippynnBatchedEnsemble:
         import hippynn
         hippynn.custom_kernels.set_custom_kernels(hippynn_kernel)
         self.pair_skin = pair_skin
-        if neighbor_backend not in {"ase", "vesin"}:
-            raise ValueError("neighbor_backend must be 'ase' or 'vesin'.")
+        from alframework.tools.geometry import neighbor_search
+        neighbor_search(neighbor_backend)  # check the name, and that its library is installed, now
         self.neighbor_backend = neighbor_backend
         self.pairs = None  # VerletPairs, once a periodic graph is built
         self.device = torch.device(device)
@@ -1627,26 +1617,19 @@ def validate_excited_state_training_config(
 
 
 def _h5_shards(h5_train_dir: str) -> list[str]:
-    root = Path(h5_train_dir).expanduser()
-    if root.is_file():
-        paths = [str(root)]
-    else:
-        paths = sorted(
-            set(
-                glob.glob(str(root / "*.h5"))
-                + glob.glob(str(root / "*.hdf5"))
-            )
-        )
+    from alframework.tools.label_hdf5 import discover_label_shards
+    paths = discover_label_shards(h5_train_dir)
     if not paths:
         raise FileNotFoundError(
-            f"No ALF HDF5 shards were found in {str(root)!r}."
+            f"No ALF HDF5 shards were found in {str(h5_train_dir)!r}."
         )
     return paths
 
 
 def load_excited_state_h5_arrays(h5_train_dir, properties_list, *, coordinates_key='coordinates',
                                 species_key='species', configured_n_atoms=None,
-                                configured_possible_species=None, return_database=False, seed=0):
+                                configured_possible_species=None, return_database=False, seed=0, shards=None,
+                                read_workers=None, max_inflight_bytes=None):
     """Load explicit multi-state schemas through the shared restartable reader.
 
     HDF5 values already include properties_list unit conversions; do not apply
@@ -1654,7 +1637,7 @@ def load_excited_state_h5_arrays(h5_train_dir, properties_list, *, coordinates_k
     """
     states = validate_excited_state_training_properties(properties_list)
     gaps = derive_gap_property_table(properties_list)
-    paths = _h5_shards(h5_train_dir)
+    paths = _h5_shards(h5_train_dir) if shards is None else shards
     targets = [row[key] for row in states for key in ('energy_db_name', 'force_db_name')]
     targets += [row['gap_db_name'] for row in gaps]
     from alframework.ml_interfaces.hippynn.interface import ALFPyAniDirectoryDB
@@ -1664,6 +1647,7 @@ def load_excited_state_h5_arrays(h5_train_dir, properties_list, *, coordinates_k
         coordinates_key=coordinates_key, species_key=species_key,
         atom_keys=[row['force_db_name'] for row in states],
         excited_state_properties=properties_list, seed=seed, quiet=True,
+        read_workers=read_workers, max_inflight_bytes=max_inflight_bytes,
     )
     arrays = {key: value.numpy() for key, value in database.arr_dict.items()}
     species = arrays[species_key]
@@ -2220,6 +2204,7 @@ def train_single_excited_state_model(
     properties_list: dict[str, list[Any]],
     ML_config: dict[str, Any],
     from_multiprocessing_nGPU: int | None = None,
+    shards=None,
 ) -> dict[str, Any]:
     """Train one shared-trunk multi-state HIPPYNN model member."""
 
@@ -2286,6 +2271,8 @@ def train_single_excited_state_model(
             None if configured_n_atoms is None else int(configured_n_atoms)
         ),
         configured_possible_species=configured_species, return_database=True, seed=seed,
+        shards=shards,
+        read_workers=config.get('h5_read_workers'), max_inflight_bytes=config.get('h5_read_max_inflight_bytes'),
     )
     if "dist_soft_min" not in network_params:
         raise ValueError(
@@ -2615,7 +2602,12 @@ def _excited_state_gap_table(config, properties_list):
     )
 
 
-def _excited_state_member_params(config, h5_dir, ensemble_dir, gpus_per_node, properties_list):
+def _excited_state_targets(states, gaps):
+    return [name for state in states for name in (state['energy_db_name'], state['force_db_name'])] + [
+        gap['gap_db_name'] for gap in gaps]
+
+
+def _excited_state_member_params(config, h5_dir, ensemble_dir, gpus_per_node, properties_list, shards):
     return [
         {
             "model_id": model_id,
@@ -2624,6 +2616,7 @@ def _excited_state_member_params(config, h5_dir, ensemble_dir, gpus_per_node, pr
                 f"model-{model_id:02d}",
             ),
             "h5_train_dir": str(h5_dir),
+            "shards": shards,
             "properties_list": dict(properties_list),
             "ML_config": config,
             "from_multiprocessing_nGPU": (
@@ -2689,6 +2682,7 @@ def train_excited_state_ensemble(
     properties_list: dict[str, list[Any]],
 ) -> tuple[list[bool], int]:
     """Train all model members and preserve ALF's promotion contract."""
+    from concurrent.futures import ProcessPoolExecutor
 
     config = dict(ML_config or {})
     state_table = validate_excited_state_training_config(
@@ -2698,31 +2692,24 @@ def train_excited_state_ensemble(
     gap_table = _excited_state_gap_table(config, properties_list)
     n_models = int(config["n_models"])
     ensemble_dir = model_path.format(int(current_training_id))
-    params_list = _excited_state_member_params(config, h5_dir, ensemble_dir, gpus_per_node, properties_list)
+    shards = ensemble_training.training_shards(h5_dir, targets=_excited_state_targets(state_table, gap_table))
+    params_list = _excited_state_member_params(config, h5_dir, ensemble_dir, gpus_per_node, properties_list, shards)
 
     root = Path(ensemble_dir)
     if root.exists() and any(root.iterdir()):
         raise FileExistsError(f'Refusing to overwrite nonempty ensemble directory {root}')
     context = multiprocessing.get_context('spawn')
-    # Consecutive member IDs map to consecutive visible ordinals. Pool chunks
-    # contain at most one member per GPU; every queued chunk has the same mapping.
+    # Consecutive member IDs map to consecutive visible ordinals, at most one per GPU.
+    # Executor children can themselves start parallel readers.
     processes = _worker_count(config, n_models=n_models, gpus_per_node=int(gpus_per_node))
-    pool = context.Pool(processes=processes)
-    try:
-        raw_results = []
+    raw_results = []
+    with ProcessPoolExecutor(max_workers=processes, mp_context=context) as pool:
         for start in range(0, n_models, processes):
             raw_results.extend(pool.map(_excited_state_training_worker, params_list[start:start + processes]))
-    except BaseException:
-        pool.terminate()
-        raise
-    else:
-        pool.close()
-    finally:
-        pool.join()
 
     completed = [_excited_state_member_complete(result) for result in raw_results]
     from alframework.tools.label_sources import write_label_sources
-    write_label_sources(ensemble_dir, h5_dir)
+    write_label_sources(ensemble_dir, shards=shards)
 
     if all(completed):
         try:
@@ -2772,6 +2759,7 @@ def validate_excited_state_task_options(
 
 
 @python_app(executors=["alf_ML_executor"])
+@declares('h5_read_workers', 'h5_read_max_inflight_bytes')
 @timed('ML')
 def train_excited_state_HIPPYNN_ensemble_task(
     ML_config,
@@ -2876,30 +2864,33 @@ def _ml_executor():
 
 
 @join_app
-@declares('shared_training_data', 'stream_final_evaluation', 'h5_read_workers')
+@declares('shared_training_data', 'stream_final_evaluation', 'h5_read_workers', 'h5_read_max_inflight_bytes')
 def train_HIPPYNN_ensemble_multinode_task(ML_config, h5_dir, model_path, current_training_id, gpus_per_node,
-                                          member_retries=1):
+                                          member_retries=1, h5_path=None, current_h5_id=None):
     """Train a ground-state ensemble with one app per member, so it can span any number of nodes.
 
     This body runs on the coordinator and doesn't train. The ML interfaces guide covers the Parsl setup.
     """
     params_list = _ground_state_member_params(ML_config, h5_dir, model_path, current_training_id, gpus_per_node)
-    shards = _h5_shards(h5_dir)
+    shards = _ground_state_shards(ML_config, h5_dir, h5_path, current_h5_id)
+    for member in params_list:
+        member['shards'] = shards
     from alframework.tools.label_sources import write_label_sources
     return ensemble_training.train_ensemble_across_nodes(
         lambda member, attempt: _ground_state_member_task(params_list[member], shards, attempt),
         len(params_list), model_path.format(current_training_id), current_training_id, gpus_per_node,
         ML_config.get('device_string', 'from_multiprocessing'), member_retries, _ml_executor(),
-        finish=lambda: write_label_sources(model_path.format(current_training_id), h5_dir),
+        finish=lambda: write_label_sources(model_path.format(current_training_id), shards=shards),
         gpus_per_member=ML_config.get('gpus_per_member', 1),
         member_nodes=ML_config.get('member_nodes', 1))
 
 
 @join_app
-@declares('shared_training_data', 'stream_final_evaluation')
+@declares('shared_training_data', 'stream_final_evaluation', 'h5_read_workers', 'h5_read_max_inflight_bytes')
 def train_excited_state_HIPPYNN_ensemble_multinode_task(ML_config, h5_dir, model_path, current_training_id,
                                                         gpus_per_node, properties_list, remove_existing=False,
-                                                        h5_test_dir=None, member_retries=1):
+                                                        h5_test_dir=None, member_retries=1, h5_path=None,
+                                                        current_h5_id=None):
     """Train an excited-state ensemble with one app per member, so it can span any number of nodes.
 
     This body runs on the coordinator and doesn't train. The ML interfaces guide covers the Parsl setup.
@@ -2908,19 +2899,31 @@ def train_excited_state_HIPPYNN_ensemble_multinode_task(ML_config, h5_dir, model
     config = dict(ML_config or {})
     properties_list = dict(properties_list or {})
     # A bad configuration fails here, rather than once per member and attempt.
-    validate_excited_state_training_config(config, properties_list)
-    _excited_state_gap_table(config, properties_list)
+    states = validate_excited_state_training_config(config, properties_list)
+    gaps = _excited_state_gap_table(config, properties_list)
     ensemble_dir = model_path.format(int(current_training_id))
     root = Path(ensemble_dir)
     if root.exists() and any(root.iterdir()):
         raise FileExistsError(f'Refusing to overwrite nonempty ensemble directory {root}')
-    params_list = _excited_state_member_params(config, h5_dir, ensemble_dir, gpus_per_node, properties_list)
-    shards = _h5_shards(h5_dir)
+    shards = ensemble_training.training_shards(h5_dir, h5_path, current_h5_id,
+                                               targets=_excited_state_targets(states, gaps))
+    params_list = _excited_state_member_params(config, h5_dir, ensemble_dir, gpus_per_node, properties_list, shards)
     from alframework.tools.label_sources import write_label_sources
     return ensemble_training.train_ensemble_across_nodes(
         lambda member, attempt: _excited_state_member_task(params_list[member], shards, attempt),
         len(params_list), ensemble_dir, int(current_training_id), gpus_per_node,
         config.get('device_string', 'from_multiprocessing'), member_retries, _ml_executor(),
-        finish=lambda: write_label_sources(ensemble_dir, h5_dir),
+        finish=lambda: write_label_sources(ensemble_dir, shards=shards),
         gpus_per_member=config.get('gpus_per_member', 1),
         member_nodes=config.get('member_nodes', 1))
+
+
+def _member_layout(ML_config):
+    """The device, GPUs per member and nodes per member the multi-node tasks train with (preflight checks them)."""
+    return (ML_config.get('device_string', 'from_multiprocessing'), ML_config.get('gpus_per_member', 1),
+            ML_config.get('member_nodes', 1))
+
+
+for _task in (train_HIPPYNN_ensemble_multinode_task, train_excited_state_HIPPYNN_ensemble_multinode_task):
+    getattr(_task, 'func', _task).member_executors = ('alf_ML_executor',)
+    getattr(_task, 'func', _task).member_layout = _member_layout

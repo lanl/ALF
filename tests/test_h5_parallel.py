@@ -116,3 +116,57 @@ def test_nested_groups_and_single_values_read_like_any_group(tmp_path, workers):
 def test_a_missing_file_raises_when_read(tmp_path):
     with pytest.raises(FileNotFoundError):
         list(h5_parallel.read_shard(tmp_path / "missing.h5"))
+
+
+def test_parallel_budget_releases_in_order_and_runs_large_groups_alone(tmp_path):
+    from concurrent.futures import Future
+
+    jobs = iter([("a", 4), ("b", 6), ("large", 20), ("c", 4), ("d", 5)])
+    submitted = []
+
+    class Pool:
+        def submit(self, function, file, path, keys):
+            submitted.append(path)
+            future = Future()
+            future.set_result(path)
+            return future
+
+    groups = h5_parallel._read_in_order(Pool(), tmp_path / "data.h5", jobs, 4, None, 10)
+    assert next(groups) == "a" and submitted == ["a", "b"]
+    assert next(groups) == "b" and submitted == ["a", "b"]
+    assert next(groups) == "large" and submitted == ["a", "b", "large"]
+    assert list(groups) == ["c", "d"] and submitted == ["a", "b", "large", "c", "d"]
+
+
+@pytest.mark.parametrize("species", [[b"O", b"H", b"H"], np.array([b"O", b"H", b"H"]), [8, 1, 1]])
+def test_hippynn_decodes_root_level_species_from_an_explicit_shard(tmp_path, species):
+    pytest.importorskip("hippynn")
+    import h5py
+    from alframework.ml_interfaces.hippynn.interface import ALFPyAniDirectoryDB
+
+    file = tmp_path / "data.hdf5"
+    with h5py.File(file, "w") as handle:
+        handle["Z"] = species
+        handle["positions"] = np.zeros((2, 3, 3))
+        handle["energy"] = [-1., -2.]
+    database = ALFPyAniDirectoryDB(
+        file, inputs=["Z", "positions"], targets=["energy"], quiet=True, seed=1, read_workers=1,
+        species_key="Z", coordinates_key="positions")
+    restored = database.restarter.attempt_restart()
+    for reader in (database, restored):
+        np.testing.assert_array_equal(reader.arr_dict["Z"].numpy(), [[8, 1, 1], [8, 1, 1]])
+
+
+def _array_pickle_protocol():
+    from multiprocessing.reduction import ForkingPickler
+    return bytes(ForkingPickler.dumps(np.zeros(3)))[1]
+
+
+def test_reader_processes_return_arrays_with_pickle_protocol_5():
+    """Reader children send arrays back with protocol 5, which writes their buffers without a temporary copy."""
+    import concurrent.futures
+    import multiprocessing
+    context = multiprocessing.get_context("spawn")
+    with concurrent.futures.ProcessPoolExecutor(1, mp_context=context,
+                                                initializer=h5_parallel._use_array_pickle_protocol) as pool:
+        assert pool.submit(_array_pickle_protocol).result(timeout=60) >= 5

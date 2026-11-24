@@ -105,3 +105,59 @@ def test_the_coordinator_prints_the_report_at_startup(tmp_path, monkeypatch, cap
     out = capsys.readouterr().out
     assert 'Capacity:\n  sampling: 2 tasks at once of up to 1 structures = 2; parallel_samplers 2' in out
     assert '  QM: 2 tasks at once of up to 1 structures = 2; target_queued_QM 2' in out
+
+
+# One count of workers and members, shared by the report, the training check and preflight.
+
+
+def _per_node(workers, pools, accelerators=None):
+    launcher = SrunLauncher(overrides=f'--ntasks-per-node={pools}') if pools > 1 else SrunLauncher()
+    return HighThroughputExecutor(label='alf_ML_executor', max_workers_per_node=workers,
+                                  available_accelerators=accelerators or [],
+                                  provider=SlurmProvider(nodes_per_block=2, max_blocks=1, launcher=launcher))
+
+
+def test_workers_per_node_counts_every_pool():
+    from alframework.tools.capacity import member_slots, workers_per_node
+    executor = _per_node(2, 4)
+    assert workers_per_node(executor) == 8
+    assert executor_slots(executor) == 16
+    assert member_slots(executor, member_nodes=2) == 8
+    assert workers_per_node(SimpleNamespace()) is None and member_slots(SimpleNamespace()) is None
+
+
+def test_members_in_several_pools_cannot_share_a_nodes_gpus():
+    """Two workers in each of four pools are eight members on a four-GPU node, though each pool has only two."""
+    from alframework.tools.capacity import check_member_gpus
+    with pytest.raises(ValueError, match=r'8 workers per node \(2 in each of 4 pools\).*gpus_per_node is 4'):
+        check_member_gpus(_per_node(2, 4), 4, 'from_multiprocessing')
+    check_member_gpus(_per_node(1, 8), 8, 'from_multiprocessing')  # one pool per GPU
+    check_member_gpus(_per_node(1, 4), 8, 'from_multiprocessing', gpus_per_member=2)
+    check_member_gpus(_per_node(2, 4), 4, 'cpu')
+    check_member_gpus(_per_node(4, 1, ['0', '1', '2', '3']), 2, 'from_multiprocessing')  # each worker pinned
+
+
+def test_the_training_check_and_the_report_count_the_same_members(capsys):
+    from alframework.tools import ensemble_training
+    executor = _per_node(1, 8)
+    executors = {'alf_ML_executor': executor}
+    lines, warnings = capacity_report(dict(parallel_samplers=1), executors, builder_labels=[], builder_width=1,
+                                      builder_batches=False, sampler_labels=[], sampler_width=1, qm_labels=[],
+                                      qm_width=1, ml_labels=['alf_ML_executor'], n_models=8, member_nodes=2)
+    assert 'ML: 8 ensemble members, 8 trained at once' in lines and not warnings
+    ensemble_training.check_capacity(8, 8, 'from_multiprocessing', executor, gpus_per_member=2, member_nodes=2)
+    assert capsys.readouterr().out == ''
+    with pytest.raises(ValueError, match='share a GPU'):
+        ensemble_training.check_capacity(8, 4, 'from_multiprocessing', _per_node(2, 4))
+
+
+def test_preflight_refuses_a_member_layout_that_shares_gpus():
+    from alframework.tools.preflight import bind_task, _check_members
+    task = 'alframework.ml_interfaces.fine_tuning.fine_tune_ensemble_multinode_task'
+    executors = {'alf_ML_executor': _per_node(2, 4)}
+    ml = bind_task(task, executors)
+    with pytest.raises(ValueError, match='alf_ML_executor runs 8 workers per node'):
+        _check_members(ml, {'fine_tune': {'device': 'cuda'}}, {'gpus_per_node': 4}, executors, ['alf_ML_executor'])
+    assert _check_members(ml, {'fine_tune': {'device': 'cpu'}}, {'gpus_per_node': 4}, executors,
+                          ['alf_ML_executor']) == 1
+    assert _check_members(SimpleNamespace(join=False), {'member_nodes': 3}, {}, executors, []) == 3

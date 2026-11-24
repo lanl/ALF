@@ -24,7 +24,11 @@ Point it at a run directory to measure that run's network on its structure:
 
 It reads ``master_config.json`` and the ML and sampler configurations it names: the network settings,
 the number of electronic states (from the ``E0``, ``E1``, ... properties), the ensemble size, and the
-training and sampler batch sizes, which it adds to the sizes it tries. It uses the run's
+training and sampler batch sizes, which it adds to the sizes it tries. It reads them as the run's
+coordinator would, from the run directory and with the ``scaling`` and ``sizing`` blocks applied, so a
+run sized by ``sizing`` reports the batch size and ``parallel_samplers`` it runs with. When the run's
+Parsl configuration doesn't import on the machine running the benchmark and the ``sizing`` block needs
+it, the benchmark says so and reads the settings as written. It uses the run's
 ``reference.xyz`` when there is one; ``--system`` chooses another structure: ``water`` (with
 ``--atoms``), ``cpp6`` to ``cpp12`` from a clone, or any file ASE reads. ``--profiles`` compares
 networks, for example ``--profiles run hipnn100 hiphop64``.

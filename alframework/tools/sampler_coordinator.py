@@ -28,7 +28,9 @@ from pathlib import Path
 from tempfile import mkdtemp
 
 from alframework.samplers.acquisition import cohort_selection
-from alframework.tools.batching import BatchedSubmitter, SampledFrameQueue, StartupSettings, batching_settings, default_batch_key
+from alframework.tools.batching import (
+    BatchedSubmitter, SampledFrameQueue, StartupSettings, batching_settings, check_full_only, default_batch_key,
+)
 from alframework.tools.config import stored_label_budget
 from alframework.tools.sampled_frames import FrameRetirement, data_by_reference_settings
 from alframework.tools.capabilities import require
@@ -171,7 +173,7 @@ class SamplerCoordinator(BatchedSubmitter):
             ``trajectory_summary_path``, which is read once, here.
     """
 
-    def __init__(self, sampler_task, sampler_task_path, sampler_config, master_config=None):
+    def __init__(self, sampler_task, sampler_task_path, sampler_config, master_config=None, *, start_spool=True):
         velocity_initialization_settings(sampler_config)
         parameters = inspect.signature(sampler_task.func).parameters
         for setting, default in (('returned_metadata', 'full'), ('returned_momenta', True)):
@@ -189,6 +191,7 @@ class SamplerCoordinator(BatchedSubmitter):
         self._frame_batch = 0
         reference = data_by_reference_settings(master_config)
         spool = reference['directory'] if reference is not None and reference['sampler_frames'] else None
+        self.spool_root = Path(spool) if spool is not None else None
         self._keep_sampler_frames = spool is not None and reference['keep_files']
         if spool is not None:
             require(sampler_task, sampler_task_path, 'frame_spool', 'data_by_reference sampler_frames')
@@ -222,11 +225,7 @@ class SamplerCoordinator(BatchedSubmitter):
         self.driver = driver_settings(sampler_config)
         settings = self.driver["batching"] or {"batch_size": 1, "partial_policy": "timeout",
                                                "max_wait_seconds": 0.0}
-        capacity = (master_config or {}).get("parallel_samplers")
-        if settings["partial_policy"] == "full_only" and capacity is not None and capacity < settings["batch_size"]:
-            # Waiting structures count toward parallel_samplers, so builders would stop before a batch fills.
-            raise ValueError("Sampler batching with partial_policy 'full_only' requires "
-                             "parallel_samplers >= batching.batch_size.")
+        check_full_only(settings, (master_config or {}).get("parallel_samplers"), "parallel_samplers", "Sampler")
         selection = cohort_selection(sampler_config)
         if selection is not None:
             if spool is not None:
@@ -234,15 +233,24 @@ class SamplerCoordinator(BatchedSubmitter):
             self.pool = CohortPool(selection)
         super().__init__(sampler_task, settings, key_function=lambda molecule:
                          _model_batch_key(molecule, excited=self._states is not None))
-        if spool is not None:
-            root = Path(spool)
-            root.mkdir(parents=True, exist_ok=True)
-            self.frame_directory = mkdtemp(dir=root.resolve(), prefix='run-')
-            if not self._keep_sampler_frames:
-                self.frame_retirement = FrameRetirement()
-            self.queue = SampledFrameQueue(self.buffer)
+        if start_spool:
+            self.start_frame_spool()
         fixed = FIXED_SETTINGS + (FIXED_COHORT_SETTINGS if self.pool is not None else ())
         self._startup_settings = StartupSettings(sampler_config, fixed, "sampler")
+
+    def check_reloaded(self, master_config):
+        """Refuse a reloaded master configuration this coordinator's batches couldn't run with."""
+        check_full_only(self.settings, master_config.get("parallel_samplers"), "parallel_samplers", "Sampler")
+
+    def start_frame_spool(self):
+        """Create the spool after workflow validation succeeds and the coordinator owns the run."""
+        if self.spool_root is None or self.frame_directory is not None:
+            return
+        self.spool_root.mkdir(parents=True, exist_ok=True)
+        self.frame_directory = mkdtemp(dir=self.spool_root.resolve(), prefix='run-')
+        if not self._keep_sampler_frames:
+            self.frame_retirement = FrameRetirement()
+        self.queue = SampledFrameQueue(self.buffer)
 
     def apply_window(self, sampler_config, stored_labels):
         """Return the configuration new sampler tasks should use at this count of stored labels."""

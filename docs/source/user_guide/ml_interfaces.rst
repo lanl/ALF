@@ -130,6 +130,13 @@ Waiting for shards
    shards, are still used. So deleting a stored shard now stops training,
    instead of training without it.
 
+Training inventory
+   Once the shards are visible, the round fixes its list of ``.h5`` and ``.hdf5``
+   files in ``h5_dir``, in name order. Every member, every retry and the
+   ``training_shards`` entry of the ensemble's ``label_sources.json`` use that list,
+   so a shard that appears during the round is left for the next one. Fine-tuning
+   does the same.
+
 HIPPYNN Interface
 -----------------
 
@@ -238,9 +245,19 @@ checkpoint trained with a cell requires fully periodic systems. ``batched_calcul
        cells change. ``0`` rebuilds it at every evaluation. A larger skin rebuilds less often but
        finds more pairs each time.
    * - ``neighbor_backend``
-     - Fully periodic systems only. How that list is built: ``"ase"`` (default) or ``"vesin"``, which
-       is usually faster but must be installed separately. The default is ASE because Vesin's thread
-       pool can hang a forked process at exit, which has been seen with the exit hooks an HPC site adds to every process.
+     - Fully periodic systems only. How that list is built, by one of ALF's batched neighbor searches; every
+       one finds the same pairs. (The sampler's and training's distance screens use ``"auto"``.)
+
+       - ``"ase"`` (default) or ``"vesin"``: one system at a time on the CPU. Vesin is usually faster; install it
+         with the ``vesin`` extra (:doc:`../getting_started/installation`).
+       - ``"torch_linked_cell"`` or ``"torch_n2"`` (all pairs within each system): TorchSim's, on the GPU,
+         on NVIDIA and AMD alike.
+       - ``"alchemiops"``: ALCHEMI's cell list, on NVIDIA GPUs.
+       - ``"auto"``: ``"alchemiops"`` when installed, else ``"torch_linked_cell"``; without TorchSim, ASE.
+
+       When atoms move enough to rebuild the list often, a search on the GPU, or Vesin, can be much faster
+       than ASE for a large batch. The default is ASE because Vesin's thread pool can hang a forked process
+       at exit, which has been seen with the exit hooks an HPC site adds to every process.
 
 See :ref:`samplers-multi-trajectory`.
 
@@ -287,7 +304,9 @@ Each member uses one GPU
    Each member's GPU comes from its Parsl worker, within any mask set by the scheduler or
    ``available_accelerators``. So ``device_string`` must be ``from_multiprocessing``, ``cuda``, or
    ``cpu``. Without ``available_accelerators``, ALF stops with an error if a node has more workers than
-   ``gpus_per_node``, since members would share a GPU.
+   ``gpus_per_node``, counting every worker pool the launcher starts on the node (see
+   :ref:`the capacity report <batching-capacity>`), since members would share a GPU. The coordinator makes this check at
+   startup, and ``--check_config`` makes it without starting the run.
 
 Each attempt writes ``placement-model-03-attempt-1.json`` in the ensemble directory, with its
 host, worker, device, and start and end times. The record stays even if the node is lost.
@@ -345,12 +364,11 @@ Several GPUs per member
    member's directory, which must be on storage all its nodes share. The node processes import the same
    ALF as the worker. Each member still takes one Parsl worker, so choosing each worker's group of nodes,
    and giving it a launcher that reaches them, belongs to the site's Parsl configuration;
-   ``check_capacity`` counts one worker per ``member_nodes`` nodes when it warns about members that will
-   wait. :ref:`running-at-scale-training` has measured epoch times on 1, 2 and 4 nodes.
+   the capacity report and ``check_capacity`` count one worker per ``member_nodes`` nodes when they warn
+   about members that will wait. :ref:`running-at-scale-training` has measured epoch times on 1, 2 and 4 nodes.
 
-   Three ML configuration settings help at this size, for ground- and excited-state members alike. Each
-   is off unless set, and each falls back to an environment variable on the ML workers when it isn't in
-   the configuration:
+   These ML configuration settings apply to ground- and excited-state members. The first two are
+   off by default.
 
    - ``shared_training_data`` (``ALF_LIGHTNING_SHARED_DATA=1``): ``true`` writes the split arrays once,
      as ``.npy`` files, instead of into the setup file every rank loads, and each rank maps them, so a
@@ -359,7 +377,12 @@ Several GPUs per member
    - ``stream_final_evaluation`` (``ALF_LIGHTNING_STREAM_FINAL=1``): ``true`` bounds memory during the
      final test, as described in :ref:`running-at-scale-training`.
    - ``h5_read_workers`` (``ALF_H5_READ_WORKERS``): how many processes read each HDF5 file, for
-     ground-state members and fine-tuning. By default large files are read with one per core.
+     HIPPYNN training and fine-tuning. For large files, ground-state training and fine-tuning
+     can use one per core, up to the number of groups. Excited-state training uses one by default.
+   - ``h5_read_max_inflight_bytes``: optional positive integer in the ML configuration. It limits the
+     estimated decoded bytes of groups being read or waiting to be returned by parallel workers.
+     Oversized groups and groups with variable-length values read alone. Training arrays that
+     have already reached the trainer also consume memory.
 
    ``ALF_LIGHTNING_STATS=1`` writes each rank's node, step and epoch times and peak memory to
    ``lightning_stats/`` in the member's directory; steps are synchronized when it is on, so their times

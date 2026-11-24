@@ -361,13 +361,14 @@ def shard(path, molecules):
     data_shards.store_current_data(str(path), molecules, PROPERTIES)
 
 
-def test_teacher_refuses_an_h5_dir_with_qm_labels(checkpoint, tmp_path):
+@pytest.mark.parametrize("suffix", [".h5", ".hdf5"])
+def test_teacher_refuses_an_h5_dir_with_qm_labels(checkpoint, tmp_path, suffix):
     h5 = tmp_path / "h5"
     h5.mkdir()
     qm = structures(1)[0]
     qm.store_results({"energy": -1.0, "forces": np.zeros((2, 3))})
     qm.set_converged_flag(True)
-    shard(h5 / "data-0000.h5", [qm])
+    shard(h5 / f"data-0000{suffix}", [qm])
     with pytest.raises(ValueError, match="no source recorded"):
         ti.validate_teacher_config(config(checkpoint), master(tmp_path, h5_dir=str(h5)))
     allowed = config(checkpoint)

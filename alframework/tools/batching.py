@@ -398,6 +398,16 @@ def poll_delay(default, *buffers, now=None):
 _ABSENT = object()
 
 
+def check_full_only(settings, limit, limit_name, stage):
+    """Refuse ``full_only`` batches that could never fill: structures waiting in a batch count toward ``limit``
+    (``parallel_samplers`` or ``target_queued_QM``), so builders would stop before a batch is full. Used at startup
+    and on each reload, since the limits can be edited during a run."""
+    if settings and settings.get("partial_policy") == "full_only" and limit is not None \
+            and limit < settings["batch_size"]:
+        raise ValueError(f"{stage} batching with partial_policy 'full_only' requires "
+                         f"{limit_name} >= batching.batch_size.")
+
+
 class StartupSettings:
     """Hold the settings a coordinator read at startup, so that a reload can't change their meaning.
 

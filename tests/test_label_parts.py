@@ -379,3 +379,26 @@ def test_a_mapping_alf_does_not_write_falls_back_to_hdf5(tmp_path):
         handle['g/species'] = np.array([b'H'])
     data = h5_parallel.read_group(str(tmp_path / 'view.h5'), '/g')
     np.testing.assert_array_equal(data['x'], np.arange(12.0).reshape(4, 3)[1:3])
+
+
+def test_label_units_are_recorded_on_shards_and_checked_as_one_inventory(tmp_path):
+    from alframework.tools.label_hdf5 import LABEL_UNITS, PROPERTY_SCHEMA, SCHEMA_VERSION, validate_training_units
+
+    ordinary = tmp_path / 'ordinary.h5'
+    store_current_data(str(ordinary), [labeled('a')], PROPERTIES, label_units={'energy': 'eV'})
+    snapshot = tmp_path / 'snapshot.h5'
+    held = HDF5HeldLabels(snapshot, PROPERTIES, batch_size=1, label_units={'energy': 'Hartree'})
+    held.hold([labeled('b')])
+    assert held.commit(snapshot, PROPERTIES, {}) == 1
+    for path, unit in ((ordinary, 'eV'), (snapshot, 'Hartree')):
+        with h5py.File(path, 'r') as handle:
+            assert handle.attrs[SCHEMA_VERSION] == 1
+            assert json.loads(handle.attrs[PROPERTY_SCHEMA]) == PROPERTIES
+            assert json.loads(handle.attrs[LABEL_UNITS]) == {'energy': unit}
+    with pytest.raises(ValueError, match='declares units'):
+        validate_training_units([ordinary, snapshot], ['energy'])
+    legacy = tmp_path / 'legacy.h5'
+    with h5py.File(legacy, 'w'):
+        pass
+    with pytest.warns(UserWarning, match='mix declared and unknown'):
+        validate_training_units([legacy, ordinary], ['energy'])

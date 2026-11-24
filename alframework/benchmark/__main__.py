@@ -13,12 +13,47 @@ from alframework.benchmark import recommend
 from alframework.benchmark.systems import load_system
 
 
+def _run_tasks(master, run_dir):
+    """The run's Parsl executors and builder and sampler tasks, as far as they load here: a run is often read on a
+    different machine from the one it runs on. Modules beside the run's configuration, such as its Parsl
+    configuration, import as they do for a coordinator started in ``run_dir``."""
+    from alframework.tools.config import load_module_from_string
+    from alframework.tools.preflight import bind_task
+    sys.path.insert(0, str(run_dir))
+    try:
+        try:
+            executors = {executor.label: executor
+                         for executor in load_module_from_string(master['parsl_configuration']).executors}
+        except Exception:
+            executors = {}
+        tasks = []
+        for key in ('builder_task', 'sampler_task'):
+            try:
+                tasks.append(bind_task(master[key], executors) if executors else load_module_from_string(master[key]))
+            except Exception:
+                tasks.append(None)
+    finally:
+        sys.path.remove(str(run_dir))
+    return executors, *tasks
+
+
 def read_run(run_dir):
-    """The settings a run directory gives the benchmark: its network, states, batch sizes, and structure."""
+    """The settings a run directory gives the benchmark: its network, states, batch sizes, and structure.
+
+    They are the settings the run uses, after its ``scaling`` and ``sizing`` blocks, read as the coordinator reads
+    them (:func:`~alframework.tools.preflight.resolve_settings`).
+    """
+    from alframework.tools.config import load_workflow_configs
+    from alframework.tools.preflight import resolve_settings
     run_dir = Path(run_dir).expanduser().resolve()
-    master = json.loads((run_dir / 'master_config.json').read_text())
-    ml = json.loads((run_dir / master['ML_config_path']).read_text())
-    sampler = json.loads((run_dir / master['sampler_config_path']).read_text())
+    configs = load_workflow_configs(run_dir / 'master_config.json', base=run_dir, required=False)
+    executors, builder, sampler_task = _run_tasks(configs.master, run_dir)
+    try:
+        resolve_settings(configs, executors=executors, builder=builder, sampler=sampler_task)
+    except ValueError as error:
+        print(f'Note: reading {run_dir} as written, without its scaling and sizing blocks: {error}', flush=True)
+        configs = load_workflow_configs(run_dir / 'master_config.json', base=run_dir, required=False)
+    master, ml, sampler = configs.master, configs.ML, configs.sampler
     states = sum(1 for key in master.get('properties_list', {}) if re.fullmatch(r'E\d+', key)) or 1
     controller = ml.get('controller_options') or {}
     reference = run_dir / 'reference.xyz'

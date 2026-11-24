@@ -124,10 +124,11 @@ def _validate_properties(properties):
 
 
 def _refuse_mixed_labels(settings, h5_dir):
+    from alframework.tools.label_hdf5 import discover_label_shards
     from alframework.tools.label_sources import read_label_sources
 
     expected = (file_sha256(settings["checkpoint"]), settings.get("task"), settings["loader"])
-    for path in sorted(Path(h5_dir).glob("*.h5")):
+    for path in discover_label_shards(h5_dir):
         sources = read_label_sources(path)
         if not sources or any(_identity(source) != expected for source in sources):
             found = ("labels with no source recorded, such as legacy QM labels" if not sources

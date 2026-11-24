@@ -73,7 +73,7 @@ def test_nonperiodic_data_and_no_batched_search_use_hippynn(monkeypatch):
     open_arrays = {k: v for k, v in arrays.items() if k != "cell"}
     assert torch.equal(training_minimum_distances(open_arrays, "Z", "R", None, "cpu", batch_size=16),
                        hippynn_reference(open_arrays, cell=None))
-    monkeypatch.setattr(geometry, "_batched_neighbor_search", lambda: None)
+    monkeypatch.setattr(geometry, "neighbor_search", lambda backend="auto": None)
     assert torch.equal(training_minimum_distances(arrays, "Z", "R", "cell", "cpu", batch_size=16),
                        hippynn_reference(arrays))
 

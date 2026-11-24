@@ -286,7 +286,8 @@ CFG loader
 Batched builders
    ``maximum_builder_structures`` belongs in the master configuration, not the
    builder configuration. It tells ALF how many candidate structures one builder
-   task may return. Use it with
+   task may return, and applies to builders that take ``moleculeids``: each task
+   gets that many IDs. A builder that takes one ``moleculeid`` always gets one. Use it with
    ``simple_multi_condensed_phase_builder_task`` or
    ``external_geometry_builder_task``. See :doc:`batching` for how builder width
    relates to sampler and QM batches.

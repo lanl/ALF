@@ -238,7 +238,7 @@ def fine_tune_uma_member(arguments):
 
     settings, seed, member_dir = arguments['settings'], int(arguments['seed']), Path(arguments['member_dir'])
     frames = shard_atoms(arguments['shards'], settings['energy_dataset'], settings['forces_dataset'],
-                         settings.get('h5_read_workers'))
+                         settings.get('h5_read_workers'), max_inflight_bytes=settings.get('h5_read_max_inflight_bytes'))
     train, valid = split(frames, settings['valid_fraction'], seed)
     write_database(member_dir / 'data' / 'train', train)
     write_database(member_dir / 'data' / 'valid', valid)

@@ -58,12 +58,17 @@ def label_h5_options(master_config):
     return {LABEL_LAYOUT_KEYS[key]: value for key, value in dict(layout, compression=compression, level=level).items()}
 
 
-def open_held_labels(master_config, current_h5_id):
-    from alframework.tools.label_parts import HDF5HeldLabels, part_directory
-
+def label_storage_batch_size(master_config):
     size = master_config.get('label_storage_batch_size')
     if size is not None and (isinstance(size, bool) or not isinstance(size, int) or size < 1):
         raise ValueError('label_storage_batch_size must be a positive integer.')
+    return size
+
+
+def open_held_labels(master_config, current_h5_id):
+    from alframework.tools.label_parts import HDF5HeldLabels, part_directory
+
+    size = label_storage_batch_size(master_config)
     legacy = held_labels_directory(master_config)
     pattern = master_config['h5_path']
     snapshot = Path(pattern.format(current_h5_id))
@@ -73,14 +78,16 @@ def open_held_labels(master_config, current_h5_id):
     if size is None:
         if any(part_directory(snapshot).glob('part-*.h5')):
             raise ValueError('An unfinished HDF5 generation exists. Resume with label_storage_batch_size set.')
-        return HeldLabels(legacy, h5_options=label_h5_options(master_config))
+        return HeldLabels(legacy, h5_options=label_h5_options(master_config),
+                          label_units=master_config.get('label_units'))
     if any(legacy.glob('held-*.pkl')):
         raise ValueError('Held pickle files exist. Resume with the original storage mode to commit them first.')
     from alframework.tools.sampled_frames import data_by_reference_settings
     reference = data_by_reference_settings(master_config) or {}
     return HDF5HeldLabels(snapshot, master_config['properties_list'], size, h5_options=label_h5_options(master_config),
                           merge_workers=reference.get('merge_workers', 1),
-                          keep_worker_parts=bool(reference.get('keep_files')))
+                          keep_worker_parts=bool(reference.get('keep_files')),
+                          label_units=master_config.get('label_units'))
 
 
 class HeldLabels:
@@ -94,9 +101,10 @@ class HeldLabels:
 
     PIECE_SIZE = 1000
 
-    def __init__(self, directory, h5_options=None):
+    def __init__(self, directory, h5_options=None, *, label_units=None):
         self.directory = Path(directory)
         self.h5_options = dict(h5_options or {})
+        self.label_units = label_units
         self.directory.mkdir(parents=True, exist_ok=True)
         self.failed_since_store = 0
         self._successful = None
@@ -210,7 +218,7 @@ class HeldLabels:
         pieces = self.pieces()
         stored = store_current_data(snapshot, self.iter_results(pieces), properties,
                                     attributes={HELD_PIECES: json.dumps(pieces), **attributes},
-                                    h5_options=getattr(self, 'h5_options', None))
+                                    h5_options=getattr(self, 'h5_options', None), label_units=self.label_units)
         self.discard(pieces)
         return stored
 

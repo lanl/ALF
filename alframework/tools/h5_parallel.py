@@ -12,23 +12,30 @@ snapshot counts the parts it references, and its virtual datasets are read from 
 """
 import math
 import os
-from collections import defaultdict
+from collections import defaultdict, deque
 from contextlib import nullcontext
-from itertools import repeat
 
 READ_WORKERS = 'ALF_H5_READ_WORKERS'
 PARALLEL_MIN_BYTES = 256 * 2**20
 
 
-def _structure_groups(group, prefix=''):
+def _structure_groups(group, path='/', group_keys=None):
     import h5py
-    for key, item in group.items():
-        path = f'{prefix}/{key}'
-        first = next(iter(item.values()), None)
-        if isinstance(first, h5py.Dataset):
-            yield path, item
-        else:
-            yield from _structure_groups(item, path)
+    if group_keys is not None:
+        if any(isinstance(group.get(key), h5py.Dataset) for key in group_keys):
+            yield path, group
+        for name, item in group.items():
+            if isinstance(item, h5py.Group):
+                yield from _structure_groups(item, f'{path.rstrip("/")}/{name}', group_keys)
+        return
+
+    # Keep the inexpensive grouped-shard traversal for ALF's usual layout.
+    if isinstance(next(iter(group.values()), None), h5py.Dataset):
+        yield path, group
+        return
+    for name, item in group.items():
+        if isinstance(item, h5py.Group):
+            yield from _structure_groups(item, f'{path.rstrip("/")}/{name}')
 
 
 def group_paths(file):
@@ -121,14 +128,14 @@ def _read_group(handle, group, path, keys):
     for key, raw in read_datasets(handle, group, keys).items():
         dataset = np.asarray(raw)
         if dataset.ndim and dataset.size and isinstance(dataset[0], (bytes, np.bytes_)):
-            dataset = [item.decode('ascii') for item in dataset]
+            dataset = [item.decode('utf-8') for item in dataset]
         data[key] = dataset
     return data
 
 
 def read_group(file, path, keys=None):
     """One group's datasets as ``AniDataLoader.populate_data_dict`` returns them: arrays, byte strings
-    decoded to lists of ASCII strings, and the group's ``path``. Virtual datasets are read from their
+    decoded to lists of strings, and the group's ``path``. Virtual datasets are read from their
     sources directly (see :func:`read_datasets`)."""
     import h5py
     with h5py.File(file, 'r') as handle:
@@ -152,11 +159,20 @@ def stored_bytes(file, *, handle=None):
                       if os.path.exists(os.path.join(directory, part)))
 
 
-def read_workers_setting(value, name='h5_read_workers'):
-    """A checked ``h5_read_workers`` setting: a positive integer, or ``None`` to decide by file size."""
+def _positive_or_none(value, name):
     if value is not None and (isinstance(value, bool) or not isinstance(value, int) or value < 1):
         raise ValueError(f'{name} must be a positive integer or null; received {value!r}.')
     return value
+
+
+def read_workers_setting(value, name='h5_read_workers'):
+    """A checked ``h5_read_workers`` setting: a positive integer, or ``None`` to decide by file size."""
+    return _positive_or_none(value, name)
+
+
+def read_budget_setting(value, name='h5_read_max_inflight_bytes'):
+    """A checked ``h5_read_max_inflight_bytes`` setting: a positive number of bytes, or ``None`` for no limit."""
+    return _positive_or_none(value, name)
 
 
 def _worker_limit(file, requested, *, handle=None):
@@ -178,11 +194,79 @@ def workers_for(file, groups, requested=None):
     return max(1, min(_worker_limit(file, requested), groups))
 
 
-def read_groups(file, paths, workers, keys=None):
+def _decoded_group_bytes(file, paths, keys, budget):
+    import h5py
+
+    with h5py.File(file, 'r') as handle:
+        for path in paths:
+            size = 0
+            for key, column in handle[path].items():
+                if isinstance(column, h5py.Dataset) and (keys is None or key in keys):
+                    if column.dtype.hasobject:
+                        # HDF5 metadata does not give the size of variable-length values.
+                        size = budget + 1
+                        break
+                    size += column.nbytes
+            yield path, size
+
+
+def _read_in_order(pool, file, jobs, workers, keys, budget):
+    pending = deque()
+    item = next(jobs, None)
+    reserved = 0
+
+    def refill():
+        nonlocal item, reserved
+        while item is not None and len(pending) < workers:
+            path, size = item
+            if pending and budget is not None and reserved + size > budget:
+                break
+            pending.append((pool.submit(read_group, file, path, keys), size))
+            reserved += size
+            item = next(jobs, None)
+
+    try:
+        refill()
+        while pending:
+            future, size = pending.popleft()
+            result = future.result()
+            del future
+            reserved -= size
+            if budget is None:
+                # Keep readers busy while the caller uses the group it just received.
+                refill()
+            yield result
+            del result
+            if budget is not None:
+                refill()
+    finally:
+        for future, _ in pending:
+            future.cancel()
+
+
+def _use_array_pickle_protocol():
+    from multiprocessing.reduction import ForkingPickler
+    from pickle import DEFAULT_PROTOCOL
+
+    if DEFAULT_PROTOCOL >= 5:
+        return
+    # This runs only in the reader children. ProcessPoolExecutor has no protocol option, and protocol 4
+    # copies every NumPy array into a temporary bytes object before writing it to the result pipe.
+    original_dumps = ForkingPickler.dumps
+
+    def dumps(value, protocol=None):
+        return original_dumps(value, 5 if protocol is None else protocol)
+
+    ForkingPickler.dumps = staticmethod(dumps)
+
+
+def read_groups(file, paths, workers, keys=None, *, max_inflight_bytes=None):
     """Read groups in order, using a process pool if more than one reader is available.
 
-    The processes are spawned, not forked: the caller may already hold a GPU context.
+    The processes are spawned because the caller may already hold a GPU context. The optional byte
+    limit estimates decoded columns queued or being read. Larger or variable-length groups run alone.
     """
+    budget = read_budget_setting(max_inflight_bytes)
     if workers == 1:
         import h5py
         with h5py.File(file, 'r') as handle:
@@ -193,30 +277,41 @@ def read_groups(file, paths, workers, keys=None):
     import multiprocessing
 
     context = multiprocessing.get_context('spawn')
-    with concurrent.futures.ProcessPoolExecutor(max_workers=workers, mp_context=context) as pool:
-        yield from pool.map(read_group, repeat(file), paths, repeat(keys))
+    if budget is None:
+        jobs = ((path, 0) for path in paths)
+    else:
+        jobs = iter(list(_decoded_group_bytes(file, paths, keys, budget)))
+    with concurrent.futures.ProcessPoolExecutor(max_workers=workers, mp_context=context,
+                                                initializer=_use_array_pickle_protocol) as pool:
+        yield from _read_in_order(pool, file, jobs, workers, keys, budget)
 
 
-def read_shard(file, keys=None, workers=None):
+def read_shard(file, keys=None, workers=None, *, group_keys=None, sort_groups=False, max_inflight_bytes=None):
     """Every structure group of a stored label file, in order, as :func:`read_group` gives them, read in
     parallel when the file is large or ``workers`` asks for it (see :func:`workers_for`).
 
     Serial reads reuse one file handle and yield one group at a time. A snapshot is checked before
     yielding any groups, so a missing part raises ``FileNotFoundError``. Virtual datasets are read
-    from their parts directly.
+    from their parts directly. ``group_keys`` only selects groups containing one of those datasets,
+    including the root. ``sort_groups`` selects lexical path order for readers that require it.
     """
     import h5py
     from alframework.tools.label_hdf5 import validate_label_parts
+    read_budget_setting(max_inflight_bytes)
     with h5py.File(file, 'r') as handle:
         validate_label_parts(handle)
         limit = _worker_limit(file, workers, handle=handle)
+        groups = _structure_groups(handle, group_keys=group_keys)
+        if sort_groups:
+            groups = sorted(groups, key=lambda entry: entry[0])
         if limit <= 1:
-            for path, group in _structure_groups(handle):
+            for path, group in groups:
                 yield _read_group(handle, group, path, keys)
             return
-        paths = [path for path, _ in _structure_groups(handle)]
+        paths = [path for path, _ in groups]
         if len(paths) <= 1:
             for path in paths:
                 yield _read_group(handle, handle[path], path, keys)
             return
-    yield from read_groups(file, paths, min(limit, len(paths)), keys)
+    options = {} if max_inflight_bytes is None else {'max_inflight_bytes': max_inflight_bytes}
+    yield from read_groups(file, paths, min(limit, len(paths)), keys, **options)

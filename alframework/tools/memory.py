@@ -75,12 +75,17 @@ def disable_transparent_huge_pages_if_requested(environ=None):
     return disable_transparent_huge_pages()
 
 
-def coordinator_huge_pages(master_config):
-    """With the master configuration's ``disable_transparent_huge_pages`` true, turn huge pages off for the
-    coordinator before Parsl starts, so its interchanges and other child processes inherit it."""
+def coordinator_huge_pages_setting(master_config):
     disabled = master_config.get('disable_transparent_huge_pages', False)
     if not isinstance(disabled, bool):
         raise ValueError('disable_transparent_huge_pages must be true or false.')
+    return disabled
+
+
+def coordinator_huge_pages(master_config):
+    """With the master configuration's ``disable_transparent_huge_pages`` true, turn huge pages off for the
+    coordinator before Parsl starts, so its interchanges and other child processes inherit it."""
+    disabled = coordinator_huge_pages_setting(master_config)
     if disabled and disable_transparent_huge_pages('disable_transparent_huge_pages'):
         print('Transparent huge pages are off for the coordinator and the processes it starts.', flush=True)
     return disabled

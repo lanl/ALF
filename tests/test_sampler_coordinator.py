@@ -472,3 +472,13 @@ def test_finite_bootstrap_stops_when_structures_run_out(tmp_path, monkeypatch, f
     bootstrap = [name for name in requested if name.startswith("mol-boot-")]
     assert sorted(bootstrap) == [f"mol-boot-{i:010d}" for i in range(5)]
     assert len(training) == (0 if failure else 5)
+
+
+def test_a_reload_that_would_strand_a_full_only_batch_is_refused():
+    config = dict(SAMPLER, driver={"strategy": "batched"},
+                  batching={"batch_size": 4, "partial_policy": "full_only", "max_wait_seconds": 1.0})
+    coordinator = SamplerCoordinator(batched_mlmd.mlmd_trajectories_task, "batched", config, {"parallel_samplers": 8})
+    coordinator.check_reloaded({"parallel_samplers": 4})
+    with pytest.raises(ValueError, match="requires parallel_samplers >= batching.batch_size"):
+        coordinator.check_reloaded({"parallel_samplers": 3})
+    SamplerCoordinator(batched_mlmd.mlmd_trajectories_task, "batched", SAMPLER).check_reloaded({"parallel_samplers": 1})

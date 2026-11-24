@@ -48,8 +48,13 @@ files rather than Python source code. Python changes are needed only when you
 add a new task implementation, parser, builder, sampler, or model backend.
 
 During the active-learning loop, ALF re-reads the master and stage configs on every
-iteration, so most edits apply to tasks submitted afterward without a restart. A
-config that fails to load is reported, and ALF keeps using the previous one.
+iteration, so most edits apply to tasks submitted afterward without a restart. Each
+reload is read as the run started: the ``scaling`` and ``sizing`` values from startup
+apply to it. An edit the running run can't work with is refused, such as a
+``parallel_samplers`` or ``target_queued_QM`` below a ``full_only`` batch size, which
+would leave a batch that never fills, or an invalid ``maximum_builder_structures``. A
+config that fails to load or is refused is reported, and ALF keeps using the previous
+one.
 
 These are read once at startup, so changing them requires a restart:
 
@@ -150,8 +155,11 @@ The master config controls the workflow wiring. Common fields include:
      - Optional, for the multi-node training tasks. How many more times to run a failed
        ensemble member. The default is ``1``. See :ref:`ml-multinode-training`.
    * - ``maximum_builder_structures``
-     - Optional number of structures one builder task returns. The default is
-       ``1``. See :doc:`builders`.
+     - Optional number of structures one builder task returns, for a builder that
+       takes ``moleculeids``. Each of its tasks gets that many IDs. A builder that
+       takes one ``moleculeid`` gets one ID per task whatever this says, and ALF
+       warns at startup that the setting has no effect. The default is ``1``. See
+       :doc:`builders`.
    * - ``maximum_completed_QM``
      - Optional limit on structures in the QM queue plus finished labels waiting to
        be stored, converged or not. Failed calculations don't count. ALF stops
@@ -177,6 +185,11 @@ The master config controls the workflow wiring. Common fields include:
        "frame_chunk": 1024}``. Every choice is lossless: the shards stay HDF5 with the
        same datasets, dtypes and values, and read as before. The default is gzip level 6
        with h5py's chunks. See :ref:`running-at-scale-storing-labels`.
+   * - ``label_units``
+     - Optional. The units of the stored HDF5 datasets after conversion, keyed by
+       dataset name, for example ``{"energy": "eV", "forces": "eV/Å"}``. New shards
+       record them, and training refuses shards that declare different units for
+       the same target. It does not change any conversion. See :doc:`units`.
    * - ``coordinator_trim_after_snapshot``
      - Optional boolean, default ``false``. After publishing a nonempty label snapshot,
        collect Python garbage and release free coordinator heap pages on Linux with glibc.
@@ -203,7 +216,8 @@ The master config controls the workflow wiring. Common fields include:
        configuration that uses it. Read once, at startup. See :ref:`running-at-scale-settings`.
    * - ``sizing``
      - Optional. Size the run by ``trajectories_per_sampler_task``, ``structures_per_qm_task``
-       and ``labels_per_round``; ALF derives the batch sizes, ``maximum_builder_structures``,
+       and ``labels_per_round``, with optional ``sampler_tasks_at_once`` and
+       ``qm_tasks_at_once``; ALF derives the batch sizes, ``maximum_builder_structures``,
        ``parallel_samplers``, ``target_queued_QM`` and ``save_h5_threshold``. Read once, at
        startup. See :ref:`batching-sizing`.
    * - ``plotting_utility``, ``plot_dir``, ``update_plots_every``
@@ -413,6 +427,15 @@ Parsl resource config
    Controls where tasks run. The master config selects ``parsl_configuration``
    for normal runs and optionally ``parsl_debug_configuration`` for stage
    checks. See :doc:`parsl` for executor labels and cluster templates.
+
+Checking a Configuration
+------------------------
+
+``python -m alframework --master master_config.json --check_config`` loads every
+configuration and task, binds the tasks to the Parsl executors, applies the
+``scaling`` and ``sizing`` blocks and prints the capacity report, then exits. It
+starts no Parsl executors and writes no run files, so it can run on a login node
+before a job is submitted. A run checks the same things when it starts.
 
 Stage Test Commands
 -------------------

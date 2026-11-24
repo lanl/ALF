@@ -68,22 +68,74 @@ def pools_per_node(provider):
     return 1
 
 
+def workers_per_node(executor):
+    """How many workers ``executor`` runs on each node, over every worker pool its launcher starts there, or
+    ``None`` when its configuration doesn't say.
+
+    Parsl's ``workers_per_node`` counts one pool, so a launcher that starts one pool per GPU runs several times
+    that many (:func:`pools_per_node`).
+    """
+    workers = getattr(executor, 'workers_per_node', None)
+    provider = getattr(executor, 'provider', None)
+    if provider is None or isinstance(workers, bool) or not isinstance(workers, (int, float)) or not math.isfinite(workers):
+        return None
+    return int(workers) * pools_per_node(provider)
+
+
 def executor_slots(executor):
     """How many tasks ``executor`` can run at once, or ``None`` when its configuration doesn't say.
 
-    A thread pool runs ``max_threads``; a high-throughput executor runs its workers per node in each worker pool
-    its launcher starts on a node (:func:`pools_per_node`), on each node of each block, up to ``max_blocks``.
+    A thread pool runs ``max_threads``; a high-throughput executor runs :func:`workers_per_node` on each node of
+    each block, up to ``max_blocks``.
     """
     threads = getattr(executor, 'max_threads', None)
     if isinstance(threads, int) and not isinstance(threads, bool):
         return threads
-    workers = getattr(executor, 'workers_per_node', None)
-    provider = getattr(executor, 'provider', None)
-    blocks = getattr(provider, 'max_blocks', None)
-    if provider is None or not isinstance(workers, (int, float)) or not math.isfinite(workers) or blocks is None:
+    per_node = workers_per_node(executor)
+    blocks = getattr(getattr(executor, 'provider', None), 'max_blocks', None)
+    if per_node is None or blocks is None:
         return None
-    return (int(workers) * pools_per_node(provider) * int(getattr(provider, 'nodes_per_block', 1) or 1)
-            * int(blocks))
+    return per_node * int(getattr(executor.provider, 'nodes_per_block', 1) or 1) * int(blocks)
+
+
+def member_slots(executor, member_nodes=1):
+    """How many ensemble members ``executor`` can train at once, each taking one worker and ``member_nodes``
+    nodes' worth of its slots, or ``None`` when its configuration doesn't say."""
+    slots = executor_slots(executor)
+    return None if slots is None else slots // max(1, int(member_nodes))
+
+
+def check_member_gpus(executor, gpus_per_node, device_string, gpus_per_member=1, member_nodes=1,
+                      label='alf_ML_executor'):
+    """Refuse an ML executor whose members would share a GPU.
+
+    A member on ``member_nodes`` nodes uses ``gpus_per_member / member_nodes`` GPUs of each. With
+    ``available_accelerators``, each worker gets its own GPUs, and ``gpus_per_node`` may describe the sampler
+    nodes, so only the narrowest worker's GPUs are checked. Otherwise every worker on a node, over all its pools,
+    needs its own GPUs out of ``gpus_per_node``. A CPU device, an unknown layout or no ``gpus_per_node`` checks
+    nothing.
+    """
+    per_member = gpus_per_member // max(1, int(member_nodes))
+    if str(device_string).lower() == 'cpu':
+        return
+    accelerators = getattr(executor, 'available_accelerators', None)
+    if isinstance(accelerators, int):
+        accelerators = [str(index) for index in range(accelerators)]
+    if accelerators:
+        # Parsl sets each worker's CUDA_VISIBLE_DEVICES to one entry, such as "0,1".
+        narrowest = min(len(str(entry).split(',')) for entry in accelerators)
+        if narrowest < per_member:
+            raise ValueError(f'gpus_per_member is {per_member}, but an {label} worker is given {narrowest} GPU(s) by '
+                             'available_accelerators. List each worker\'s GPUs, such as ["0,1", "2,3"].')
+        return
+    per_node = workers_per_node(executor)
+    if not gpus_per_node or per_node is None or per_node * per_member <= gpus_per_node:
+        return
+    pools = pools_per_node(executor.provider)
+    counted = f'{per_node} workers per node' + (f' ({per_node // pools} in each of {pools} pools)' if pools > 1 else '')
+    raise ValueError(f'{label} runs {counted} with {per_member} GPU(s) each, but gpus_per_node is {gpus_per_node}, '
+                     'so members would share a GPU. Lower max_workers_per_node or the pools per node, or set '
+                     'available_accelerators if each worker has its own GPUs.')
 
 
 def task_slots(labels, executors):
@@ -149,8 +201,8 @@ def capacity_report(master_config, executors, *, builder_labels, builder_width, 
         lines.append(f'retraining: once more than {threshold:,} new labels are held')
 
     if n_models is not None:
-        slots = task_slots(ml_labels, executors)
-        members = None if slots is None else slots // max(1, member_nodes)
+        counts = [member_slots(executors[label], member_nodes) for label in ml_labels if label in executors]
+        members = None if not counts or any(count is None for count in counts) else sum(counts)
         lines.append(f'ML: {n_models:,} ensemble members, {_count(members)} trained at once')
         if members is not None and members < n_models:
             warnings.append(f'{n_models:,} ensemble members but {members:,} ML task slots, so some members wait for '

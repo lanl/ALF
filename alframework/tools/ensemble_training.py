@@ -5,7 +5,6 @@ submits one app per member, retries failed members, and returns when every membe
 run out of retries. Nothing here imports Torch, except ``member_device`` on a worker.
 """
 import concurrent.futures
-import math
 import multiprocessing
 import os
 import socket
@@ -73,37 +72,14 @@ def check_capacity(n_models, gpus_per_node, device_string, executor, gpus_per_me
 
     A member on ``member_nodes`` nodes uses ``gpus_per_member / member_nodes`` GPUs of each, and its
     worker starts it on the others with ``member_launcher``, so each such member takes one worker and
-    ``member_nodes`` nodes of the executor's blocks.
+    ``member_nodes`` nodes of the executor's blocks. Both counts come from :mod:`alframework.tools.capacity`,
+    as the startup capacity report's do.
     """
+    from alframework.tools.capacity import check_member_gpus, member_slots
     validated_member_nodes(member_nodes, gpus_per_member)
-    gpus_per_member //= member_nodes
-    workers = getattr(executor, 'workers_per_node', None)
-    provider = getattr(executor, 'provider', None)
-    if provider is None or workers is None or not math.isfinite(workers):
-        return
-    # With available_accelerators each worker has its own GPUs, and gpus_per_node may describe sampler nodes.
-    accelerators = getattr(executor, 'available_accelerators', None)
-    if isinstance(accelerators, int):
-        accelerators = [str(index) for index in range(accelerators)]
-    if str(device_string).lower() == 'cpu':
-        pass
-    elif accelerators:
-        # Parsl sets each worker's CUDA_VISIBLE_DEVICES to one entry, such as "0,1".
-        narrowest = min(len(str(entry).split(',')) for entry in accelerators)
-        if narrowest < gpus_per_member:
-            raise ValueError(f'gpus_per_member is {gpus_per_member}, but an alf_ML_executor worker is given '
-                             f'{narrowest} GPU(s) by available_accelerators. List each worker\'s GPUs, such as '
-                             '["0,1", "2,3"].')
-    elif gpus_per_node and workers * gpus_per_member > gpus_per_node:
-        raise ValueError(f'alf_ML_executor has {workers} workers per node with {gpus_per_member} GPU(s) each, but '
-                         f'gpus_per_node is {gpus_per_node}, so members would share a GPU. Lower '
-                         'max_workers_per_node, or set available_accelerators if each worker has its own GPUs.')
-    from alframework.tools.capacity import executor_slots
-    slots = executor_slots(executor)
-    if slots is None:
-        return
-    slots //= member_nodes
-    if slots < n_models:
+    check_member_gpus(executor, gpus_per_node, device_string, gpus_per_member, member_nodes)
+    slots = member_slots(executor, member_nodes)
+    if slots is not None and slots < n_models:
         print(f'Warning: alf_ML_executor has {slots} slots for {n_models} ensemble members, so some members will '
               'wait for others to finish. Check max_workers_per_node and max_blocks.', flush=True)
 

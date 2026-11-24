@@ -329,3 +329,6 @@ for _task in (fine_tune_ensemble_task, fine_tune_ensemble_multinode_task):
 
 getattr(fine_tune_ensemble_multinode_task, 'func', fine_tune_ensemble_multinode_task).member_executors = (
     'alf_ML_executor',)
+# Each copy trains on one GPU of the configured device, as fine_tune_ensemble_multinode_task submits it.
+getattr(fine_tune_ensemble_multinode_task, 'func', fine_tune_ensemble_multinode_task).member_layout = (
+    lambda ML_config: ((ML_config.get('fine_tune') or {}).get('device', 'cuda'), 1, 1))

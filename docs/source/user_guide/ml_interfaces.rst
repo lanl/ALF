@@ -294,7 +294,9 @@ Each member uses one GPU
    Each member's GPU comes from its Parsl worker, within any mask set by the scheduler or
    ``available_accelerators``. So ``device_string`` must be ``from_multiprocessing``, ``cuda``, or
    ``cpu``. Without ``available_accelerators``, ALF stops with an error if a node has more workers than
-   ``gpus_per_node``, since members would share a GPU.
+   ``gpus_per_node``, counting every worker pool the launcher starts on the node (see
+   :ref:`the capacity report <batching-capacity>`), since members would share a GPU. The coordinator makes this check at
+   startup, and ``--check_config`` makes it without starting the run.
 
 Each attempt writes ``placement-model-03-attempt-1.json`` in the ensemble directory, with its
 host, worker, device, and start and end times. The record stays even if the node is lost.
@@ -352,8 +354,8 @@ Several GPUs per member
    member's directory, which must be on storage all its nodes share. The node processes import the same
    ALF as the worker. Each member still takes one Parsl worker, so choosing each worker's group of nodes,
    and giving it a launcher that reaches them, belongs to the site's Parsl configuration;
-   ``check_capacity`` counts one worker per ``member_nodes`` nodes when it warns about members that will
-   wait. :ref:`running-at-scale-training` has measured epoch times on 1, 2 and 4 nodes.
+   the capacity report and ``check_capacity`` count one worker per ``member_nodes`` nodes when they warn
+   about members that will wait. :ref:`running-at-scale-training` has measured epoch times on 1, 2 and 4 nodes.
 
    These ML configuration settings apply to ground- and excited-state members. The first two are
    off by default.

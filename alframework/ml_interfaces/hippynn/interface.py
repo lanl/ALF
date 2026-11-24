@@ -2930,5 +2930,12 @@ def train_excited_state_HIPPYNN_ensemble_multinode_task(ML_config, h5_dir, model
         member_nodes=config.get('member_nodes', 1))
 
 
+def _member_layout(ML_config):
+    """The device, GPUs per member and nodes per member the multi-node tasks train with (preflight checks them)."""
+    return (ML_config.get('device_string', 'from_multiprocessing'), ML_config.get('gpus_per_member', 1),
+            ML_config.get('member_nodes', 1))
+
+
 for _task in (train_HIPPYNN_ensemble_multinode_task, train_excited_state_HIPPYNN_ensemble_multinode_task):
     getattr(_task, 'func', _task).member_executors = ('alf_ML_executor',)
+    getattr(_task, 'func', _task).member_layout = _member_layout

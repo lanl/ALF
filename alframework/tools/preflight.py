@@ -10,7 +10,8 @@ from alframework.samplers.acquisition import SINGLE_MEMBER, uses_spread
 from alframework.tools import config, memory
 from alframework.tools.bootstrap import bootstrap_spare_count
 from alframework.tools.capabilities import require, validate_task_config
-from alframework.tools.capacity import capacity_report, task_slots
+from alframework.tools.capacity import capacity_report, check_member_gpus, task_slots
+from alframework.tools.ensemble_training import validated_member_nodes
 from alframework.tools.h5_parallel import read_budget_setting, read_workers_setting
 from alframework.tools.label_hdf5 import label_units_setting
 from alframework.tools.label_parts import incoming_directory
@@ -43,6 +44,24 @@ def _bind_task(path, executors):
 
 def _labels(task, executors):
     return list(executors) if task.executors == 'all' else task.executors
+
+
+def _check_members(ml, ml_config, master, executors, member_labels):
+    """Make the check a training join makes when it starts its members, so a mistake stops the run at startup.
+
+    A join task's ``member_layout`` gives the device, GPUs per member and nodes per member it trains with.
+    Returns the nodes per member.
+    """
+    layout = getattr(getattr(ml, 'func', ml), 'member_layout', None)
+    if not getattr(ml, 'join', False) or layout is None:
+        return ml_config.get('member_nodes', 1)
+    device, gpus_per_member, member_nodes = layout(ml_config)
+    validated_member_nodes(member_nodes, gpus_per_member)
+    for label in member_labels:
+        if label in executors:
+            check_member_gpus(executors[label], master.get('gpus_per_node'), device, gpus_per_member, member_nodes,
+                              label)
+    return member_nodes
 
 
 def check_workflow(master, builder_config, sampler_config, qm_config, ml_config, *, debug=False,
@@ -113,6 +132,7 @@ def check_workflow(master, builder_config, sampler_config, qm_config, ml_config,
         if reads_spread:
             raise ValueError(SINGLE_MEMBER.format(what='The ML configuration (n_models 1)'))
     member_labels = getattr(ml.func, 'member_executors', ('alf_ML_executor', 'alf_ML_standby_executor'))
+    member_nodes = _check_members(ml, ml_config, master, executors, member_labels)
     lines, warnings = capacity_report(
         master, executors,
         builder_labels=_labels(builder, executors), builder_width=master.get('maximum_builder_structures', 1),
@@ -120,7 +140,7 @@ def check_workflow(master, builder_config, sampler_config, qm_config, ml_config,
         sampler_labels=_labels(sampler, executors), sampler_width=sampling.settings['batch_size'] if sampling.batched else 1,
         qm_labels=_labels(qm, executors), qm_width=labeling.settings['batch_size'] if labeling.batched else 1,
         ml_labels=member_labels,
-        n_models=members if getattr(ml, 'join', False) else None, member_nodes=ml_config.get('member_nodes', 1))
+        n_models=members if getattr(ml, 'join', False) else None, member_nodes=member_nodes)
     print('Capacity:\n  ' + '\n  '.join(lines), flush=True)
     for warning in warnings:
         print('Warning: ' + warning, flush=True)

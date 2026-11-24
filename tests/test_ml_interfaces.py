@@ -5,6 +5,7 @@ Trainers are faked, so these check how ALF calls them. Tests for further ML mode
 
 import os
 
+import h5py
 import pytest
 from parsl.app.errors import RemoteExceptionWrapper
 
@@ -35,10 +36,13 @@ def mock_ground_state_training(monkeypatch, member_log=lambda member: "Training 
 def test_hippynn_training_configures_each_member(tmp_path, monkeypatch):
 
     pool = mock_ground_state_training(monkeypatch)
+    shard = tmp_path / "seed.hdf5"
+    with h5py.File(shard, "w"):
+        pass
 
     completed, training_id = hippynn_interface.train_HIPPYNN_ensemble_task.func(
         ML_config={"n_models": 2, "energy_key": "energy", "species_key": "species"},
-        h5_dir="h5store",
+        h5_dir=str(tmp_path),
         model_path=str(tmp_path / "models" / "model-{:04d}"),
         current_training_id=3,
         gpus_per_node=2,
@@ -55,14 +59,16 @@ def test_hippynn_training_configures_each_member(tmp_path, monkeypatch):
             "energy_key": "energy",
             "species_key": "species",
             "model_dir": str(tmp_path / "models" / "model-0003" / "model-00"),
-            "h5_train_dir": "h5store",
+            "h5_train_dir": str(tmp_path),
+            "shards": [str(shard)],
             "from_multiprocessing_nGPU": 2,
         },
         {
             "energy_key": "energy",
             "species_key": "species",
             "model_dir": str(tmp_path / "models" / "model-0003" / "model-01"),
-            "h5_train_dir": "h5store",
+            "h5_train_dir": str(tmp_path),
+            "shards": [str(shard)],
             "from_multiprocessing_nGPU": 2,
         },
     ]
@@ -72,10 +78,12 @@ def test_hippynn_training_reports_failed_members(tmp_path, monkeypatch):
 
     logs = ["Training complete\n", "Stopped before convergence\n"]
     mock_ground_state_training(monkeypatch, member_log=logs.__getitem__)
+    with h5py.File(tmp_path / "seed.h5", "w"):
+        pass
 
     completed, training_id = hippynn_interface.train_HIPPYNN_ensemble_task.func(
         ML_config={"n_models": 2},
-        h5_dir="h5store",
+        h5_dir=str(tmp_path),
         model_path=str(tmp_path / "models" / "model-{:04d}"),
         current_training_id=4,
         gpus_per_node=1,
@@ -115,7 +123,8 @@ def test_single_node_training_waits_for_every_stored_shard(kind, tmp_path, monke
     h5 = tmp_path / "h5"
     h5.mkdir()
     for name in ("data-0000.h5", "data-0001.h5", "seed.h5"):  # Extra files are allowed.
-        (h5 / name).touch()
+        with h5py.File(h5 / name, "w"):
+            pass
     real_listdir, listings = os.listdir, []
 
     def stale_listdir(path):
@@ -143,6 +152,9 @@ def test_single_node_training_stops_when_a_stored_shard_never_appears(kind, tmp_
 
 @TRAINERS
 def test_single_node_training_without_h5_path_skips_the_check(kind, tmp_path, monkeypatch):
+    (tmp_path / "h5").mkdir()
+    with h5py.File(tmp_path / "h5" / "seed.h5", "w"):
+        pass
     monkeypatch.setattr(ensemble_training.wait_for_shards, "__defaults__", (0, 0.001))
     train, trained = single_node_trainer(kind, tmp_path, monkeypatch)
     train(current_h5_id=2)

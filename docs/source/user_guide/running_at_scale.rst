@@ -38,7 +38,7 @@ Each setting keeps its own default and meaning, and can still be set in its own 
 set in both places with different values stops the coordinator at startup, so neither wins silently. A sampler
 or ML setting needs a task that declares it reads it: the batched MLMD sampler
 (``alframework.samplers.batched_mlmd``) declares the sampler settings, and the HIPPYNN multi-node tasks the ML
-ones (``h5_read_workers`` also the single-node and fine-tuning tasks). Any other task stops the coordinator at
+ones (the HDF5 reader settings also apply to single-node training and fine-tuning). Any other task stops the coordinator at
 startup, with a message saying how a task of your own declares a setting. The block is
 read when the coordinator starts, which prints the settings it applied, and an edit to it waits for a restart.
 A run with ``parallel_samplers`` of 4,096 or more that leaves the serializer, bounded label storage, per-task
@@ -118,6 +118,9 @@ metadata files or compact returns off gets a warning naming them.
    * - ``h5_read_workers``
      - ML
      - Processes reading each HDF5 file; by default large files use one per core.
+   * - ``h5_read_max_inflight_bytes``
+     - ML
+     - Optional limit on the estimated decoded bytes of groups in flight during a parallel read.
 
 Settings that size the work stay in their own configurations, since they change what tasks run or what they
 run on: ``batching`` (the sampler and QM configurations each have one; see :doc:`batching`),
@@ -428,6 +431,11 @@ up to one per group; the batches are the same, in the same order. The ML configu
 sets the number (``1`` reads serially), or ``ALF_H5_READ_WORKERS`` without it. For the 15 GB shard above, with huge pages off, 8 processes took 93 s and one 133 s,
 and every array was identical. Turning off huge pages (see :ref:`running-at-scale-huge-pages`) mattered
 more.
+
+The parallel reader keeps up to one pending group per reader and returns groups in file order. Set
+``h5_read_max_inflight_bytes`` to lower the estimated decoded bytes held by pending reads. A group whose
+size exceeds the limit, or whose variable-length values make its size unknown, runs alone. The limit
+applies to pending reads. Arrays already received by the training process can use additional memory.
 
 A shard published over parts (``label_storage_batch_size``) is a small file of virtual datasets: ALF counts the
 parts it references when deciding to read in parallel, and each process reads the parts' datasets directly

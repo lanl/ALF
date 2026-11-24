@@ -177,6 +177,11 @@ The master config controls the workflow wiring. Common fields include:
        "frame_chunk": 1024}``. Every choice is lossless: the shards stay HDF5 with the
        same datasets, dtypes and values, and read as before. The default is gzip level 6
        with h5py's chunks. See :ref:`running-at-scale-storing-labels`.
+   * - ``label_units``
+     - Optional. The units of the stored HDF5 datasets after conversion, keyed by
+       dataset name, for example ``{"energy": "eV", "forces": "eV/Å"}``. New shards
+       record them, and training refuses shards that declare different units for
+       the same target. It does not change any conversion. See :doc:`units`.
    * - ``coordinator_trim_after_snapshot``
      - Optional boolean, default ``false``. After publishing a nonempty label snapshot,
        collect Python garbage and release free coordinator heap pages on Linux with glibc.

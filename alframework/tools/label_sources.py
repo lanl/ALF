@@ -9,10 +9,12 @@ as the legacy QM tasks, leave their shards without sources.
 Labels and shards written before the rename used ``label_provenance`` for both; they are still read.
 """
 
-import glob
 import json
 import os
 from pathlib import Path
+
+from alframework.tools.files import write_json_atomic
+from alframework.tools.label_hdf5 import discover_label_shards
 
 # A label's metadata key, and a shard's attribute.
 LABEL_SOURCE = 'label_source'
@@ -70,16 +72,18 @@ def read_label_sources(h5path):
     return json.loads(value.decode() if isinstance(value, bytes) else value)
 
 
-def write_label_sources(ensemble_dir, h5_dir):
+def write_label_sources(ensemble_dir, h5_dir=None, *, shards=None):
     """Record which label sources a trained ensemble learned from, as ``label_sources.json``.
 
-    The file lists the distinct sources of every shard in ``h5_dir``, the shards that recorded none, and the
-    number of shards. A failure here is reported, never raised, so it can't cost a finished training.
+    The file lists the distinct sources of every shard, the shards that recorded none, and the number of shards.
+    ``shards`` is the round's frozen training inventory, which is then also recorded as ``training_shards``;
+    without it the shards in ``h5_dir`` are read. A failure here is reported, never raised, so it can't cost a
+    finished training.
     """
     try:
-        shards = sorted(glob.glob(os.path.join(str(h5_dir), '*.h5')))
+        inventory = discover_label_shards(h5_dir) if shards is None else list(shards)
         sources, seen, unrecorded = [], set(), []
-        for shard in shards:
+        for shard in inventory:
             recorded = read_label_sources(shard)
             if not recorded:
                 unrecorded.append(os.path.basename(shard))
@@ -89,8 +93,9 @@ def write_label_sources(ensemble_dir, h5_dir):
                     seen.add(key)
                     sources.append(source)
         Path(ensemble_dir).mkdir(parents=True, exist_ok=True)
-        (Path(ensemble_dir) / 'label_sources.json').write_text(json.dumps(
-            {'label_sources': sources, 'shards_without_label_sources': unrecorded, 'shards': len(shards)},
-            indent=2) + '\n')
+        record = {'label_sources': sources, 'shards_without_label_sources': unrecorded, 'shards': len(inventory)}
+        if shards is not None:
+            record['training_shards'] = [str(shard) for shard in inventory]
+        write_json_atomic(Path(ensemble_dir) / 'label_sources.json', record)
     except Exception as exc:
         print(f'Could not record label sources in {ensemble_dir}: {type(exc).__name__}: {exc}', flush=True)

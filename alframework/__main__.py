@@ -24,6 +24,7 @@ from alframework.tools import memory_sampler
 from alframework.tools.memory import coordinator_huge_pages, snapshot_memory_trim
 from alframework.tools.progress_plots import ProgressPlots
 from alframework.tools.h5_parallel import read_shard
+from alframework.tools.label_hdf5 import label_units_setting
 from alframework.tools.molecules import MoleculesObject
 from alframework.tools.bootstrap import bootstrap_spare_count, next_bootstrap_ids
 from alframework.tools.restarts import (
@@ -182,7 +183,9 @@ if reference_settings.get('labels') and not args.test_qm:
     label_handoff = dict(directory=str(incoming_directory(Path(master_config['h5_path'].format(0)).resolve())),
                          properties=master_config['properties_list'],
                          schema=json.dumps(master_config['properties_list'], sort_keys=True),
-                         h5_options=label_h5_options(master_config))
+                         h5_options=label_h5_options(master_config),
+                         label_units=label_units_setting(master_config['properties_list'],
+                                                         master_config.get('label_units')))
 # Without a 'batching' block in QM_config, labeling submits one QM task per structure as before.
 labeling = LabelingCoordinator(qm_task, master_config['QM_task'], QM_config, master_config,
                                sampled_frame_handoff=sampling.frame_directory is not None,
@@ -392,7 +395,8 @@ if args.test_qm:
     qm_test_path = master_config['master_directory'] + '/qm_test.h5'
     if os.path.exists(qm_test_path):
         os.remove(qm_test_path)
-    store_current_data(qm_test_path, queue_output, master_config['properties_list'])
+    store_current_data(qm_test_path, queue_output, master_config['properties_list'],
+                       label_units=master_config.get('label_units'))
     test_db = read_shard(qm_test_path, workers=1)
 
     print("Data written to qm_test.h5:")

@@ -42,9 +42,9 @@ def test_the_built_in_tasks_declare_what_they_read():
                                                             'frame_spool'}
     assert declared(mlmd_sampling.simple_mlmd_sampling_task) == set()
     assert declared(hippynn_interface.train_HIPPYNN_ensemble_multinode_task) == {
-        'shared_training_data', 'stream_final_evaluation', 'h5_read_workers'}
-    assert declared(hippynn_interface.train_HIPPYNN_ensemble_task) == {'h5_read_workers'}
-    assert declared(fine_tuning.fine_tune_ensemble_task) == {'h5_read_workers'}
+        'shared_training_data', 'stream_final_evaluation', 'h5_read_workers', 'h5_read_max_inflight_bytes'}
+    assert declared(hippynn_interface.train_HIPPYNN_ensemble_task) == {'h5_read_workers', 'h5_read_max_inflight_bytes'}
+    assert declared(fine_tuning.fine_tune_ensemble_task) == {'h5_read_workers', 'h5_read_max_inflight_bytes'}
 
 
 def test_validate_task_config_calls_the_hook_when_there_is_one():

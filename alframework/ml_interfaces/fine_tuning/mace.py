@@ -117,7 +117,8 @@ class MaceFineTuner:
         """Write every labeled frame in ``shards`` to ``member_dir/train.xyz``, in eV and eV/Å."""
         from ase.io import write
         frames = shard_atoms(shards, self.settings['energy_dataset'], self.settings['forces_dataset'],
-                             self.settings.get('h5_read_workers'))
+                             self.settings.get('h5_read_workers'),
+                             max_inflight_bytes=self.settings.get('h5_read_max_inflight_bytes'))
         if not frames:
             raise ValueError('There are no labeled frames to fine-tune on.')
         path = Path(member_dir) / 'train.xyz'

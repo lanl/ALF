@@ -25,7 +25,6 @@ from ase import Atoms, units
 from alframework.ml_interfaces.hippynn import interface as ml
 from alframework.ml_interfaces.hippynn.interface import HIPNN_ASE_calculator, HIPNN_ASE_load_ensemble
 from alframework.tools.excited_state_schema import derive_gap_property_table
-from tests.helpers.fakes import fake_training_pool
 from tests.helpers.molecules import WATER
 
 
@@ -686,20 +685,26 @@ def test_training_gpu_choice_respects_visibility(monkeypatch):
     assert ml.excited_training_device("cpu", 0, 0) == "cpu"
 
 
-def test_one_failed_member_is_recorded(tmp_path, monkeypatch):
-    def worker_result(params):
-        return dict(
-            ok=params["model_id"] == 0,
-            payload=dict(model_dir=params["model_dir"], model_id=params["model_id"], error="bad member"),
-        )
+def _read_training_shards_in_member(params):
+    from alframework.tools.h5_parallel import read_shard
 
-    FakePool, pool = fake_training_pool(
-        member_log=lambda index: "Training complete" if index == 0 else None, result=worker_result
-    )
-    monkeypatch.setattr(ml.multiprocessing, "get_context", lambda kind: SimpleNamespace(Pool=FakePool))
+    groups = [group['path'] for shard in params['shards'] for group in read_shard(shard, workers=2)]
+    assert groups == ['/HO', '/OH']
+    if params['model_id'] == 0:
+        member = Path(params['model_dir'])
+        member.mkdir(parents=True)
+        (member / 'training_log.txt').write_text('Training complete')
+    return dict(ok=params['model_id'] == 0,
+                payload=dict(model_dir=params['model_dir'], model_id=params['model_id'], error='bad member'))
+
+
+def test_isolated_members_can_read_shards_in_parallel_and_report_failures(tmp_path, monkeypatch):
+    monkeypatch.setattr(ml, '_excited_state_training_worker', _read_training_shards_in_member)
+    _write_group(tmp_path / 'seed.h5', 'HO')
+    _write_group(tmp_path / 'seed.h5', 'OH')
     completed, identity = ml.train_excited_state_ensemble(
         ML_config=_config(),
-        h5_dir="unused",
+        h5_dir=str(tmp_path),
         model_path=str(tmp_path / "ensemble-{:d}"),
         current_training_id=3,
         gpus_per_node=0,
@@ -707,8 +712,6 @@ def test_one_failed_member_is_recorded(tmp_path, monkeypatch):
     )
     assert completed == [True, False] and identity == 3
     assert (tmp_path / "ensemble-3/label_sources.json").is_file()
-    assert pool.processes == 1
-    assert pool.calls == ["close", "join"]
     assert json.loads((tmp_path / "ensemble-3/model-01/training_error.json").read_text())["error"] == "bad member"
 
 

@@ -130,6 +130,13 @@ Waiting for shards
    shards, are still used. So deleting a stored shard now stops training,
    instead of training without it.
 
+Training inventory
+   Once the shards are visible, the round fixes its list of ``.h5`` and ``.hdf5``
+   files in ``h5_dir``, in name order. Every member, every retry and the
+   ``training_shards`` entry of the ensemble's ``label_sources.json`` use that list,
+   so a shard that appears during the round is left for the next one. Fine-tuning
+   does the same.
+
 HIPPYNN Interface
 -----------------
 
@@ -348,9 +355,8 @@ Several GPUs per member
    ``check_capacity`` counts one worker per ``member_nodes`` nodes when it warns about members that will
    wait. :ref:`running-at-scale-training` has measured epoch times on 1, 2 and 4 nodes.
 
-   Three ML configuration settings help at this size, for ground- and excited-state members alike. Each
-   is off unless set, and each falls back to an environment variable on the ML workers when it isn't in
-   the configuration:
+   These ML configuration settings apply to ground- and excited-state members. The first two are
+   off by default.
 
    - ``shared_training_data`` (``ALF_LIGHTNING_SHARED_DATA=1``): ``true`` writes the split arrays once,
      as ``.npy`` files, instead of into the setup file every rank loads, and each rank maps them, so a
@@ -359,7 +365,12 @@ Several GPUs per member
    - ``stream_final_evaluation`` (``ALF_LIGHTNING_STREAM_FINAL=1``): ``true`` bounds memory during the
      final test, as described in :ref:`running-at-scale-training`.
    - ``h5_read_workers`` (``ALF_H5_READ_WORKERS``): how many processes read each HDF5 file, for
-     ground-state members and fine-tuning. By default large files are read with one per core.
+     HIPPYNN training and fine-tuning. For large files, ground-state training and fine-tuning
+     can use one per core, up to the number of groups. Excited-state training uses one by default.
+   - ``h5_read_max_inflight_bytes``: optional positive integer in the ML configuration. It limits the
+     estimated decoded bytes of groups being read or waiting to be returned by parallel workers.
+     Oversized groups and groups with variable-length values read alone. Training arrays that
+     have already reached the trainer also consume memory.
 
    ``ALF_LIGHTNING_STATS=1`` writes each rank's node, step and epoch times and peak memory to
    ``lightning_stats/`` in the member's directory; steps are synchronized when it is on, so their times

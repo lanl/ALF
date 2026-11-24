@@ -68,7 +68,8 @@ def multinode_task(request, tmp_path):
     """Each multi-node task with arguments for three members, and one shard to find."""
     h5_dir = tmp_path / "h5"
     h5_dir.mkdir()
-    (h5_dir / "data-0000.h5").touch()
+    with h5py.File(h5_dir / "data-0000.h5", "w"):
+        pass
     arguments = dict(h5_dir=str(h5_dir), model_path=str(tmp_path / "models/model-{:04d}"),
                      current_training_id=3, gpus_per_node=4)
     if request.param == "ground_state":
@@ -109,14 +110,25 @@ def test_multinode_training_returns_members_in_order_after_the_last_one_finishes
 def test_multinode_training_retries_only_the_failed_member(tmp_path, monkeypatch, multinode_task, capfd):
     def behavior(member, attempt, training):
         if member == 1 and attempt == 1:
+            with h5py.File(tmp_path / "h5" / "added.hdf5", "w"):
+                pass
             raise RuntimeError("lost worker")
         return True
 
     calls = fake_members(monkeypatch, behavior)
+    run_member = ensemble_training.run_member_in_child
+
+    def check_inventory(function, arguments, attempt):
+        assert arguments["shards"] == [str(tmp_path / "h5" / "data-0000.h5")]
+        return run_member(function, arguments, attempt)
+
+    monkeypatch.setattr(ensemble_training, "run_member_in_child", check_inventory)
     with loaded_parsl(tmp_path / "runinfo", "alf_ML_executor"):
         assert multinode_task().result(timeout=30) == ([True, True, True], 3)
     assert sorted(calls) == [(0, 1), (1, 1), (1, 2), (2, 1)]
     ensemble = tmp_path / "models/model-0003"
+    assert json.loads((ensemble / "label_sources.json").read_text())["training_shards"] == [
+        str(tmp_path / "h5" / "data-0000.h5")]
     assert (ensemble / "failed-model-01-attempt-1").is_dir() and (ensemble / "model-01").is_dir()
     output = capfd.readouterr().out
     assert "member 1 attempt 1 failed: RuntimeError: lost worker" in output

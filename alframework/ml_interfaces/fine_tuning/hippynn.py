@@ -223,7 +223,9 @@ def fine_tune_hippynn_member(arguments):
                 raise ValueError(f'stopping_key {stopping_key!r} is not one of the model\'s validation losses, {losses}.')
 
             schema = dict(species_key=settings['species_key'], coordinates_key=settings['coordinates_key'],
-                          atom_keys=(settings['coordinates_key'], settings['force_key']))
+                          atom_keys=(settings['coordinates_key'], settings['force_key']),
+                          read_workers=settings.get('h5_read_workers'),
+                          max_inflight_bytes=settings.get('h5_read_max_inflight_bytes'))
             data = arguments['data']
             database = ALFPyAniDirectoryDB(directory=data['directory'], files=data['files'], allow_unfound=True,
                                            quiet=False, seed=seed, inputs=None, targets=None, **schema)

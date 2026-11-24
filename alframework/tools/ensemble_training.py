@@ -135,6 +135,20 @@ def wait_for_shards(paths, timeout=SHARD_WAIT_SECONDS, poll=SHARD_POLL_SECONDS):
         time.sleep(poll)
 
 
+def training_shards(h5_dir, h5_path=None, current_h5_id=None, *, targets=None):
+    """Freeze and validate a round's label inventory before submitting members."""
+    from alframework.tools.label_hdf5 import discover_label_shards, validate_training_units
+
+    expected = expected_shards(h5_path, current_h5_id)
+    if expected:
+        wait_for_shards(expected)
+    paths = discover_label_shards(h5_dir)
+    if not paths:
+        raise FileNotFoundError(f'No ALF HDF5 shards were found in {str(h5_dir)!r}.')
+    validate_training_units(paths, targets)
+    return paths
+
+
 def run_member_in_child(function, *args):
     """Run one member in a fresh process, which keeps Torch and its cwd out of the long-lived worker.
 

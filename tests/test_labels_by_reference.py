@@ -124,18 +124,36 @@ def test_a_manifest_line_cut_short_by_a_crash_was_never_adopted(tmp_path):
     assert restarted.commit(snapshot, PROPERTIES, {}) == 3
 
 
-def test_a_formula_that_changes_periodicity_across_parts_is_rejected_from_the_later_part(tmp_path):
+@pytest.mark.parametrize('grouped', [False, True])
+def test_a_formula_that_changes_periodicity_across_parts_is_rejected_from_the_later_part(tmp_path, grouped):
     snapshot = tmp_path / 'h5' / 'data-0000.h5'
     held = HDF5HeldLabels(snapshot, PROPERTIES, batch_size=8)
     periodic = labeled('mol-periodic')
     periodic.get_atoms().set_cell([10, 10, 10])
     periodic.get_atoms().set_pbc(True)
-    held.adopt([_write(_labels(2), snapshot)])
-    held.adopt([_write([periodic], snapshot)])
+    receipts = [_write(_labels(2), snapshot), _write([periodic], snapshot)]
+    if grouped:
+        held.adopt(receipts)
+    else:
+        for receipt in receipts:
+            held.adopt([receipt])
+    held = HDF5HeldLabels(snapshot, PROPERTIES, batch_size=8)
     assert (held.successful(), held.converged()) == (3, 2)
     assert held.commit(snapshot, PROPERTIES, {}) == 2
     with h5py.File(snapshot) as handle:
         assert 'cell' not in handle['H02_O01']
+
+
+def test_merging_worker_labels_checks_their_original_conversion(tmp_path):
+    snapshot = tmp_path / 'data-0000.h5'
+    held = HDF5HeldLabels(snapshot, PROPERTIES, batch_size=8)
+    outdated = dict(PROPERTIES, energy=['energy', 'system', 2.0])
+    receipt = write_label_part(_labels(1), incoming_directory(snapshot), outdated,
+                               json.dumps(outdated, sort_keys=True))
+    held.adopt([receipt])
+    with pytest.raises(ValueError, match='label properties or units differ'):
+        held.commit(snapshot, PROPERTIES, {})
+    assert not snapshot.exists() and list(incoming_directory(snapshot).glob('*.h5'))
 
 
 def test_worker_parts_no_generation_adopted_are_removed_at_startup(tmp_path):

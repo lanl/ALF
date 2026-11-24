@@ -32,7 +32,9 @@ from collections import Counter
 
 from parsl import python_app
 
-from alframework.tools.batching import BatchedSubmitter, StartupSettings, batching_settings, flatten_molecule_output
+from alframework.tools.batching import (
+    BatchedSubmitter, StartupSettings, batching_settings, check_full_only, flatten_molecule_output,
+)
 from alframework.tools.capabilities import validate_task_config
 from alframework.tools.config import build_input_dict
 from alframework.tools.sampled_frames import SampledFrame, label_sampled_frames
@@ -131,12 +133,7 @@ class LabelingCoordinator(BatchedSubmitter):
             if required not in inspect.signature(qm_task.func).parameters:
                 raise ValueError("QM batching.mode '{}' requires QM_task {} to accept '{}'.".format(
                     mode, qm_task_path, required))
-            target = (master_config or {}).get("target_queued_QM")
-            if settings["partial_policy"] == "full_only" and target is not None \
-                    and target < settings["batch_size"]:
-                # Waiting structures count as queued, so builders would stop before a batch fills.
-                raise ValueError("QM batching with partial_policy 'full_only' requires "
-                                 "target_queued_QM >= batching.batch_size.")
+            check_full_only(settings, (master_config or {}).get("target_queued_QM"), "target_queued_QM", "QM")
             if mode == "sequential":
                 self._packed_task = python_app(executors=qm_task.executors)(label_sequentially)
         # A labeler can check its own configuration, so that a mistake stops ALF at launch.
@@ -149,6 +146,10 @@ class LabelingCoordinator(BatchedSubmitter):
         self._startup_settings = StartupSettings(QM_config, ("batching",), "QM")
         self.qm_task = qm_task
         self.qm_task_path = qm_task_path
+
+    def check_reloaded(self, master_config):
+        """Refuse a reloaded master configuration this coordinator's batches couldn't run with."""
+        check_full_only(self.settings, master_config.get("target_queued_QM"), "target_queued_QM", "QM")
 
     def describe(self):
         if not self.batched:

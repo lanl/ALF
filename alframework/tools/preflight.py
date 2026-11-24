@@ -26,7 +26,9 @@ from alframework.tools.serialization import data_serializer
 from alframework.tools.sizing import apply_sizing, derive_sizing, describe as describe_sizing, sizing_block
 
 
-def _bind_task(path, executors):
+def bind_task(path, executors):
+    """Load the task at ``path`` and check that the Parsl executors it, and the members a training join submits,
+    run on exist. A standby executor (``alf_<role>_standby_executor``) that is configured joins its role's."""
     task = config.load_module_from_string(path)
     own_labels = () if task.executors == 'all' else task.executors
     member_labels = getattr(task.func, 'member_executors', ())
@@ -65,6 +67,40 @@ def _check_members(ml, ml_config, master, executors, member_labels):
     return member_nodes
 
 
+def resolve_sizing(master, sampler_config, qm_config, executors, builder=None, sampler=None):
+    """Apply the master configuration's ``sizing`` block to the configurations, in place, and return
+    ``(block, derived)``.
+
+    The sampler slots come from the sampler task's ``executors``, and the builder and sampler widths from the tasks'
+    signatures. Without a task (``None``), as when a tool reads a run on another machine, a builder counts as taking
+    one ID and a sampler as batching, and the slots must be given as ``sizing.sampler_tasks_at_once``.
+    """
+    block = sizing_block(master)
+    slots = task_slots(_labels(sampler, executors), executors) if sampler is not None else None
+    derived = derive_sizing(
+        block, sampler_slots=slots, builder_batches=builder is not None and builds_batches(builder),
+        sampler_batches=sampler is None or 'molecule_objects' in inspect.signature(sampler.func).parameters)
+    apply_sizing(derived, master, sampler_config, qm_config)
+    return block, derived
+
+
+def resolve_settings(configs, *, executors=None, builder=None, sampler=None):
+    """The settings a run uses, for tools that read a run without starting it: ``configs`` (from
+    :func:`~alframework.tools.config.load_workflow_configs`) with the ``scaling`` and ``sizing`` blocks applied, in
+    place, as the coordinator applies them at startup. Returns ``configs``."""
+    apply_scaling(configs.master, configs.sampler, configs.ML, check_tasks=False)
+    resolve_sizing(configs.master, configs.sampler, configs.QM, executors or {}, builder, sampler)
+    return configs
+
+
+def reapply_settings(configs, scaling, derived):
+    """Apply the ``scaling`` block and the ``sizing`` values the coordinator started with to reloaded ``configs``,
+    in place. An edit to either block waits for a restart, so a reload keeps their startup meaning."""
+    apply_sizing(derived, configs.master, configs.sampler, configs.QM)
+    apply_scaling(configs.master, configs.sampler, configs.ML, scaling or {}, check_tasks=False)
+    return configs
+
+
 def check_workflow(master, builder_config, sampler_config, qm_config, ml_config, *, debug=False,
                    test_sampler=False, test_qm=False):
     """Validate the loaded configuration and return the tasks and settings for runtime."""
@@ -86,17 +122,12 @@ def check_workflow(master, builder_config, sampler_config, qm_config, ml_config,
     config_key = 'parsl_debug_configuration' if debug and 'parsl_debug_configuration' in master else 'parsl_configuration'
     parsl_config = config.load_module_from_string(master[config_key])
     executors = {executor.label: executor for executor in parsl_config.executors}
-    builder, sampler, qm, ml = (_bind_task(master[key], executors)
+    builder, sampler, qm, ml = (bind_task(master[key], executors)
                                 for key in ('builder_task', 'sampler_task', 'QM_task', 'ML_task'))
     validate_task_config(builder, builder_config, master)
     validate_task_config(sampler, sampler_config, master)
 
-    sizing = sizing_block(master)
-    derived = derive_sizing(
-        sizing, sampler_slots=task_slots(_labels(sampler, executors), executors),
-        builder_batches=builds_batches(builder),
-        sampler_batches='molecule_objects' in inspect.signature(sampler.func).parameters)
-    apply_sizing(derived, master, sampler_config, qm_config)
+    sizing, derived = resolve_sizing(master, sampler_config, qm_config, executors, builder, sampler)
     if sizing:
         print(describe_sizing(sizing, derived), flush=True)
     width = builder_width(builder, master)

@@ -28,7 +28,9 @@ from pathlib import Path
 from tempfile import mkdtemp
 
 from alframework.samplers.acquisition import cohort_selection
-from alframework.tools.batching import BatchedSubmitter, SampledFrameQueue, StartupSettings, batching_settings, default_batch_key
+from alframework.tools.batching import (
+    BatchedSubmitter, SampledFrameQueue, StartupSettings, batching_settings, check_full_only, default_batch_key,
+)
 from alframework.tools.config import stored_label_budget
 from alframework.tools.sampled_frames import FrameRetirement, data_by_reference_settings
 from alframework.tools.capabilities import require
@@ -223,11 +225,7 @@ class SamplerCoordinator(BatchedSubmitter):
         self.driver = driver_settings(sampler_config)
         settings = self.driver["batching"] or {"batch_size": 1, "partial_policy": "timeout",
                                                "max_wait_seconds": 0.0}
-        capacity = (master_config or {}).get("parallel_samplers")
-        if settings["partial_policy"] == "full_only" and capacity is not None and capacity < settings["batch_size"]:
-            # Waiting structures count toward parallel_samplers, so builders would stop before a batch fills.
-            raise ValueError("Sampler batching with partial_policy 'full_only' requires "
-                             "parallel_samplers >= batching.batch_size.")
+        check_full_only(settings, (master_config or {}).get("parallel_samplers"), "parallel_samplers", "Sampler")
         selection = cohort_selection(sampler_config)
         if selection is not None:
             if spool is not None:
@@ -239,6 +237,10 @@ class SamplerCoordinator(BatchedSubmitter):
             self.start_frame_spool()
         fixed = FIXED_SETTINGS + (FIXED_COHORT_SETTINGS if self.pool is not None else ())
         self._startup_settings = StartupSettings(sampler_config, fixed, "sampler")
+
+    def check_reloaded(self, master_config):
+        """Refuse a reloaded master configuration this coordinator's batches couldn't run with."""
+        check_full_only(self.settings, master_config.get("parallel_samplers"), "parallel_samplers", "Sampler")
 
     def start_frame_spool(self):
         """Create the spool after workflow validation succeeds and the coordinator owns the run."""

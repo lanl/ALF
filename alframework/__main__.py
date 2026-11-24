@@ -12,7 +12,7 @@ import argparse
 np.set_printoptions(threshold=np.inf)
 
 import parsl
-from alframework.tools.config import build_input_dict, coordinator_poll_interval, load_config_file, load_module_from_string
+from alframework.tools.config import build_input_dict, coordinator_poll_interval, load_module_from_string, load_workflow_configs
 from alframework.tools.data_shards import store_current_data
 from alframework.tools.parsl_tasks import ParslTaskQueue, release_allocations_at_exit, stop_if_executor_failed
 from alframework.tools.serialization import use_data_serializer
@@ -29,9 +29,8 @@ from alframework.tools.restarts import (
 )
 from alframework.tools.label_validation import screen_labels
 from alframework.tools.label_parts import LabelReceipt, hold_ready, remove_orphan_worker_parts
-from alframework.tools.preflight import check_workflow
-from alframework.tools.sizing import apply_sizing
-from alframework.tools.scaling import SCALING, apply_scaling
+from alframework.tools.preflight import check_workflow, reapply_settings
+from alframework.tools.scaling import SCALING
 from alframework.tools.builder_outputs import builder_outputs, builder_width
 from alframework.tools.sampled_frames import SampledFrame
 #import logging
@@ -49,22 +48,10 @@ debug = args.test_builder or args.test_qm or args.test_sampler or args.test_ml
 if args.check_config and debug:
     parser.error('--check_config cannot be combined with a test mode.')
 
-# Load the master configuration:
-master_config = load_config_file(args.master)
-if 'master_directory' not in master_config:
-    master_config['master_directory'] = None
-
-# Load the builder config:
-builder_config = load_config_file(master_config['builder_config_path'], master_config['master_directory'])
-
-# Load the sampler config:
-sampler_config = load_config_file(master_config['sampler_config_path'], master_config['master_directory'])
-
-# Load the QM config:
-QM_config = load_config_file(master_config['QM_config_path'], master_config['master_directory'])
-
-# Load the ML config:
-ML_config = load_config_file(master_config['ML_config_path'], master_config['master_directory'])
+# The master configuration and the four it names, as every reload reads them too.
+configs = load_workflow_configs(args.master)
+master_config, builder_config, sampler_config = configs.master, configs.builder, configs.sampler
+QM_config, ML_config = configs.QM, configs.ML
 
 startup = check_workflow(master_config, builder_config, sampler_config, QM_config, ML_config,
                          debug=debug, test_sampler=args.test_sampler, test_qm=args.test_qm)
@@ -454,46 +441,30 @@ while True:
     with loop_timer.phase('reload_config'):
         #Re-load configurations, but watch for stupid errors
         try:
-            # Load the master configuration:
-            master_config_new = load_config_file(args.master)
-            if 'master_directory' not in master_config_new:
-                master_config_new['master_directory'] = None
-
-            # Load the builder config:
-            builder_config_new = load_config_file(master_config_new['builder_config_path'], master_config_new['master_directory'])
-
-            # Load the sampler config:
-            sampler_config_new = load_config_file(master_config_new['sampler_config_path'], master_config_new['master_directory'])
-
-            # Load the QM config:
-            QM_config_new = load_config_file(master_config_new['QM_config_path'], master_config_new['master_directory'])
-
-            # Load the ML config:
-            ML_config_new = load_config_file(master_config_new['ML_config_path'], master_config_new['master_directory'])
-
-            # The sizing and scaling blocks were read at startup: their settings apply to every reload, and an edit to
-            # either waits for a restart.
-            apply_sizing(sizing_derived, master_config_new, sampler_config_new, QM_config_new)
-            # The scaling block was read at startup; its settings apply to every reload, and an edit to it waits for
-            # a restart.
-            if master_config_new.get(SCALING) != scaling_settings and not scaling_edit_reported:
+            reloaded = load_workflow_configs(args.master)
+            if reloaded.master.get(SCALING) != scaling_settings and not scaling_edit_reported:
                 print(f'The master configuration\'s {SCALING} block changed; it is read when the coordinator starts, '
                       'so the run keeps its starting settings.', flush=True)
                 scaling_edit_reported = True
-            apply_scaling(master_config_new, sampler_config_new, ML_config_new, scaling_settings or {},
-                          check_tasks=False)
-            poll_interval_new = coordinator_poll_interval(master_config_new)
+            # The sizing and scaling blocks were read at startup: their settings apply to every reload, and an edit to
+            # either waits for a restart.
+            reapply_settings(reloaded, scaling_settings, sizing_derived)
+            # Edits the running coordinators couldn't work with are refused, as they would be at startup.
+            sampling.check_reloaded(reloaded.master)
+            labeling.check_reloaded(reloaded.master)
+            builder_width(builder_task, reloaded.master)
+            poll_interval_new = coordinator_poll_interval(reloaded.master)
         except Exception as e:
-            print("Failed to re-load configuration files:")
+            print("Failed to re-load configuration files; the run keeps its previous configuration:")
             print(e)
         else:
-            master_config = master_config_new
+            master_config = reloaded.master
             poll_interval = poll_interval_new
-            builder_config = builder_config_new
-            sampler_config = sampling.apply_window(sampling.keep_startup_settings(sampler_config_new),
+            builder_config = reloaded.builder
+            sampler_config = sampling.apply_window(sampling.keep_startup_settings(reloaded.sampler),
                                                    status.get('lifetime_stored_labels', 0))
-            QM_config = labeling.keep_startup_settings(QM_config_new)
-            ML_config = ML_config_new
+            QM_config = labeling.keep_startup_settings(reloaded.QM)
+            ML_config = reloaded.ML
             all_configs = [master_config, builder_config, sampler_config, QM_config, ML_config]
 
     # Once the label budget is reached, start nothing new; only running training finishes.

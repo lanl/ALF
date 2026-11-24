@@ -59,12 +59,12 @@ def test_validate_task_config_calls_the_hook_when_there_is_one():
 
 
 def test_preflight_checks_the_executor_a_training_join_uses_for_its_members():
-    from alframework.tools.preflight import _bind_task
+    from alframework.tools.preflight import bind_task
 
     task = 'alframework.ml_interfaces.hippynn.interface.train_HIPPYNN_ensemble_multinode_task'
     with pytest.raises(ValueError, match='unconfigured Parsl executors.*alf_ML_executor'):
-        _bind_task(task, {})
-    assert _bind_task(task, {'alf_ML_executor': object()}).join
+        bind_task(task, {})
+    assert bind_task(task, {'alf_ML_executor': object()}).join
 
 
 @pytest.mark.parametrize('role', ['builder', 'sampler'])

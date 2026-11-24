@@ -118,3 +118,47 @@ def test_the_qm_tasks_need_their_width_and_agree_with_an_explicit_queue():
     apply_sizing(derived, {'target_queued_QM': 512}, {}, {})
     with pytest.raises(ValueError, match='target_queued_QM is 100 in the master configuration but sizing makes it 512'):
         apply_sizing(derived, {'target_queued_QM': 100}, {}, {})
+
+
+def _write_run(directory, master):
+    import json
+    for name, config in (('builder.json', {}), ('sampler.json', {'batching': {'partial_policy': 'timeout'}}),
+                         ('qm.json', {}), ('ml.json', {})):
+        (directory / name).write_text(json.dumps(config))
+    (directory / 'master.json').write_text(json.dumps(dict(
+        master, builder_config_path='builder.json', sampler_config_path='sampler.json', QM_config_path='qm.json',
+        ML_config_path='ml.json')))
+    return directory / 'master.json'
+
+
+def test_a_run_reads_from_its_own_directory_wherever_it_is_read_from(tmp_path, monkeypatch):
+    from alframework.tools.config import load_workflow_configs
+    run = tmp_path / 'run'
+    run.mkdir()
+    master = _write_run(run, {'master_directory': 'pwd'})
+    monkeypatch.chdir(tmp_path)
+    configs = load_workflow_configs(master, base=run)
+    assert configs.master['master_directory'] == f'{run}/'
+    assert configs.sampler == {'batching': {'partial_policy': 'timeout'}}
+    assert configs.as_list()[2] is configs.sampler
+    (run / 'qm.json').unlink()
+    assert load_workflow_configs(master, base=run, required=False).QM == {}
+    with pytest.raises(FileNotFoundError, match='QM_config_path'):
+        load_workflow_configs(master, base=run)
+
+
+def test_tools_and_reloads_resolve_the_settings_as_startup_does(tmp_path):
+    from alframework.tools.config import load_workflow_configs
+    from alframework.tools.preflight import reapply_settings, resolve_settings
+    sizing = {'trajectories_per_sampler_task': 32, 'sampler_tasks_at_once': 2, 'structures_per_qm_task': 8,
+              'labels_per_round': 100}
+    master = _write_run(tmp_path, {'sizing': sizing, 'scaling': {'poll_interval': 2}})
+    configs = resolve_settings(load_workflow_configs(master, base=tmp_path))
+    assert {key: configs.master[key] for key in ('parallel_samplers', 'target_queued_QM', 'save_h5_threshold',
+                                                'poll_interval')} == {'parallel_samplers': 64, 'target_queued_QM': 100,
+                                                                      'save_h5_threshold': 99, 'poll_interval': 2}
+    assert configs.sampler['batching'] == {'partial_policy': 'timeout', 'batch_size': 32}
+    assert configs.QM['batching'] == {'batch_size': 8}
+    reloaded = load_workflow_configs(master, base=tmp_path)
+    reapply_settings(reloaded, {'poll_interval': 2}, derive_sizing(sizing))
+    assert reloaded == configs

@@ -409,3 +409,11 @@ def test_leftover_molecules_submit_after_timeout(tmp_path, width):
             task["app_fu"].result()
         results, failures = coordinator.queue.get_task_results()
         assert failures == 0 and len(results) == width
+
+
+def test_a_reload_that_would_strand_a_full_only_qm_batch_is_refused():
+    settings = {"batching": {"mode": "native", "batch_size": 4, "partial_policy": "full_only"}}
+    coordinator = LabelingCoordinator(native_qm, "test.native_qm", settings, {"target_queued_QM": 8})
+    coordinator.check_reloaded({"target_queued_QM": 4})
+    with pytest.raises(ValueError, match="requires target_queued_QM >= batching.batch_size"):
+        coordinator.check_reloaded({"target_queued_QM": 2})

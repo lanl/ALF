@@ -84,3 +84,14 @@ def test_benchmark_runs_on_cpu_and_writes_every_measurement(tmp_path, states, ca
     assert result["sampling"]["hipnn64"]["trajectories_per_gpu"] in (1, 2)
     printed = capsys.readouterr().out
     assert "Training (one GPU)" in printed and "Suggestions" in printed
+
+
+def test_benchmark_reads_a_sized_run_as_its_coordinator_would(tmp_path, monkeypatch):
+    """The large-scale example sizes its run with a sizing block and names its Parsl module beside it."""
+    from pathlib import Path
+    from alframework.benchmark.__main__ import read_run
+    example = Path(__file__).resolve().parents[1] / "examples" / "large_scale"
+    monkeypatch.chdir(tmp_path)  # not the run directory, which "master_directory": "pwd" would otherwise mean
+    run = read_run(example)
+    assert (run["sampler_batch"], run["parallel_samplers"]) == (256, 16 * 256)
+    assert (run["members"], run["gpus_per_member"]) == (8, 4)

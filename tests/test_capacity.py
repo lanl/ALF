@@ -152,10 +152,10 @@ def test_the_training_check_and_the_report_count_the_same_members(capsys):
 
 
 def test_preflight_refuses_a_member_layout_that_shares_gpus():
-    from alframework.tools.preflight import _bind_task, _check_members
+    from alframework.tools.preflight import bind_task, _check_members
     task = 'alframework.ml_interfaces.fine_tuning.fine_tune_ensemble_multinode_task'
     executors = {'alf_ML_executor': _per_node(2, 4)}
-    ml = _bind_task(task, executors)
+    ml = bind_task(task, executors)
     with pytest.raises(ValueError, match='alf_ML_executor runs 8 workers per node'):
         _check_members(ml, {'fine_tune': {'device': 'cuda'}}, {'gpus_per_node': 4}, executors, ['alf_ML_executor'])
     assert _check_members(ml, {'fine_tune': {'device': 'cpu'}}, {'gpus_per_node': 4}, executors,

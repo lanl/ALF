@@ -48,8 +48,13 @@ files rather than Python source code. Python changes are needed only when you
 add a new task implementation, parser, builder, sampler, or model backend.
 
 During the active-learning loop, ALF re-reads the master and stage configs on every
-iteration, so most edits apply to tasks submitted afterward without a restart. A
-config that fails to load is reported, and ALF keeps using the previous one.
+iteration, so most edits apply to tasks submitted afterward without a restart. Each
+reload is read as the run started: the ``scaling`` and ``sizing`` values from startup
+apply to it. An edit the running run can't work with is refused, such as a
+``parallel_samplers`` or ``target_queued_QM`` below a ``full_only`` batch size, which
+would leave a batch that never fills, or an invalid ``maximum_builder_structures``. A
+config that fails to load or is refused is reported, and ALF keeps using the previous
+one.
 
 These are read once at startup, so changing them requires a restart:
 

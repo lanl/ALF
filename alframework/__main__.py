@@ -32,7 +32,7 @@ from alframework.tools.label_parts import LabelReceipt, hold_ready, remove_orpha
 from alframework.tools.preflight import check_workflow
 from alframework.tools.sizing import apply_sizing
 from alframework.tools.scaling import SCALING, apply_scaling
-from alframework.tools.builder_outputs import builder_outputs
+from alframework.tools.builder_outputs import builder_outputs, builder_width
 from alframework.tools.sampled_frames import SampledFrame
 #import logging
 #logging.basicConfig(level=logging.DEBUG)
@@ -363,10 +363,11 @@ if status['current_h5_id'] == 0 and status['current_model_id'] < 0:
             break
         with loop_timer.phase('builders'):
             if QM_task_queue.get_queued_number() < master_config['target_queued_QM']:
-                while builder_task_queue.get_number() * master_config.get('maximum_builder_structures', 1) < master_config['parallel_samplers']:
+                # IDs per builder task: maximum_builder_structures for a builder that takes a list, else one.
+                width = builder_width(builder_task, master_config)
+                while builder_task_queue.get_number() * width < master_config['parallel_samplers']:
                     moleculeids, next_molecule_id = next_bootstrap_ids(
-                        status['current_molecule_id'], bootstrap_limit,
-                        master_config.get('maximum_builder_structures', 1), finite_bootstrap, bootstrap_skip)
+                        status['current_molecule_id'], bootstrap_limit, width, finite_bootstrap, bootstrap_skip)
                     status['current_molecule_id'] = next_molecule_id
                     if not moleculeids:
                         break
@@ -502,17 +503,18 @@ while True:
     with loop_timer.phase('builders'):
         if admitting and (QM_task_queue.get_queued_number() < master_config['target_queued_QM']) and \
                 (QM_task_queue.get_number() + held.successful() < master_config.get('maximum_completed_QM', 1e12)):
-            while sampler_task_queue.get_number() + builder_task_queue.get_number() * master_config.get('maximum_builder_structures', 1) \
+            width = builder_width(builder_task, master_config)
+            while sampler_task_queue.get_number() + builder_task_queue.get_number() * width \
                     < master_config['parallel_samplers']:
                 moleculeids = ['mol-{:04d}-{:010d}'.format(status['current_model_id'], it_ind) for it_ind in
-                               range(status['current_molecule_id'], status['current_molecule_id']+master_config.get('maximum_builder_structures',1))]
+                               range(status['current_molecule_id'], status['current_molecule_id'] + width)]
                 task_input = build_input_dict(builder_task.func,
                                               [{"moleculeid": 'mol-{:04d}-{:010d}'.format(status['current_model_id'], status['current_molecule_id']),
                                                 "moleculeids": moleculeids, "builder_config": builder_config},
                                                *all_configs, status],
                                               raise_on_fail=True)
                 builder_task_queue.add_task(builder_task(**task_input))
-                status['current_molecule_id'] = status['current_molecule_id'] + master_config.get('maximum_builder_structures',1)
+                status['current_molecule_id'] = status['current_molecule_id'] + width
 
     # Harvest failed builders too, so they free capacity for replacement tasks.
     with loop_timer.phase('builder_harvest'):

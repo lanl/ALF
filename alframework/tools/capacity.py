@@ -174,7 +174,7 @@ def capacity_report(master_config, executors, *, builder_labels, builder_width, 
         warnings.append(f'parallel_samplers {samplers:,} is not a multiple of the sampler batch size '
                         f'{sampler_width:,}, so one batch at a time leaves partly filled, after max_wait_seconds.')
 
-    if builder_batches:
+    if builder_batches and builder_width > 1:
         tasks = math.ceil(samplers / builder_width) if samplers else None
         lines.append(f'builders: {builder_width:,} structures per task' +
                      (f', {tasks:,} tasks to fill sampling' if tasks else ''))

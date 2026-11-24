@@ -248,7 +248,9 @@ against its queue setting. Parsl itself counts one pool per node; ALF reads more
 ``SrunLauncher``'s ``--ntasks-per-node`` (or ``--ntasks`` over the block's nodes),
 ``MpiExecLauncher``'s ``-ppn`` and ``AprunLauncher``'s ``-N``, as a layout with one pool
 per GPU sets them, and from a ``pools_per_node`` attribute on a launcher of your own.
-For example:
+The same count of workers per node decides how many ensemble members train at once and
+whether they would share a GPU (see :ref:`ml-multinode-training`), and a builder that
+takes one ``moleculeid`` counts as one structure per task. For example:
 
 .. code-block:: text
 

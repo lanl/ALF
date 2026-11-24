@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from alframework.samplers.acquisition import SINGLE_MEMBER, uses_spread
 from alframework.tools import config, memory
 from alframework.tools.bootstrap import bootstrap_spare_count
+from alframework.tools.builder_outputs import builder_width, builds_batches
 from alframework.tools.capabilities import require, validate_task_config
 from alframework.tools.capacity import capacity_report, check_member_gpus, task_slots
 from alframework.tools.ensemble_training import validated_member_nodes
@@ -93,11 +94,15 @@ def check_workflow(master, builder_config, sampler_config, qm_config, ml_config,
     sizing = sizing_block(master)
     derived = derive_sizing(
         sizing, sampler_slots=task_slots(_labels(sampler, executors), executors),
-        builder_batches='moleculeids' in inspect.signature(builder.func).parameters,
+        builder_batches=builds_batches(builder),
         sampler_batches='molecule_objects' in inspect.signature(sampler.func).parameters)
     apply_sizing(derived, master, sampler_config, qm_config)
     if sizing:
         print(describe_sizing(sizing, derived), flush=True)
+    width = builder_width(builder, master)
+    if not builds_batches(builder) and master.get('maximum_builder_structures', 1) > 1:
+        print(f"Warning: maximum_builder_structures {master['maximum_builder_structures']:,} has no effect: "
+              f"{master['builder_task']} takes one moleculeid, so each builder task builds one structure.", flush=True)
     warning = large_run_warning(master, sampler_config, sampler)
     if warning:
         print('Warning: ' + warning, flush=True)
@@ -135,8 +140,7 @@ def check_workflow(master, builder_config, sampler_config, qm_config, ml_config,
     member_nodes = _check_members(ml, ml_config, master, executors, member_labels)
     lines, warnings = capacity_report(
         master, executors,
-        builder_labels=_labels(builder, executors), builder_width=master.get('maximum_builder_structures', 1),
-        builder_batches=master.get('maximum_builder_structures', 1) > 1,
+        builder_labels=_labels(builder, executors), builder_width=width, builder_batches=builds_batches(builder),
         sampler_labels=_labels(sampler, executors), sampler_width=sampling.settings['batch_size'] if sampling.batched else 1,
         qm_labels=_labels(qm, executors), qm_width=labeling.settings['batch_size'] if labeling.batched else 1,
         ml_labels=member_labels,

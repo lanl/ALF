@@ -150,8 +150,11 @@ The master config controls the workflow wiring. Common fields include:
      - Optional, for the multi-node training tasks. How many more times to run a failed
        ensemble member. The default is ``1``. See :ref:`ml-multinode-training`.
    * - ``maximum_builder_structures``
-     - Optional number of structures one builder task returns. The default is
-       ``1``. See :doc:`builders`.
+     - Optional number of structures one builder task returns, for a builder that
+       takes ``moleculeids``. Each of its tasks gets that many IDs. A builder that
+       takes one ``moleculeid`` gets one ID per task whatever this says, and ALF
+       warns at startup that the setting has no effect. The default is ``1``. See
+       :doc:`builders`.
    * - ``maximum_completed_QM``
      - Optional limit on structures in the QM queue plus finished labels waiting to
        be stored, converged or not. Failed calculations don't count. ALF stops

@@ -63,3 +63,63 @@ def test_test_builder_refuses_a_builder_that_returns_no_structures(tmp_path, mon
         run_alf_driver(tmp_path, monkeypatch, **coordinator_builders(lambda moleculeid: []),
                        bootstrap_set=1, parallel_samplers=1, target_queued_QM=1, save_h5_threshold=0,
                        poll_interval=0.01, arguments=["--test_builder"])
+
+
+def test_a_builder_gets_one_id_unless_it_takes_a_list():
+    from alframework.tools.builder_outputs import builder_width, builds_batches
+
+    def one(moleculeid, builder_config):
+        pass
+
+    def many(moleculeids, builder_config):
+        pass
+
+    assert not builds_batches(one) and builds_batches(python_app(executors=["x"])(many))
+    assert builder_width(one, {"maximum_builder_structures": 8}) == 1
+    assert builder_width(many, {"maximum_builder_structures": 8}) == 8
+    assert builder_width(many, {}) == 1
+    for bad in (0, True, 2.0, "4"):
+        with pytest.raises(ValueError, match="maximum_builder_structures must be a positive integer"):
+            builder_width(one, {"maximum_builder_structures": bad})
+
+
+def test_a_single_id_builder_gets_every_id_once_whatever_maximum_builder_structures_says(tmp_path, monkeypatch):
+    """The bootstrap reserves one ID per task for a builder that takes one, so none is skipped or overcounted."""
+    import numpy as np
+    from tests.helpers.driver import stored_ids
+    from tests.helpers.molecules import SPRING_WATER
+
+    calls, training = [], []
+
+    @python_app(executors=["finite_executor"])
+    def builder(moleculeid):
+        calls.append(moleculeid)
+        return MoleculesObject(SPRING_WATER.copy(), moleculeid)
+
+    @python_app(executors=["finite_executor"])
+    def sampler(molecule_object):
+        return molecule_object
+
+    @python_app(executors=["finite_executor"])
+    def label(molecule_objects):
+        for molecule in molecule_objects:
+            molecule.store_results(dict(energy=-1.0, forces=np.zeros((3, 3))))
+            molecule.set_converged_flag(True)
+        return molecule_objects
+
+    @python_app(executors=["finite_executor"])
+    def train(current_training_id):
+        training.extend(stored_ids(tmp_path / "h5"))
+        return [True] * 4, current_training_id
+
+    run_alf_driver(tmp_path, monkeypatch, builder=builder, sampler=sampler, qm=label, ml=train,
+                   executors=("finite_executor",),
+                   qm_config={"batching": {"mode": "native", "batch_size": 4, "partial_policy": "timeout",
+                                           "max_wait_seconds": 0.001}},
+                   stop_when=lambda status: status["current_model_id"] >= 0, bootstrap_set=5, finite_bootstrap=True,
+                   maximum_builder_structures=4, parallel_samplers=8, target_queued_QM=8, save_h5_threshold=4,
+                   gpus_per_node=0)
+    assert sorted(name for name in calls if name.startswith("mol-boot-")) == [f"mol-boot-{i:010d}" for i in range(5)]
+    assert len(training) == 5
+    learning = sorted(int(name.rsplit("-", 1)[1]) for name in calls if not name.startswith("mol-boot-"))
+    assert learning and learning == list(range(learning[0], learning[0] + len(learning)))

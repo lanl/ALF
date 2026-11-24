@@ -124,7 +124,7 @@ class LabelingCoordinator(BatchedSubmitter):
             if handoff and (settings is None or settings['mode'] != 'native'):
                 raise ValueError(f'data_by_reference {name} requires native QM batching.')
         if sampled_frame_handoff or label_handoff:
-            self._reference_task = python_app(executors=list(qm_task.executors))(label_sampled_frames)
+            self._reference_task = python_app(executors=qm_task.executors)(label_sampled_frames)
         if settings is not None:
             mode = settings["mode"]
             required = "molecule_objects" if mode == "native" else "molecule_object"
@@ -138,7 +138,7 @@ class LabelingCoordinator(BatchedSubmitter):
                 raise ValueError("QM batching with partial_policy 'full_only' requires "
                                  "target_queued_QM >= batching.batch_size.")
             if mode == "sequential":
-                self._packed_task = python_app(executors=list(qm_task.executors))(label_sequentially)
+                self._packed_task = python_app(executors=qm_task.executors)(label_sequentially)
         # A labeler can check its own configuration, so that a mistake stops ALF at launch.
         validate_task_config(qm_task, QM_config, master_config)
         super().__init__(qm_task, settings)

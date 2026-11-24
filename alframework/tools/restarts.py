@@ -58,12 +58,17 @@ def label_h5_options(master_config):
     return {LABEL_LAYOUT_KEYS[key]: value for key, value in dict(layout, compression=compression, level=level).items()}
 
 
-def open_held_labels(master_config, current_h5_id):
-    from alframework.tools.label_parts import HDF5HeldLabels, part_directory
-
+def label_storage_batch_size(master_config):
     size = master_config.get('label_storage_batch_size')
     if size is not None and (isinstance(size, bool) or not isinstance(size, int) or size < 1):
         raise ValueError('label_storage_batch_size must be a positive integer.')
+    return size
+
+
+def open_held_labels(master_config, current_h5_id):
+    from alframework.tools.label_parts import HDF5HeldLabels, part_directory
+
+    size = label_storage_batch_size(master_config)
     legacy = held_labels_directory(master_config)
     pattern = master_config['h5_path']
     snapshot = Path(pattern.format(current_h5_id))

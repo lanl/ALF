@@ -9,40 +9,31 @@ import sys
 from pathlib import Path
 import numpy as np
 import argparse
-import inspect
 np.set_printoptions(threshold=np.inf)
 
 import parsl
-from alframework.tools.config import (
-    build_input_dict, coordinator_poll_interval, load_config_file, load_module_from_string, stored_label_budget,
-)
+from alframework.tools.config import build_input_dict, coordinator_poll_interval, load_config_file, load_module_from_string
 from alframework.tools.data_shards import store_current_data
 from alframework.tools.parsl_tasks import ParslTaskQueue, release_allocations_at_exit, stop_if_executor_failed
-from alframework.tools.serialization import data_serializer, use_data_serializer
+from alframework.tools.serialization import use_data_serializer
 from alframework.tools.files import hold_lock
 from alframework.tools import memory_sampler
-from alframework.tools.memory import coordinator_huge_pages, snapshot_memory_trim
+from alframework.tools.memory import coordinator_huge_pages
 from alframework.tools.progress_plots import ProgressPlots
 from alframework.tools.h5_parallel import read_shard
-from alframework.tools.label_hdf5 import label_units_setting
 from alframework.tools.molecules import MoleculesObject
-from alframework.tools.bootstrap import bootstrap_spare_count, next_bootstrap_ids
+from alframework.tools.bootstrap import next_bootstrap_ids
 from alframework.tools.restarts import (
-    STORED_AT_BUDGET_STOP, StatusFile, find_empty_directory, label_h5_options, open_held_labels, reconcile_status,
-    status_on_change_setting, write_status,
+    STORED_AT_BUDGET_STOP, StatusFile, find_empty_directory, open_held_labels, reconcile_status,
+    write_status,
 )
-from alframework.tools.labeling_coordinator import LabelingCoordinator
 from alframework.tools.label_validation import screen_labels
-from alframework.tools.label_parts import LabelReceipt, hold_ready, incoming_directory, remove_orphan_worker_parts
-from alframework.tools.loop_timing import coordinator_loop_timer
-from alframework.tools.capabilities import validate_task_config
-from alframework.tools.capacity import capacity_report, task_slots
-from alframework.samplers.acquisition import SINGLE_MEMBER, uses_spread
-from alframework.tools.sizing import apply_sizing, derive_sizing, describe as describe_sizing, sizing_block
-from alframework.tools.scaling import SCALING, apply_scaling, describe as describe_scaling, large_run_warning
+from alframework.tools.label_parts import LabelReceipt, hold_ready, remove_orphan_worker_parts
+from alframework.tools.preflight import check_workflow
+from alframework.tools.sizing import apply_sizing
+from alframework.tools.scaling import SCALING, apply_scaling
 from alframework.tools.builder_outputs import builder_outputs
-from alframework.tools.sampler_coordinator import SamplerCoordinator
-from alframework.tools.sampled_frames import SampledFrame, data_by_reference_settings
+from alframework.tools.sampled_frames import SampledFrame
 #import logging
 #logging.basicConfig(level=logging.DEBUG)
 
@@ -52,7 +43,11 @@ parser.add_argument('--test_builder',action='store_true',default=False)
 parser.add_argument('--test_qm',action='store_true',default=False)
 parser.add_argument('--test_sampler',action='store_true',default=False)
 parser.add_argument('--test_ml',action='store_true',default=False)
+parser.add_argument('--check_config', action='store_true', help='Validate configuration without starting the run.')
 args = parser.parse_args()
+debug = args.test_builder or args.test_qm or args.test_sampler or args.test_ml
+if args.check_config and debug:
+    parser.error('--check_config cannot be combined with a test mode.')
 
 # Load the master configuration:
 master_config = load_config_file(args.master)
@@ -71,159 +66,43 @@ QM_config = load_config_file(master_config['QM_config_path'], master_config['mas
 # Load the ML config:
 ML_config = load_config_file(master_config['ML_config_path'], master_config['master_directory'])
 
-# Optional: the master configuration's scaling block, one place for the settings that change how ALF runs at
-# scale, passed to the configurations that use them (alframework.tools.scaling). Read once, here.
-scaling_settings = apply_scaling(master_config, sampler_config, ML_config)
-if scaling_settings:
-    print(describe_scaling(scaling_settings), flush=True)
-poll_interval = coordinator_poll_interval(master_config)
-trim_snapshot_memory = snapshot_memory_trim(master_config)
-# Before anything large is allocated or any child process (such as Parsl's interchange) starts, which inherits it.
+startup = check_workflow(master_config, builder_config, sampler_config, QM_config, ML_config,
+                         debug=debug, test_sampler=args.test_sampler, test_qm=args.test_qm)
+if args.check_config:
+    print('Configuration check passed.')
+    sys.exit(0)
+
+# These settings change the running workflow. Apply them only after successful preflight.
 coordinator_huge_pages(master_config)
-
-# All configs
-all_configs = [master_config, builder_config, sampler_config, QM_config, ML_config]
-
-# One coordinator per run, in every mode, since each one rewrites status. Taken before any
-# allocation is requested, so a refused second coordinator holds nothing.
 hold_lock(master_config['status_path'] + '.lock')
-# Optional: the memory of this process and its children (such as Parsl's interchanges), over the run.
 coordinator_memory_sampler = memory_sampler.start(master_config)
+use_data_serializer(startup.serializer)
+release_allocations_at_exit(parsl.load(startup.parsl_config))
 
-# Define queues (the QM queue is created with the QM task below):
-ML_task_queue = ParslTaskQueue()
-builder_task_queue = ParslTaskQueue()
+all_configs = [master_config, builder_config, sampler_config, QM_config, ML_config]
+for config in all_configs:
+    for entry in config:
+        if entry.endswith('dir'):
+            Path(config[entry]).mkdir(parents=True, exist_ok=True)
 
-if (args.test_builder or args.test_qm or args.test_sampler or args.test_ml) and 'parsl_debug_configuration' in master_config:
-    parsl_configuration = load_module_from_string(master_config['parsl_debug_configuration'])
-else: 
-    parsl_configuration = load_module_from_string(master_config['parsl_configuration'])
-
-executor_list = []
-# Create List of parsl executors
-for curExec in parsl_configuration.executors:
-    executor_list.append(curExec.label)
-parsl_executors = {executor.label: executor for executor in parsl_configuration.executors}
-
-# Task data: Parsl's dill, or pickle first (parsl_data_serializer), before anything is submitted.
-use_data_serializer(data_serializer(master_config))
-
-# Load the Parsl config
-release_allocations_at_exit(parsl.load(parsl_configuration))
-
-if master_config.get('plotting_utility', None) is not None:
-    # Loaded here for its parameters; each update runs in its own process (alframework.tools.progress_plots).
+if master_config.get('plotting_utility') is not None:
     analysis_plot = load_module_from_string(master_config['plotting_utility'])
     progress_plots = ProgressPlots(master_config['plotting_utility'])
 else:
     analysis_plot = None
-# Optional: the run report (alframework.tools.run_report), refreshed with the progress plots in its own process.
-run_report_updates = ProgressPlots('alframework.tools.run_report.live_report') if master_config.get('run_report') \
-    else None
+run_report_updates = ProgressPlots('alframework.tools.run_report.live_report') if master_config.get('run_report') else None
 
-# Make needed directories
-for config in all_configs:
-    for entry in config.keys():
-        if entry[-3:] == 'dir':
-            tempPath = Path(config[entry])
-            tempPath.mkdir(parents=True, exist_ok=True)
-
-#############################
-# Step 2: Define Parsl tasks#
-#############################
-# Builder
-builder_task = load_module_from_string(master_config['builder_task'])
-for cur_Exec in builder_task.executors:
-    if cur_Exec.replace('_executor', '_standby_executor') in executor_list:
-        builder_task.executors.append(cur_Exec.replace('_executor', '_standby_executor'))
-# Every task can check its own configuration (a validate_config attribute), so a mistake stops ALF here.
-validate_task_config(builder_task, builder_config, master_config)
-
-# Sampler
-sampler_task = load_module_from_string(master_config['sampler_task'])
-for cur_Exec in sampler_task.executors:
-    if cur_Exec.replace('_executor', '_standby_executor') in executor_list:
-        sampler_task.executors.append(cur_Exec.replace('_executor', '_standby_executor'))
-validate_task_config(sampler_task, sampler_config, master_config)
-# Optional: the master configuration's sizing block states what each task holds and how many labels a round adds,
-# and the batch sizes and queue limits follow (alframework.tools.sizing). Derived once, here.
-sizing_settings = sizing_block(master_config)
-sizing_derived = derive_sizing(
-    sizing_settings, sampler_slots=task_slots(sampler_task.executors, parsl_executors),
-    builder_batches='moleculeids' in inspect.signature(builder_task.func).parameters,
-    sampler_batches='molecule_objects' in inspect.signature(sampler_task.func).parameters)
-apply_sizing(sizing_derived, master_config, sampler_config, QM_config)
-if sizing_settings:
-    print(describe_sizing(sizing_settings, sizing_derived), flush=True)
-large_run = large_run_warning(master_config, sampler_config, sampler_task)
-if large_run:
-    print('Warning: ' + large_run, flush=True)
-# Single-structure samplers submit one task per structure as before; see sampler_coordinator.
-sampling_master = master_config
-if args.test_sampler and 'data_by_reference' in master_config:
-    # A one-structure sampler test returns its frame directly, so QM can be tested on it.
-    sampling_master = dict(master_config)
-    sampling_master.pop('data_by_reference')
-sampling = SamplerCoordinator(sampler_task, master_config['sampler_task'], sampler_config, sampling_master)
-sampler_task_queue = sampling.queue
+scaling_settings, sizing_derived = startup.scaling, startup.sizing
+poll_interval, label_budget, spare_seeds = startup.poll_interval, startup.label_budget, startup.spare_seeds
+trim_snapshot_memory = startup.trim_snapshot_memory
+builder_task, sampler_task, qm_task, ml_task = startup.builder, startup.sampler, startup.qm, startup.ml
+sampling, labeling = startup.sampling, startup.labeling
+sampling.start_frame_spool()
+sampler_task_queue, QM_task_queue = sampling.queue, labeling.queue
 frame_retirement = sampling.frame_retirement
-print("Sampling: " + sampling.describe())
-
-# QM
-qm_task = load_module_from_string(master_config['QM_task'])
-for cur_Exec in qm_task.executors:
-    if cur_Exec.replace('_executor', '_standby_executor') in executor_list:
-        qm_task.executors.append(cur_Exec.replace('_executor', '_standby_executor'))
-# Optional: data_by_reference labels. QM workers write their labels as HDF5 parts beside the label store and
-# return receipts; the coordinator records the receipts and merges the parts before each snapshot is published.
-# A --test_qm check prints the labeled structure, so it labels the usual way.
-reference_settings = data_by_reference_settings(master_config) or {}
-label_handoff = None
-if reference_settings.get('labels') and not args.test_qm:
-    label_handoff = dict(directory=str(incoming_directory(Path(master_config['h5_path'].format(0)).resolve())),
-                         properties=master_config['properties_list'],
-                         schema=json.dumps(master_config['properties_list'], sort_keys=True),
-                         h5_options=label_h5_options(master_config),
-                         label_units=label_units_setting(master_config['properties_list'],
-                                                         master_config.get('label_units')))
-# Without a 'batching' block in QM_config, labeling submits one QM task per structure as before.
-labeling = LabelingCoordinator(qm_task, master_config['QM_task'], QM_config, master_config,
-                               sampled_frame_handoff=sampling.frame_directory is not None,
-                               label_handoff=label_handoff)
-QM_task_queue = labeling.queue
-print("QM labeling: " + labeling.describe())
-
-#ML
-ml_task = load_module_from_string(master_config['ML_task'])
-for cur_Exec in ml_task.executors:
-    if cur_Exec.replace('_executor', '_standby_executor') in executor_list:
-        ml_task.executors.append(cur_Exec.replace('_executor', '_standby_executor'))
-# The QM task's is called by LabelingCoordinator; the ML task's runs before the bootstrap is labeled.
-validate_task_config(ml_task, ML_config, master_config)
-
-# What the run keeps in flight against what its Parsl executors can run, with warnings where they disagree.
-# Ensemble tasks that submit one app per member (join apps) are counted per member.
-ml_members = ML_config.get('n_models') if 'n_models' in ML_config else (ML_config.get('fine_tune') or {}).get('n_models')
-# One member has no spread: refuse it here, before the bootstrap, when the run's acquisition reads the spread. (A
-# sampler that doesn't use ALF's acquisition settings has nothing to check; its tasks check what they load.)
-if ml_members == 1:
-    try:
-        reads_spread = uses_spread(sampler_config)
-    except ValueError:
-        reads_spread = False
-    if reads_spread:
-        raise ValueError(SINGLE_MEMBER.format(what='The ML configuration (n_models 1)'))
-capacity_lines, capacity_warnings = capacity_report(
-    master_config, parsl_executors,
-    builder_labels=builder_task.executors, builder_width=master_config.get('maximum_builder_structures', 1),
-    builder_batches=master_config.get('maximum_builder_structures', 1) > 1,
-    sampler_labels=sampler_task.executors, sampler_width=sampling.settings['batch_size'] if sampling.batched else 1,
-    qm_labels=qm_task.executors, qm_width=labeling.settings['batch_size'] if labeling.batched else 1,
-    ml_labels=[label for label in ('alf_ML_executor', 'alf_ML_standby_executor') if label in parsl_executors],
-    n_models=ml_members if getattr(ml_task, 'join', False) else None, member_nodes=ML_config.get('member_nodes', 1))
-print('Capacity:\n  ' + '\n  '.join(capacity_lines), flush=True)
-for warning in capacity_warnings:
-    print('Warning: ' + warning, flush=True)
+label_handoff, reference_settings = startup.label_handoff, startup.reference
+ML_task_queue = ParslTaskQueue()
+builder_task_queue = ParslTaskQueue()
 
 ##########################################
 ## Step 3: Evaluate restart possibilites #
@@ -263,13 +142,11 @@ if restarting:
 write_status(master_config['status_path'], status)
 
 # Read once, so that a mistaken edit can't stop or crash a long run.
-label_budget = stored_label_budget(master_config)
-spare_seeds = bootstrap_spare_count(master_config)
 storage_batch_size = master_config.get('label_storage_batch_size')
 # Optional: how long each phase of each loop pass takes (alframework.tools.loop_timing).
-loop_timer = coordinator_loop_timer(master_config)
+loop_timer = startup.loop_timer
 # Optional: rewrite the status file only when it changes (write_status_on_change).
-status_file = StatusFile(only_on_change=status_on_change_setting(master_config))
+status_file = StatusFile(only_on_change=startup.rewrite_status_on_change)
 
 
 def end_loop_pass(loop, delay):

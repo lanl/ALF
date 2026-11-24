@@ -419,6 +419,15 @@ Parsl resource config
    for normal runs and optionally ``parsl_debug_configuration`` for stage
    checks. See :doc:`parsl` for executor labels and cluster templates.
 
+Checking a Configuration
+------------------------
+
+``python -m alframework --master master_config.json --check_config`` loads every
+configuration and task, binds the tasks to the Parsl executors, applies the
+``scaling`` and ``sizing`` blocks and prints the capacity report, then exits. It
+starts no Parsl executors and writes no run files, so it can run on a login node
+before a job is submitted. A run checks the same things when it starts.
+
 Stage Test Commands
 -------------------
 

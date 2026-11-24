@@ -145,6 +145,21 @@ def test_test_qm_reports_why_a_label_failed(tmp_path):
     assert_cleaned_up(tmp_path)
 
 
+@pytest.mark.parametrize('extra,error', [
+    ({'label_units': {'energy': 'eV'}}, None),
+    ({'label_units': {'missing': 'eV'}}, 'must name a stored dataset'),
+    ({'label_storage_batch_size': 0}, 'label_storage_batch_size must be a positive integer'),
+])
+def test_check_config_never_starts_the_run(tmp_path, extra, error):
+    coordinator = start_coordinator(tmp_path, 'trains', arguments=['--check_config'],
+                                    trained_labels=False, master_extra=extra)
+    output, _ = coordinator.communicate(timeout=120)
+    assert coordinator.returncode == int(error is not None), output
+    assert (error or 'Configuration check passed.') in output
+    assert not {'status.json', 'status.json.lock', 'runinfo', 'h5', 'models'} & {
+        path.name for path in tmp_path.iterdir()}
+
+
 def parsl_log(tmp_path):
     return next(tmp_path.glob("runinfo/*/parsl.log")).read_text()
 

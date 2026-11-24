@@ -112,6 +112,10 @@ Before launching a run, update the settings that depend on your machine:
 Run Stage Checks
 ----------------
 
+Use ``python -m alframework --master master_config.json --check_config`` to
+check the workflow settings and executor bindings and print the capacity
+report before starting Parsl. Run it separately from the ``--test_*`` modes.
+
 Run the stages one at a time before starting the full active-learning loop:
 
 .. code-block:: bash

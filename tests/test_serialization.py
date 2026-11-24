@@ -87,9 +87,23 @@ def test_a_worker_with_parsls_defaults_reads_the_payload(pickle_first, tmp_path)
     assert result.stdout.strip() == "['mol-0', 'mol-1']"
 
 
-def test_the_coordinator_applies_the_setting_before_parsl_loads():
-    from pathlib import Path
+def test_the_coordinator_applies_the_setting_before_parsl_loads(tmp_path, monkeypatch):
+    import parsl
+    from alframework.tools import serialization
+    from tests.helpers.driver import run_alf_driver
+    from tests.test_restarts import LOOP, restart_tasks
 
-    main = (Path(__file__).resolve().parents[1] / "alframework" / "__main__.py").read_text()
-    assert "use_data_serializer(data_serializer(master_config))" in main
-    assert main.index("use_data_serializer(data_serializer(master_config))") < main.index("parsl.load(")
+    class Loaded(Exception):
+        pass
+
+    applied = []
+
+    def load(config):
+        assert applied == ["pickle"]
+        raise Loaded
+
+    monkeypatch.setattr(serialization, "use_data_serializer", applied.append)
+    monkeypatch.setattr(parsl, "load", load)
+    with pytest.raises(Loaded):
+        run_alf_driver(tmp_path, monkeypatch, **restart_tasks(tmp_path, []), **LOOP,
+                       parsl_data_serializer="pickle")

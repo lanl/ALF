@@ -197,7 +197,7 @@ def test_final_frame_uses_exact_duration_and_keeps_first_violation_in_metadata(t
             if index == 3 and step > 1:
                 raise RuntimeError("model evaluation failed")
             observation = super().observe(index)
-            observation["min_distance"] = 0.8 if index == 0 or (index == 1 and step == 8) else 1.5
+            observation["min_distance"] = 0.8 if (index, step) in ((0, 1), (1, 8)) else 1.5
             return observation
 
     config = dict(BASE, Escut=100.0, distcut=1.1, maxt=0.004, Ncheck=ncheck, meta_dir=str(tmp_path),
@@ -212,6 +212,7 @@ def test_final_frame_uses_exact_duration_and_keeps_first_violation_in_metadata(t
 
     assert first["first_threshold_violation"]["step"] == 1
     assert first["first_threshold_violation"]["distcrit"] is True
+    assert first["distcrit"] is False
     assert not np.array_equal(first["first_threshold_violation"]["positions"], first["positions"])
     assert last["first_threshold_violation"]["step"] == 8
     assert "first_threshold_violation" not in clean

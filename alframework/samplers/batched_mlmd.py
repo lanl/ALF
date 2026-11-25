@@ -94,7 +94,7 @@ def draw_schedule(sampler_config, rng):
 
 def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, seeds=None, *, topology=None, screen_audit=None,
                           bundle_dir=None):
-    """Run trajectories in lockstep with independent first-trigger stopping.
+    """Run trajectories in lockstep with first-trigger or final-frame selection.
 
     Args:
         molecule_objects (list): Inputs, whose atoms are those driven by ``engine``.
@@ -114,10 +114,14 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
     # The model's own uncertainty the run's acquisition terms read, whose largest values each trajectory records.
     own_uncertainty = tuple(sorted({term['uncertainty'] for term in custom_terms(sampler_config).values()}))
     cohort = settings['selection']['mode'] == 'cohort_top_k'
+    final_frame = settings['selection']['mode'] == 'final_frame'
     keep_running = settings['trajectory_policy'] == 'continue'
     dt, maxt, Ncheck = sampler_config['dt'], sampler_config['maxt'], sampler_config['Ncheck']
     meta_dir = sampler_config.get('meta_dir')
     n_checks = int(np.ceil((1000 * maxt) / (dt * Ncheck)))
+    if final_frame:
+        final_step = max(1, int(np.ceil(1000 * maxt / dt)))
+        n_checks = 1 + (final_step - 1 + Ncheck - 1) // Ncheck
     count = len(molecule_objects)
     started = time.time()
     state = []
@@ -239,7 +243,10 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
         molecule.update_metadata(dict(sampling_entered_dynamics_width=len(active)))
     advance(1)
     for check in range(n_checks):
-        time_ps = check * Ncheck * dt / 1000
+        check_step = check * Ncheck
+        if final_frame:
+            check_step = min(check_step + 1, final_step)
+        time_ps = check_step * dt / 1000
         for index in list(active):
             entry, schedule = state[index], schedules[index]
             try:
@@ -262,6 +269,20 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
                 for key in (*PEAK_SIGNALS, *own_uncertainty):
                     if key in signals:  # gap_std only with a gap_uncertainty pair.
                         entry['peaks'][key] = max(signals[key], entry['peaks'].get(key, signals[key]))
+                if final_frame:
+                    if decision['outcome'] != 'continue' and 'first_threshold_violation' not in entry:
+                        atoms = engine.atoms(index)
+                        entry['first_threshold_violation'] = {
+                            'step': check_step, 'simulationtime': time_ps, 'distmin': observation['min_distance'],
+                            **{key: decision[key] for key in ('distcrit', 'Ecrit', 'Fcrit', 'Fmcrit')},
+                            'acquisition_trigger_flags': decision['acquisition_trigger_flags'],
+                            'positions': atoms.get_positions(wrap=True),
+                            'chemical_symbols': atoms.get_chemical_symbols(), 'cell': atoms.get_cell(),
+                        }
+                    if check_step == final_step:
+                        finish(index, 'eligible')
+                        continue
+                    decision = dict(decision, outcome='continue')
                 if cohort and decision['outcome'] == 'eligible':
                     entry['candidates'].append(_candidate(molecule_objects[index], engine, index, signals,
                                                           decision, time_ps,
@@ -291,7 +312,7 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
                 finish(index, 'failed', exc)
         if not active:
             break
-        advance(Ncheck)
+        advance(min(Ncheck, final_step - check_step) if final_frame else Ncheck)
     for index in list(active):
         finish(index, 'completed')
     if cohort:
@@ -358,7 +379,11 @@ def _record(molecule, entry, schedule, sampler_config, settings, engine, index, 
                  "random_seed": seed,
                  **{f"delta_realtime_step_{steps}": seconds for steps, seconds in entry['step_times'].items()}}
     cohort = settings['selection']['mode'] == 'cohort_top_k'
-    if entry['outcome'] == 'eligible' and not cohort:
+    if settings['selection']['mode'] == 'final_frame':
+        meta_dict['simulationtime'] = step * dt / 1000
+        if 'first_threshold_violation' in entry:
+            meta_dict['first_threshold_violation'] = entry['first_threshold_violation']
+    if entry['outcome'] == 'eligible' and not cohort and 'ranking_score' in decision:
         meta_dict['ranking_score'] = decision['ranking_score']
     if cohort:
         meta_dict['acquisition_candidates'] = entry['candidates']
@@ -438,7 +463,7 @@ def metadata_settings(sampler_config):
 RETURNED_METADATA = ('full', 'compact')
 # Per-trajectory arrays and lists the metadata file keeps but the coordinator doesn't read: with
 # returned_metadata "compact" the returned molecule carries everything else.
-COMPACT_DROPPED = ('positions', 'chemical_symbols', 'temps', 'denss', 'system_comp')
+COMPACT_DROPPED = ('positions', 'chemical_symbols', 'temps', 'denss', 'system_comp', 'first_threshold_violation')
 
 
 def returned_metadata(sampler_config):

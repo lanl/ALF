@@ -37,6 +37,9 @@ Selection is configured with ``trajectory_policy`` and ``selection``::
                                   "max_candidates_per_trajectory": 4}}
 
 ``first_trigger`` (default) returns each trajectory's first eligible frame.
+``final_frame`` runs each trajectory to its configured duration and returns the
+final frame. Uncertainty and distance thresholds produce diagnostics in this
+mode. Explicit topology and physical-force screens still reject frames.
 ``cohort_top_k`` pools eligible frames from ``cohort_size`` trajectories and
 labels the ``k`` best (see :mod:`alframework.tools.cohorts`). Under
 ``trajectory_policy`` ``continue`` a trajectory keeps sampling after an
@@ -52,7 +55,7 @@ import numpy as np
 
 STRATEGIES = ("uncertainty", "summed", "largest")
 TRAJECTORY_POLICIES = ("stop", "continue")
-SELECTION_MODES = ("first_trigger", "cohort_top_k")
+SELECTION_MODES = ("first_trigger", "final_frame", "cohort_top_k")
 COHORT_SELECTORS = ("top_k", "fps")
 
 # name: (signal key from ensemble statistics, cutoff key in sampler_config, cutoff multiplier)
@@ -182,7 +185,7 @@ def _selection(block):
     if mode not in SELECTION_MODES:
         raise ValueError(f"acquisition.selection.mode must be one of {SELECTION_MODES}; received {mode!r}.")
     selection = {"mode": mode}
-    if mode == "first_trigger":
+    if mode != "cohort_top_k":
         if set(raw) - {"mode"}:
             raise ValueError("cohort_size, k, and max_candidates_per_trajectory require "
                              "acquisition.selection.mode 'cohort_top_k'.")

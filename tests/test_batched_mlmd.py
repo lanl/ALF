@@ -7,6 +7,7 @@ failed trajectory leaves the others alone. Some tests skip without torch, HIPPYN
 import copy
 import gc
 import json
+import pickle
 import time
 import weakref
 from pathlib import Path
@@ -186,6 +187,41 @@ class FailingEngine(ASEEngine):
         if index == 1 and self.steps[index] > 1:
             raise RuntimeError("model evaluation failed")
         return super().observe(index)
+
+
+@pytest.mark.parametrize("ncheck", [1, 3, 20])
+def test_final_frame_uses_exact_duration_and_keeps_first_violation_in_metadata(tmp_path, ncheck):
+    class ScriptedDistances(ASEEngine):
+        def observe(self, index):
+            step = self.steps[index]
+            if index == 3 and step > 1:
+                raise RuntimeError("model evaluation failed")
+            observation = super().observe(index)
+            observation["min_distance"] = 0.8 if index == 0 or (index == 1 and step == 8) else 1.5
+            return observation
+
+    config = dict(BASE, Escut=100.0, distcut=1.1, maxt=0.004, Ncheck=ncheck, meta_dir=str(tmp_path),
+                  metadata_files="per_task", returned_metadata="compact",
+                  acquisition={"selection": {"mode": "final_frame"}})
+    engine = ScriptedDistances([BOX.copy() for _ in range(4)], fake_ensemble(), config["dt"],
+                               [300.0] * 4, [np.random.RandomState(11) for _ in range(4)])
+    molecules = [MoleculesObject(engine.atoms(i), f"mol-{i}") for i in range(4)]
+    results = run_mlmd_trajectories(molecules, engine, [SCHEDULE] * 4, config)
+    with (tmp_path / "metadata-task-mol-0.p").open("rb") as handle:
+        first, last, clean, failed = pickle.load(handle)
+
+    assert first["first_threshold_violation"]["step"] == 1
+    assert first["first_threshold_violation"]["distcrit"] is True
+    assert not np.array_equal(first["first_threshold_violation"]["positions"], first["positions"])
+    assert last["first_threshold_violation"]["step"] == 8
+    assert "first_threshold_violation" not in clean
+    for molecule, record in zip(results[:3], (first, last, clean)):
+        assert record["trajectory_outcome"] == "eligible"
+        assert record["step"] == 8 and record["simulationtime"] == pytest.approx(config["maxt"])
+        np.testing.assert_allclose(molecule.get_atoms().get_positions(wrap=True), record["positions"])
+        assert "first_threshold_violation" not in molecule.get_metadata()
+    assert failed["trajectory_outcome"] == "failed"
+    assert results[3].get_atoms() is None
 
 
 class Evaluation:

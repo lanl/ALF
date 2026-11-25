@@ -187,6 +187,15 @@ Selection
      - Eligible frames from a group of trajectories, called a cohort, are pooled,
        and only the ``k`` highest-scoring frames are labeled.
 
+Use ``acquisition.selection.mode: final_frame`` for fixed-duration benchmarks and
+debugging with the batched sampler. Each trajectory that finishes successfully
+sends its final geometry to QM. The metadata records the first checked uncertainty
+or distance violation after ``min_time``, with its geometry under
+``first_threshold_violation``. Enable sampler metadata files to retain this field
+when compact return metadata is enabled. The sampler always checks the final step,
+even when ``Ncheck`` skips intermediate steps. Explicit topology and physical-force
+screens still apply.
+
 Use ``cohort_top_k`` when QM is expensive compared with sampling, so that QM goes
 to the most uncertain frames rather than to whichever frames triggered first:
 

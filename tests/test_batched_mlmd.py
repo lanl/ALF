@@ -901,7 +901,8 @@ def test_compact_returned_metadata_leaves_out_only_what_the_file_keeps(tmp_path)
             records[mode] = pickle.load(handle)
     assert [set(r) for r in records["compact"]] == [set(r) for r in records["full"]], "the file keeps every field"
     for full, compact, record in zip(results["full"], results["compact"], records["compact"]):
-        assert set(full.get_metadata()) - set(compact.get_metadata()) == set(batched_mlmd.COMPACT_DROPPED)
+        full_fields = set(full.get_metadata())
+        assert full_fields - set(compact.get_metadata()) == full_fields.intersection(batched_mlmd.COMPACT_DROPPED)
         for key in ("positions", "temps", "chemical_symbols"):
             assert key in record
         assert compact.get_metadata()["step"] == record["step"] == full.get_metadata()["step"]

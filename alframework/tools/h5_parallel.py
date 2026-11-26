@@ -19,8 +19,26 @@ READ_WORKERS = 'ALF_H5_READ_WORKERS'
 PARALLEL_MIN_BYTES = 256 * 2**20
 
 
+def _label_file_groups(handle, group_keys):
+    """The structure groups of a label file ALF wrote, by link names alone.
+
+    ALF's label shards and snapshots hold one level of formula groups, each of datasets only, so this selects the
+    same groups as the walk in :func:`_structure_groups`, in the same order, without opening every dataset. In a
+    snapshot each one is a virtual dataset, and opening it parses its mapping: with one group per label, that walk
+    took longer than reading the labels.
+    """
+    for name in handle:
+        member = handle[name]
+        if (any(key in member for key in group_keys) if group_keys is not None else len(member)):
+            yield f'/{name}', member
+
+
 def _structure_groups(group, path='/', group_keys=None):
     import h5py
+    from alframework.tools.label_hdf5 import SCHEMA_VERSION
+    if path == '/' and SCHEMA_VERSION in group.attrs:
+        yield from _label_file_groups(group, group_keys)
+        return
     if group_keys is not None:
         if any(isinstance(group.get(key), h5py.Dataset) for key in group_keys):
             yield path, group

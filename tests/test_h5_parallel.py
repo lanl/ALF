@@ -113,6 +113,69 @@ def test_nested_groups_and_single_values_read_like_any_group(tmp_path, workers):
     np.testing.assert_array_equal(groups[1]["energy"], [-76.0, -75.9])
 
 
+def _alf_label_files(tmp_path):
+    """A shard and a snapshot as ALF writes them, with formula groups stored out of name order."""
+    from ase import Atoms
+    from alframework.tools.data_shards import store_current_data
+    from alframework.tools.label_parts import HDF5HeldLabels
+    from alframework.tools.molecules import MoleculesObject
+    properties = {"energy": ["energy", "system", 1.0], "forces": ["forces", "atomic", 1.0]}
+    labels = []
+    for index, formula in enumerate(("NH3", "H2O", "CH4", "H2O", "CO2")):
+        atoms = Atoms(formula, positions=np.arange(3 * len(Atoms(formula))).reshape(-1, 3), cell=[9, 9, 9],
+                      pbc=True)
+        molecule = MoleculesObject(atoms, f"mol-{index}")
+        molecule.store_results({"energy": -index, "forces": np.zeros((len(atoms), 3))})
+        molecule.set_converged_flag(True)
+        labels.append(molecule)
+    shard = tmp_path / "shard" / "data.h5"
+    shard.parent.mkdir()
+    store_current_data(str(shard), labels, properties)
+    snapshot = tmp_path / "snapshot" / "data.h5"
+    held = HDF5HeldLabels(snapshot, properties, batch_size=2)
+    held.hold(labels)
+    held.commit(snapshot, properties, {})
+    return shard, snapshot
+
+
+def _walked(path, group_keys):
+    """The groups the general walk selects, from a copy of ``path`` without ALF's schema attribute."""
+    import shutil
+    import h5py
+    from alframework.tools.label_hdf5 import SCHEMA_VERSION
+    copy = path.with_name("unmarked-" + path.name)  # beside the original, so a snapshot's parts still resolve
+    shutil.copy(path, copy)
+    with h5py.File(copy, "r+") as handle:
+        del handle.attrs[SCHEMA_VERSION]
+    with h5py.File(copy, "r") as handle:
+        return [name for name, _ in h5_parallel._structure_groups(handle, group_keys=group_keys)]
+
+
+@pytest.mark.parametrize("group_keys", [None, {"coordinates", "species"}, {"missing"}])
+def test_alf_label_files_list_the_same_groups_without_opening_their_datasets(tmp_path, monkeypatch, group_keys):
+    import h5py
+    shard, snapshot = _alf_label_files(tmp_path)
+    for path in (shard, snapshot):
+        expected = _walked(path, group_keys)
+        opened = []
+        dataset_init = h5py.Dataset.__init__
+        monkeypatch.setattr(h5py.Dataset, "__init__", lambda self, *a, **k: opened.append(1) or dataset_init(
+            self, *a, **k))
+        with h5py.File(path, "r") as handle:
+            assert [name for name, _ in h5_parallel._structure_groups(handle, group_keys=group_keys)] == expected
+        monkeypatch.setattr(h5py.Dataset, "__init__", dataset_init)
+        assert not opened, f"{path.parent.name}: listing opened {len(opened)} datasets"
+        assert len(expected) == (0 if group_keys == {"missing"} else 4), "four formulas, two labels of water"
+
+
+def test_alf_label_files_read_the_same_through_the_fast_listing(tmp_path):
+    shard, snapshot = _alf_label_files(tmp_path)
+    for path in (shard, snapshot):
+        found = list(h5_parallel.read_shard(path, workers=1, group_keys={"coordinates", "species"}))
+        assert [group["path"] for group in found] == _walked(path, {"coordinates", "species"})
+        assert sum(len(group["energy"]) for group in found) == 5
+
+
 def test_a_missing_file_raises_when_read(tmp_path):
     with pytest.raises(FileNotFoundError):
         list(h5_parallel.read_shard(tmp_path / "missing.h5"))

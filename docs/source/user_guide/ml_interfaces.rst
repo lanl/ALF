@@ -345,6 +345,11 @@ Several GPUs per member
      predicts every n-th evaluation batch, and the metrics are computed over all of them, so they are
      the ones a single GPU would report.
    - By default a member uses one node. ``member_nodes`` spreads it over several, below.
+   - A training loss that isn't finite on any GPU reaches every GPU's weights through the averaged
+     gradients, so the member stops at the end of that epoch with a ``FloatingPointError``. Each GPU
+     that saw it prints its host and its first such batch: one GPU before the others points at that
+     batch or device. The member's seed is printed at the start of training and recorded in
+     ``lightning_training.json``, so a member that fails can be trained again with the same seed.
 
    To train a member on several nodes, set ``member_nodes`` and ``member_launcher``; ``gpus_per_member``
    is then the total, and each node uses ``gpus_per_member / member_nodes`` of its GPUs. The member's

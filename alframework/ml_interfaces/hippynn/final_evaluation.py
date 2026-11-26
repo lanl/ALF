@@ -186,6 +186,9 @@ def _edges(plot, ranges):
     ranges = np.array([bounds for bounds in ranges if bounds is not None])
     if not ranges.size:
         raise ValueError('A final evaluation histogram has no values in this split.')
+    if not np.isfinite(ranges).all():
+        raise ValueError('The final evaluation predictions are not finite, so the member was not evaluated; '
+                         'its training most likely diverged to NaN.')
     x = ranges[:, :2]
     y = ranges[:, 2:]
     _, x_edges, y_edges = np.histogram2d(x.reshape(-1), y.reshape(-1), bins=plot.bins)

@@ -25,6 +25,8 @@ def _check_member(member, devices=2, batch_size=4):
     record = json.loads((member / "lightning_training.json").read_text())
     assert record["devices"] == devices and record["epochs"] >= 1
     assert record["batch_size"] == batch_size and record["batch_size_per_device"] == batch_size // devices
+    assert isinstance(record["seed"], int) and f"Member seed: {record['seed']}" in log, \
+        "a member's drawn seed is recorded, so a failed member can be reproduced"
     assert f"Testing model on {devices} devices, eval batch size {batch_size // devices} each" in log, \
         "the final test is split over the member's devices, each at its share of the evaluation batch"
     assert not list(member.glob("final_test_rank*.pt")), "the ranks' shares are removed after the final test"
@@ -275,6 +277,46 @@ def test_a_failed_node_fails_the_member(tmp_path):
     with pytest.raises(RuntimeError, match="on 2 nodes failed"):
         _train_on_two_nodes(tmp_path, ["--fail-node", "1"])
     assert not (tmp_path / "ensemble" / "model-00" / "lightning_rendezvous.json").exists()
+
+
+def test_a_non_finite_training_loss_stops_the_member_at_the_end_of_the_epoch(tmp_path, capfd):
+    """A NaN force label makes a batch's loss NaN, and the gradient all-reduce then spreads it to every rank's
+    weights. All ranks stop together after that epoch, rather than training to NaN for every remaining epoch and
+    failing in the final evaluation, and each rank that saw it names its host and batch. Every frame carries one
+    NaN component, so the first training batch is non-finite whichever frames the random split puts in training."""
+    pytest.importorskip("hippynn")
+    pytest.importorskip("pytorch_lightning")
+    import h5py
+    import numpy as np
+    write_water_shard(tmp_path / "data")
+    with h5py.File(tmp_path / "data" / "data.h5", "r+") as handle:
+        forces = handle["water/forces"][()]
+        forces[:, 0, 0] = np.nan
+        handle["water/forces"][...] = forces
+    member = tmp_path / "ensemble" / "model-00"
+    member.mkdir(parents=True)
+    with pytest.raises(RuntimeError):
+        ml.train_HIPNN_model(str(member), str(tmp_path / "data"), energy_key="energy", coordinates_key="coordinates",
+                             species_key="species", force_key="forces", network_params=dict(TINY_NETWORK),
+                             valid_size=0.25, test_size=0.25, plot_every=1000,
+                             controller_options=dict(batch_size=4, eval_batch_size=4, max_epochs=20,
+                                                     termination_patience=30),
+                             scheduler_options=dict(max_batch_size=8, patience=5, factor=0.5),
+                             device_string="cpu", gpus_per_member=2)
+    output = capfd.readouterr()
+    text = output.out + output.err + (member / "training_log.txt").read_text()
+    assert "The training loss was not finite in epoch 0 (member seed" in text
+    assert "saw a non-finite training loss first at batch" in text
+    assert text.count("Total epoch time") == 1, "the member stops after the epoch that went non-finite"
+
+
+def test_non_finite_final_evaluation_predictions_are_named():
+    pytest.importorskip("hippynn")
+    from types import SimpleNamespace as Plot
+    import numpy as np
+    from alframework.ml_interfaces.hippynn.final_evaluation import _edges
+    with pytest.raises(ValueError, match="predictions are not finite"):
+        _edges(Plot(bins=10), [(0.0, 1.0, np.nan, np.nan), (0.0, 2.0, 0.5, 1.5)])
 
 
 def test_node_rank_comes_from_the_first_variable_set():

@@ -125,12 +125,15 @@ class AlfLightningModule(HippynnLightningModule):
         self._log = contextlib.ExitStack()
         if self.global_rank == 0:
             self._log.enter_context(hippynn.tools.log_terminal(RANK_LOG, 'wt'))
+            # A member's seed is drawn per training, so record it to reproduce one that fails.
+            print(f"Member seed: {self.parent_settings.get('seed')}", flush=True)
 
     def teardown(self, stage):
         self._log.close()
 
     def on_train_epoch_start(self):
         self._epoch_started = time.perf_counter()
+        self._first_nonfinite = None
         super().on_train_epoch_start()
 
     def on_train_epoch_end(self):
@@ -139,6 +142,40 @@ class AlfLightningModule(HippynnLightningModule):
         stats = getattr(self, 'rank_stats', None)
         if stats is not None and stats.enabled:
             stats.record.setdefault('epoch_seconds', []).append(self.metric_tracker.epoch_times[-1])
+        self._stop_on_nonfinite_loss()
+
+    # A non-finite loss or gradient on one rank reaches every rank's weights through the gradient all-reduce, and
+    # the member then trains to NaN for every remaining epoch. Each rank notes, on its device and without a host
+    # sync, the first batch of the epoch whose loss was not finite; at the end of the epoch the ranks agree in one
+    # small collective and, if any saw one, all stop together. A rank that saw it before the others points at its
+    # own batch or device; one step later every rank sees it.
+    def _note_nonfinite(self, outputs, batch_idx):
+        import torch
+        loss = outputs.get('loss') if isinstance(outputs, dict) else outputs
+        if not isinstance(loss, torch.Tensor):
+            return
+        if self._first_nonfinite is None:
+            self._first_nonfinite = torch.full((), -1, dtype=torch.long, device=loss.device)
+        first = self._first_nonfinite
+        self._first_nonfinite = torch.where((first < 0) & ~torch.isfinite(loss.detach()),
+                                            torch.full_like(first, batch_idx), first)
+
+    def _stop_on_nonfinite_loss(self):
+        import socket
+        import torch
+        first = self._first_nonfinite
+        if first is None:
+            first = torch.full((), -1, dtype=torch.long, device=self.device)
+        seen = self.trainer.strategy.reduce((first >= 0).to(torch.float32), reduce_op='max')
+        if not float(seen):
+            return
+        epoch = int(self.current_epoch)
+        if int(first) >= 0:
+            print(f'ALF: rank {self.global_rank} on {socket.gethostname()} saw a non-finite training loss first at '
+                  f'batch {int(first)} of epoch {epoch}.', file=sys.stderr, flush=True)
+        raise FloatingPointError(f"The training loss was not finite in epoch {epoch} (member seed "
+                                 f"{self.parent_settings.get('seed')}), so the member stops here. Each rank that saw "
+                                 f"it printed its host and first batch.")
 
     # With ALF_LIGHTNING_STATS=1, time each optimizer step on every rank, synchronizing the device so the
     # time includes the gradient all-reduce; ranks that wait on a slower one show it here.
@@ -148,6 +185,7 @@ class AlfLightningModule(HippynnLightningModule):
             stats.step_start()
 
     def on_train_batch_end(self, outputs, batch, batch_idx):
+        self._note_nonfinite(outputs, batch_idx)
         stats = getattr(self, 'rank_stats', None)
         if stats is not None and stats.enabled:
             import torch
@@ -164,7 +202,8 @@ class AlfLightningModule(HippynnLightningModule):
                       batch_size_per_device=int(self.controller.batch_size),
                       batch_size=int(self.controller.batch_size) * self.n_devices,
                       eval_batch_size_per_device=int(self.controller.eval_batch_size),
-                      eval_batch_size=int(self.controller.eval_batch_size) * self.n_devices)
+                      eval_batch_size=int(self.controller.eval_batch_size) * self.n_devices,
+                      seed=self.parent_settings.get('seed'))
         if 'final_evaluation_directory' in self.parent_settings:
             record['final_evaluation'] = 'streaming'
         Path(RECORD).write_text(json.dumps(record, indent=2) + '\n')

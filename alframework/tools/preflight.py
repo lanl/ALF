@@ -19,6 +19,7 @@ from alframework.tools.label_parts import incoming_directory
 from alframework.tools.labeling_coordinator import LabelingCoordinator
 from alframework.tools.loop_timing import coordinator_loop_timer
 from alframework.tools.restarts import held_labels_directory, label_h5_options, label_storage_batch_size, status_on_change_setting
+from alframework.tools.retraining import retraining_settings
 from alframework.tools.sampled_frames import data_by_reference_settings
 from alframework.tools.sampler_coordinator import SamplerCoordinator
 from alframework.tools.scaling import apply_scaling, describe as describe_scaling, large_run_warning
@@ -130,6 +131,7 @@ def check_workflow(master, builder_config, sampler_config, qm_config, ml_config,
     sizing, derived = resolve_sizing(master, sampler_config, qm_config, executors, builder, sampler)
     if sizing:
         print(describe_sizing(sizing, derived), flush=True)
+    retraining = retraining_settings(master, required=not debug)  # the test modes never retrain
     width = builder_width(builder, master)
     if not builds_batches(builder) and master.get('maximum_builder_structures', 1) > 1:
         print(f"Warning: maximum_builder_structures {master['maximum_builder_structures']:,} has no effect: "
@@ -183,4 +185,5 @@ def check_workflow(master, builder_config, sampler_config, qm_config, ml_config,
                            builder=builder, sampler=sampler, qm=qm, ml=ml, sampling=sampling, labeling=labeling,
                            label_handoff=handoff, reference=reference, poll_interval=poll_interval,
                            label_budget=label_budget, trim_snapshot_memory=trim_snapshot_memory, spare_seeds=spare_seeds,
-                           rewrite_status_on_change=rewrite_status_on_change, loop_timer=loop_timer)
+                           rewrite_status_on_change=rewrite_status_on_change, loop_timer=loop_timer,
+                           retraining=retraining)

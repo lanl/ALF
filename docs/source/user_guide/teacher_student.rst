@@ -124,7 +124,7 @@ What's recorded
 
 Practical notes
    * Teacher labels are cheap, so sampling and training become the slow steps. Larger
-     ``save_h5_threshold`` and batch sizes than for QM usually make sense.
+     ``retraining.after`` and batch sizes than for QM usually make sense.
    * Choose a teacher trained on chemistry like yours. For example, MACE-MP is trained on materials,
      and MACE-OFF on organic molecules with a limited set of elements.
    * A student with a shorter cutoff than the teacher's reach can't reproduce it exactly.

@@ -20,7 +20,7 @@ ALF coordinates four kinds of task:
 3. Sample new structures with molecular dynamics driven by the current ensemble.
 4. Send frames whose uncertainty passes the acquisition criteria to QM for labeling.
 5. Store converged labels in HDF5 shards.
-6. Retrain once enough new converged labels have arrived (``save_h5_threshold``), then sample with
+6. Retrain once enough new converged labels have arrived (``retraining``), then sample with
    the new ensemble. Sampling and labeling continue while a training runs.
 7. Repeat until ``maximum_stored_labels`` is reached, or until you stop the run. The final models
    are used for production simulations outside ALF.

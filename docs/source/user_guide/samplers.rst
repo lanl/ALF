@@ -325,7 +325,9 @@ uncertainty check, every ``Ncheck`` steps.
 When a frame fails, ALF ends that trajectory, records why in the molecule's metadata
 as ``screen_reject_reason``, and doesn't label the frame. Earlier frames from the
 same trajectory stay eligible if ``"trajectory_policy": "continue"`` kept them in a
-cohort; see :doc:`acquisition`.
+cohort; see :doc:`acquisition`. A run whose screens reject many trajectories can retrain
+after each round of trajectories rather than a number of labels, so the rejections
+don't hold it back; see :ref:`batching-retraining`.
 
 The bond check has these requirements:
 
@@ -390,8 +392,8 @@ Things to know:
 * ALF checks every window at startup, so a window that combines gap-seeking with UDD,
   for example, stops the run before it starts. The list can't change during a run.
 * A switch happens on the first loop after stored labels reach the limit, so a run can
-  go past the limit by up to one batch. A batch holds more than ``save_h5_threshold``
-  labels, and more still when labels converged while a training ran.
+  go past the limit by up to one batch. A batch holds the labels of at least one round
+  (:ref:`batching-retraining`), and more still when labels converged while a training ran.
 * Tasks already running finish under the old window. A batch uses the window current when
   it's submitted, and each molecule's metadata records its ``sampling_window``.
 * A cohort that spans a switch pools frames from both windows. Selection still works,

@@ -252,10 +252,9 @@ Sampling Settings
        guarantee equilibration before an early selection. Weaker coupling perturbs
        slow phenyl twists and ring deformations less strongly than a larger friction;
        heating still depends on the starting momenta and trajectory length.
-   * - ``save_h5_threshold``
-     - 499: write a new HDF5 batch and retrain after at least 500 new converged
-       labels. ALF uses a strict ``>`` comparison; failed and unconverged QM
-       results do not count toward this threshold.
+   * - ``retraining``
+     - ``{"after": 500}``: write a new HDF5 batch and retrain once 500 new converged
+       labels are held. Failed and unconverged QM results do not count.
    * - ``maximum_stored_labels``
      - 50,000, including bootstrap labels. The stopping check allows batch overshoot;
        results already finished at shutdown are retained. This is a label budget,

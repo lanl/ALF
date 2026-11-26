@@ -115,8 +115,10 @@ def start_coordinator(tmp_path, ml_task, parsl_config="local", arguments=(), tra
         "h5_path": "h5/data-{:04d}.h5",
         "properties_list": {"energy": ["energy", "system", 1.0]},
         "minimum_QM": 0,
+        "retraining": {"after": 4},
         **dict(master_extra),
     }
+    master = {key: value for key, value in master.items() if value is not None}  # an extra of None removes a key
     (tmp_path / "master.json").write_text(json.dumps(master))
     for name in ("builder", "sampler", "qm", "ml"):
         (tmp_path / f"{name}.json").write_text("{}")
@@ -149,6 +151,8 @@ def test_test_qm_reports_why_a_label_failed(tmp_path):
     ({'label_units': {'energy': 'eV'}}, None),
     ({'label_units': {'missing': 'eV'}}, 'must name a stored dataset'),
     ({'label_storage_batch_size': 0}, 'label_storage_batch_size must be a positive integer'),
+    ({'retraining': None}, 'Set retraining.after in the master configuration'),
+    ({'retraining': {'after': 0}}, 'retraining.after must be a positive integer'),
 ])
 def test_check_config_never_starts_the_run(tmp_path, extra, error):
     coordinator = start_coordinator(tmp_path, 'trains', arguments=['--check_config'],

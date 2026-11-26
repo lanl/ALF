@@ -38,7 +38,7 @@ Sizing
 
 The ``sizing`` block (see :ref:`batching-sizing`) states 256 trajectories per sampler task, 256 structures per QM task
 and 16,384 labels per round. ALF derives the batch sizes, the builder width, ``target_queued_QM``,
-``save_h5_threshold``, and ``parallel_samplers``: the sampler tasks the Parsl configuration runs at once times 256, so
+``retraining``, and ``parallel_samplers``: the sampler tasks the Parsl configuration runs at once times 256, so
 4,096 on the template's default 4 sampler nodes of 4 GPUs, and 16,384 on 16.
 
 Running

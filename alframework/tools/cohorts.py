@@ -62,6 +62,7 @@ class CohortPool:
         self.finished = deque(maxlen=FINISHED_HISTORY)
         self._finished_total = 0
         self._selected_total = 0
+        self._unselected = 0
 
     def admit(self, molecule, model_id):
         """Assign ``molecule`` to a cohort; return the model generation it must use."""
@@ -135,12 +136,19 @@ class CohortPool:
                 "selected": [candidate["frame_id"] for candidate in chosen]})
             self._finished_total += 1
             self._selected_total += len(chosen)
+            self._unselected += len(cohort.members) - len(chosen)
             for trajectory_id in cohort.members:
                 del self._membership[trajectory_id]
             del self._cohorts[cohort_id]
             if self._open.get(cohort.selected_state) is cohort:
                 del self._open[cohort.selected_state]
         return selected
+
+    def take_unselected(self):
+        """Members of cohorts finished since the last call, less the frames those cohorts selected: with their
+        selected frames' labels, each finished cohort accounts for all of its trajectories once."""
+        count, self._unselected = self._unselected, 0
+        return count
 
     def _frame(self, cohort, candidate, rank):
         atoms = Atoms(numbers=candidate["numbers"], positions=candidate["positions"],

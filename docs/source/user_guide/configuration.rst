@@ -110,10 +110,14 @@ The master config controls the workflow wiring. Common fields include:
    * - ``gpus_per_node``
      - Number of GPUs on each ML or sampler node. The two share this value, and a GPU
        mask on the worker takes precedence over it. See :doc:`parsl`.
-   * - ``target_queued_QM``, ``parallel_samplers``, ``minimum_QM``,
-       ``save_h5_threshold``, ``bootstrap_set``
-     - Queue-depth and retraining controls for the active-learning loop. These
-       count structures, including when tasks are batched. See :doc:`batching`.
+   * - ``target_queued_QM``, ``parallel_samplers``, ``minimum_QM``, ``bootstrap_set``
+     - Queue-depth controls for the active-learning loop. These count structures,
+       including when tasks are batched. See :doc:`batching`.
+   * - ``retraining``
+     - When to retrain: ``{"after": N}`` once N new converged labels are held, or with
+       ``"counts": "sampled"``, once N sampled structures are resolved, whether or not
+       they yielded a label. The older ``save_h5_threshold`` N - 1 still works in its
+       place. See :ref:`batching-retraining`.
    * - ``finite_bootstrap``
      - Optional. ``true`` is for a builder reading a fixed list of seeds: the bootstrap
        labels seeds in order until ``bootstrap_set`` labels have converged. The default
@@ -147,7 +151,7 @@ The master config controls the workflow wiring. Common fields include:
        but weren't stored yet are stored in one last shard, which no model trained
        on. Sampler and QM work still running isn't stored. Labels are counted when a
        batch is stored, so a run overshoots by up to one batch, plus that last shard.
-       A batch holds more than ``save_h5_threshold`` labels, and more still when
+       A batch holds the labels of at least one round (``retraining``), and more still when
        labels converged while a training ran. ALF reads this once, at startup.
        The count is kept in ``status_path``. By default, a run continues until you
        stop it.
@@ -218,7 +222,7 @@ The master config controls the workflow wiring. Common fields include:
      - Optional. Size the run by ``trajectories_per_sampler_task``, ``structures_per_qm_task``
        and ``labels_per_round``, with optional ``sampler_tasks_at_once`` and
        ``qm_tasks_at_once``; ALF derives the batch sizes, ``maximum_builder_structures``,
-       ``parallel_samplers``, ``target_queued_QM`` and ``save_h5_threshold``. Read once, at
+       ``parallel_samplers``, ``target_queued_QM`` and ``retraining``. Read once, at
        startup. See :ref:`batching-sizing`.
    * - ``plotting_utility``, ``plot_dir``, ``update_plots_every``
      - Optional progress plots. ``plotting_utility`` is an import string such as

@@ -1,7 +1,7 @@
 """Size a run by stating what each task holds and how many labels each round adds; ALF derives the rest.
 
 Without it, a run's size is several settings that have to agree: the sampler and QM ``batching.batch_size``,
-``maximum_builder_structures``, ``parallel_samplers``, ``target_queued_QM`` and ``save_h5_threshold``, and the
+``maximum_builder_structures``, ``parallel_samplers``, ``target_queued_QM`` and ``retraining.after``, and the
 number of sampler tasks the Parsl configuration runs at once. The master configuration's opt-in ``sizing`` block
 states the intent instead::
 
@@ -14,9 +14,10 @@ and ALF fills in (see :func:`derive_sizing`):
   the sampler tasks the Parsl configuration runs at once times T, which keeps every sampler slot busy. Set
   ``sampler_tasks_at_once`` where the Parsl configuration doesn't say, or to use fewer;
 - from ``structures_per_qm_task`` (Q): the QM ``batching.batch_size`` Q, with its mode chosen from the QM task;
-- from ``labels_per_round`` (L): ``save_h5_threshold`` L - 1, since a retraining starts once more than
-  ``save_h5_threshold`` labels are held: once L new labels are; and ``target_queued_QM`` L, unless
-  ``qm_tasks_at_once`` is set;
+- from ``labels_per_round`` (L): ``retraining`` ``{"after": L}``, so a retraining starts once L new labels are held;
+  and ``target_queued_QM`` L, unless ``qm_tasks_at_once`` is set. A ``retraining`` block, or the older
+  ``save_h5_threshold``, given as well must agree. To retrain on sampled structures instead
+  (:mod:`alframework.tools.retraining`), leave ``labels_per_round`` out and set the ``retraining`` block;
 - from ``qm_tasks_at_once`` (N), with ``structures_per_qm_task``: ``target_queued_QM`` N × Q, which keeps N QM tasks
   of Q structures queued or running. It sizes the QM queue for the QM hardware, apart from how often the run
   retrains.
@@ -26,6 +27,8 @@ fine; a different value stops the coordinator, naming both, so neither wins sile
 ``bootstrap_set``, ``maximum_completed_QM`` and ``maximum_stored_labels`` stay the user's. The block is read once,
 when the coordinator starts, which prints what it derived, and the same values apply to each reload.
 """
+
+from alframework.tools.retraining import OLDER_THRESHOLD, RETRAINING, retraining_settings
 
 SIZING = 'sizing'
 SIZING_KEYS = ('trajectories_per_sampler_task', 'structures_per_qm_task', 'labels_per_round', 'sampler_tasks_at_once',
@@ -80,7 +83,7 @@ def derive_sizing(block, *, sampler_slots=None, builder_batches=False, sampler_b
         derived['QM']['batch_size'] = block['structures_per_qm_task']
     if 'labels_per_round' in block:
         derived['master']['target_queued_QM'] = block['labels_per_round']
-        derived['master']['save_h5_threshold'] = block['labels_per_round'] - 1
+        derived['master'][RETRAINING] = {'after': block['labels_per_round'], 'counts': 'labels'}
     if 'qm_tasks_at_once' in block:
         derived['master']['target_queued_QM'] = block['qm_tasks_at_once'] * block['structures_per_qm_task']
     return derived
@@ -99,10 +102,26 @@ def _batching(config, batch_size, where):
     config['batching'] = dict(block, batch_size=batch_size)
 
 
+def _retraining(master_config, derived):
+    """Add the derived ``retraining`` block, or check the one (or the older ``save_h5_threshold``) already given."""
+    if RETRAINING not in master_config and OLDER_THRESHOLD not in master_config:
+        master_config[RETRAINING] = dict(derived)
+        return
+    given = retraining_settings(master_config)
+    if given != derived:
+        where = RETRAINING if RETRAINING in master_config else OLDER_THRESHOLD
+        unit = {'labels': 'labels', 'sampled': 'sampled structures'}
+        raise ValueError(f'The master configuration\'s {where} retrains after {given["after"]:,} {unit[given["counts"]]}, '
+                         f'but {SIZING} makes it {derived["after"]:,} {unit[derived["counts"]]}; set it in one place.')
+
+
 def apply_sizing(derived, master_config, sampler_config, QM_config):
     """Put ``derived`` (from :func:`derive_sizing`) into the configurations, changing them in place; a setting
     already given with a different value is an error."""
     for name, value in derived['master'].items():
+        if name == RETRAINING:
+            _retraining(master_config, value)
+            continue
         if name in master_config and master_config[name] != value:
             raise ValueError(f'{name} is {master_config[name]!r} in the master configuration but {SIZING} makes it '
                              f'{value!r}; set it in one place.')
@@ -131,7 +150,8 @@ def describe(block, derived):
         if 'qm_tasks_at_once' in block:
             line += f' ({block["qm_tasks_at_once"]:,} QM tasks at once)'
         parts.append(line)
-    if 'save_h5_threshold' in derived['master']:
-        parts.append(f'save_h5_threshold {derived["master"]["save_h5_threshold"]:,} (retrain once '
-                     f'{block["labels_per_round"]:,} new labels are held)')
+    if RETRAINING in derived['master']:
+        retraining = derived['master'][RETRAINING]
+        parts.append(f'retraining.after {retraining["after"]:,} (retrain once {retraining["after"]:,} new labels are '
+                     'held)')
     return 'Sizing: ' + ', '.join(parts)

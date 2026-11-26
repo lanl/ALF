@@ -54,28 +54,80 @@ and ALF fills them in:
    * - ``target_queued_QM``
      - ``qm_tasks_at_once`` times ``structures_per_qm_task``, which keeps that many QM
        tasks queued or running. Without ``qm_tasks_at_once``, ``labels_per_round``.
-   * - ``save_h5_threshold``
-     - ``labels_per_round`` minus one: a retraining starts once more than
-       ``save_h5_threshold`` labels are held, so once ``labels_per_round`` are.
+   * - ``retraining``
+     - ``{"after": labels_per_round}``: a retraining starts once ``labels_per_round`` new
+       labels are held. See :ref:`batching-retraining`.
 
 Each key is optional and fills in only its own settings. ``trajectories_per_sampler_task``
 needs a sampler task that takes ``molecule_objects``, such as ``mlmd_trajectories_task``.
 ``qm_tasks_at_once`` needs ``structures_per_qm_task``. Set it to size the QM queue for the
 QM hardware, for example the QM task slots of the capacity report, apart from how often
-the run retrains: ``labels_per_round`` then sets only ``save_h5_threshold``.
+the run retrains: ``labels_per_round`` then sets only ``retraining``.
 A setting also given in its own place must have the same value; a different one stops
-the coordinator, naming both. ``minimum_QM``, ``bootstrap_set``,
+the coordinator, naming both. That includes a ``retraining`` block, or the older
+``save_h5_threshold``, which must be ``labels_per_round`` minus one. To retrain on sampled
+structures instead, leave ``labels_per_round`` out and set the ``retraining`` block. ``minimum_QM``, ``bootstrap_set``,
 ``maximum_completed_QM`` and ``maximum_stored_labels`` stay yours. The coordinator
 prints what it derived, for example:
 
 .. code-block:: text
 
    Sizing: sampler batching.batch_size 256, maximum_builder_structures 256, parallel_samplers 16,384
-   (64 sampler tasks at once), QM batching.batch_size 256, target_queued_QM 16,384, save_h5_threshold 16,383
+   (64 sampler tasks at once), QM batching.batch_size 256, target_queued_QM 16,384, retraining.after 16,384
    (retrain once 16,384 new labels are held)
 
 The block is read once, when the coordinator starts; its values apply to every reload of
 the configuration files, and an edit to it waits for a restart.
+
+.. _batching-retraining:
+
+When to Retrain
+---------------
+
+The master configuration's ``retraining`` block says when a new ensemble is trained:
+
+.. code-block:: json
+
+   "retraining": {"after": 2048, "counts": "sampled"}
+
+A retraining starts once ``after`` have come in since the last one, counted as ``counts`` says:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 18 82
+
+   * - ``counts``
+     - A retraining starts once ``after``...
+   * - ``"labels"``
+     - (default) new converged labels are held. Unconverged and failed QM results don't count, so a round of
+       failures can't retrain on unchanged data.
+   * - ``"sampled"``
+     - sampled structures are resolved, with at least one new converged label. A structure is resolved once its
+       label has finished, converged or not, or once its sampling ended with nothing to label: a trajectory
+       rejected for ``distcut``, by the topology check or by a physical-force screen, one that never
+       triggered acquisition or wasn't selected from its cohort, or a member of a sampler task that failed.
+
+Count labels to grow the training set by a fixed amount each round. Count sampled structures when each round
+samples a fixed number of trajectories and should retrain on whatever labels they yield. Rejections then don't
+hold the round back: with ``"labels"``, a round of 2,048 trajectories of which 3% are rejected for ``distcut``
+yields 1,980 labels, and waits for more sampling to make up the other 68.
+
+The units and edge cases:
+
+* Both count from the last time labels were stored, which happens when a retraining starts.
+* A cohort (:ref:`samplers-multi-trajectory`) counts each of its trajectories once: its unselected members
+  when the cohort finishes, and its selected frames as their labels finish.
+* The count of structures that ended without a label is kept in ``status_path``, so a restart in the middle
+  of a round keeps it. Sampler and QM work lost in the restart isn't counted.
+* A rejected trajectory's ``reason`` in the trajectory summary (:doc:`monitoring`) says why it ended without
+  a label.
+
+The older ``save_h5_threshold`` N still works as before: it is ``{"after": N + 1}`` with ``"labels"``,
+because it retrains once more than N labels are held. A configuration gives one or the other. The coordinator's
+startup capacity report states the rule, for example ``retraining: once 2,048 sampled structures are
+resolved``. The block is read with each reload of the configuration files, so an edit applies to the next
+round, and an edit that isn't valid is refused. The test modes (``--test_qm`` and the others) don't need
+it; a run, and ``--check_config``, do.
 
 Choosing Widths
 ---------------
@@ -220,7 +272,7 @@ Queue Limits And Workers
 
 ALF's queue limits count structures, not tasks. This covers
 ``parallel_samplers``, ``target_queued_QM``, ``maximum_completed_QM``,
-``bootstrap_set``, and ``save_h5_threshold``, so they keep the same meaning when
+``bootstrap_set``, and ``retraining.after``, so they keep the same meaning when
 you turn batching on. Structures waiting for a batch to fill count as queued.
 
 Parsl workers count tasks. With ``"parallel_samplers": 100`` and a sampler

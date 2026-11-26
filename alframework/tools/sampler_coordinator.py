@@ -202,6 +202,7 @@ class SamplerCoordinator(BatchedSubmitter):
                 raise ValueError('data_by_reference sampler_frames requires a finite workflow with '
                                  'maximum_stored_labels.')
         self.pool = None
+        self._without_label = 0  # see take_without_label
         summary_path = (master_config or {}).get("trajectory_summary_path")
         self._summary = None if summary_path is None else TrajectorySummary(summary_path)
         self._windows = validated_windows(sampler_config)
@@ -317,15 +318,33 @@ class SamplerCoordinator(BatchedSubmitter):
                 self.frame_retirement.register(sampler_results)
             if self._summary is not None:
                 self._summary.append_rows((frame.summary for frame in sampler_results), failed)
-            return [frame for frame in sampler_results if frame.path is not None]
+            frames = [frame for frame in sampler_results if frame.path is not None]
+            self._without_label += len(sampler_results) - len(frames)
+            return frames
         if self._summary is not None:
             self._summary.append(sampler_results, failed)
         if self.pool is None:
-            return [structure for structure in sampler_results if structure.get_atoms() is not None]
+            frames = [structure for structure in sampler_results if structure.get_atoms() is not None]
+            self._without_label += len(sampler_results) - len(frames)
+            return frames
         for structure in sampler_results:
             self.pool.record(structure)
         self.pool.record_failed(failed)
-        return self.pool.ready()
+        frames = self.pool.ready()
+        self._without_label += self.pool.take_unselected()
+        return frames
+
+    def take_without_label(self, failed_structures=0):
+        """Sampled structures whose sampling ended without a frame to label since the last call, for retraining
+        that counts sampled structures (:mod:`alframework.tools.retraining`).
+
+        These are the harvested results that hold no frame, and members of finished cohorts that weren't selected.
+        ``failed_structures`` (from :meth:`take_failed_structures`) adds the members of failed sampler tasks; a cohort
+        already counts its own, when it finishes.
+        """
+        count = self._without_label + (failed_structures if self.pool is None else 0)
+        self._without_label = 0
+        return count
 
     def status(self):
         return None if self.pool is None else self.pool.status()

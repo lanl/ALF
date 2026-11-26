@@ -14,7 +14,7 @@ import torch
 from ase import Atoms
 from torch.func import functional_call
 
-from alframework.ml_interfaces.ntk.adapter import NTKAdapter, resolve_device_dtype
+from alframework.ml_interfaces.ntk.adapter import NTKAdapter, resolve_device_dtype, select_parameters
 
 
 def _mace():
@@ -41,18 +41,26 @@ class MACENTKAdapter(NTKAdapter):
     """A frozen copy of a MACE model on the scoring device and precision.
 
     ``head`` selects the output head of a multi-head model. The default is the model's first head.
+    ``parameters`` chooses what the posterior covers (see :func:`~alframework.ml_interfaces.ntk.adapter.
+    select_parameters`). The default keeps the checkpoint's trainable parameters, so a model fine-tuned
+    with frozen layers or LoRA is linearized only in what was trained. A model with several energies
+    names them ``E0, E1, …`` unless ``state_names`` is given.
     """
 
     supports_forward = False
 
     @torch.inference_mode(False)
-    def __init__(self, model, *, device="cpu", dtype=None, head=None):
+    def __init__(self, model, *, device="cpu", dtype=None, head=None, parameters="trainable", state_names=None):
         data, tools, _ = _mace()
         self.device, self.dtype = resolve_device_dtype(device, dtype)
         self.model = deepcopy(model).to(device=self.device, dtype=self.dtype).eval()
-        for parameter in self.model.parameters():
-            parameter.requires_grad_(True)
-        self._parameters = dict(self.model.named_parameters())
+        self._parameters = select_parameters(self.model, parameters)
+        n_states = int(getattr(self.model, "n_energies", 1) or 1)
+        if state_names is None:
+            state_names = ("energy",) if n_states == 1 else tuple(f"E{i}" for i in range(n_states))
+        if len(state_names) != n_states:
+            raise ValueError(f"The model predicts {n_states} energies but {len(state_names)} state names were given.")
+        self.state_names = tuple(state_names)
         self.z_table = tools.AtomicNumberTable([int(z) for z in self.model.atomic_numbers])
         self.cutoff = float(self.model.r_max)
         heads = list(getattr(self.model, "heads", None) or [])
@@ -107,7 +115,10 @@ class MACENTKAdapter(NTKAdapter):
             output = self.model(graph, **options)
         else:
             output = functional_call(self.model, params, (graph,), options)
-        return output["energy"].reshape(1)
+        energy = output["energy"].reshape(-1)
+        if len(energy) != len(self.state_names):
+            raise ValueError(f"The model returned {len(energy)} energies for {len(self.state_names)} states.")
+        return energy
 
     @torch.inference_mode(False)
     def predict_batch(self, numbers, positions, cells, pbc, counts):
@@ -122,4 +133,8 @@ class MACENTKAdapter(NTKAdapter):
         graph = self._graph(items)
         with torch.inference_mode(False), torch.enable_grad():
             output = self.model(graph, compute_force=True, training=False)
-        return output["energy"].detach()[None], output["forces"].detach()[None]
+        energies, forces = output["energy"].detach(), output["forces"].detach()
+        if energies.ndim == 1:
+            return energies[None], forces[None]
+        # Several states: energies [systems, S] and forces [atoms, S, 3].
+        return energies.T.contiguous(), forces.permute(1, 0, 2).contiguous()

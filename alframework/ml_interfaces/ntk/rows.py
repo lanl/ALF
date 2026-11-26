@@ -25,8 +25,9 @@ class RowRequest:
     ``energy`` and ``forces`` request rows for every state's energy and for every force component.
     ``force_probes`` ``[k, N, 3]`` request rows for the projections wᵀF. ``hvp_probes`` ``[k, N, 3]``
     request rows for every component of H v. ``bilinear_probes`` ``(u, v)``, each ``[k, N, 3]``, request
-    rows for u_kᵀ H v_k. Force values are returned whenever any derivative is needed, or when
-    ``force_values`` is set.
+    rows for u_kᵀ H v_k. ``outputs`` names smooth model outputs (see ``NTKAdapter.outputs``), returned
+    under the keys ``output:<name>``. Force values are returned whenever any derivative is needed, or
+    when ``force_values`` is set.
     """
 
     energy: bool = True
@@ -35,6 +36,7 @@ class RowRequest:
     hvp_probes: torch.Tensor = None
     bilinear_probes: tuple = None
     force_values: bool = False
+    outputs: tuple = ()
 
     @property
     def row_keys(self):
@@ -49,6 +51,7 @@ class RowRequest:
             keys.append("hvp")
         if self.bilinear_probes is not None:
             keys.append("bilinear")
+        keys.extend(f"output:{name}" for name in self.outputs)
         return tuple(keys)
 
     @property
@@ -68,7 +71,7 @@ class RowRequest:
             count += 3 * n_atoms * len(self.hvp_probes)
         if self.bilinear_probes is not None:
             count += len(self.bilinear_probes[0])
-        return n_states * count
+        return n_states * count + len(self.outputs)
 
 
 def _assemble(energy, gradient, hvp_of, request):
@@ -88,6 +91,13 @@ def _assemble(energy, gradient, hvp_of, request):
     return values
 
 
+def _with_outputs(values, adapter, structure, positions, params, request):
+    if request.outputs:
+        outputs = adapter.outputs(structure, positions, params, tuple(request.outputs))
+        values.update({f"output:{name}": outputs[name] for name in request.outputs})
+    return values
+
+
 def _functional_values(adapter, structure, request, params):
     """Values as pure functions of ``params``, for use inside ``torch.func`` transforms."""
     x0 = structure.positions
@@ -96,13 +106,15 @@ def _functional_values(adapter, structure, request, params):
         return adapter.energies(structure, x, params)
 
     if not request.needs_derivatives:
-        return _assemble(energy(x0), None, None, request)
-    gradient_of = jacrev(energy)
+        values = _assemble(energy(x0), None, None, request)
+    else:
+        gradient_of = jacrev(energy)
 
-    def hvp_of(v):
-        return jacrev(lambda x: (gradient_of(x) * v).sum((-1, -2)))(x0)
+        def hvp_of(v):
+            return jacrev(lambda x: (gradient_of(x) * v).sum((-1, -2)))(x0)
 
-    return _assemble(energy(x0), gradient_of(x0), hvp_of, request)
+        values = _assemble(energy(x0), gradient_of(x0), hvp_of, request)
+    return _with_outputs(values, adapter, structure, x0, params, request)
 
 
 def _autograd_values(adapter, structure, request):
@@ -110,7 +122,7 @@ def _autograd_values(adapter, structure, request):
     x = structure.positions.detach().clone().requires_grad_(request.needs_derivatives)
     energy = adapter.energies(structure, x)
     if not request.needs_derivatives:
-        return _assemble(energy, None, None, request)
+        return _with_outputs(_assemble(energy, None, None, request), adapter, structure, x, None, request)
 
     def gradient(outputs):
         rows = []
@@ -120,7 +132,8 @@ def _autograd_values(adapter, structure, request):
         return torch.stack(rows)
 
     g = gradient(energy)
-    return _assemble(energy, g, lambda v: gradient((g * v).sum((-1, -2))), request)
+    values = _assemble(energy, g, lambda v: gradient((g * v).sum((-1, -2))), request)
+    return _with_outputs(values, adapter, structure, x, None, request)
 
 
 def _forward_rows(adapter, structure, request, sketch, keys):

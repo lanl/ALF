@@ -115,6 +115,15 @@ class NTKAdapter:
         """
         raise NotImplementedError
 
+    def outputs(self, structure, positions, params=None, names=()):
+        """Return ``{name: tensor}`` for smooth model outputs other than the energies.
+
+        Examples are the matrix elements that an excited-state model diagonalizes, or couplings scaled by the
+        gap. Unlike adiabatic energies, these stay smooth through state crossings. The arguments are as for
+        :meth:`energies`.
+        """
+        raise ValueError(f"{type(self).__name__} provides no outputs {list(names)}.")
+
     def forward_context(self):
         """A context in which :meth:`energies` is valid inside ``torch.func`` transforms."""
         return nullcontext()
@@ -147,6 +156,29 @@ class NTKAdapter:
                 forces.append(-torch.stack(gradients).detach())
                 start = stop
         return torch.stack(energies, dim=1), torch.cat(forces, dim=1)
+
+
+def select_parameters(module, selection="trainable"):
+    """Choose the parameters the NTK posterior covers, and set ``requires_grad`` to match.
+
+    ``"trainable"`` keeps the parameters that require gradients in the model as given, so the frozen
+    layers of a fine-tuned or LoRA model stay out. ``"all"`` includes every parameter. A callable
+    ``selection(name, parameter) -> bool`` chooses parameters by name.
+    """
+    named = list(module.named_parameters())
+    if selection == "trainable":
+        chosen = {name for name, parameter in named if parameter.requires_grad}
+    elif selection == "all":
+        chosen = {name for name, _ in named}
+    elif callable(selection):
+        chosen = {name for name, parameter in named if selection(name, parameter)}
+    else:
+        raise ValueError('parameters must be "trainable", "all", or a callable(name, parameter).')
+    for name, parameter in named:
+        parameter.requires_grad_(name in chosen)
+    if not chosen:
+        raise ValueError("The model has no trainable parameters for the NTK.")
+    return {name: parameter for name, parameter in named if name in chosen}
 
 
 def gaussian_probes(count, n_atoms, *, seed, device, dtype):

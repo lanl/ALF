@@ -148,3 +148,72 @@ def test_calculator_reports_probe_scores_and_basis_round_trip(tmp_path):
         changed = LinearPairAdapter()
         changed.digest = lambda: "other"
         NTKEstimator.from_basis(changed, path)
+
+
+class TwoStateAdapter(NTKAdapter):
+    """Two diabatic surfaces a = θ₀ exp(-r²), b = θ₁ exp(-r²/4) of one bond, coupled by a constant c.
+
+    The adiabatic energies (a + b)/2 ∓ √(((a − b)/2)² + c²) cross where a = b once c → 0. Their curvature
+    there grows like 1/c, while the diabatic elements stay smooth.
+    """
+
+    supports_forward = True
+    state_names = ("E0", "E1")
+
+    def __init__(self, coupling, crossing=1.2):
+        self.module = torch.nn.Module()
+        theta = torch.tensor([1.0, np.exp(-crossing ** 2) / np.exp(-crossing ** 2 / 4)], dtype=torch.float64)
+        self.module.theta = torch.nn.Parameter(theta)
+        self.coupling = coupling
+
+    def live_parameters(self):
+        return {"theta": self.module.theta}
+
+    def digest(self):
+        return f"two-state-{self.coupling}"
+
+    def _diabatic(self, positions, params):
+        theta = self.module.theta if params is None else params["theta"]
+        r2 = (positions[1] - positions[0]).square().sum()
+        return theta[0] * torch.exp(-r2), theta[1] * torch.exp(-r2 / 4)
+
+    def energies(self, structure, positions, params=None):
+        a, b = self._diabatic(positions, params)
+        root = torch.sqrt(((a - b) / 2).square() + self.coupling ** 2)
+        return torch.stack([(a + b) / 2 - root, (a + b) / 2 + root])
+
+    def outputs(self, structure, positions, params=None, names=()):
+        a, b = self._diabatic(positions, params)
+        return {"diabatic": torch.stack([a, b])}
+
+
+def bond(length):
+    return Atoms("H2", positions=[[0.0, 0.0, 0.0], [length, 0.0, 0.0]])
+
+
+def test_adiabatic_hessian_scores_diverge_at_a_crossing_while_smooth_scores_do_not():
+    training = [bond(0.7), bond(1.8)]
+    hessian, smooth, gap = [], [], []
+    # Couplings small next to the training geometries' gaps, so the fit is the same for all of them.
+    for coupling in (1e-2, 1e-3, 1e-4):
+        estimator = NTKEstimator(TwoStateAdapter(coupling), training, energy_scale=0.1, sketch_dim=2, ridge=1e-3)
+        result = estimator.predict(bond(1.2), forces=False, hessian_probes=64, outputs=("diabatic",))
+        hessian.append(float(result["hessian_rms_uncertainty"].max()))
+        smooth.append(result["output_diabatic_uncertainty_score"])
+        gap.append(float(result["gap_uncertainty_score"][0]))
+        assert result["gap"][0] == pytest.approx(2 * coupling, rel=1e-6)
+    assert hessian[1] > 5 * hessian[0] and hessian[2] > 5 * hessian[1]
+    for later in smooth[1:]:
+        torch.testing.assert_close(later, smooth[0], rtol=1e-2, atol=0)
+    assert all(np.isfinite(gap))
+
+
+def test_crossing_flags_mark_states_next_to_a_small_gap():
+    from alframework.ml_interfaces.ntk import reported_uncertainty
+
+    result = {"energy_uncertainty_score": torch.tensor([0.1, 0.2, 0.3]), "gap": torch.tensor([0.05, 0.5]),
+              "gap_uncertainty_score": torch.tensor([0.01, 0.02])}
+    scalar, _ = reported_uncertainty(result, ("E0", "E1", "E2"), 3, crossing_gap_eV=0.1)
+    assert [scalar[f"ntk_near_crossing_E{i}"] for i in range(3)] == [1.0, 1.0, 0.0]
+    scalar, _ = reported_uncertainty(result, ("E0", "E1", "E2"), 3, crossing_gap_eV=None)
+    assert not any(key.startswith("ntk_near_crossing") for key in scalar)

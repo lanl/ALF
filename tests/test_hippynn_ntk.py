@@ -263,6 +263,31 @@ def test_hessian_supervision_adds_rows_and_lowers_hessian_variance(graph, atoms)
     assert hessian < plain.predict(atoms, hessian_probes=8)["hessian_rms_uncertainty"]
 
 
+def test_hessian_rows_come_only_from_supervised_states(atoms):
+    graph = molecular_graph("Hipnn", n_states=2)
+    probes = gaussian_probes(2, 3, seed=9, device="cpu", dtype=torch.float64)
+    scales = dict(energy_scale=0.2, force_scale=0.8, hessian_scale=0.1, sketch_dim=32, seed=5)
+    fits = {}
+    for states in (None, ["E1"], ["E0", "E1"]):
+        frame = atoms.copy()
+        frame.info["hessian_probes"] = probes.numpy()
+        if states is not None:
+            frame.info["hessian_states"] = states
+        fits[None if states is None else tuple(states)] = EnergyForceNTK(graph, [frame], **scales)
+    assert fits[None].posterior.counts["hessian"] == fits[("E1",)].posterior.counts["hessian"] == 2 * 9
+    assert fits[("E0", "E1")].posterior.counts["hessian"] == 2 * 2 * 9
+    _, rows = compute_rows(fits[None].adapter, fits[None].structure_from_atoms(atoms), RowRequest(hvp_probes=probes),
+                           fits[None].sketch)
+    for state, other in ((0, ("E1",)), (1, None)):
+        # Supervising a state's Hessian lowers that state's HVP variance more than the other state's.
+        own = fits[None if state == 0 else ("E1",)].posterior.variance(rows["hvp"][state]).sum()
+        assert own < fits[other].posterior.variance(rows["hvp"][state]).sum()
+    frame = atoms.copy()
+    frame.info.update(hessian_probes=probes.numpy(), hessian_states=["E7"])
+    with pytest.raises(ValueError, match="not model states"):
+        EnergyForceNTK(graph, [frame], **scales)
+
+
 def test_multistate_graph_reports_state_and_gap_scores(atoms):
     graph = molecular_graph("Hipnn", n_states=2)
     estimator = EnergyForceNTK(graph, [atoms], energy_scale=0.2, force_scale=0.8, sketch_dim=16)

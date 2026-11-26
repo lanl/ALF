@@ -51,7 +51,8 @@ class NTKEstimator:
       supervision. ``atoms.info["hessian_probes"]`` ``[k, N, 3]`` gives the fixed probes of
       Projected Hessian Learning's fixed scheme. ``atoms.info["hessian"]`` marks a stored full Hessian,
       for the randomized scheme or full-Hessian training. Its information is estimated from
-      ``hessian_fit_probes`` fresh Gaussian probes, using E[v vᵀ] = I.
+      ``hessian_fit_probes`` fresh Gaussian probes, using E[v vᵀ] = I. ``atoms.info["hessian_states"]``
+      names the states whose Hessians were supervised, by default the first state.
 
     Refit when the model changes. Scores are raw posterior standard deviations; calibrate them against
     errors before using them as error estimates.
@@ -131,13 +132,20 @@ class NTKEstimator:
                                              device=self.device, dtype=self.dtype)
                 # The mean of k probes' J_{Hv}ᵀ J_{Hv} estimates J_Hᵀ J_H.
                 hessian_scale = self.hessian_scale * math.sqrt(k)
+        hessian_states = None
+        if hvp_probes is not None:
+            names = atoms.info.get("hessian_states", self.state_names[:1])
+            unknown = set(names) - set(self.state_names)
+            if unknown:
+                raise ValueError(f"hessian_states {sorted(unknown)} are not model states {list(self.state_names)}.")
+            hessian_states = [self.state_names.index(name) for name in names]
         request = RowRequest(energy=True, forces=self.force_scale is not None, hvp_probes=hvp_probes)
         _, rows = compute_rows(self.adapter, structure, request, self.sketch, engine=self.engine)
         self.posterior.add(rows["energy"], self.energy_scale, "energy")
         if self.force_scale is not None:
             self.posterior.add(rows["forces"], self.force_scale, "force")
         if hvp_probes is not None:
-            self.posterior.add(rows["hvp"], hessian_scale, "hessian")
+            self.posterior.add(rows["hvp"][hessian_states], hessian_scale, "hessian")
         self.training_structure_count += 1
 
     def _probe_seed(self, kind, salt):
@@ -191,13 +199,14 @@ class NTKEstimator:
 
     # -- scoring ---------------------------------------------------------------------------------------
     @torch.inference_mode(False)
-    def score(self, structure, *, forces=True, force_probes=0, hessian_probes=0, hvp_probes=0):
+    def score(self, structure, *, forces=True, force_probes=0, hessian_probes=0, hvp_probes=0, outputs=()):
         """Predictions and raw posterior standard deviations for one :class:`Structure`.
 
         - ``forces``: rows for every force component, which give per-atom scores.
         - ``force_probes``, ``hessian_probes``: k Gaussian projections that estimate the RMS force and
           Hessian-element uncertainty, with about k rows each.
         - ``hvp_probes``: rows for H v, giving per-atom Hessian scores. That's 3N rows per probe.
+        - ``outputs``: names of smooth model outputs (see ``NTKAdapter.outputs``) to score elementwise.
 
         Outputs have a leading state axis.
         """
@@ -212,13 +221,18 @@ class NTKEstimator:
 
         bilinear = (probes(_BILINEAR_U, k_h), probes(_BILINEAR_V, k_h)) if k_h else None
         request = RowRequest(energy=True, forces=bool(forces), force_probes=probes(_FORCE_PROBES, k_f),
-                             hvp_probes=probes(_HVP_PROBES, k_v), bilinear_probes=bilinear, force_values=True)
+                             hvp_probes=probes(_HVP_PROBES, k_v), bilinear_probes=bilinear, force_values=True,
+                             outputs=tuple(outputs))
         values, rows = compute_rows(self.adapter, structure, request, self.sketch, engine=self.engine)
         variance = self.posterior.variance
         result = {"energy": values["energy"], "forces": values["forces"],
                   "energy_uncertainty_score": variance(rows["energy"]).sqrt()}
         if len(self.state_names) > 1:
+            result["gap"] = values["energy"][1:] - values["energy"][:-1]
             result["gap_uncertainty_score"] = variance(rows["energy"][1:] - rows["energy"][:-1]).sqrt()
+        for name in outputs:
+            result[f"output_{name}"] = values[f"output:{name}"]
+            result[f"output_{name}_uncertainty_score"] = variance(rows[f"output:{name}"]).sqrt()
         if forces:
             component = variance(rows["forces"])
             result["force_component_uncertainty_score"] = component.sqrt()
@@ -256,8 +270,16 @@ class NTKEstimator:
         return {"row": whitened.cpu().numpy(), "basis_id": self.basis_id, "ridge": self.ridge}
 
 
-def reported_uncertainty(result, state_names, n_atoms, periodic=False):
-    """ALF score names: scalars for acquisition, and atom arrays for selected frames."""
+def reported_uncertainty(result, state_names, n_atoms, periodic=False, *, crossing_gap_eV=0.1,
+                         max_output_elements=16):
+    """ALF score names: scalars for acquisition, and atom arrays for selected frames.
+
+    A model with several states also reports ``ntk_near_crossing_<state>``. That's 1.0 when a predicted gap
+    next to the state is below ``crossing_gap_eV``, where adiabatic Hessian scores grow like 1/gap. The
+    gap scores (``ntk_dE01``, …) and smooth-output scores stay meaningful there. A smooth output is
+    reported as ``ntk_<name>_max``, plus each element ``ntk_<name>_<i>`` when it has at most
+    ``max_output_elements`` elements.
+    """
     scalar, atomic = {}, {}
     multi = len(state_names) > 1
     for index, state in enumerate(state_names):
@@ -276,6 +298,18 @@ def reported_uncertainty(result, state_names, n_atoms, periodic=False):
     if "gap_uncertainty_score" in result:
         for index, value in enumerate(result["gap_uncertainty_score"]):
             scalar[f"ntk_dE{index}{index + 1}"] = float(value)
+    if multi and "gap" in result and crossing_gap_eV is not None:
+        gaps = result["gap"].abs().detach().cpu().numpy()
+        for index, state in enumerate(state_names):
+            neighbours = [gaps[i] for i in (index - 1, index) if 0 <= i < len(gaps)]
+            scalar[f"ntk_near_crossing_{state}"] = float(min(neighbours) < crossing_gap_eV)
+    for key, value in result.items():
+        if key.startswith("output_") and key.endswith("_uncertainty_score"):
+            name = key[len("output_"):-len("_uncertainty_score")]
+            flat = value.detach().reshape(-1).cpu().numpy()
+            scalar[f"ntk_{name}_max"] = float(flat.max())
+            if len(flat) <= max_output_elements:
+                scalar.update({f"ntk_{name}_{i}": float(v) for i, v in enumerate(flat)})
     if not all(math.isfinite(value) for value in scalar.values()):
         raise FloatingPointError("Nonfinite NTK uncertainty score.")
     return scalar, atomic
@@ -289,16 +323,17 @@ class NTKASECalculator(Calculator):
 
     implemented_properties = ["energy", "forces"]
 
-    def __init__(self, estimator, *, selected_state=0, **scores):
+    def __init__(self, estimator, *, selected_state=0, crossing_gap_eV=0.1, **scores):
         super().__init__()
         self.estimator, self.selected_state, self.scores = estimator, selected_state, scores
+        self.crossing_gap_eV = crossing_gap_eV
 
     def calculate(self, atoms=None, properties=("energy",), system_changes=all_changes):
         super().calculate(atoms, properties, system_changes)
         self.results = {}
         result = self.estimator.predict(self.atoms, **self.scores)
         scalar, atomic = reported_uncertainty(result, self.estimator.state_names, len(self.atoms),
-                                              bool(np.any(self.atoms.pbc)))
+                                              bool(np.any(self.atoms.pbc)), crossing_gap_eV=self.crossing_gap_eV)
         self.results = {
             "energy": float(result["energy"][self.selected_state]),
             "forces": result["forces"][self.selected_state].cpu().numpy(),
@@ -317,9 +352,10 @@ class NTKPackedEvaluator:
 
     n_models = 1
 
-    def __init__(self, estimator, *, force_diagnostics=None, selected_state=0, **scores):
+    def __init__(self, estimator, *, force_diagnostics=None, selected_state=0, crossing_gap_eV=0.1, **scores):
         self.estimator, self.force_diagnostics = estimator, force_diagnostics
         self.selected_state, self.scores = selected_state, scores
+        self.crossing_gap_eV = crossing_gap_eV
         if force_diagnostics is not None:
             if (not estimator.energy_only or force_diagnostics.force_scale is None
                     or estimator.device != force_diagnostics.device or estimator.dtype != force_diagnostics.dtype
@@ -355,5 +391,20 @@ class NTKPackedEvaluator:
             return report
         structure = estimator.adapter.structure(numbers, positions, cell if periodic else None, pbc)
         result = estimator.score(structure, **self.scores)
-        scalar, atomic = reported_uncertainty(result, estimator.state_names, len(numbers), periodic)
+        scalar, atomic = reported_uncertainty(result, estimator.state_names, len(numbers), periodic,
+                                              crossing_gap_eV=self.crossing_gap_eV)
         return {"uncertainty": scalar, "atomic_uncertainty": atomic}
+
+    def observe_uncertainty_batch(self, numbers, positions, cells, pbc, counts, energies, forces):
+        """Score every active structure at an acquisition check, in batch order.
+
+        This is one call per check, so the packed engine can retry structures one at a time if a batch
+        fails. Each structure's rows are still computed separately.
+        """
+        observations, start = [], 0
+        for index, count in enumerate(counts):
+            stop = start + count
+            cell = None if cells is None else cells[index]
+            observations.append(self.observe_uncertainty(numbers[start:stop], positions[start:stop], cell, pbc))
+            start = stop
+        return observations

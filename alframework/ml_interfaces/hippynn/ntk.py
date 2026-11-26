@@ -19,7 +19,7 @@ from torch.func import functional_call
 from hippynn import custom_kernels
 from hippynn.graphs import inputs as hippynn_inputs
 
-from alframework.ml_interfaces.ntk.adapter import NTKAdapter, resolve_device_dtype
+from alframework.ml_interfaces.ntk.adapter import NTKAdapter, resolve_device_dtype, select_parameters
 from alframework.ml_interfaces.ntk.estimator import (NTKASECalculator, NTKEstimator, NTKPackedEvaluator,
                                                      read_basis_metadata)
 
@@ -82,7 +82,7 @@ class HippynnNTKAdapter(NTKAdapter):
     supports_forward = True
 
     @torch.inference_mode(False)
-    def __init__(self, energy_graph, *, device="cpu", dtype=None, state_names=None):
+    def __init__(self, energy_graph, *, device="cpu", dtype=None, state_names=None, parameters="trainable"):
         self.device, self.dtype = resolve_device_dtype(device, dtype)
         graph = deepcopy(energy_graph).to(device=self.device, dtype=self.dtype).eval()
         roles = []
@@ -106,9 +106,10 @@ class HippynnNTKAdapter(NTKAdapter):
         self.state_names = tuple(state_names)
         self.graph = graph
         self._functional = _Functional(graph)
-        self._parameters = {name: p for name, p in graph.named_parameters() if p.requires_grad}
-        if not self._parameters:
-            raise ValueError("The energy graph has no trainable parameters.")
+        try:
+            self._parameters = select_parameters(graph, parameters)
+        except ValueError:
+            raise ValueError("The energy graph has no trainable parameters.") from None
         self._digest = _graph_digest(graph)
 
     def live_parameters(self):

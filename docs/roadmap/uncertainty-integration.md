@@ -80,6 +80,8 @@ and score devices. A separate CPU selection stage is indicated where relevant.
 | Force NTK packed ALCHEMI | Molecule | V [2] | I | — | — |
 | HIPPYNN NTK replay: energy, force, projected Hessian, and gap scores | Molecule, periodic solid, multi-state molecule | V [7] | I | I | I |
 | MACE NTK replay: energy, force, and projected Hessian scores | Molecule, periodic solid | V [7] | I | I | P |
+| X-MACE NTK replay: state energies, gaps, forces, projected Hessians, and smooth outputs, with crossing flags | Molecule | V [8] | I | I | P |
+| X-MACE NTK replay | Periodic solid | P | P | P | P |
 | NTK fit with Hessian-vector-product rows (fixed probes or full Hessians) | Molecule | V [7] | I | I | I |
 | Energy AdaptNTK fixed pool | Molecule | V [3] | I | I | V [3] |
 | Energy AdaptNTK TorchSim cohort | Molecule | V [3] | I | I | — |
@@ -98,6 +100,14 @@ The ground-state providers do not implement a state gap or a differentiable
 bias potential. ALF's existing UDD and gap-seeking paths use ensemble spread.
 NEB and dimer currently read ensemble spreads directly. Packed ALF uses a
 float64 MD state, which excludes MPS, and ALCHEMI supports CPU and NVIDIA CUDA.
+Adiabatic state energies are not smooth where states cross, so per-state
+Hessian scores grow like 1/gap there. Each state therefore reports
+`ntk_near_crossing_<state>`. Near a crossing, acquisition should read the gap
+scores and the scores of smooth model outputs, such as X-MACE's state matrix or
+couplings scaled by the gap. These matter for the planned photochemical
+reactive sampling, which spends time near crossings.
+The posterior covers only the trainable parameters, so a LoRA or frozen-layer
+fine-tune of a foundation model is linearized in what was trained.
 HIPPYNN NTK takes periodic graphs (with a cell input) for fully periodic cells.
 Its rows use HIPPYNN's plain-PyTorch kernels in `torch.func` forward mode, at a
 cost of about one evaluation per sketch dimension. MACE rows use batched reverse
@@ -189,6 +199,19 @@ production throughput require separate measurements.
    - Hessian-row fitting, and multi-state gap scores.
 
    The replay examples in checks 1 and 3 give the same decisions with ASE and TorchSim.
+8. In an environment with X-MACE installed from github.com/rhyan10/X-MACE at `03d71eb`, run
+   `python -m pytest tests/test_ntk_xmace.py` on a Linux CPU. Small random `ExcitedMACE` and
+   `AutoencoderExcitedMACE` models with three states were checked for:
+   - per-state energy, force and HVP rows, and the rows of the smooth outputs, against parameter finite
+     differences;
+   - batched and looped reverse mode agreeing;
+   - eigenvalues of the autoencoder's `state_matrix` reproducing the state energies;
+   - a frozen backbone staying out of the posterior;
+   - energies and forces matching X-MACE's `ExcitedMACECalculator`.
+
+   `tests/test_ntk_core.py` checks the crossing behaviour on a two-state model as the coupling goes from
+   1e-2 to 1e-4: adiabatic Hessian scores grow about tenfold per decade, while the scores of the
+   diabatic elements and of the gap stay finite and unchanged.
 
 Add the ALF revision, upstream revision, checkpoint identity, package versions,
 device placement, dataset and split, command, and observed result when you

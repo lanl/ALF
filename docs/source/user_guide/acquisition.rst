@@ -316,6 +316,14 @@ quantities are energies, forces, Hessian-vector products, and energy gaps. Adapt
   ``CellNode`` input), with one ``[batch, 1]`` energy output per state.
 - ``alframework.ml_interfaces.ntk.mace`` takes MACE models, molecular or periodic. It needs
   ``mace-torch``.
+- ``alframework.ml_interfaces.ntk.xmace`` takes `X-MACE <https://github.com/rhyan10/X-MACE>`_
+  excited-state models (``ExcitedMACE``, ``AutoencoderExcitedMACE``, ``LEHExcitedMACE``), including
+  models fine-tuned from a ground-state foundation backbone. X-MACE installs as the package ``mace`` in
+  place of mace-torch, so use a separate environment.
+
+The posterior covers the model's trainable parameters. For a model fine-tuned with frozen layers or LoRA,
+the frozen parameters stay out, and the training geometries are the fine-tuning data. The MACE and X-MACE
+adapters also take ``parameters="all"``, or a function of each parameter's name.
 
 In your ``ase_calculator`` loader, load the model and the geometries that supplied its training labels,
 fit one estimator, and return a list containing its calculator:
@@ -376,8 +384,21 @@ The calculator and the packed evaluator take the scores to compute:
      - ``ntk_hvp`` (per atom)
      - The per-atom Hessian uncertainty from k Hessian-vector products: 3N rows per probe.
 
-A model with several states adds the state name to each score (``ntk_energy_E1``) and reports gaps
-(``ntk_dE01``). ``predict(atoms, **options)`` returns the same scores as tensors, and
+A model with several states adds the state name to each score (``ntk_energy_E1``, ``ntk_hessian_E1``) and
+reports gaps (``ntk_dE01``). It also reports ``ntk_near_crossing_E1``, which is 1.0 when a predicted gap
+next to that state is below ``crossing_gap_eV``, an option of the calculator and evaluator (default
+0.1 eV). Adiabatic energies are not smooth where states cross. Their Hessians and Hessian scores grow
+like 1/gap there, so don't use per-state Hessian scores inside that window. The gap scores and the scores
+of smooth model outputs stay meaningful through a crossing. Request them with ``outputs=(...)``; each is
+reported as ``ntk_<name>_max``, and elementwise for short outputs. For X-MACE they are:
+
+- ``ground_energy``, the backbone surface;
+- ``state_offsets``, each state relative to the backbone;
+- ``latent`` and ``state_matrix``: for ``AutoencoderExcitedMACE``, the permutation-invariant vector and
+  the tridiagonal matrix it diagonalizes, in eV;
+- ``smooth_nacs``: couplings scaled by the gap, at 3N rows per state pair.
+
+``predict(atoms, **options)`` returns the same scores as tensors, and
 ``predict_energy_forces(atoms)`` returns the force-component scores. For example, configure a force
 trigger with ``"terms": {"force_ntk": {"uncertainty": "ntk_force_max", "cutoff": 0.2}}``,
 ``"eligibility": ["force_ntk"]`` and ``"strategy": "largest"`` inside ``acquisition``. The cutoff is

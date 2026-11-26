@@ -222,8 +222,9 @@ The master config controls the workflow wiring. Common fields include:
      - Optional. Size the run by ``trajectories_per_sampler_task``, ``structures_per_qm_task``
        and ``labels_per_round``, with optional ``sampler_tasks_at_once`` and
        ``qm_tasks_at_once``; ALF derives the batch sizes, ``maximum_builder_structures``,
-       ``parallel_samplers``, ``target_queued_QM`` and ``retraining``. Read once, at
-       startup. See :ref:`batching-sizing`.
+       ``parallel_samplers``, ``target_queued_QM`` and ``retraining``. ``labels_per_member_gpu``,
+       with optional ``max_nodes_per_member``, sets the ML configuration's ``gpus_per_member`` and
+       ``member_nodes``. Read once, at startup. See :ref:`batching-sizing`.
    * - ``plotting_utility``, ``plot_dir``, ``update_plots_every``
      - Optional progress plots. ``plotting_utility`` is an import string such as
        ``alframework.tools.plotting.analysis_plot``, and ``plot_dir`` is where it

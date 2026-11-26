@@ -319,6 +319,8 @@ Several GPUs per member
    trains one member per node, on 4 nodes. Each member's Parsl worker must see that many GPUs;
    :ref:`parsl-multinode-training` shows the layouts. Install the ``lightning`` extra in the ML
    worker environment. Both multi-node tasks support it; the single-node tasks stop with an error.
+   The ``sizing`` block's ``labels_per_member_gpu`` can set ``gpus_per_member`` and ``member_nodes`` from
+   the labels a round adds (:ref:`batching-sizing-training`).
 
    The batch sizes in the ML configuration, including the scheduler's maximum, are totals across
    a member's GPUs, so each must divide evenly by ``gpus_per_member``. With ``batch_size`` 64 and 4

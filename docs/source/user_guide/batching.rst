@@ -57,6 +57,9 @@ and ALF fills them in:
    * - ``retraining``
      - ``{"after": labels_per_round}``: a retraining starts once ``labels_per_round`` new
        labels are held. See :ref:`batching-retraining`.
+   * - ML ``gpus_per_member`` and ``member_nodes``
+     - From ``labels_per_member_gpu``: each member gets one GPU per that many of a round's
+       labels, in whole nodes once it needs more than one. See below.
 
 Each key is optional and fills in only its own settings. ``trajectories_per_sampler_task``
 needs a sampler task that takes ``molecule_objects``, such as ``mlmd_trajectories_task``.
@@ -78,6 +81,41 @@ prints what it derived, for example:
 
 The block is read once, when the coordinator starts; its values apply to every reload of
 the configuration files, and an edit to it waits for a restart.
+
+.. _batching-sizing-training:
+
+Sizing Training
+~~~~~~~~~~~~~~~
+
+Every ensemble member trains on all of a round's labels, so the work per GPU of an epoch
+is the labels per GPU of a member. ``labels_per_member_gpu`` holds it fixed as a run grows,
+which is weak scaling for training:
+
+.. code-block:: json
+
+   "sizing": {"labels_per_round": 262144, "labels_per_member_gpu": 2048}
+
+The round's labels come from ``labels_per_round``, or from a ``retraining`` block that
+counts labels; a round counted in sampled structures has no label count to size by. Each
+member gets ⌈labels ÷ ``labels_per_member_gpu``⌉ GPUs, as whole nodes of the master
+configuration's ``gpus_per_node`` once it needs more than one node: here 128 GPUs, on 16
+nodes. ALF sets ``gpus_per_member`` and ``member_nodes`` in the ML configuration and prints
+how many nodes the ML executor needs for ``n_models`` such members, so the ML allocation can be
+sized to match:
+
+.. code-block:: text
+
+   Sizing: ..., gpus_per_member 128 and member_nodes 16 (2,048 labels per member GPU; the ML executor needs
+   128 nodes)
+
+``max_nodes_per_member`` caps a member at that many nodes, for where members stop scaling;
+above the cap a member trains with more labels per GPU, and the line says so. The ML task
+must train each member across GPUs, as
+``alframework.ml_interfaces.hippynn.interface.train_HIPPYNN_ensemble_multinode_task`` does;
+the coordinator refuses one that ignores the layout. The startup checks and the capacity report check
+the layout against the ML executor as they would one set by hand. The ML configuration's batch sizes
+are totals across a member's GPUs ("Several GPUs per member" in :doc:`ml_interfaces`), so
+set them for the derived ``gpus_per_member``.
 
 .. _batching-retraining:
 

@@ -68,20 +68,39 @@ def _check_members(ml, ml_config, master, executors, member_labels):
     return member_nodes
 
 
-def resolve_sizing(master, sampler_config, qm_config, executors, builder=None, sampler=None):
+def resolve_sizing(master, sampler_config, qm_config, executors, builder=None, sampler=None, ml_config=None, ml=None):
     """Apply the master configuration's ``sizing`` block to the configurations, in place, and return
     ``(block, derived)``.
 
     The sampler slots come from the sampler task's ``executors``, and the builder and sampler widths from the tasks'
     signatures. Without a task (``None``), as when a tool reads a run on another machine, a builder counts as taking
-    one ID and a sampler as batching, and the slots must be given as ``sizing.sampler_tasks_at_once``.
+    one ID and a sampler as batching, and the slots must be given as ``sizing.sampler_tasks_at_once``. A training
+    layout (``sizing.labels_per_member_gpu``) goes into ``ml_config``; without the ML task it isn't checked to train
+    members across GPUs.
     """
     block = sizing_block(master)
     slots = task_slots(_labels(sampler, executors), executors) if sampler is not None else None
+    round_labels = None
+    if block and 'labels_per_member_gpu' in block and 'labels_per_round' not in block:
+        retraining = retraining_settings(master, required=False)
+        if retraining is not None and retraining['counts'] == 'labels':
+            round_labels = retraining['after']
     derived = derive_sizing(
         block, sampler_slots=slots, builder_batches=builder is not None and builds_batches(builder),
-        sampler_batches=sampler is None or 'molecule_objects' in inspect.signature(sampler.func).parameters)
-    apply_sizing(derived, master, sampler_config, qm_config)
+        sampler_batches=sampler is None or 'molecule_objects' in inspect.signature(sampler.func).parameters,
+        round_labels=round_labels, gpus_per_node=master.get('gpus_per_node'),
+        n_models=(ml_config or {}).get('n_models'),
+        member_layout=ml is None or getattr(getattr(ml, 'func', ml), 'member_layout', None) is not None)
+    apply_sizing(derived, master, sampler_config, qm_config, ml_config)
+    layout = getattr(getattr(ml, 'func', ml), 'member_layout', None) if ml is not None else None
+    if derived['ML'] and layout is not None:
+        _, gpus, nodes = layout(ml_config)
+        if (gpus, nodes) != (derived['ML']['gpus_per_member'], derived['ML']['member_nodes']):
+            task = master.get('ML_task', 'The ML task')
+            raise ValueError(f'{task} trains each member on {gpus} GPU(s) and {nodes} node(s) whatever '
+                             'gpus_per_member and member_nodes say, so sizing.labels_per_member_gpu cannot size it. '
+                             'Use a task that trains members across GPUs, such as '
+                             'alframework.ml_interfaces.hippynn.interface.train_HIPPYNN_ensemble_multinode_task.')
     return block, derived
 
 
@@ -90,14 +109,14 @@ def resolve_settings(configs, *, executors=None, builder=None, sampler=None):
     :func:`~alframework.tools.config.load_workflow_configs`) with the ``scaling`` and ``sizing`` blocks applied, in
     place, as the coordinator applies them at startup. Returns ``configs``."""
     apply_scaling(configs.master, configs.sampler, configs.ML, check_tasks=False)
-    resolve_sizing(configs.master, configs.sampler, configs.QM, executors or {}, builder, sampler)
+    resolve_sizing(configs.master, configs.sampler, configs.QM, executors or {}, builder, sampler, configs.ML)
     return configs
 
 
 def reapply_settings(configs, scaling, derived):
     """Apply the ``scaling`` block and the ``sizing`` values the coordinator started with to reloaded ``configs``,
     in place. An edit to either block waits for a restart, so a reload keeps their startup meaning."""
-    apply_sizing(derived, configs.master, configs.sampler, configs.QM)
+    apply_sizing(derived, configs.master, configs.sampler, configs.QM, configs.ML)
     apply_scaling(configs.master, configs.sampler, configs.ML, scaling or {}, check_tasks=False)
     return configs
 
@@ -128,7 +147,7 @@ def check_workflow(master, builder_config, sampler_config, qm_config, ml_config,
     validate_task_config(builder, builder_config, master)
     validate_task_config(sampler, sampler_config, master)
 
-    sizing, derived = resolve_sizing(master, sampler_config, qm_config, executors, builder, sampler)
+    sizing, derived = resolve_sizing(master, sampler_config, qm_config, executors, builder, sampler, ml_config, ml)
     if sizing:
         print(describe_sizing(sizing, derived), flush=True)
     retraining = retraining_settings(master, required=not debug)  # the test modes never retrain

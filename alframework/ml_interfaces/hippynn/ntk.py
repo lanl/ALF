@@ -1,179 +1,65 @@
-"""Energy and force uncertainty for a fitted molecular HIPPYNN graph."""
+"""HIPPYNN graphs for ALF's NTK uncertainty, molecular or periodic, with one or more energy states.
 
+The graph takes ``(species, positions)``, or ``(species, positions, cell)`` with a ``CellNode``, in batch
+form. Each output is a ``[batch, 1]`` total energy in eV, one per state. NTK rows use HIPPYNN's
+plain-PyTorch message-passing kernels (``_pytorch_raw``) during scoring. These support ``torch.func``
+and derivatives of any order. The previously active kernels, Triton for example, are restored afterwards,
+so MD forces keep using them.
+"""
+
+from contextlib import contextmanager
 from copy import deepcopy
 import hashlib
-from io import BytesIO
-import json
-import math
+import warnings
 
 import numpy as np
 import torch
-from ase.calculators.calculator import Calculator, all_changes
+from torch.func import functional_call
+
 from hippynn import custom_kernels
+from hippynn.graphs import inputs as hippynn_inputs
+
+from alframework.ml_interfaces.ntk.adapter import NTKAdapter, resolve_device_dtype
+from alframework.ml_interfaces.ntk.estimator import (NTKASECalculator, NTKEstimator, NTKPackedEvaluator,
+                                                     read_basis_metadata)
+
+# NTKASECalculator and NTKPackedEvaluator are imported for convenience; they are documented in the core.
+__all__ = ["HippynnNTKAdapter", "EnergyForceNTK", "EnergyNTK"]
+
+SCORING_KERNELS = "_pytorch_raw"
 
 
-class _NTKModel:
-    def __init__(self, energy_graph, sketch_dim, seed, device, dtype, *, identify_sketch=False):
-        if not isinstance(sketch_dim, int) or isinstance(sketch_dim, bool) or sketch_dim < 1:
-            raise ValueError("sketch_dim must be a positive integer.")
-
-        device = torch.device(device)
-        if device.type not in ("cpu", "cuda", "mps"):
-            raise ValueError("NTK device must be CPU, CUDA (including ROCm), or MPS.")
-        if dtype is None:
-            dtype = torch.float64 if device.type == "cpu" else torch.float32
-        if dtype not in (torch.float32, torch.float64):
-            raise ValueError("NTK precision must be torch.float32 or torch.float64.")
-        if device.type == "mps" and dtype != torch.float32:
-            raise ValueError("MPS NTK requires torch.float32.")
-        if device.type == "mps":
-            if device.index not in (None, 0) or not torch.backends.mps.is_available():
-                raise RuntimeError(f"The requested NTK MPS device {device} is unavailable.")
-            device = torch.device("mps")
-        if device.type == "cuda":
-            if not torch.cuda.is_available():
-                raise RuntimeError("The requested NTK CUDA/ROCm device is unavailable.")
-            ordinal = torch.cuda.current_device() if device.index is None else device.index
-            if ordinal >= torch.cuda.device_count():
-                raise ValueError(f"NTK device {device} is outside the visible CUDA/ROCm devices.")
-            device = torch.device("cuda", ordinal)
-
-        self.device, self.dtype = device, dtype
-        self._graph = deepcopy(energy_graph).to(device=device, dtype=dtype).eval()
-        self._parameters = tuple(p for p in self._graph.parameters() if p.requires_grad)
-        if not self._parameters:
-            raise ValueError("The energy graph has no trainable parameters.")
-        sizes = [p.numel() for p in self._parameters]
-        generator = torch.Generator(device="cpu").manual_seed(seed)
-        projection = torch.randn(sum(sizes), sketch_dim, generator=generator, dtype=torch.float64, device="cpu")
-        projection.div_(math.sqrt(sketch_dim))
-        if identify_sketch:
-            self._sketch_digest = hashlib.sha256(projection.numpy()).hexdigest()
-        self._projection = projection.to(device=device, dtype=dtype).split(sizes)
-        self._sketch_dim = sketch_dim
-
-    def _factor_information(self, information, ridge):
-        self.ridge = float(ridge)
-        if not math.isfinite(self.ridge) or self.ridge <= 0:
-            raise ValueError("The NTK ridge is not finite and positive. Check model sensitivities and scales.")
-        information.diagonal().add_(self.ridge)
-        self._factor, status = torch.linalg.cholesky_ex(information)
-        if int(status) != 0 or not torch.isfinite(self._factor).all():
-            raise ValueError("Could not factor the NTK information matrix. Check scales, ridge, and precision.")
-
-    def _parameter_row(self, value):
-        row = torch.zeros(self._sketch_dim, dtype=self.dtype, device=self.device)
-        if value.requires_grad:
-            gradients = torch.autograd.grad(value, self._parameters, retain_graph=True, allow_unused=True)
-            for gradient, projection in zip(gradients, self._projection):
-                if gradient is not None:
-                    row.addmv_(projection.T, gradient.reshape(-1))
-        return row
-
-    def _energy(self, species, positions):
-        if custom_kernels.CUSTOM_KERNELS_ACTIVE not in (False, "pytorch"):
-            raise ValueError("Select native PyTorch kernels with hippynn.custom_kernels.set_custom_kernels(False).")
-        output = self._graph(species, positions)[0]
-        if output.shape != (len(species), 1):
-            raise ValueError("The first graph output must be one energy per structure with shape [batch, 1].")
-        return output[:, 0]
-
-    def _energy_forces(self, species, positions, *, create_graph):
-        positions = positions.detach().clone().requires_grad_(True)
-        energy = self._energy(species, positions)
-        gradient = None
-        if energy.requires_grad:
-            gradient, = torch.autograd.grad(energy.sum(), positions, create_graph=create_graph, allow_unused=True)
-        forces = torch.zeros_like(positions) if gradient is None else -gradient
-        return energy, forces
-
-    def _molecular_inputs(self, numbers, positions, pbc):
-        if pbc.any():
-            raise ValueError("Energy and force NTK requires nonperiodic structures.")
-        # Convert ASE NumPy inputs on the host first. MPS cannot accept an
-        # intermediate float64 device tensor.
-        numbers = numbers if torch.is_tensor(numbers) else torch.from_numpy(numbers)
-        positions = positions if torch.is_tensor(positions) else torch.from_numpy(positions)
-        species = numbers.to(device=self.device, dtype=torch.long).clone()
-        positions = positions.detach().to(device=self.device, dtype=self.dtype)
-        if not len(species) or (species <= 0).any() or not torch.isfinite(positions).all():
-            raise ValueError("Supply a nonempty structure with positive atomic numbers and finite positions.")
-        return species[None], positions[None]
+@contextmanager
+def scoring_kernels(name=SCORING_KERNELS):
+    """Select HIPPYNN's message-passing kernels for a block, then restore the previous ones."""
+    previous = custom_kernels.CUSTOM_KERNELS_ACTIVE
+    if previous == name:
+        yield
+        return
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="Using non-standard custom kernel implementation")
+        custom_kernels.set_custom_kernels(name)
+    try:
+        yield
+    finally:
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message="Using non-standard custom kernel implementation")
+            custom_kernels.set_custom_kernels(previous)
 
 
-class EnergyForceNTK(_NTKModel):
-    """Fit a sketched NTK on the original energy and force training geometries.
+class _Functional(torch.nn.Module):
+    """``GraphModule.forward`` without its ``requires_grad_`` on inputs, which ``torch.func`` forbids."""
 
-    The graph takes batched atomic numbers and positions in Å and returns
-    [batch, 1] total energies in eV as its first output. Geometries are
-    nonperiodic ASE Atoms. Observation scales are in eV and eV/Å respectively.
-    The graph snapshot uses native PyTorch kernels, float64 on CPU and float32
-    on GPU by default. Refit the estimator when the model changes.
-    """
+    def __init__(self, graph):
+        super().__init__()
+        self.graph = graph
 
-    @torch.inference_mode(False)
-    @torch.enable_grad()
-    def __init__(self, energy_graph, training_geometries, *, energy_scale, force_scale,
-                 sketch_dim=64, seed=0, ridge_factor=1e-3, device="cpu", dtype=None):
-        for name, value in (("energy_scale", energy_scale), ("force_scale", force_scale),
-                            ("ridge_factor", ridge_factor)):
-            if not math.isfinite(value) or value <= 0:
-                raise ValueError(f"{name} must be finite and positive.")
-        super().__init__(energy_graph, sketch_dim, seed, device, dtype)
-        information = torch.zeros((sketch_dim, sketch_dim), dtype=self.dtype, device=self.device)
-        self.training_structure_count = 0
-        for atoms in training_geometries:
-            _, _, energy_row, force_rows = self._tangents(atoms)
-            rows = torch.cat((energy_row[None] / energy_scale, force_rows.flatten(0, 1) / force_scale))
-            information.addmm_(rows.T, rows)
-            self.training_structure_count += 1
-        if not self.training_structure_count:
-            raise ValueError("Supply at least one training geometry.")
-        self._factor_information(information, ridge_factor * information.diagonal().mean())
-
-    def _tangents(self, atoms):
-        return self._tensor_tangents(atoms.numbers, atoms.positions, atoms.pbc)
-
-    def _tensor_tangents(self, numbers, positions, pbc):
-        species, positions = self._molecular_inputs(numbers, positions, pbc)
-        energies, batch_forces = self._energy_forces(species, positions, create_graph=True)
-        energy, forces = energies[0], batch_forces[0]
-        energy_row = self._parameter_row(energy)
-        force_rows = torch.stack([self._parameter_row(f) for f in forces.flatten()])
-        if not all(torch.isfinite(value).all() for value in (energy, forces, energy_row, force_rows)):
-            raise FloatingPointError("The energy graph produced nonfinite predictions or NTK features.")
-        return energy.detach(), forces.detach(), energy_row, force_rows.reshape(*forces.shape, self._sketch_dim)
-
-    def _variance(self, rows):
-        flat = rows.reshape(-1, self._sketch_dim)
-        whitened = torch.linalg.solve_triangular(self._factor, flat.T, upper=False)
-        return (self.ridge * whitened.square().sum(0)).reshape(rows.shape[:-1])
-
-    @torch.inference_mode(False)
-    @torch.enable_grad()
-    def predict_energy_forces(self, atoms):
-        """Return predictions and raw uncertainty scores on the estimator device.
-
-        Force component scores are [atoms, 3]. The per-atom score is the norm
-        of the three component scores. Calibrate the scores against errors
-        before using them to decide whether to request labels.
-        """
-        return self._score(*self._tangents(atoms))
-
-    def _score(self, energy, forces, energy_row, force_rows):
-        energy_score = self._variance(energy_row).sqrt()
-        force_variance = self._variance(force_rows)
-        atom_scores = force_variance.sum(1).sqrt()
-        if not torch.isfinite(energy_score) or not torch.isfinite(atom_scores).all():
-            raise FloatingPointError("Nonfinite NTK uncertainty score.")
-        return {
-            "energy": energy,
-            "forces": forces,
-            "energy_uncertainty_score": energy_score,
-            "force_component_uncertainty_score": force_variance.sqrt(),
-            "force_uncertainty_score": atom_scores,
-            "max_force_uncertainty_score": atom_scores.max(),
-        }
+    def forward(self, *values):
+        graph = self.graph
+        computed = dict(zip(graph.input_nodes, values))
+        for node in graph.forward_output_list:
+            computed[node] = graph.get_module(node)(*(computed[parent] for parent in node.parents))
+        return tuple(computed[node] for node in graph.nodes_to_compute)
 
 
 def _graph_digest(graph):
@@ -190,179 +76,137 @@ def _graph_digest(graph):
     return digest.hexdigest()
 
 
-def _basis_id(metadata, factor):
-    digest = hashlib.sha256(json.dumps(metadata, sort_keys=True).encode())
-    digest.update(factor.tobytes(order="C"))
-    return digest.hexdigest()
+class HippynnNTKAdapter(NTKAdapter):
+    """A frozen copy of a HIPPYNN energy graph on the scoring device and precision."""
 
-
-class EnergyNTK(_NTKModel):
-    """Energy-only NTK for AdaptNTK selection on nonperiodic structures.
-
-    Use the original training geometries to fit the basis once per checkpoint.
-    Each geometry contributes the sketched weight gradient of its total
-    energy. Save the basis and load it in workers with the same energy graph.
-    """
+    supports_forward = True
 
     @torch.inference_mode(False)
-    @torch.enable_grad()
-    def __init__(self, energy_graph, training_geometries, *, sketch_dim=64, seed=0,
-                 ridge=None, ridge_factor=1e-3, device="cpu", dtype=None):
-        if ridge is None and (not math.isfinite(ridge_factor) or ridge_factor <= 0):
-            raise ValueError("ridge_factor must be finite and positive.")
-        super().__init__(energy_graph, sketch_dim, seed, device, dtype, identify_sketch=True)
-        information = torch.zeros((sketch_dim, sketch_dim), dtype=self.dtype, device=self.device)
-        self.training_structure_count = 0
-        for atoms in training_geometries:
-            row = self._energy_row(atoms.numbers, atoms.positions, atoms.pbc)
-            information.addmm_(row[:, None], row[None])
-            self.training_structure_count += 1
-        if not self.training_structure_count:
-            raise ValueError("Supply at least one training geometry.")
-        if ridge is None:
-            ridge = ridge_factor * information.diagonal().mean()
-        self._factor_information(information, ridge)
-        self._basis_metadata = {
-            "version": 1, "model": _graph_digest(self._graph), "sketch": self._sketch_digest,
-            "seed": seed, "sketch_dim": sketch_dim, "dtype": str(self.dtype).split(".")[-1],
-            "ridge": self.ridge, "training_structure_count": self.training_structure_count,
-        }
-        self.basis_id = _basis_id(self._basis_metadata, self._factor.cpu().numpy())
+    def __init__(self, energy_graph, *, device="cpu", dtype=None, state_names=None):
+        self.device, self.dtype = resolve_device_dtype(device, dtype)
+        graph = deepcopy(energy_graph).to(device=self.device, dtype=self.dtype).eval()
+        roles = []
+        for node in graph.input_nodes:
+            if isinstance(node, hippynn_inputs.SpeciesNode):
+                roles.append("species")
+            elif isinstance(node, hippynn_inputs.PositionsNode):
+                roles.append("positions")
+            elif isinstance(node, hippynn_inputs.CellNode):
+                roles.append("cell")
+            else:
+                raise ValueError(f"Unsupported HIPPYNN graph input {node.name!r}; use species, positions, and cell.")
+        if sorted(roles) not in (["positions", "species"], ["cell", "positions", "species"]):
+            raise ValueError("The graph must take species and positions, and optionally a cell.")
+        self.roles, self.periodic = tuple(roles), "cell" in roles
+        n_states = len(graph.nodes_to_compute)
+        if state_names is None:
+            state_names = ("energy",) if n_states == 1 else tuple(f"E{i}" for i in range(n_states))
+        if len(state_names) != n_states:
+            raise ValueError(f"The graph has {n_states} energy outputs but {len(state_names)} state names.")
+        self.state_names = tuple(state_names)
+        self.graph = graph
+        self._functional = _Functional(graph)
+        self._parameters = {name: p for name, p in graph.named_parameters() if p.requires_grad}
+        if not self._parameters:
+            raise ValueError("The energy graph has no trainable parameters.")
+        self._digest = _graph_digest(graph)
 
-    def _energy_row(self, numbers, positions, pbc):
-        species, coordinates = self._molecular_inputs(numbers, positions, pbc)
-        # Autograd may need to save coordinates supplied from an inference context.
-        energy = self._energy(species, coordinates.clone())[0]
-        row = self._parameter_row(energy)
-        if not torch.isfinite(energy) or not torch.isfinite(row).all():
-            raise FloatingPointError("Nonfinite energy or energy NTK row.")
-        return row
+    def live_parameters(self):
+        return self._parameters
 
-    def save_basis(self, path):
-        """Atomically save the factor and provenance, without model weights."""
-        from alframework.tools.files import write_bytes_atomic
+    def digest(self):
+        return self._digest
 
-        buffer = BytesIO()
-        np.savez(buffer, metadata=json.dumps(self._basis_metadata), basis_id=self.basis_id,
-                 factor=self._factor.cpu().numpy())
-        write_bytes_atomic(path, buffer.getvalue())
+    def prepare(self, structure):
+        periodic = bool(structure.pbc.any())
+        if periodic and not self.periodic:
+            raise ValueError("This HIPPYNN graph takes no cell, so it scores nonperiodic structures only.")
+        if self.periodic and not bool(structure.pbc.all()):
+            raise ValueError("A periodic HIPPYNN graph needs fully periodic cells.")
 
-    @classmethod
-    @torch.inference_mode(False)
-    def from_basis(cls, energy_graph, path, *, device="cpu"):
-        """Restore the frozen basis for a worker without reading training data."""
-        with np.load(path, allow_pickle=False) as saved:
-            metadata = json.loads(saved["metadata"].item())
-            basis = saved["basis_id"].item()
-            factor = saved["factor"]
-        dtypes = {"float32": torch.float32, "float64": torch.float64}
-        if metadata.get("version") != 1 or metadata.get("dtype") not in dtypes:
-            raise ValueError("Unsupported energy NTK basis format.")
-        width, ridge = metadata["sketch_dim"], metadata["ridge"]
-        if (factor.shape != (width, width) or factor.dtype != np.dtype(metadata["dtype"])
-                or not np.isfinite(factor).all() or np.any(factor.diagonal() <= 0)
-                or np.any(np.triu(factor, k=1)) or not math.isfinite(ridge) or ridge <= 0
-                or basis != _basis_id(metadata, factor)):
-            raise ValueError("Invalid energy NTK basis factor or checksum.")
-        estimator = cls.__new__(cls)
-        _NTKModel.__init__(estimator, energy_graph, width, metadata["seed"], device, dtypes[metadata["dtype"]],
-                           identify_sketch=True)
-        if metadata["model"] != _graph_digest(estimator._graph) or metadata["sketch"] != estimator._sketch_digest:
-            raise ValueError("The energy NTK basis does not match this model snapshot or parameter sketch.")
-        estimator._factor = torch.from_numpy(factor).to(estimator.device)
-        estimator.ridge = ridge
-        estimator.training_structure_count = metadata["training_structure_count"]
-        estimator._basis_metadata, estimator.basis_id = metadata, basis
-        return estimator
+    def _arguments(self, species, positions, cells):
+        values = {"species": species, "positions": positions, "cell": cells}
+        return tuple(values[role] for role in self.roles)
+
+    def _stack_outputs(self, outputs, batch):
+        for output in outputs:
+            if output.shape != (batch, 1):
+                raise ValueError("Each graph output must be one energy per structure with shape [batch, 1].")
+        return torch.stack([output[:, 0] for output in outputs])  # [S, batch]
+
+    def energies(self, structure, positions, params=None):
+        arguments = self._arguments(structure.numbers[None], positions[None], structure.cell[None])
+        if params is None:
+            outputs = self._functional(*arguments)
+        else:
+            outputs = functional_call(self._functional, {f"graph.{k}": v for k, v in params.items()}, arguments)
+        return self._stack_outputs(outputs, 1)[:, 0]
+
+    def forward_context(self):
+        return scoring_kernels()
+
+    def reverse_context(self):
+        return scoring_kernels()
 
     @torch.inference_mode(False)
-    @torch.enable_grad()
-    def candidate_features(self, numbers, positions, pbc):
-        """Return a host whitened row, its basis ID, and the fixed ridge."""
-        row = self._energy_row(numbers, positions, pbc)
-        whitened = torch.linalg.solve_triangular(self._factor, row[:, None], upper=False)[:, 0]
-        if not torch.isfinite(whitened).all():
-            raise FloatingPointError("Nonfinite whitened energy NTK row.")
-        return {"row": whitened.cpu().numpy(), "basis_id": self.basis_id, "ridge": self.ridge}
-
-
-class NTKASECalculator(Calculator):
-    """Expose one fitted EnergyForceNTK through ALF's ASE uncertainty contract."""
-
-    implemented_properties = ["energy", "forces"]
-
-    def __init__(self, estimator):
-        super().__init__()
-        self.estimator = estimator
-
-    def calculate(self, atoms=None, properties=("energy",), system_changes=all_changes):
-        super().calculate(atoms, properties, system_changes)
-        self.results = {}
-        result = self.estimator.predict_energy_forces(self.atoms)
-        scalar, atomic = _reported_uncertainty(result)
-        self.results = {
-            "energy": float(result["energy"]),
-            "forces": result["forces"].cpu().numpy(),
-            "alf_uncertainty": scalar,
-            "alf_atomic_uncertainty": atomic,
-        }
-
-
-def _reported_uncertainty(result):
-    return {
-        "ntk_energy": float(result["energy_uncertainty_score"]),
-        "ntk_force_max": float(result["max_force_uncertainty_score"]),
-    }, {"ntk_force": result["force_uncertainty_score"].cpu().numpy()}
-
-
-class NTKPackedEvaluator:
-    """Use one fitted snapshot for ordinary MD forces and observation-only NTK scores."""
-
-    n_models = 1
-
-    def __init__(self, estimator, *, force_diagnostics=None):
-        self.estimator = estimator
-        self.force_diagnostics = force_diagnostics
-        if force_diagnostics is not None:
-            if (not isinstance(estimator, EnergyNTK) or not isinstance(force_diagnostics, EnergyForceNTK)
-                    or estimator.device != force_diagnostics.device
-                    or estimator.dtype != force_diagnostics.dtype
-                    or estimator._basis_metadata["model"] != _graph_digest(force_diagnostics._graph)):
-                raise ValueError("Force diagnostics require an EnergyForceNTK on the same model, device, and dtype.")
-
-    @torch.inference_mode(False)
-    @torch.enable_grad()
-    def evaluate(self, numbers, positions, cells, pbc, counts):
-        """Return [1, systems] energies and [1, atoms, 3] forces without scoring."""
-        if pbc.any():
-            raise ValueError("Energy and force NTK requires nonperiodic structures.")
-        if not counts or min(counts) <= 0 or sum(counts) != len(numbers) or positions.shape != (len(numbers), 3):
-            raise ValueError("Packed atom counts must match the nonempty input structures.")
-        device, dtype = self.estimator.device, self.estimator.dtype
+    def predict_batch(self, numbers, positions, cells, pbc, counts):
+        """Padded batch energies and forces with the active kernels (Triton, for example)."""
+        device, dtype = self.device, self.dtype
+        pbc = torch.as_tensor(pbc)
+        if bool(pbc.any()) != self.periodic or (self.periodic and not bool(pbc.all())):
+            raise ValueError("This HIPPYNN graph needs " + ("fully periodic" if self.periodic else "nonperiodic")
+                             + " structures.")
         width = max(counts)
         mask = torch.arange(width, device=device)[None] < torch.as_tensor(counts, device=device)[:, None]
         species = torch.zeros((len(counts), width), dtype=torch.long, device=device)
         coordinates = torch.zeros((len(counts), width, 3), dtype=dtype, device=device)
         species[mask] = numbers.to(device=device, dtype=torch.long)
-        coordinates[mask] = positions.detach().to(device=device, dtype=dtype)
-        energy, forces = self.estimator._energy_forces(species, coordinates, create_graph=False)
-        return energy.detach()[None], forces.detach()[mask][None]
+        coordinates[mask] = positions.detach().to(device=device, dtype=dtype).clone()
+        cell = None if not self.periodic else torch.as_tensor(cells).to(device=device, dtype=dtype).clone()
+        with torch.inference_mode(False), torch.enable_grad():
+            coordinates.requires_grad_(True)
+            energies = self._stack_outputs(self._functional(*self._arguments(species, coordinates, cell)), len(counts))
+            forces = []
+            for state in energies:
+                gradient, = torch.autograd.grad(state.sum(), coordinates, retain_graph=True, allow_unused=True)
+                forces.append(torch.zeros_like(coordinates[mask]) if gradient is None else -gradient[mask])
+        return energies.detach(), torch.stack(forces).detach()
 
-    @torch.inference_mode(False)
-    @torch.enable_grad()
-    def observe_uncertainty(self, numbers, positions, cell, pbc):
-        """Return scores and any energy row or atom diagnostics for one structure."""
-        if isinstance(self.estimator, EnergyNTK):
-            payload = self.estimator.candidate_features(numbers, positions, pbc)
-            row = payload["row"].astype(np.float64, copy=False)
-            scores = {"ntk_energy": math.sqrt(payload["ridge"] * float(row @ row))}
-            report = {"energy_ntk": payload, "uncertainty": scores}
-            if self.force_diagnostics is not None:
-                model = self.force_diagnostics
-                scalar, report["atomic_uncertainty"] = _reported_uncertainty(
-                    model._score(*model._tensor_tangents(numbers, positions, pbc)))
-                scores["ntk_force_max"] = scalar["ntk_force_max"]
-            return report
-        result = self.estimator._score(*self.estimator._tensor_tangents(numbers, positions, pbc))
-        scalar, atomic = _reported_uncertainty(result)
-        return {"uncertainty": scalar, "atomic_uncertainty": atomic}
+
+class EnergyForceNTK(NTKEstimator):
+    """Fit a sketched NTK posterior on a HIPPYNN graph's energy and force training geometries.
+
+    Observation scales are in eV, eV/Å, and eV/Å² (see :class:`NTKEstimator`). The graph snapshot is
+    copied to ``device``, in float64 on CPU and float32 on GPU by default. Refit the estimator when the
+    model changes.
+    """
+
+    def __init__(self, energy_graph, training_geometries, *, energy_scale, force_scale, hessian_scale=None,
+                 hessian_fit_probes=4, sketch_dim=64, seed=0, ridge=None, ridge_factor=1e-3, device="cpu",
+                 dtype=None, engine="auto", probe_seed=0, state_names=None):
+        super().__init__(HippynnNTKAdapter(energy_graph, device=device, dtype=dtype, state_names=state_names),
+                         training_geometries, energy_scale=energy_scale, force_scale=force_scale,
+                         hessian_scale=hessian_scale, hessian_fit_probes=hessian_fit_probes,
+                         sketch_dim=sketch_dim, seed=seed, ridge=ridge, ridge_factor=ridge_factor,
+                         engine=engine, probe_seed=probe_seed)
+
+
+class EnergyNTK(NTKEstimator):
+    """The AdaptNTK basis: energy-gradient rows of a HIPPYNN graph's original training geometries.
+
+    Fit once per checkpoint, save it with :meth:`save_basis`, and restore it in workers with
+    :meth:`from_basis` on the same graph.
+    """
+
+    def __init__(self, energy_graph, training_geometries, *, sketch_dim=64, seed=0, ridge=None,
+                 ridge_factor=1e-3, device="cpu", dtype=None, engine="auto", state_names=None):
+        super().__init__(HippynnNTKAdapter(energy_graph, device=device, dtype=dtype, state_names=state_names),
+                         training_geometries, sketch_dim=sketch_dim, seed=seed, ridge=ridge,
+                         ridge_factor=ridge_factor, engine=engine)
+
+    @classmethod
+    def from_basis(cls, energy_graph, path, *, device="cpu", engine="auto", state_names=None):
+        """Restore a saved basis for a worker without reading training data."""
+        dtype = getattr(torch, read_basis_metadata(path)["dtype"])
+        adapter = HippynnNTKAdapter(energy_graph, device=device, dtype=dtype, state_names=state_names)
+        return NTKEstimator.from_basis(adapter, path, engine=engine)

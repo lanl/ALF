@@ -92,6 +92,26 @@ def test_close_contacts_are_rejected(engine_name, overlap):
     assert results[1].get_metadata()["distmin"] == pytest.approx(1.0)
 
 
+@pytest.mark.parametrize("mode", ["first_trigger", "final_frame"])
+def test_close_contacts_can_be_labeled(engine_name, mode):
+    bad = Atoms("H2", positions=[[0.1, 0, 0], [9.9, 0, 0]], cell=[10] * 3, pbc=True)
+    good = Atoms("H2", positions=[[1, 0, 0], [2, 0, 0]], cell=[10] * 3, pbc=True)
+    config = dict(CONFIG, dt=0.5, maxt=0.001, Ncheck=1, Escut=1.0, Fscut=1.0, srt_temp=[0.0, 0.0],
+                  end_temp=[0.0, 0.0], amp_temp=[0.0, 0.0], per_temp=[1.0, 1.0], amp_dens=None, per_dens=None,
+                  end_dens=None, MLMD_calculator_options={"well_params": None},
+                  acquisition={"selection": {"mode": mode}, "distcut_frames": "label"})
+    molecules = [MoleculesObject(a, name) for a, name in [(bad, "bad"), (good, "good")]]
+    results = sample_trajectories(molecules, [Tether(0.0), Tether(0.0)], config, engine_class=engine_class(engine_name))
+    contact, clean = (m.get_metadata() for m in results)
+    assert contact["trajectory_outcome"] == "eligible" and contact["distcrit"] is True and contact["step"] == 1
+    assert contact["distmin"] == pytest.approx(0.2)
+    assert results[0].get_atoms() is not None and not results[0].get_atoms().constraints
+    if mode == "final_frame":
+        assert contact["trajectory_final_step"] == 2 and clean["trajectory_outcome"] == "eligible"
+    else:
+        assert clean["trajectory_outcome"] == "completed"
+
+
 def run(groups, config=CONFIG, models=spring_ensemble, engine_name="torchsim"):
     config = copy.deepcopy(config)
     config["driver"]["engine"] = engine_name

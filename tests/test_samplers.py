@@ -420,3 +420,17 @@ def test_close_contacts_are_rejected(legacy, positions, periodic, cutoff, reject
     assert bool(result.get_metadata()["distcrit"]) is rejected
     assert result.get_metadata()["distmin"] == pytest.approx(expected)
     assert result.get_atoms() is None
+
+
+def test_serial_sampler_labels_close_contacts_when_asked():
+    atoms = Atoms("H2", positions=[[0.1, 0, 0], [9.9, 0, 0]], cell=[10] * 3, pbc=True)
+    models = [FixedCalculator(0.0, np.zeros((2, 3))) for _ in range(2)]
+    config = dict(dt=0.5, maxt=0.001, Ncheck=1, Escut=1.0, Fscut=1.0, distcut=1.0, min_time=0.0,
+                  Tamp=0.0, Tper=1.0, Tsrt=0.0, Tend=0.0, Ramp=None, Rper=None, Rend=None)
+    labeled = mlmd_sampling(MoleculesObject(atoms.copy(), "screen"), MLMD_calculator(models, well_params=None),
+                            **config, acquisition={"distcut_frames": "label"})
+    assert labeled.get_metadata()["distcrit"] and labeled.get_atoms() is not None
+    assert not labeled.get_atoms().constraints
+    with pytest.raises(ValueError, match="requires the batched sampler"):
+        mlmd_sampling(MoleculesObject(atoms.copy(), "screen"), MLMD_calculator(models, well_params=None), **config,
+                      acquisition={"selection": {"mode": "final_frame"}})

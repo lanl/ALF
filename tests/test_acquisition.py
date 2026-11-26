@@ -176,6 +176,11 @@ def test_high_score_alone_is_not_eligible():
             "Unknown acquisition.selection",
         ),
         ({"return_top_k": 4}, "Unknown acquisition settings"),
+        ({"distcut_frames": "keep"}, "distcut_frames must be one of"),
+        (
+            {"distcut_frames": "label", "selection": {"mode": "cohort_top_k", "cohort_size": 4, "k": 2}},
+            "requires selection.mode 'first_trigger' or 'final_frame'",
+        ),
     ],
     ids=[
         "unknown_strategy",
@@ -192,11 +197,26 @@ def test_high_score_alone_is_not_eligible():
         "k_without_cohort_mode",
         "unknown_selection_key",
         "unknown_setting",
+        "unknown_distcut_frames",
+        "label_contacts_in_a_cohort",
     ],
 )
 def test_invalid_settings_are_rejected(block, error):
     with pytest.raises(ValueError, match=error):
         acquisition_settings({**CONFIG, "acquisition": block})
+
+
+@pytest.mark.parametrize("mode", ["first_trigger", "final_frame"])
+def test_labeled_close_contacts_are_eligible_once_checked(mode):
+    calm = {"Es": 0.1, "Fs": 0.1, "Fsmax": 0.1, "Fsrms": 0.1}
+    assert acquisition_settings(CONFIG)["distcut_frames"] == "reject"
+    config = {**CONFIG, "acquisition": {"selection": {"mode": mode}, "distcut_frames": "label"}}
+    settings = acquisition_settings(config)
+    contact = assess_frame(calm, 0.5, 0.02, config, settings)
+    assert contact["outcome"] == "eligible" and contact["distcrit"] is True and "ranking_score" in contact
+    assert assess_frame(calm, 0.5, 0.0, config, settings)["outcome"] == "continue"  # before min_time
+    assert assess_frame(calm, 1.0, 0.02, config, settings)["outcome"] == "continue"
+    assert assess_frame(calm, 0.5, 0.02, CONFIG, acquisition_settings(CONFIG))["outcome"] == "rejected"
 
 
 def test_top_k_ignores_input_order():

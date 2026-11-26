@@ -225,6 +225,89 @@ def test_final_frame_uses_exact_duration_and_keeps_first_violation_in_metadata(t
     assert results[3].get_atoms() is None
 
 
+class ScriptedContacts(ASEEngine):
+    """Reports a close contact (0.8 Angstrom) at the listed steps of each trajectory, and 1.5 otherwise."""
+
+    contacts = {}
+
+    def observe(self, index):
+        observation = super().observe(index)
+        observation["min_distance"] = 0.8 if self.steps[index] in self.contacts.get(index, ()) else 1.5
+        return observation
+
+
+def run_scripted(config, contacts, count, engine_class=ScriptedContacts):
+    engine = engine_class([BOX.copy() for _ in range(count)], fake_ensemble(), config["dt"], [300.0] * count,
+                          [np.random.RandomState(11) for _ in range(count)])
+    engine.contacts = contacts
+    molecules = [MoleculesObject(engine.atoms(i), f"mol-{i}") for i in range(count)]
+    return run_mlmd_trajectories(molecules, engine, [SCHEDULE] * count, config), engine
+
+
+@pytest.mark.parametrize("distcut_frames", ["reject", "label"])
+def test_first_trigger_labels_a_close_contact_only_when_asked(distcut_frames):
+    config = dict(BASE, Escut=100.0, distcut=1.1, maxt=0.004, Ncheck=1, acquisition={"distcut_frames": distcut_frames})
+    results, engine = run_scripted(config, {0: {3}}, 2)
+    contact, clean = (molecule.get_metadata() for molecule in results)
+
+    assert contact["distcrit"] is True and contact["step"] == engine.steps[0] == 3
+    assert clean["trajectory_outcome"] == "completed" and results[1].get_atoms() is None
+    if distcut_frames == "label":
+        assert contact["trajectory_outcome"] == "eligible" and "ranking_score" in contact
+        np.testing.assert_allclose(results[0].get_atoms().get_positions(wrap=True), contact["positions"])
+        assert not results[0].get_atoms().constraints
+    else:
+        assert contact["trajectory_outcome"] == "rejected" and results[0].get_atoms() is None
+
+
+@pytest.mark.parametrize("ncheck", [1, 3, 20])
+def test_final_frame_labels_the_first_close_contact_without_changing_the_dynamics(ncheck):
+    contacts = {0: {1, 5}, 1: {8}}  # trajectory 2 never comes close
+    runs = {}
+    for distcut_frames in ("reject", "label"):
+        config = dict(BASE, Escut=100.0, distcut=1.1, maxt=0.004, Ncheck=ncheck,
+                      acquisition={"selection": {"mode": "final_frame"}, "distcut_frames": distcut_frames})
+        runs[distcut_frames] = run_scripted(config, contacts, 3)
+    (plain, plain_engine), (labeled, engine) = runs["reject"], runs["label"]
+    for index in range(3):
+        assert engine.steps[index] == plain_engine.steps[index] == 8
+        np.testing.assert_array_equal(engine.atoms(index).get_positions(), plain_engine.atoms(index).get_positions())
+        np.testing.assert_array_equal(labeled[index].get_metadata()["temps"], plain[index].get_metadata()["temps"])
+        assert labeled[index].get_metadata()["trajectory_outcome"] == "eligible"
+    first, last, clean = (molecule.get_metadata() for molecule in labeled)
+
+    assert first["step"] == 1 and first["frame_id"] == "mol-0:step-000000001" and first["trajectory_final_step"] == 8
+    assert first["simulationtime"] == pytest.approx(BASE["dt"] / 1000)
+    assert first["distmin"] == 0.8 and first["distcrit"] is True
+    atoms = labeled[0].get_atoms()
+    violation = plain[0].get_metadata()["first_threshold_violation"]
+    np.testing.assert_allclose(atoms.get_positions(wrap=True), violation["positions"])
+    assert not np.allclose(atoms.get_positions(), engine.atoms(0).get_positions())
+    assert not atoms.constraints
+    assert last["step"] == 8 and last["trajectory_final_step"] == 8 and last["distcrit"] is True
+    assert clean["step"] == 8 and "trajectory_final_step" not in clean and clean["distcrit"] is False
+    np.testing.assert_array_equal(labeled[2].get_atoms().get_positions(), plain[2].get_atoms().get_positions())
+
+
+def test_final_frame_contact_labels_ignore_uncertainty_violations():
+    config = dict(BASE, Escut=-1.0, distcut=1.1, maxt=0.004, Ncheck=1,
+                  acquisition={"selection": {"mode": "final_frame"}, "distcut_frames": "label"})
+    results, _ = run_scripted(config, {0: {4}}, 2)
+    contact, uncertain = (molecule.get_metadata() for molecule in results)
+    assert contact["first_threshold_violation"]["step"] == 1 and contact["step"] == 4
+    assert uncertain["first_threshold_violation"]["step"] == 1 and uncertain["step"] == 8
+
+
+def test_final_frame_contact_labels_need_an_engine_snapshot():
+    class NoSnapshot(ScriptedContacts):
+        snapshot = None
+
+    config = dict(BASE, Escut=100.0, distcut=1.1, maxt=0.004, Ncheck=1,
+                  acquisition={"selection": {"mode": "final_frame"}, "distcut_frames": "label"})
+    with pytest.raises(ValueError, match="needs an engine with snapshot"):
+        run_scripted(config, {}, 1, engine_class=NoSnapshot)
+
+
 class Evaluation:
     """Stands in for the tensors of a failed evaluation."""
 

@@ -69,6 +69,9 @@ def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Ncheck, Tamp, Tper,
     criteria = {key: value for key, value in dict(Escut=Escut, Fscut=Fscut, distcut=distcut, min_time=min_time,
                                                   acquisition=acquisition).items() if value is not None}
     settings = acquisition_settings(criteria)
+    if settings['selection']['mode'] == 'final_frame':
+        raise ValueError("acquisition.selection.mode 'final_frame' requires the batched sampler "
+                         "(mlmd_trajectories_task).")
     own_uncertainty = sorted({term['uncertainty'] for term in custom_terms(criteria).values()})
     max_uncertainty = {}
 
@@ -134,6 +137,7 @@ def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Ncheck, Tamp, Tper,
         decision = assess_frame(signals, dist_min, i * Ncheck * dt / 1000, criteria, settings)
         Ecrit, Fcrit, Fmcrit, distcrit = (decision[key] for key in ('Ecrit', 'Fcrit', 'Fmcrit', 'distcrit'))
         if decision['outcome'] != 'continue':  # rejected for distcut, or a frame to label, once min_time has passed
+            # (with acquisition.distcut_frames "label", a distcut violation is a frame to label)
             failed = True
             break
 
@@ -196,7 +200,7 @@ def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Ncheck, Tamp, Tper,
 
     molecule_object.update_metadata(meta_dict)
 
-    if failed and not distcrit:
+    if failed and decision['outcome'] == 'eligible':
         molecule_object.update_atoms(ase_atoms)
         return molecule_object
     else:

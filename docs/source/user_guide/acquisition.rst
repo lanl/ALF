@@ -77,7 +77,8 @@ Two settings also apply, whichever terms you choose:
   The default is ``0``.
 * ``distcut``: a frame with two atoms closer than this distance, in Angstroms, is
   rejected and ends its trajectory, however uncertain it is. The default for
-  ``mlmd_trajectories_task`` is ``1.2``.
+  ``mlmd_trajectories_task`` is ``1.2``. To label such frames instead, set
+  ``acquisition.distcut_frames`` (see Selection below).
 
 Ranking
 -------
@@ -195,6 +196,28 @@ or distance violation after ``min_time``, with its geometry under
 when compact return metadata is enabled. The sampler always checks the final step,
 even when ``Ncheck`` skips intermediate steps. Explicit topology and physical-force
 screens still apply.
+
+``acquisition.distcut_frames`` says what a ``distcut`` violation does. With
+``"reject"``, the default, it ends the trajectory without a label as described
+above. With ``"label"``, the frame is labeled instead, since a close contact the
+model allowed is often worth learning:
+
+.. code-block:: json
+
+   "acquisition": {"selection": {"mode": "final_frame"}, "distcut_frames": "label"}
+
+* With ``first_trigger``, a trajectory stops at its first frame that is either
+  uncertain or closer than ``distcut``, and that frame is labeled.
+* With ``final_frame``, every trajectory still runs its full duration, so step
+  counts and step timings are those of ``final_frame`` alone. A trajectory that
+  came closer than ``distcut`` is labeled at the first such frame rather than at
+  its final frame, and one that never did is labeled at its final frame.
+  Uncertainty violations stay diagnostics. The metadata's ``step``,
+  ``frame_id``, ``simulationtime``, ``distmin``, geometry and uncertainty describe
+  the labeled frame; ``trajectory_final_step`` records the last step run.
+
+Cohort selection doesn't take ``"label"``. ``final_frame`` needs the batched
+sampler, ``mlmd_trajectories_task``.
 
 Use ``cohort_top_k`` when QM is expensive compared with sampling, so that QM goes
 to the most uncertain frames rather than to whichever frames triggered first:

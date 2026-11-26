@@ -96,6 +96,10 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
                           bundle_dir=None):
     """Run trajectories in lockstep with first-trigger or final-frame selection.
 
+    With ``acquisition.distcut_frames`` "label", a ``distcut`` violation is a frame to label: under first-trigger
+    selection the trajectory stops there, and under final-frame selection it runs to its duration as usual but
+    labels its first such frame.
+
     Args:
         molecule_objects (list): Inputs, whose atoms are those driven by ``engine``.
         engine: An engine implementing the :class:`~alframework.samplers.engines.ase.ASEEngine` contract.
@@ -115,6 +119,11 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
     own_uncertainty = tuple(sorted({term['uncertainty'] for term in custom_terms(sampler_config).values()}))
     cohort = settings['selection']['mode'] == 'cohort_top_k'
     final_frame = settings['selection']['mode'] == 'final_frame'
+    # final_frame with distcut_frames "label": the first close contact, not the final frame, goes to QM.
+    contact_frames = final_frame and settings['distcut_frames'] == 'label'
+    if contact_frames and not callable(getattr(engine, 'snapshot', None)):
+        raise ValueError("acquisition.distcut_frames 'label' with selection.mode 'final_frame' needs an engine "
+                         "with snapshot(i).")
     keep_running = settings['trajectory_policy'] == 'continue'
     dt, maxt, Ncheck = sampler_config['dt'], sampler_config['maxt'], sampler_config['Ncheck']
     meta_dir = sampler_config.get('meta_dir')
@@ -279,6 +288,11 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
                             'positions': atoms.get_positions(wrap=True),
                             'chemical_symbols': atoms.get_chemical_symbols(), 'cell': atoms.get_cell(),
                         }
+                    if contact_frames and decision['distcrit'] and decision['outcome'] != 'continue' \
+                            and 'contact_frame' not in entry:
+                        entry['contact_frame'] = {'atoms': engine.snapshot(index), 'step': check_step,
+                                                  'signals': signals, 'decision': decision,
+                                                  'min_distance': observation['min_distance']}
                     if check_step == final_step:
                         finish(index, 'eligible')
                         continue
@@ -351,16 +365,20 @@ STEP_TIMING_INTERVAL = 100
 
 def _record(molecule, entry, schedule, sampler_config, settings, engine, index, started, seed, meta_dir,
             compact=False, momenta=True):
-    atoms = entry['finished_atoms']
-    signals = entry['signals'] or {}
-    decision = entry['decision'] or {}
+    # With distcut_frames "label", a final-frame trajectory's labeled frame is its first close contact; the
+    # frame fields describe that frame, and the trajectory-wide ones (timings, temperatures, peaks) the whole run.
+    contact = entry.get('contact_frame') if entry['outcome'] == 'eligible' else None
+    frame = contact or {'atoms': entry['finished_atoms'], 'signals': entry['signals'], 'decision': entry['decision'],
+                        'min_distance': entry['min_distance'], 'step': engine.steps[index]}
+    atoms, step = frame['atoms'], frame['step']
+    signals = frame['signals'] or {}
+    decision = frame['decision'] or {}
     dt, Ncheck = sampler_config['dt'], sampler_config['Ncheck']
-    step = engine.steps[index]
     meta_dict = {"realtime_simulation": entry['finished_at'] - started,
                  "Es": signals.get('Es'), "Fs": signals.get('Fs'), "Fsmax": signals.get('Fsmax'),
                  "Fsrms": signals.get('Fsrms'),
                  **{f"peak_{key}": entry['peaks'].get(key) for key in PEAK_SIGNALS},
-                 "distmin": entry['min_distance'],
+                 "distmin": frame['min_distance'],
                  "simulationtime": (entry['check'] * Ncheck * dt) / 1000,
                  "temps": entry['temps'], "denss": entry['denss'],
                  "system_comp": np.unique(atoms.get_chemical_symbols(), return_counts=True),
@@ -381,6 +399,8 @@ def _record(molecule, entry, schedule, sampler_config, settings, engine, index, 
     cohort = settings['selection']['mode'] == 'cohort_top_k'
     if settings['selection']['mode'] == 'final_frame':
         meta_dict['simulationtime'] = step * dt / 1000
+        if contact is not None:
+            meta_dict['trajectory_final_step'] = engine.steps[index]
         if 'first_threshold_violation' in entry:
             meta_dict['first_threshold_violation'] = entry['first_threshold_violation']
     if entry['outcome'] == 'eligible' and not cohort and 'ranking_score' in decision:

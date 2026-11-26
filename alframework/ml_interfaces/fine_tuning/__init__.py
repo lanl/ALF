@@ -96,6 +96,12 @@ def validate_fine_tune_config(ML_config, master_config=None):
 
 
 def _label_targets(settings):
+    # A multi-state adapter names its state datasets; shards with the first state's labels train it.
+    energies, forces = settings.get('energy_datasets'), settings.get('forces_datasets')
+    if energies and forces:
+        return energies[0], forces[0], None
+    if settings.get('n_states'):
+        return 'E0', 'F0', None
     return (settings.get('energy_dataset', settings.get('energy_key', 'energy')),
             settings.get('forces_dataset', settings.get('force_key', 'forces')),
             settings.get('quadrupole_key'))
@@ -134,6 +140,69 @@ def shard_atoms(shards, energy_dataset='energy', forces_dataset='forces', read_w
                               cell=None if cells is None else cells[index], pbc=cells is not None)
                 atoms.info[ENERGY_KEY] = float(energies[index])
                 atoms.arrays[FORCES_KEY] = np.asarray(forces[index], dtype=float)
+                for key, dataset in zip(('charge', 'spin'), STRUCTURE_STATE_DATASETS):
+                    if dataset in group:
+                        atoms.info[key] = int(group[dataset][index])
+                frames.append(atoms)
+    return frames
+
+
+SMOOTH_NACS_KEY = 'REF_smooth_nacs'
+
+
+def shard_state_atoms(shards, energy_datasets, forces_datasets, nacs_dataset=None, read_workers=None, *,
+                      max_inflight_bytes=None):
+    """Read multi-state ALF shards as ``ase.Atoms`` for excited-state training.
+
+    Each frame carries ``REF_energy`` ``[S]`` in ``atoms.info``, and ``REF_forces`` ``[N, S, 3]`` in
+    ``atoms.arrays``, in eV and eV/Å. With ``nacs_dataset`` (ALF's ``pair_atomic`` couplings, ``[P, N, 3]``
+    in 1/Å, with their state pairs in the shard's ``nac_pairs``), it also carries ``REF_smooth_nacs``
+    ``[N, P, 3]``. That's each coupling times the size of its pair's gap, X-MACE's smooth form, which stays
+    finite at crossings. ``atoms.info["nac_pairs"]`` keeps the pairs. A shard's ``total_charge`` and
+    ``spin_multiplicity`` go to ``atoms.info`` as ``charge`` and ``spin``.
+    """
+    import numpy as np
+    from ase import Atoms
+
+    from alframework.tools.data_shards import PAIR_INDEX_DATASET, STRUCTURE_STATE_DATASETS
+    from alframework.tools.h5_parallel import read_shard
+
+    energy_datasets, forces_datasets = list(energy_datasets), list(forces_datasets)
+    if not energy_datasets or len(energy_datasets) != len(forces_datasets):
+        raise ValueError('Give one forces dataset for each state energy dataset.')
+    keys = {'species', 'coordinates', 'cell', *energy_datasets, *forces_datasets, *STRUCTURE_STATE_DATASETS}
+    if nacs_dataset:
+        keys |= {nacs_dataset, PAIR_INDEX_DATASET}
+    frames = []
+    for shard in shards:
+        for group in read_shard(shard, keys, read_workers, max_inflight_bytes=max_inflight_bytes):
+            if any(name not in group for name in energy_datasets):
+                continue
+            missing = [name for name in forces_datasets if name not in group]
+            if missing:
+                raise ValueError(f'{shard}:{group["path"].lstrip("/")} has no {missing} datasets to train forces on.')
+            symbols = [str(value) for value in group['species']]
+            energies = np.stack([np.asarray(group[name], dtype=float).reshape(-1) for name in energy_datasets], 1)
+            forces = np.stack([np.asarray(group[name], dtype=float) for name in forces_datasets], 2)  # [K, N, S, 3]
+            nacs = pairs = None
+            if nacs_dataset and nacs_dataset in group:
+                if PAIR_INDEX_DATASET not in group:
+                    raise ValueError(f'{shard}:{group["path"].lstrip("/")} has {nacs_dataset!r} but no '
+                                     f'{PAIR_INDEX_DATASET!r} saying which states each coupling joins.')
+                nacs = np.asarray(group[nacs_dataset], dtype=float)  # [K, P, N, 3]
+                pairs = np.asarray(group[PAIR_INDEX_DATASET], dtype=int).reshape(-1, 2)
+                if nacs.shape[1] != len(pairs) or pairs.max() >= len(energy_datasets):
+                    raise ValueError(f'{shard}: {nacs_dataset!r} pairs do not match the {len(energy_datasets)} states.')
+            cells = group.get('cell')
+            for index in range(len(energies)):
+                atoms = Atoms(symbols, positions=group['coordinates'][index],
+                              cell=None if cells is None else cells[index], pbc=cells is not None)
+                atoms.info[ENERGY_KEY] = energies[index].copy()
+                atoms.arrays[FORCES_KEY] = forces[index].copy()
+                if nacs is not None:
+                    gaps = np.abs(energies[index][pairs[:, 1]] - energies[index][pairs[:, 0]])
+                    atoms.arrays[SMOOTH_NACS_KEY] = np.transpose(nacs[index] * gaps[:, None, None], (1, 0, 2))
+                    atoms.info['nac_pairs'] = pairs.tolist()
                 for key, dataset in zip(('charge', 'spin'), STRUCTURE_STATE_DATASETS):
                     if dataset in group:
                         atoms.info[key] = int(group[dataset][index])

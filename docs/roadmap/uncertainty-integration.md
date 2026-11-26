@@ -82,6 +82,8 @@ and score devices. A separate CPU selection stage is indicated where relevant.
 | MACE NTK replay: energy, force, and projected Hessian scores | Molecule, periodic solid | V [7] | I | I | P |
 | X-MACE NTK replay: state energies, gaps, forces, projected Hessians, and smooth outputs, with crossing flags | Molecule | V [8] | I | I | P |
 | X-MACE NTK replay | Periodic solid | P | P | P | P |
+| X-MACE fine-tuning from a ground-state MACE, with the NTK basis fit after training (full and LoRA) | Molecule | V [9] | I | I | — |
+| HIPPYNN excited-state ensemble member NTK loader, with a cached basis | Molecule | V [9] | I | I | — |
 | NTK fit with Hessian-vector-product rows (fixed probes or full Hessians) | Molecule | V [7] | I | I | I |
 | Energy AdaptNTK fixed pool | Molecule | V [3] | I | I | V [3] |
 | Energy AdaptNTK TorchSim cohort | Molecule | V [3] | I | I | — |
@@ -208,6 +210,16 @@ production throughput require separate measurements.
    - eigenvalues of the autoencoder's `state_matrix` reproducing the state energies;
    - a frozen backbone staying out of the posterior;
    - energies and forces matching X-MACE's `ExcitedMACECalculator`.
+
+9. With the same X-MACE environment, run `python -m pytest tests/test_fine_tuning_xmace.py`, and in an
+   environment with HIPPYNN, `python -m pytest tests/test_hippynn_interface.py -k excited_state_ntk`.
+   The tests check:
+   - multi-state shards becoming X-MACE training frames, with smooth couplings NAC × |ΔE|;
+   - X-MACE's training command;
+   - a two-epoch fine-tune of a three-state `ExcitedMACE` from a saved ground-state MACE, with and
+     without LoRA, whose NTK basis loads for packed MD, with the backbone left out under LoRA;
+   - a trained two-state HIPPYNN member's NTK predictions matching ALF's excited-state ensemble, in
+     both property scales, with a cached basis.
 
    `tests/test_ntk_core.py` checks the crossing behaviour on a two-state model as the coupling goes from
    1e-2 to 1e-4: adiabatic Hessian scores grow about tenfold per decade, while the scores of the

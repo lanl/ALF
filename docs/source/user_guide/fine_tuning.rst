@@ -22,6 +22,9 @@ One task handles every model family, through a small adapter per family:
    * - UMA
      - ``alframework.ml_interfaces.fine_tuning.uma.UmaFineTuner``, for one task of a UMA checkpoint,
        such as ``omol`` or ``omat``.
+   * - X-MACE
+     - ``alframework.ml_interfaces.fine_tuning.xmace.XMaceFineTuner``, for excited states on a
+       ground-state MACE foundation model; see :doc:`fine_tuning_xmace`.
 
 What Fine-Tuning Means In ALF
 -----------------------------
@@ -235,6 +238,7 @@ the checkpoints they expect, but don't include them; see `Pretrained Models And 
    fine_tuning_hippynn
    fine_tuning_mace
    fine_tuning_uma
+   fine_tuning_xmace
 
 .. _fine-tuning-forgetting:
 

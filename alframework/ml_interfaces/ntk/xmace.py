@@ -34,11 +34,17 @@ class XMACENTKAdapter(MACENTKAdapter):
     """A frozen copy of an X-MACE model (``ExcitedMACE``, ``AutoencoderExcitedMACE``, or ``LEHExcitedMACE``).
 
     ``head`` selects one of a multi-head model's data sets. ``parameters`` defaults to the checkpoint's
-    trainable parameters, so a LoRA or frozen-backbone fine-tune is linearized only in what was trained.
+    trainable parameters. ``"excited"`` keeps only the excited-state readouts and adapter, not the
+    backbone. Use it for LoRA fine-tunes, which X-MACE saves with the low-rank weights merged.
     """
 
-    def __init__(self, model, **options):
-        super().__init__(model, **options)
+    def __init__(self, model, *, parameters="trainable", **options):
+        if parameters == "excited":
+            # The excited-state readouts and adapter only: right for LoRA fine-tunes, whose low-rank backbone
+            # weights X-MACE merges into the backbone when training ends.
+            def parameters(name, parameter):
+                return not name.startswith("backbone.")
+        super().__init__(model, parameters=parameters, **options)
         self.autoencoder = hasattr(self.model, "perm_decoders")
 
     def _forward(self, structure, positions, params):

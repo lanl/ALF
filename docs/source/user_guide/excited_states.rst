@@ -525,3 +525,14 @@ Excited-State API Links
 * :doc:`GPU4PySCF interface module <../api_documentation/alframework.qm_interfaces.pyscf.gpu4pyscf>`
 * :doc:`PySEQM interface module <../api_documentation/alframework.qm_interfaces.pyseqm_interface>`
 * :doc:`HIPPYNN interface module <../api_documentation/alframework.ml_interfaces.hippynn.interface>`
+
+Uncertainty From One Model
+--------------------------
+
+An excited-state HIPPYNN ensemble member can also report its own NTK uncertainty, per state, for packed
+MD on one state. Use ``"batched_calculator":
+"alframework.ml_interfaces.hippynn.ntk.load_hippynn_excited_state_ntk"`` with ``batched_calculator_options``
+giving ``properties_list``, ``selected_state``, and ``scores`` (see :doc:`acquisition`). On its first
+load, ALF fits the member's posterior on the training shards recorded in ``label_sources.json``. It saves
+the posterior as ``ntk_basis.npz`` in the member directory, and later loads reuse it. To fine-tune an
+excited-state model from a ground-state foundation model instead, see :doc:`fine_tuning_xmace`.

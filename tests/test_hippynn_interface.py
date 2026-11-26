@@ -1494,3 +1494,37 @@ def test_separate_test_set_matches_the_training_arrays_and_leaves_them_alone(tmp
     assert sorted(test["energy"].tolist()) == [-60.0, -30.0]
     torch.testing.assert_close(test["energyperatom"], test["energy"] / 3)
     assert len(train["energy"]) + len(database.splits["valid"]["energy"]) == 4
+
+
+def test_excited_state_ntk_predicts_like_the_ensemble_and_caches_its_basis(two_state_ensemble):
+    import torch
+    from alframework.ml_interfaces.hippynn.ntk import (NTK_BASIS_FILE, load_hippynn_excited_state_ntk,
+                                                      load_hippynn_excited_state_ntk_estimator)
+    from alframework.ml_interfaces.ntk import NTKASECalculator
+
+    properties = _properties(with_gap=True)
+    for scale in (1.0, 2.0):
+        scaled = {key: [value[0], value[1], scale] for key, value in properties.items()}
+        options = dict(shards=[str(two_state_ensemble.data / "data.h5")], sketch_dim=8, dtype=torch.float64,
+                       basis_file=f"ntk-{scale}.npz")
+        estimator = load_hippynn_excited_state_ntk_estimator(two_state_ensemble.directory, scaled, **options)
+        assert estimator.state_names == ("E0", "E1") and estimator.training_structure_count == 12
+        assert (two_state_ensemble.member / f"ntk-{scale}.npz").is_file()
+        atoms = _molecule_from(two_state_ensemble)
+        reference = _load_evaluator(two_state_ensemble, scaled).predict_states([atoms])
+        result = estimator.predict(atoms, forces=True, hessian_probes=2)
+        # predict_states gives energies as [member, state, structure].
+        np.testing.assert_allclose(result["energy"].numpy(), reference["state_energies"][0, :, 0], rtol=1e-5, atol=1e-6)
+        # The ensemble evaluates in float32.
+        np.testing.assert_allclose(result["forces"].numpy(), reference["state_forces"][0][0], rtol=1e-5, atol=1e-6)
+        restored = load_hippynn_excited_state_ntk_estimator(two_state_ensemble.directory, scaled, **options)
+        assert restored.basis_id == estimator.basis_id
+    calculator = NTKASECalculator(estimator, selected_state=1, hessian_probes=2)
+    calculator.calculate(atoms)
+    assert {"ntk_energy_E1", "ntk_hessian_E1", "ntk_dE01", "ntk_near_crossing_E0"} <= set(calculator.results["alf_uncertainty"])
+    evaluator = load_hippynn_excited_state_ntk(two_state_ensemble.directory, "cpu", properties_list=properties,
+                                               selected_state=1, basis_file="ntk-1.0.npz", dtype=torch.float64)
+    energies, forces = evaluator.evaluate(torch.tensor(atoms.numbers), torch.tensor(atoms.positions), None,
+                                          torch.tensor(atoms.pbc), [3])
+    np.testing.assert_allclose(energies[0, 0].item(), reference["state_energies"][0, 1, 0] * 2.0, rtol=1e-5)
+    assert NTK_BASIS_FILE == "ntk_basis.npz"

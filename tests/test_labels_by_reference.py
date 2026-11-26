@@ -261,3 +261,91 @@ def test_a_real_parsl_worker_writes_the_part_and_returns_its_receipt(tmp_path, m
     held = HDF5HeldLabels(snapshot, PROPERTIES, batch_size=8)
     held.adopt([receipt])
     assert held.commit(snapshot, PROPERTIES, {}) == 3
+
+
+def _mixed(count):
+    """Labels of three formulas, one with a charge, so a snapshot has several groups and state columns."""
+    labels = []
+    for index in range(count):
+        formula = ('H2O', 'NH3', 'CH4')[index % 3]
+        atoms = Atoms(formula, positions=np.arange(3.0 * len(Atoms(formula))).reshape(-1, 3))
+        molecule = MoleculesObject(atoms, f'mol-{index:04d}')
+        molecule.store_results({'energy': -1.0 - index, 'forces': np.zeros((len(atoms), 3))})
+        molecule.set_converged_flag(True)
+        if index == 4:
+            molecule.update_metadata({'charge': -1})
+        labels.append(molecule)
+    return labels
+
+
+def _virtual_layout_columns(group, segments, write_state):
+    """The virtual columns as h5py's VirtualLayout writes them, for comparison with the low-level writer."""
+    from alframework.tools.label_parts import STATE_DEFAULTS
+    keys = set(segments[0][2]) - STATE_DEFAULTS.keys()
+    frames = sum(size for _, size, _ in segments)
+    if write_state:
+        keys.update(STATE_DEFAULTS)
+    for name in sorted(keys):
+        shape = next(iter({columns[name][1][1:] for _, _, columns in segments if name in columns}), ())
+        dtypes = [columns[name][0] for _, _, columns in segments if name in columns]
+        dtype = np.result_type(*dtypes) if dtypes else np.int64
+        if not dtypes:
+            group.create_dataset(name, shape=(frames,), dtype=dtype, fillvalue=STATE_DEFAULTS[name])
+            continue
+        layout = h5py.VirtualLayout(shape=(frames, *shape), dtype=dtype)
+        offset = 0
+        for source, size, columns in segments:
+            if name in columns:
+                layout[offset:offset + size] = h5py.VirtualSource(source, f'{group.name}/{name}',
+                                                                  shape=columns[name][1])
+            offset += size
+        group.create_virtual_dataset(name, layout, fillvalue=STATE_DEFAULTS.get(name))
+
+
+def _described(snapshot):
+    """Each dataset's type, shape, fill value, mappings and values."""
+    described = {}
+    with h5py.File(snapshot) as handle:
+        for formula, group in handle.items():
+            for name, dataset in group.items():
+                mappings = [(m.file_name, m.dset_name, m.vspace.get_select_type(), m.vspace.get_select_bounds(),
+                             m.src_space.get_select_type(), m.src_space.shape)
+                            for m in dataset.virtual_sources()] if dataset.is_virtual else None
+                described[f'{formula}/{name}'] = (dataset.dtype.str, dataset.shape, dataset.fillvalue, mappings,
+                                                  dataset[()].tobytes())
+    return described
+
+
+def test_a_snapshot_maps_its_parts_as_hdf5s_virtual_layout_would(tmp_path, monkeypatch):
+    from alframework.tools import label_parts
+    snapshot = tmp_path / 'h5' / 'data-0000.h5'
+    held = HDF5HeldLabels(snapshot, PROPERTIES, batch_size=4, keep_worker_parts=True)
+    labels = _mixed(11)
+    held.adopt([_write(labels[start:start + 3], snapshot) for start in range(0, 11, 3)])
+    held.commit(snapshot, PROPERTIES, {})
+    parts = sorted(part_directory(snapshot).glob('part-*.h5'))
+    assert len(parts) > 1, 'the test needs groups mapped from several parts'
+
+    reference = snapshot.with_name('reference.h5')
+    monkeypatch.setattr(label_parts, '_write_virtual_columns', _virtual_layout_columns)
+    label_parts.publish_snapshot(reference, parts, {})
+    ours, theirs = _described(snapshot), _described(reference)
+    assert ours.keys() == theirs.keys() and any(value[3] for value in ours.values())
+    for key, value in ours.items():
+        assert value == theirs[key], key
+
+
+def test_publishing_after_a_merge_reuses_the_merged_parts_layouts(tmp_path, monkeypatch):
+    from alframework.tools import label_parts
+    snapshot = tmp_path / 'h5' / 'data-0000.h5'
+    held = HDF5HeldLabels(snapshot, PROPERTIES, batch_size=4, merge_workers=1)
+    labels = _mixed(9)
+    held.adopt([_write(labels[start:start + 3], snapshot) for start in range(0, 9, 3)])
+    held.merge()
+    scanned = []
+    layout = label_parts.part_layout
+    monkeypatch.setattr(label_parts, 'part_layout', lambda part: scanned.append(part) or layout(part))
+    assert held.commit(snapshot, PROPERTIES, {}) == 9
+    assert not scanned, 'the snapshot was built from the layouts the merge recorded'
+    restarted = HDF5HeldLabels(snapshot.with_name('data-0001.h5'), PROPERTIES, batch_size=4)
+    assert restarted._layouts == {}, 'a new generation starts without layouts'

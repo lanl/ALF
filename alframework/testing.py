@@ -145,7 +145,8 @@ def _check_prediction(prediction, members, atoms_list, where):
 def _evaluate_packed(evaluator, atoms_list):
     """``evaluate`` on the packed tensors an engine passes, as a ``predict``-style dict."""
     import torch
-    from alframework.ml_interfaces.ensemble_inference import add_observed_uncertainty
+    from alframework.ml_interfaces.ensemble_inference import (add_observed_uncertainty, batched_uncertainty_observations,
+                                                              merge_uncertainty_observations)
     if len({tuple(atoms.pbc) for atoms in atoms_list}) != 1:
         raise ContractError('Give check_evaluator structures with one periodicity; engines pack them that way.')
     counts = [len(atoms) for atoms in atoms_list]
@@ -153,9 +154,9 @@ def _evaluate_packed(evaluator, atoms_list):
     positions = torch.as_tensor(np.concatenate([atoms.positions for atoms in atoms_list]), dtype=torch.float64)
     cells = torch.as_tensor(np.stack([atoms.cell.array for atoms in atoms_list]), dtype=torch.float64)
     pbc = torch.as_tensor(atoms_list[0].pbc)
-    energies, forces = evaluator.evaluate(numbers, positions, cells, pbc, counts)
+    packed_energies, packed_forces = evaluator.evaluate(numbers, positions, cells, pbc, counts)
     energies, forces = (np.asarray(value.detach().cpu() if hasattr(value, 'detach') else value)
-                        for value in (energies, forces))
+                        for value in (packed_energies, packed_forces))
     if forces.ndim != 3 or forces.shape[1:] != (sum(counts), 3):
         raise ContractError(f'evaluate() forces have shape {forces.shape}, not (n_models, atoms in the batch, 3) = '
                             f'{(evaluator.n_models, sum(counts), 3)}.')
@@ -167,10 +168,15 @@ def _evaluate_packed(evaluator, atoms_list):
     if getattr(evaluator, 'last_atomic_uncertainty', None) is not None:
         prediction['atomic_uncertainty'] = evaluator.last_atomic_uncertainty
     try:
-        add_observed_uncertainty(prediction, evaluator, [
-            (numbers[start:end], positions[start:end], cell, pbc)
-            for start, end, cell in zip(offsets[:-1], offsets[1:], cells)
-        ])
+        if callable(getattr(evaluator, 'observe_uncertainty_batch', None)):
+            observations = batched_uncertainty_observations(
+                evaluator, numbers, positions, cells, pbc, counts, packed_energies, packed_forces)
+            merge_uncertainty_observations(prediction, observations, counts)
+        else:
+            add_observed_uncertainty(prediction, evaluator, [
+                (numbers[start:end], positions[start:end], cell, pbc)
+                for start, end, cell in zip(offsets[:-1], offsets[1:], cells)
+            ])
     except ValueError as exc:
         raise ContractError(str(exc)) from exc
     return prediction
@@ -185,7 +191,8 @@ def check_evaluator(evaluator, atoms_list):
     both; each one it provides is checked, with any uncertainty of its own (``predict``'s ``"uncertainty"``, or
     ``last_uncertainty`` after ``evaluate``) and optional atom scores (``"atomic_uncertainty"`` or
     ``last_atomic_uncertainty``). For packed evaluators, also check the optional
-    ``observe_uncertainty`` hook. Returns the per-structure signals acquisition would read.
+    ``observe_uncertainty_batch`` or ``observe_uncertainty`` hook. Returns the per-structure signals acquisition
+    would read.
     """
     members = getattr(evaluator, 'n_models', None)
     if isinstance(members, bool) or not isinstance(members, int) or members < 1:

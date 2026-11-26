@@ -155,6 +155,12 @@ mapping with optional ``uncertainty`` and ``atomic_uncertainty`` mappings for
 that structure. Use distinct names for any scores also returned from
 ``evaluate``.
 
+To score the active structures together, a packed evaluator can instead implement
+``observe_uncertainty_batch(numbers, positions, cells, pbc, counts, energies, forces)``.
+The inputs use the same packed geometry as ``evaluate``, with unbiased energies
+and forces on the engine device. Return one observation mapping per structure in
+the same order. This hook takes precedence if both observation hooks are present.
+
 A provider can expose multiple scores, for example:
 
 .. code-block:: python
@@ -213,6 +219,51 @@ in the trajectory summary. The run report adds a panel for each beside the sprea
 This covers both sampler families, with every engine. Dynamics on a modified
 potential, UDD and gap-seeking, use the ensemble's spread as their bias and still
 need an ensemble.
+
+Local environment novelty
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Local novelty compares each atom's element-resolved radial descriptor with
+reference environments of the same element. It reports the nearest distance
+as ``local_novelty`` for each atom and ``local_novelty_max`` for the frame.
+It needs geometry and an ASE-readable reference file containing structures from
+the potential's training data. Include every element the model will sample.
+The score is dimensionless and describes radial novelty. Choose a cutoff using
+held-out QM force errors for the potential in use.
+
+For TorchSim or ALCHEMI, wrap any single-member packed potential with the
+loader below. It uses TorchSim's device neighbor search and scores only at
+acquisition checks. The example uses a HIPPYNN loader for the underlying
+potential. Preserve any options for that loader under ``base_options``.
+
+.. code-block:: json
+
+   {
+     "batched_calculator": "alframework.ml_interfaces.local_novelty.load_local_novelty_batched",
+     "batched_calculator_options": {
+       "base_loader": "alframework.ml_interfaces.hippynn.load_hippynn_batched_ensemble",
+       "reference_path": "/path/to/training-reference.xyz",
+       "cutoff": 5.0,
+       "radial_bins": 12
+     },
+     "acquisition": {
+       "terms": {"novel": {"uncertainty": "local_novelty_max", "cutoff": 0.2}},
+       "eligibility": ["novel"],
+       "strategy": "largest"
+     }
+   }
+
+``batched_calculator_options.cutoff`` is the descriptor radius in Å, and the
+acquisition cutoff of 0.2 is illustrative. Packed periodic cells must have three
+linearly independent cell vectors. Reference comparisons run in blocks to bound
+temporary GPU memory. Start with a representative reference subset, since scoring
+time and reference storage grow with the number of reference environments.
+
+For ASE, a custom ``ase_calculator`` loader can return a list with one
+``LocalNoveltyCalculator(base_calculator, novelty)``. Build ``novelty`` with
+``LocalEnvironmentNovelty(reference_structures, device=device)`` from
+``alframework.ml_interfaces.local_novelty``. The ASE wrapper uses the same radial
+descriptor and nearest-reference scoring with ASE's neighbor search.
 
 PNNL per-atom uncertainty with MACE
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

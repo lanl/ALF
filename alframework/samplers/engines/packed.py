@@ -6,6 +6,7 @@ Cells are stored with lattice vectors as columns internally; the evaluator
 and ASE boundary always receive row-vector cells.
 """
 from dataclasses import dataclass
+import logging
 
 
 @dataclass
@@ -38,11 +39,13 @@ from ase.constraints import FixCom
 from ase.io.trajectory import Trajectory
 
 from alframework.ml_interfaces.ensemble_inference import (ASEEnsembleEvaluator, add_observed_uncertainty,
-                                                          atomic_uncertainty_batch)
+                                                          atomic_uncertainty_batch, batched_uncertainty_observations,
+                                                          merge_uncertainty_observations)
 from alframework.tools.geometry import batched_minimum_distances, minimum_distance
 from alframework.tools.gap_seeking import gap_seeking_energy_forces
 
 KB_EV_PER_K = 8.617333262145e-5
+logger = logging.getLogger(__name__)
 CALCULATOR_OPTIONS = ("well_params", "udd_bias_weight", "udd_bias_eps", "debug_print")
 WELL_PARAMS = ("r_start", "force", "origin", "zero_properties", "mass_weighted")
 
@@ -127,6 +130,7 @@ class PackedMLMDEngine:
         # (see geometry.batched_minimum_distances); on the CPU, ASE's per-system search is as fast.
         self.batched_distance_screen = self.device.type != "cpu"
         self._host = self._distances = None
+        self._observed_scores = None
         self._evaluate()
 
     # -- packed layout ---------------------------------------------------------------------------
@@ -144,6 +148,8 @@ class PackedMLMDEngine:
         for index in indices:
             self._sync(index)
             self._atoms[index].set_constraint()  # finished Atoms go on to labeling without it
+            if self._observed_scores is not None:
+                self._observed_scores.pop(index, None)
         keep = [row for row, index in enumerate(self._rows) if index not in set(indices)]
         self._rows = [self._rows[row] for row in keep]
         if self._rows:
@@ -299,6 +305,7 @@ class PackedMLMDEngine:
 
     def step(self, indices, n):
         failures = {}
+        self._observed_scores = None
         retired = [index for index in self._rows if index not in set(indices)]
         if retired:
             self._drop(retired)
@@ -332,9 +339,37 @@ class PackedMLMDEngine:
         """Read the current physical predictions for screening before dynamics."""
         return self._observe(index, score_uncertainty=False)
 
+    def _batched_scores(self, index):
+        """Score the current packed state once, keyed by stable trajectory index."""
+        state = self.state
+        energies, forces = self._members
+        cells = state.cell.transpose(-1, -2)
+        if self._observed_scores is None:
+            try:
+                rows = batched_uncertainty_observations(
+                    self.evaluator, state.atomic_numbers, state.positions, cells, state.pbc,
+                    self._counts, energies, forces)
+            except Exception:
+                if len(self._rows) == 1:
+                    raise
+                # A bad geometry or a batch that exhausts memory must not retire healthy trajectories.
+                logger.debug("Batched uncertainty scoring failed, retrying per trajectory", exc_info=True)
+                self._observed_scores = {}
+            else:
+                self._observed_scores = dict(zip(self._rows, rows))
+        if index not in self._observed_scores:
+            row, selection = self._position[index], self._slices[index]
+            [result] = batched_uncertainty_observations(
+                self.evaluator, state.atomic_numbers[selection], state.positions[selection], cells[row:row + 1],
+                state.pbc, [selection.stop - selection.start], energies[:, row:row + 1], forces[:, selection])
+            self._observed_scores[index] = result
+        return self._observed_scores[index]
+
     def _observe(self, index, *, score_uncertainty):
         if self._stale:
             self._evaluate()
+        batched = score_uncertainty and callable(getattr(self.evaluator, 'observe_uncertainty_batch', None))
+        observation = self._batched_scores(index) if batched else None
         host = self._host_arrays()
         selection = self._slices[index]
         row = self._position[index]
@@ -349,7 +384,9 @@ class PackedMLMDEngine:
             prediction["uncertainty"] = [self._uncertainty[self._position[index]]]
         if self._atomic_uncertainty is not None:
             prediction["atomic_uncertainty"] = [self._atomic_uncertainty[self._position[index]]]
-        if score_uncertainty:
+        if batched:
+            merge_uncertainty_observations(prediction, [observation], [selection.stop - selection.start])
+        elif score_uncertainty:
             state = self.state
             add_observed_uncertainty(prediction, self.evaluator, [
                 (state.atomic_numbers[selection], state.positions[selection], state.cell[row].T, state.pbc)
@@ -384,6 +421,8 @@ class PackedMLMDEngine:
         self.state.positions[selection] *= scalar
         self.state.cell[row] *= scalar
         self._host = self._distances = None
+        if self._observed_scores is not None:
+            self._observed_scores.pop(index, None)
         self._stale = True
 
     def finish(self, index):

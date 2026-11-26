@@ -529,10 +529,11 @@ def sample_trajectories(molecule_objects, models, sampler_config, engine_class=N
     driver = driver_settings(sampler_config)
     states = state_settings(sampler_config)
     selection = acquisition_settings(sampler_config)['selection']
-    if selection.get('selector') == 'adaptive_ntk' and (
-            not callable(getattr(models, 'observe_uncertainty', None))
-            or states is not None or (driver['engine'] == 'ase' and engine_class is None)):
-        raise ValueError("Adaptive NTK needs a ground-state packed evaluator that reports energy_ntk rows.")
+    if selection.get('selector') == 'adaptive_ntk':
+        has_observations = any(callable(getattr(models, hook, None))
+                               for hook in ('observe_uncertainty_batch', 'observe_uncertainty'))
+        if not has_observations or states is not None or (driver['engine'] == 'ase' and engine_class is None):
+            raise ValueError("Adaptive NTK needs a ground-state packed evaluator that reports energy_ntk rows.")
     require_members(models, sampler_config)
     from alframework.tools.molecular_topology import load_reference_topology, validate_fixed_topology, topology_metadata
     from alframework.tools.force_screen import validated_force_cutoff

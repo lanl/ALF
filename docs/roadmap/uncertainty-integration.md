@@ -1,14 +1,57 @@
 # Uncertainty integration in ALF
 
-Use this guide to qualify uncertainty providers on
-`feature/atom-resolved-uncertainty`. The [acquisition guide](../source/user_guide/acquisition.rst)
+Use this guide to qualify uncertainty providers on `ALF_NTK`.
+The [acquisition guide](../source/user_guide/acquisition.rst)
 defines the score fields and selection settings. ALF thresholds named scalar
 scores and keeps the corresponding atom arrays with selected structures.
+
+## Single-model uncertainty across architectures
+
+The goal is to decide which frames need QM labels while running one potential.
+Prioritize providers that use atomic geometry and standard calculator outputs
+so the same implementation works across model architectures. Score individual
+atoms and use a named reduction, such as the largest atom score, for frame
+acquisition. NTK and `uq-mlip` are single-model methods that currently need
+architecture-specific adapters for parameter derivatives or internal model
+features. They use the same acquisition interface.
+
+Two portable candidates to evaluate are local environment novelty, measured
+by distance to training environments of the same element, and a per-atom force
+error estimator fit to QM residuals using local geometry and the potential's
+predicted forces. Fit the error estimator on structures excluded from potential
+training and evaluate it on a separate test set.
+
+Test each portable provider with two model architectures through the same
+acquisition settings. Use per-atom ensemble force disagreement as a reference
+and compare missed large force errors and scoring time at equal QM labeling
+budgets on the same held-out structures.
+
+### GPU-batched scoring
+
+New portable providers should score a batch of active trajectories at each
+acquisition check in TorchSim and ALCHEMI. Use packed device tensors for atomic
+numbers, positions, cells, periodicity, and structure boundaries. Reuse the
+unbiased forces already computed for those positions when the provider needs
+them. Compute per-atom scores and frame reductions on the GPU, return the
+frame scores to acquisition, and keep the atom arrays in input order for frames
+retained by sampling. ASE can reuse the scoring code for one frame.
+
+The packed engine now supports `observe_uncertainty_batch`, which receives the
+current geometry and unbiased predictions for all active structures. Local
+environment novelty is the first provider using it. NTK uses the single-frame
+`observe_uncertainty` hook during packed runs.
+
+Qualify GPU scoring with mixed atom counts and supported periodic inputs.
+Compare scores and selection decisions against single-frame replay. Measure
+scoring time, end-to-end sampler throughput, and peak GPU memory as the number
+of trajectories per GPU grows. Target TorchSim on NVIDIA CUDA and AMD ROCm,
+and ALCHEMI on NVIDIA CUDA.
 
 ## What the providers measure
 
 | Provider | Inputs and fitted artifacts | Output and ALF use |
 | --- | --- | --- |
+| Local environment novelty | Reference geometries and an element-resolved radial descriptor | Distance to the nearest same-element reference environment per atom, with a frame maximum for acquisition. The score needs calibration against the deployed model's force errors. |
 | HIPPYNN force NTK | One molecular HIP-NN or HIP-HOP energy graph, its original training geometries, and energy and force scales | A parameter-sensitivity score for each force component, reduced to a score per atom and a maximum for frame acquisition. Compare with quantum forces to establish what a warning means. |
 | Energy AdaptNTK | One molecular HIPPYNN energy graph and a saved basis fit on its original training geometries | One energy-gradient row and initial energy score per frame. The coordinator uses the rows to update scores after each selection. Per-atom force NTK can be reported by the same evaluator. |
 | PNNL `uq-mlip` | A MACE checkpoint and a quantile regressor fit on its frozen per-atom embeddings and internal atomic energies | `uq_mlip` is the interval half-width for each atom's internal energy. `uq_mlip_max` is the scalar acquisition score. The interface paper studies a relative width normalized by the sum of the bounds. These quantities have different scales and require separate cutoffs. Compare the package score with held-out reference forces before using it as a force-error warning. |
@@ -28,6 +71,7 @@ and score devices. A separate CPU selection stage is indicated where relevant.
 
 | Provider and ALF path | Geometry | CPU | NVIDIA CUDA | AMD ROCm | Apple MPS |
 | --- | --- | --- | --- | --- | --- |
+| Local novelty replay, ASE MD, packed TorchSim and ALCHEMI MD | Molecules and full-rank periodic cells | V [6] | I | I via TorchSim | — |
 | Force NTK replay and ASE MD | Molecule | V [1] | I | I | V [1] |
 | Force NTK packed TorchSim | Molecule | V [2] | I | I | — |
 | Force NTK packed ALCHEMI | Molecule | V [2] | I | — | — |
@@ -120,6 +164,11 @@ production throughput require separate measurements.
    `e6514a6f7972ad2c15269e9951b7377ac6005039d2afcfe6ca7c91283a2fe1d8`.
    The replay and MD checks passed with MACE and embedding extraction on MPS
    and the quantile regressor on CPU.
+6. Run `python -m pytest tests/test_local_novelty.py` with PyTorch and TorchSim
+   installed. CPU tests compared packed and ASE scores for mixed atom counts
+   with molecular, slab, and fully periodic cells, and checked acquisition on
+   short molecular trajectories in ASE, TorchSim, and ALCHEMI. For device
+   qualification, set `ALF_TEST_ENGINE_DEVICE=cuda:0` on the target hardware.
 
 Add the ALF revision, upstream revision, checkpoint identity, package versions,
 device placement, dataset and split, command, and observed result when you

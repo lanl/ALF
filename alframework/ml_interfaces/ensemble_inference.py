@@ -25,6 +25,11 @@ current tensors of one structure at acquisition checks. It returns a mapping wit
 ``uncertainty`` and ``atomic_uncertainty`` mappings for that structure. Names can be added to the
 ones reported by ``evaluate``. An optional ``energy_ntk`` payload carries a whitened energy
 gradient row, basis ID, and ridge for adaptive cohort selection.
+
+Alternatively, ``observe_uncertainty_batch(numbers, positions, cells, pbc, counts,
+energies, forces)`` receives the packed geometry and unbiased member predictions
+at a check and returns one observation mapping per structure in batch order.
+The batched hook takes precedence over the single-structure hook.
 """
 
 from collections.abc import Mapping
@@ -152,19 +157,33 @@ def add_observed_uncertainty(prediction, evaluator, frames):
     observe = getattr(evaluator, "observe_uncertainty", None)
     if observe is None:
         return
+    frames = list(frames)
+    merge_uncertainty_observations(prediction, (observe(*frame) for frame in frames),
+                                   [len(frame[0]) for frame in frames])
+
+
+def batched_uncertainty_observations(evaluator, numbers, positions, cells, pbc, counts, energies, forces):
+    """Call a packed hook and check that its observation rows can be aligned with the structures."""
+    rows = list(evaluator.observe_uncertainty_batch(numbers, positions, cells, pbc, counts, energies, forces))
+    if len(rows) != len(counts):
+        raise ValueError(f"observe_uncertainty_batch returned {len(rows)} rows for {len(counts)} structures.")
+    return rows
+
+
+def merge_uncertainty_observations(prediction, observations, counts):
+    """Merge observations from either packed hook with scores from ordinary inference."""
     reported = {"uncertainty": [], "atomic_uncertainty": []}
     energy_ntk = []
-    for index, (numbers, positions, cell, pbc) in enumerate(frames):
-        observation = observe(numbers, positions, cell, pbc)
+    for index, (observation, count) in enumerate(zip(observations, counts)):
         if not isinstance(observation, Mapping):
-            raise ValueError("observe_uncertainty must return a mapping of score fields.")
+            raise ValueError("Each uncertainty observation must be a mapping of score fields.")
         energy_ntk.append(observation.get("energy_ntk"))
         for field, rows in reported.items():
             values = observation.get(field, {})
             if not isinstance(values, Mapping):
-                raise ValueError(f"observe_uncertainty {field!r} must be a mapping.")
+                raise ValueError(f"Uncertainty observation {field!r} must be a mapping.")
             if field == "atomic_uncertainty":
-                values = {name: array.copy() for name, array in atomic_uncertainty_arrays(values, len(numbers)).items()}
+                values = {name: array.copy() for name, array in atomic_uncertainty_arrays(values, count).items()}
             previous = prediction.get(field)
             base = {} if previous is None else (previous[index] or {})
             duplicates = base.keys() & values.keys()

@@ -157,6 +157,28 @@ def test_batching_does_not_change_results(engine_name):
                     )
 
 
+def test_labeling_close_contacts_leaves_final_frame_dynamics_unchanged(engine_name):
+    # Uncertainty off, so every recorded violation is a close contact.
+    final = dict(CONFIG, Escut=1e10, Fscut=1e10, acquisition={"selection": {"mode": "final_frame"}})
+    plain = run([inputs()], config=final, engine_name=engine_name)
+    labeled = run([inputs()], config=dict(final, acquisition=dict(final["acquisition"], distcut_frames="label")),
+                  engine_name=engine_name)
+    contacts = 0
+    for name, expected in plain.items():
+        got, want = labeled[name].get_metadata(), expected.get_metadata()
+        assert got["temps"] == want["temps"] and got["trajectory_outcome"] == want["trajectory_outcome"], name
+        assert got.get("trajectory_final_step", got["step"]) == want["step"], name
+        violation = want.get("first_threshold_violation")
+        if violation is not None and violation["distcrit"]:
+            contacts += 1
+            assert got["step"] == violation["step"], name
+            np.testing.assert_allclose(labeled[name].get_atoms().get_positions(wrap=True), violation["positions"])
+        else:
+            assert got["step"] == want["step"], name
+            np.testing.assert_array_equal(labeled[name].get_atoms().get_positions(), expected.get_atoms().get_positions())
+    assert contacts >= 1
+
+
 @pytest.mark.parametrize("strategy", ["uncertainty", "summed"])
 def test_batching_does_not_change_candidates(engine_name, strategy):
     config = dict(

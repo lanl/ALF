@@ -304,54 +304,90 @@ The :download:`MACE and UQ-MLIP replay example <../../../examples/atom_resolved_
 checks molecular and periodic structures, first-trigger MD, and a fixed-score
 cohort with a local MACE checkpoint.
 
-HIPPYNN energy and force NTK
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Energy, force, and Hessian NTK
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The optional ``alframework.ml_interfaces.hippynn.ntk`` module estimates uncertainty
-from the parameter sensitivities of a fitted molecular energy graph. In your
-``ase_calculator`` loader, load the graph and the geometries that supplied its
-energy and force training labels, fit one estimator, and return a list containing
-its calculator:
+The optional ``alframework.ml_interfaces.ntk`` package estimates the uncertainty of one frozen
+potential. It linearizes the model in its weights and fits a posterior on the training geometries. The
+score of any quantity that is linear in the energies is its posterior standard deviation. Those
+quantities are energies, forces, Hessian-vector products, and energy gaps. Adapters connect models:
+
+- ``alframework.ml_interfaces.hippynn.ntk`` takes HIPPYNN graphs, molecular or periodic (with a
+  ``CellNode`` input), with one ``[batch, 1]`` energy output per state.
+- ``alframework.ml_interfaces.ntk.mace`` takes MACE models, molecular or periodic. It needs
+  ``mace-torch``.
+
+In your ``ase_calculator`` loader, load the model and the geometries that supplied its training labels,
+fit one estimator, and return a list containing its calculator:
 
 .. code-block:: python
 
-   from hippynn import custom_kernels
    from alframework.ml_interfaces.hippynn.ntk import (
        EnergyForceNTK, NTKASECalculator, NTKPackedEvaluator,
    )
 
-   custom_kernels.set_custom_kernels(False)
    estimator = EnergyForceNTK(energy_graph, training_atoms,
                               energy_scale=0.1, force_scale=1.0, seed=7,
                               device=device)
-   calculators = [NTKASECalculator(estimator)]
+   calculators = [NTKASECalculator(estimator, hessian_probes=4)]
 
-Use a graph that takes atomic numbers and positions in Å and returns the
-total energy in eV as its first output of shape ``[batch, 1]``. Training and
-query structures are nonperiodic ASE ``Atoms``. The energy and force scales
-weight training observations in eV and eV/Å. Fit a new estimator after
-retraining the model. Pass the ``device`` argument supplied by ALF to the
-loader. The estimator uses native PyTorch kernels and defaults to float64 on
-CPU and float32 on GPU. Use ``dtype=torch.float64`` to request double precision
-on CUDA or ROCm. MPS uses float32. Recalibrate cutoffs for the deployed model
-and precision.
+For MACE, use ``NTKEstimator(MACENTKAdapter.from_checkpoint(path, device=device), training_atoms, ...)``
+from ``alframework.ml_interfaces.ntk``. Each training geometry adds the rows its loss supervised, each
+divided by its scale. The scales are an energy scale in eV and an optional force scale in eV/Å. An
+optional ``hessian_scale`` in eV/Å² applies to geometries trained on Hessians:
+``atoms.info["hessian_probes"]`` (``[k, N, 3]``) holds the fixed probes of Projected Hessian Learning,
+and ``atoms.info["hessian"]`` marks a stored full Hessian. Use the model's validation RMSE of each
+quantity as its scale.
 
-For TorchSim or ALCHEMI, return ``NTKPackedEvaluator(estimator)`` from a
-``batched_calculator`` loader. It computes ordinary batched energy and forces
-at each step and NTK scores only at acquisition checks. The graph and sketch
-use the estimator's precision and the engines keep their integration
-precision. Use TorchSim for ROCm, TorchSim or ALCHEMI for NVIDIA CUDA, and
-ASE for Apple MPS. Force scores require a parameter gradient for each
-Cartesian force component. The ASE adapter computes them on each evaluation.
+Fit a new estimator after retraining the model. Pass the ``device`` argument supplied by ALF to the loader.
+The estimator defaults to float64 on CPU and float32 on GPU. Use ``dtype=torch.float64`` to request
+double precision on CUDA or ROCm; MPS uses float32. HIPPYNN scoring switches to plain-PyTorch
+message-passing kernels and then restores the active ones, so MD forces can keep using Triton.
+Recalibrate cutoffs for the deployed model and precision.
 
-``predict_energy_forces(atoms)`` returns the predicted energy and forces
-along with scores for energy, force components, and atoms. The ASE adapter
-reports ``ntk_energy`` and ``ntk_force_max`` as scalar signals, and
-``ntk_force`` as an array. For example, configure a force trigger with
-``"terms": {"force_ntk": {"uncertainty": "ntk_force_max", "cutoff": 0.2}}``,
-``"eligibility": ["force_ntk"]``, and ``"strategy": "largest"`` inside
-``acquisition``. The cutoff is illustrative. Choose thresholds using independent
-reference energies or forces and check them on held-out structures.
+For TorchSim or ALCHEMI, return ``NTKPackedEvaluator(estimator)`` from a ``batched_calculator``
+loader. It computes ordinary batched energies and forces at each step, and NTK scores only at
+acquisition checks. The graph and sketch use the estimator's precision; the engines keep their
+integration precision. Use TorchSim for ROCm, TorchSim or ALCHEMI for NVIDIA CUDA, and ASE for Apple MPS.
+
+The calculator and the packed evaluator take the scores to compute:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 25 45
+
+   * - Option
+     - Reports
+     - Meaning and cost
+   * - always
+     - ``ntk_energy``
+     - Energy standard deviation in eV. Periodic cells also report ``ntk_energy_per_atom``.
+   * - ``forces=True`` (default)
+     - ``ntk_force_max``, ``ntk_force_rms``, ``ntk_force`` (per atom)
+     - Exact scores from every force component's row: 3N rows.
+   * - ``force_probes=k``
+     - ``ntk_force_rms``
+     - The RMS force-component uncertainty from k random projections wᵀF, using E‖δF‖² = E[(wᵀδF)²]: k rows.
+   * - ``hessian_probes=k``
+     - ``ntk_hessian``
+     - The RMS Hessian-element uncertainty in eV/Å² from k projections uᵀHv with independent Gaussian u
+       and v, using E[(uᵀδHv)²] = ‖δH‖_F²: k rows. The full Hessian is never formed.
+   * - ``hvp_probes=k``
+     - ``ntk_hvp`` (per atom)
+     - The per-atom Hessian uncertainty from k Hessian-vector products: 3N rows per probe.
+
+A model with several states adds the state name to each score (``ntk_energy_E1``) and reports gaps
+(``ntk_dE01``). ``predict(atoms, **options)`` returns the same scores as tensors, and
+``predict_energy_forces(atoms)`` returns the force-component scores. For example, configure a force
+trigger with ``"terms": {"force_ntk": {"uncertainty": "ntk_force_max", "cutoff": 0.2}}``,
+``"eligibility": ["force_ntk"]`` and ``"strategy": "largest"`` inside ``acquisition``. The cutoff is
+illustrative. Choose thresholds using independent reference energies, forces, or Hessians, and check them
+on held-out structures.
+
+Rows come from forward-mode differentiation (``torch.func``), which costs about one evaluation per sketch
+dimension whatever the atom count, or from batched reverse mode, which costs about one backward pass per
+row. HIPPYNN uses forward mode when it has many rows to compute. MACE uses reverse mode, because MACE's
+forward pass can't run inside ``torch.func``.
 
 The :download:`NTK replay example <../../../examples/atom_resolved_uncertainty/ntk_replay.py>`
 generates an analytic bond dataset in memory, trains HIP-NN from scratch, and

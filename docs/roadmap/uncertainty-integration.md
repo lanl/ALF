@@ -11,9 +11,12 @@ The goal is to decide which frames need QM labels while running one potential.
 Prioritize providers that use atomic geometry and standard calculator outputs
 so the same implementation works across model architectures. Score individual
 atoms and use a named reduction, such as the largest atom score, for frame
-acquisition. NTK and `uq-mlip` are single-model methods that currently need
-architecture-specific adapters for parameter derivatives or internal model
-features. They use the same acquisition interface.
+acquisition. NTK and `uq-mlip` are single-model methods that need
+architecture-specific access to parameter derivatives or internal model
+features. NTK keeps that access in a small adapter: the core
+(`alframework.ml_interfaces.ntk`) works for any model that returns energies,
+and adapters exist for HIPPYNN and MACE. Both methods use the same acquisition
+interface.
 
 Two portable candidates to evaluate are local environment novelty, measured
 by distance to training environments of the same element, and a per-atom force
@@ -52,7 +55,7 @@ and ALCHEMI on NVIDIA CUDA.
 | Provider | Inputs and fitted artifacts | Output and ALF use |
 | --- | --- | --- |
 | Local environment novelty | Reference geometries and an element-resolved radial descriptor | Distance to the nearest same-element reference environment per atom, with a frame maximum for acquisition. The score needs calibration against the deployed model's force errors. |
-| HIPPYNN force NTK | One molecular HIP-NN or HIP-HOP energy graph, its original training geometries, and energy and force scales | A parameter-sensitivity score for each force component, reduced to a score per atom and a maximum for frame acquisition. Compare with quantum forces to establish what a warning means. |
+| Energy, force, and Hessian NTK | One HIPPYNN graph (molecular or periodic, one or more states) or MACE model, its original training geometries, and energy, force, and optional Hessian scales | Posterior standard deviations of the linearized model: energies, energy gaps, every force component (per-atom scores and a frame maximum), or k random projections for the RMS force and Hessian-element uncertainty (`ntk_force_rms`, `ntk_hessian`, Projected Hessian Learning probes), and optional per-atom Hessian scores. Geometries trained on fixed-probe or full Hessians add Hessian-vector-product rows to the fit. Compare with quantum forces and Hessians to establish what a warning means. |
 | Energy AdaptNTK | One molecular HIPPYNN energy graph and a saved basis fit on its original training geometries | One energy-gradient row and initial energy score per frame. The coordinator uses the rows to update scores after each selection. Per-atom force NTK can be reported by the same evaluator. |
 | PNNL `uq-mlip` | A MACE checkpoint and a quantile regressor fit on its frozen per-atom embeddings and internal atomic energies | `uq_mlip` is the interval half-width for each atom's internal energy. `uq_mlip_max` is the scalar acquisition score. The interface paper studies a relative width normalized by the sum of the bounds. These quantities have different scales and require separate cutoffs. Compare the package score with held-out reference forces before using it as a force-error warning. |
 
@@ -72,14 +75,17 @@ and score devices. A separate CPU selection stage is indicated where relevant.
 | Provider and ALF path | Geometry | CPU | NVIDIA CUDA | AMD ROCm | Apple MPS |
 | --- | --- | --- | --- | --- | --- |
 | Local novelty replay, ASE MD, packed TorchSim and ALCHEMI MD | Molecules and full-rank periodic cells | V [6] | I | I via TorchSim | — |
-| Force NTK replay and ASE MD | Molecule | V [1] | I | I | V [1] |
-| Force NTK packed TorchSim | Molecule | V [2] | I | I | — |
+| Force NTK replay and ASE MD | Molecule | V [1] [7] | I | I | I (V [1] before the [7] rewrite) |
+| Force NTK packed TorchSim | Molecule | V [2] [7] | I | I | — |
 | Force NTK packed ALCHEMI | Molecule | V [2] | I | — | — |
+| HIPPYNN NTK replay: energy, force, projected Hessian, and gap scores | Molecule, periodic solid, multi-state molecule | V [7] | I | I | I |
+| MACE NTK replay: energy, force, and projected Hessian scores | Molecule, periodic solid | V [7] | I | I | P |
+| NTK fit with Hessian-vector-product rows (fixed probes or full Hessians) | Molecule | V [7] | I | I | I |
 | Energy AdaptNTK fixed pool | Molecule | V [3] | I | I | V [3] |
 | Energy AdaptNTK TorchSim cohort | Molecule | V [3] | I | I | — |
 | Energy AdaptNTK ALCHEMI cohort | Molecule | V [3] | I | — | — |
 | Energy AdaptNTK ASE cohort | All | — | — | — | — |
-| Force NTK replay, ASE MD, and packed MD | Periodic solid or interface | P | P | P via ASE or TorchSim | P via replay or ASE |
+| Force NTK ASE MD and packed MD | Periodic solid or interface | I | I | I via ASE or TorchSim | I via ASE |
 | Energy AdaptNTK replay and packed MD | Periodic solid or interface | P | P | P via replay or TorchSim | P for replay |
 | `uq-mlip` replay and ASE MD | Molecule, periodic solid | V [4] CPU/CPU/CPU | I CUDA/CUDA/CPU | I ROCm/ROCm/CPU | V [5] MPS/MPS/CPU, float32 checkpoint |
 | `uq-mlip` replay and ASE MD | Periodic interface qualification | P | P | P | P |
@@ -92,8 +98,11 @@ The ground-state providers do not implement a state gap or a differentiable
 bias potential. ALF's existing UDD and gap-seeking paths use ensemble spread.
 NEB and dimer currently read ensemble spreads directly. Packed ALF uses a
 float64 MD state, which excludes MPS, and ALCHEMI supports CPU and NVIDIA CUDA.
-Periodic HIPPYNN energy and force inference exists independently of periodic
-NTK. The NTK graph and estimator currently require molecular inputs.
+HIPPYNN NTK takes periodic graphs (with a cell input) for fully periodic cells.
+Its rows use HIPPYNN's plain-PyTorch kernels in `torch.func` forward mode, at a
+cost of about one evaluation per sketch dimension. MACE rows use batched reverse
+mode, at a cost of about one backward pass per row, because MACE's forward pass
+can't run inside `torch.func`.
 The ASE `uq-mlip` provider uses a separate embedding forward when ASE
 evaluates the calculator. Scoring only at acquisition checks is a target for
 the packed provider.
@@ -169,12 +178,22 @@ production throughput require separate measurements.
    with molecular, slab, and fully periodic cells, and checked acquisition on
    short molecular trajectories in ASE, TorchSim, and ALCHEMI. For device
    qualification, set `ALF_TEST_ENGINE_DEVICE=cuda:0` on the target hardware.
+7. On a Linux CPU at ALF `4731ad9`, with PyTorch 2.10 and HIPPYNN, run
+   `python -m pytest tests/test_ntk_core.py tests/test_hippynn_ntk.py tests/test_adaptive_ntk.py`.
+   With mace-torch 0.3.17 also installed, run `tests/test_ntk_mace.py`. These tests check:
+   - rows against parameter finite differences, for both engines, molecular and periodic, HIPPYNN and
+     MACE;
+   - a pair potential that is linear in its weights against closed-form Bayesian linear regression;
+   - the projected force and Hessian scores against exact sums;
+   - periodic translation and permutation invariance, and supercell scaling;
+   - Hessian-row fitting, and multi-state gap scores.
+
+   The replay examples in checks 1 and 3 give the same decisions with ASE and TorchSim.
 
 Add the ALF revision, upstream revision, checkpoint identity, package versions,
 device placement, dataset and split, command, and observed result when you
 verify a new combination. For acquisition quality, report large force errors
 missed at equal frame flagging rates, separately for bulk and interfacial atoms,
-and record scoring time. A same-potential comparison between the current
-providers needs either a MACE NTK implementation or a HIPPYNN embedding
-extractor for `uq-mlip`. Compare fixed and adaptive batching at the same pool
+and record scoring time. The MACE NTK adapter allows a same-potential
+comparison between NTK and `uq-mlip`. Compare fixed and adaptive batching at the same pool
 and label budget.

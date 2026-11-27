@@ -22,6 +22,7 @@ from ase.data import chemical_symbols, covalent_radii
 
 from alframework.tools.atom_order import TOPOLOGY_ATOM_IDS
 from alframework.tools.files import cached_sha256
+from alframework.tools.molecules import MOLECULE_ID
 
 
 SCHEMA = "alf.rdkit_kdg_fps.v1"
@@ -326,7 +327,7 @@ def _sha256(path):
     return digest.hexdigest()
 
 
-def _write_geometry_h5(path, coordinates, numbers, ids, pool_indices, strata, ranks):
+def _write_geometry_h5(path, coordinates, numbers, ids, pool_indices, strata, ranks, molecule_identity=None):
     with h5py.File(path, 'w') as handle:
         handle.attrs['schema'] = SCHEMA
         handle.attrs['energy_force_labels_present'] = False
@@ -335,14 +336,19 @@ def _write_geometry_h5(path, coordinates, numbers, ids, pool_indices, strata, ra
         group.create_dataset('coordinates', data=coordinates, compression='gzip', shuffle=True)
         group[TOPOLOGY_ATOM_IDS] = ids
         group['_id'] = np.asarray([f'rdkit-kdg-{index:010d}' for index in pool_indices], dtype='S32')
+        if molecule_identity is not None:
+            group[MOLECULE_ID] = np.full(len(coordinates), molecule_identity.encode())
         group['pool_index'], group['strata'], group['fps_rank'] = pool_indices, strata, ranks
 
 
-def prepare_rdkit_seed(config, output_dir, *, config_directory=None):
+def prepare_rdkit_seed(config, output_dir, *, config_directory=None, molecule_identity=None, published_directory=None):
     """Prepare and atomically publish a geometry pool, FPS seeds and their manifest."""
     output = Path(output_dir).expanduser().resolve()
     if output.exists():
         raise FileExistsError(f'Refusing to overwrite seed preparation output: {output}')
+    if molecule_identity is not None and (not isinstance(molecule_identity, str) or not molecule_identity.strip()):
+        raise ValueError('molecule_identity must be a nonempty string')
+    published = output if published_directory is None else Path(published_directory).expanduser().resolve()
     settings = resolve_config(config, base_directory=config_directory)
     context = _reference_context(settings)
     reference_hash = _sha256(settings['reference_geometry'])
@@ -357,10 +363,10 @@ def prepare_rdkit_seed(config, output_dir, *, config_directory=None):
     pool_ranks[selected] = ranks
     if _sha256(settings['reference_geometry']) != reference_hash:
         raise RuntimeError('Reference geometry changed during preparation.')
-    builder = {'seed_manifest_path': str(output / 'seed_manifest.json'), 'selection_seed': settings['seed']}
+    builder = {'seed_manifest_path': str(published / 'seed_manifest.json'), 'selection_seed': settings['seed']}
     screen = settings['geometry_screen']
     reference_name = 'reference' + Path(settings['reference_geometry']).suffix.lower()
-    topology_config = {'enabled': True, 'reference_conformer_path': str(output / reference_name),
+    topology_config = {'enabled': True, 'reference_conformer_path': str(published / reference_name),
                        'reference_format': 'auto', 'reference_charge': context['reference_charge'],
                        **{key: screen[key] for key in ('bond_min_scale', 'bond_max_scale', 'connectivity_scale')}}
     report = {'schema': SCHEMA, 'status': 'completed', 'settings': settings,
@@ -377,18 +383,22 @@ def prepare_rdkit_seed(config, output_dir, *, config_directory=None):
               'descriptor': 'unscaled all-atom pair distances sorted within element-pair type',
               'alf_configuration': {
                   'master': {'builder_task': 'alframework.builders.rdkit_molecule.rdkit_molecule_builder_task',
-                             'builder_config_path': str(output / 'builder_config.json'),
+                             'builder_config_path': str(published / 'builder_config.json'),
                              'bootstrap_set': len(selected), 'finite_bootstrap': True},
                   'sampler': {'topology_check': topology_config, 'distcut': screen['min_distance_A']},
               }}
+    if molecule_identity is not None:
+        report[MOLECULE_ID] = molecule_identity
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix=f'.{output.name}-', dir=output.parent))
     try:
         shutil.copyfile(settings['reference_geometry'], temporary / reference_name)
         if _sha256(temporary / reference_name) != reference_hash:
             raise RuntimeError('Reference geometry changed before its snapshot was written.')
-        _write_geometry_h5(temporary / 'pool.h5', coordinates, numbers, ids, np.arange(len(coordinates)), strata, pool_ranks)
-        _write_geometry_h5(temporary / 'seed.h5', coordinates[selected], numbers, ids, selected, strata[selected], ranks)
+        _write_geometry_h5(temporary / 'pool.h5', coordinates, numbers, ids, np.arange(len(coordinates)), strata,
+                           pool_ranks, molecule_identity)
+        _write_geometry_h5(temporary / 'seed.h5', coordinates[selected], numbers, ids, selected, strata[selected],
+                           ranks, molecule_identity)
         (temporary / 'builder_config.json').write_text(json.dumps(builder, indent=2) + '\n')
         report['artifacts_sha256'] = {name: _sha256(temporary / name) for name in ('pool.h5', 'seed.h5', 'builder_config.json', reference_name)}
         (temporary / 'seed_manifest.json').write_text(json.dumps(report, indent=2, allow_nan=False) + '\n')

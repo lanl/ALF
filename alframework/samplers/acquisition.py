@@ -30,6 +30,9 @@ uncertainty) is one :data:`SCORE_TERMS` entry naming the signal it reads and
 the configuration cutoff that normalizes it; the inference adapter must supply
 that signal.
 
+``random`` admits frames that pass the time and physical screens and ranks
+them by a seeded score derived from their trajectory ID and step.
+
 Selection is configured with ``trajectory_policy`` and ``selection``::
 
     "acquisition": {"trajectory_policy": "continue",
@@ -48,9 +51,11 @@ by trajectory ID and then step, so selections do not depend on how
 trajectories were grouped into tasks or the order in which tasks finished.
 """
 
+import hashlib
+
 import numpy as np
 
-STRATEGIES = ("uncertainty", "summed", "largest")
+STRATEGIES = ("uncertainty", "summed", "largest", "random")
 TRAJECTORY_POLICIES = ("stop", "continue")
 SELECTION_MODES = ("first_trigger", "cohort_top_k")
 COHORT_SELECTORS = ("top_k", "fps", "adaptive_ntk")
@@ -113,6 +118,7 @@ def term_signal_and_cutoff(term, sampler_config):
 def used_terms(settings):
     """Every term a run's acquisition reads: its eligibility, its ranking, and its positive weights."""
     ranking = {"uncertainty": UNCERTAINTY_TERMS, "largest": settings["eligibility"],
+               "random": (),
                "summed": [term for term, weight in settings.get("weights", {}).items() if weight > 0]}
     return set(settings["eligibility"]) | set(ranking[settings["strategy"]])
 
@@ -270,8 +276,10 @@ def acquisition_settings(sampler_config):
     custom = custom_terms(sampler_config)
     known = {*SCORE_TERMS, *custom}
     settings = {"strategy": strategy}
-    eligibility = block.get('eligibility', list(UNCERTAINTY_TERMS))
-    if not isinstance(eligibility, (list, tuple)) or not eligibility or any(not isinstance(t, str) for t in eligibility) or len(set(eligibility)) != len(eligibility):
+    eligibility = block.get('eligibility', [] if strategy == 'random' else list(UNCERTAINTY_TERMS))
+    if strategy == 'random' and eligibility:
+        raise ValueError('Random acquisition accepts all frames that pass the time and geometry screens.')
+    if not isinstance(eligibility, (list, tuple)) or (not eligibility and strategy != 'random') or any(not isinstance(t, str) for t in eligibility) or len(set(eligibility)) != len(eligibility):
         raise ValueError('acquisition.eligibility requires distinct named score terms')
     if set(eligibility) - known:
         raise ValueError(f'Unknown acquisition eligibility terms {sorted(set(eligibility) - known)}; '
@@ -369,7 +377,7 @@ def ranking_score(signals, settings, sampler_config):
     return float(max(score_term(term, signals, sampler_config) for term in terms))
 
 
-def assess_frame(signals, min_distance, time_ps, sampler_config, settings):
+def assess_frame(signals, min_distance, time_ps, sampler_config, settings, *, trajectory_id=None, step=None):
     """Classify one observed frame.
 
     Returns:
@@ -395,6 +403,10 @@ def assess_frame(signals, min_distance, time_ps, sampler_config, settings):
     checked = time_ps >= sampler_config.get("min_time", 0)
     if checked and flags["distcrit"]:
         flags["outcome"] = "rejected"
+    elif checked and settings.get('strategy') == 'random':
+        key = f'{sampler_config.get("random_seed", 0)}|{frame_id(trajectory_id, step)}'.encode()
+        score = int.from_bytes(hashlib.sha256(key).digest()[:8], 'big') / 2**64
+        flags.update(outcome='eligible', ranking_score=score, acquisition_score_terms={'random': score})
     elif checked and flags["uncertain"]:
         flags["outcome"] = "eligible"
         flags["ranking_score"] = ranking_score(signals, settings, sampler_config)

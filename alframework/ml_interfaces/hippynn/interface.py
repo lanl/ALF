@@ -22,7 +22,7 @@ from alframework.tools import ensemble_training
 from alframework.ml_interfaces.hippynn.compat import node_from_name, system_energy
 from alframework.tools.excited_state_schema import derive_state_property_table, derive_gap_property_table
 from alframework.tools.data_shards import STRUCTURE_STATE_DATASETS
-
+from alframework.tools.molecules import MOLECULE_ID
 
 def _species_numbers(values):
     from ase.data import atomic_numbers
@@ -57,9 +57,11 @@ def __getattr__(name):
     class ALFPyAniDirectoryDB(PyAniDirectoryDB):
         def __init__(self, directory, *args, coordinates_key='coordinates', atom_keys=(),
                      excited_state_properties=None, retained_indices=None, read_workers=None,
-                     max_inflight_bytes=None, files=None, split_indices=None, record_frame_groups=False, **kwargs):
+                     max_inflight_bytes=None, files=None, split_indices=None, record_frame_groups=False,
+                     mixed_molecules=False, **kwargs):
             self.coordinates_key = coordinates_key
             self.excited_state_properties = excited_state_properties
+            self.mixed_molecules = mixed_molecules
             self.retained_indices = retained_indices
             # ML_config's h5_read_workers; set before HIPPYNN's constructor reads the files.
             self.read_workers = read_workers
@@ -79,7 +81,7 @@ def __getattr__(name):
                                         allow_unfound=kwargs.get('allow_unfound', False))
             if excited_state_properties is not None:
                 self.restarter.kwargs.update(excited_state_properties=excited_state_properties,
-                                            retained_indices=retained_indices)
+                                            retained_indices=retained_indices, mixed_molecules=mixed_molecules)
             if split_indices is not None:
                 # An explicit (for example gap-stratified) split, replayed exactly on a checkpoint restart.
                 self.apply_split_indices(split_indices)
@@ -97,7 +99,7 @@ def __getattr__(name):
         def _extract_groups(self, file, species_key, permit_only):
             from collections import Counter
             wanted = set(self.inputs or ()) | set(self.targets or ())
-            dropped = set(STRUCTURE_STATE_DATASETS) - wanted
+            dropped = {MOLECULE_ID} | (set(STRUCTURE_STATE_DATASETS) - wanted)
             keys = set(permit_only) | {species_key} if permit_only and species_key is not None else None
             group_keys = {self.coordinates_key, species_key} - {None}
             n_atoms_max, batches, counter = 0, [], Counter()
@@ -134,6 +136,8 @@ def __getattr__(name):
             # Select datasets before reading: pair indices/NACs and optics may
             # have unrelated axes and can be much larger than training targets.
             keys = {self.coordinates_key, species_key, TOPOLOGY_ATOM_IDS, '_id', 'pbc'}
+            if self.mixed_molecules:
+                keys.add(MOLECULE_ID)
             keys.update(row[key] for row in states for key in ('energy_db_name', 'force_db_name'))
             keys.update(row['gap_db_name'] for row in gaps)
             selected = []
@@ -157,6 +161,11 @@ def __getattr__(name):
                 orders = None
                 if TOPOLOGY_ATOM_IDS in batch:
                     orders = canonical_orders(batch[TOPOLOGY_ATOM_IDS], count, atoms, context=context)
+                # Storage order preserves aligned coordinates and forces even when
+                # two isomers use different reference atom orders.
+                if self.mixed_molecules:
+                    orders = None
+                if orders is not None:
                     species_rows = np.take_along_axis(species_rows, orders, axis=1)
                     coordinates = np.take_along_axis(coordinates, orders[:, :, None], axis=1)
                 if not np.all(species_rows == species_rows[0]):
@@ -164,6 +173,8 @@ def __getattr__(name):
                 if 'pbc' in batch and np.any(batch['pbc']):
                     raise ValueError('Excited-state training requires nonperiodic data')
                 out = {self.coordinates_key: coordinates, species_key: species_rows[:1]}
+                if self.mixed_molecules and np.any(species <= 0):
+                    raise ValueError(f'{context}: stored atomic numbers must be positive')
                 for row in states:
                     ekey, fkey = row['energy_db_name'], row['force_db_name']
                     if ekey not in batch or fkey not in batch:
@@ -197,9 +208,18 @@ def __getattr__(name):
                 source_ids = np.asarray(batch.get('_id', [f'{context}:{i}' for i in range(count)])).reshape(-1)
                 if len(source_ids) != count:
                     raise ValueError(f'{context}: ID count does not match coordinates')
-                self.alf_frame_manifest.extend(dict(file=str(Path(file).resolve()), group=name,
-                                                    frame=i, id=v.decode() if isinstance(v, bytes) else str(v))
-                                               for i, v in enumerate(source_ids))
+                frames = [dict(file=str(Path(file).resolve()), group=name,
+                               frame=i, id=v.decode() if isinstance(v, bytes) else str(v))
+                          for i, v in enumerate(source_ids)]
+                if self.mixed_molecules:
+                    identities = np.asarray(batch.get(MOLECULE_ID, ()))
+                    if identities.shape != (count,) or identities.dtype.kind not in 'SU':
+                        raise ValueError(f'{context}: expected one molecule_id string per frame')
+                    for frame, identity in zip(frames, identities.astype(str)):
+                        if not identity.strip():
+                            raise ValueError(f'{context}: missing molecule_id for {frame["id"]}')
+                        frame[MOLECULE_ID] = str(identity)
+                self.alf_frame_manifest.extend(frames)
                 selected.append(out)
             if not selected:
                 raise ValueError(f'No structure groups in {file}')
@@ -1364,15 +1384,15 @@ class HippynnBatchedEnsemble:
         return torch.stack(energies), torch.stack(forces)
 
 
-def _member_atomic_numbers(directory):
-    """Read one member's atoms from its small file, since the summary lists every training frame.
+def _member_composition(directory):
+    """Read a member's composition or supported elements from its small file.
 
-    Models trained before that file existed only have the summary.
+    Older models only recorded composition in the training summary.
     """
     composition = directory / 'member_composition.json'
     if composition.exists():
-        return json.loads(composition.read_text())['atomic_numbers']
-    return json.loads((directory / 'training_summary.json').read_text())['data']['atomic_numbers']
+        return json.loads(composition.read_text())
+    return json.loads((directory / 'training_summary.json').read_text())['data']
 
 
 def load_hippynn_excited_state_ensemble(model_directory, device, properties_list, hippynn_kernel="auto"):
@@ -1395,6 +1415,7 @@ class HippynnExcitedStateEnsemble:
         self.hippynn_kernel = hippynn_kernel
         self._graphs = []
         self._composition = None
+        self._mixed = None
         self._scales = []
         for row in self.state_table:
             scales = [float(properties_list[row[key]][2]) if len(properties_list[row[key]]) > 2 else 1.
@@ -1406,10 +1427,13 @@ class HippynnExcitedStateEnsemble:
         if not directories:
             raise ValueError(f'No model-* members in {model_directory}')
         for directory in directories:
-            composition = sorted(_member_atomic_numbers(directory))
-            if self._composition is not None and self._composition != composition:
+            metadata = _member_composition(directory)
+            composition = sorted(metadata['atomic_numbers'])
+            mixed = metadata.get('mixed_molecules', False)
+            if self._composition is not None and (self._composition != composition or mixed != self._mixed):
                 raise ValueError('Ensemble members disagree on molecular composition')
             self._composition = composition
+            self._mixed = mixed
             model = _load_member(str(directory.resolve()), self.device)
             outputs = [_target(model, row[key]) for key in ('energy_db_name', 'force_db_name')
                        for row in self.state_table]
@@ -1431,7 +1455,9 @@ class HippynnExcitedStateEnsemble:
         import torch
         if bool(torch.as_tensor(pbc).any()):
             raise ValueError('Excited-state inference supports nonperiodic molecules only')
-        if not counts or any(int(n) != len(self._composition) for n in counts):
+        if not counts or min(counts) < 1:
+            raise ValueError('Excited-state inference requires nonempty molecules')
+        if not self._mixed and any(int(n) != len(self._composition) for n in counts):
             raise ValueError('Excited-state inference requires the trained molecular composition')
         numbers = torch.as_tensor(numbers, device=self.device, dtype=torch.long)
         positions = torch.as_tensor(positions, device=self.device)
@@ -1439,19 +1465,26 @@ class HippynnExcitedStateEnsemble:
             raise ValueError('Invalid packed species/positions shape')
         if not bool(torch.isfinite(positions).all()):
             raise ValueError('Nonfinite molecular positions')
-        species = numbers.reshape(len(counts), counts[0])
-        if any(sorted(row) != self._composition for row in species.cpu().tolist()):
+        if self._mixed and not bool(torch.isin(numbers, torch.as_tensor(self._composition, device=self.device)).all()):
+            raise ValueError('Molecule contains elements absent from training')
+        if not self._mixed and any(sorted(row) != self._composition
+                                   for row in numbers.reshape(len(counts), counts[0]).cpu().tolist()):
             raise ValueError('Molecule differs from trained composition')
+        batch, width = len(counts), max(counts)
+        mask = torch.arange(width, device=self.device)[None, :] < torch.as_tensor(counts, device=self.device)[:, None]
+        species = torch.zeros((batch, width), dtype=torch.long, device=self.device)
+        species[mask] = numbers
         energies, forces = [], []
         for graph, kinds in self._graphs:
             dtype = next(p.dtype for p in graph.parameters() if p.is_floating_point())
-            values = dict(species=species, positions=positions.detach().to(dtype).reshape(len(counts), counts[0], 3)
-                          .clone().requires_grad_(True))
+            coordinates = torch.zeros((batch, width, 3), dtype=dtype, device=self.device)
+            coordinates[mask] = positions.detach().to(dtype)
+            values = dict(species=species, positions=coordinates.requires_grad_(True))
             with torch.enable_grad():
                 outputs = graph(*(values[k] for k in kinds))
-            energy = torch.stack([outputs[k].reshape(len(counts)) / self._scales[k][0]
+            energy = torch.stack([outputs[k].reshape(batch) / self._scales[k][0]
                                   for k in range(self.n_states)])
-            force = torch.stack([outputs[self.n_states+k].reshape(sum(counts), 3) / self._scales[k][1]
+            force = torch.stack([outputs[self.n_states+k].reshape(batch, width, 3)[mask] / self._scales[k][1]
                                  for k in range(self.n_states)])
             if not bool(torch.isfinite(energy).all() and torch.isfinite(force).all()):
                 raise FloatingPointError('Nonfinite excited-state prediction')
@@ -1601,6 +1634,10 @@ def validate_excited_state_training_config(
         raise ValueError('hippynn_kernel must name a supported HIPPYNN kernel implementation')
     if config.get("n_atoms") is not None and int(config["n_atoms"]) < 1:
         raise ValueError("n_atoms must be positive when configured.")
+    if type(config.get('mixed_molecules', False)) is not bool:
+        raise ValueError('mixed_molecules must be a boolean.')
+    if config.get('mixed_molecules') and (config.get('n_atoms') is not None or config.get('first_is_interacting')):
+        raise ValueError('Mixed-molecule training needs variable atom counts and first_is_interacting=false.')
 
     for key in (
         "batch_size",
@@ -1665,7 +1702,7 @@ def _h5_shards(h5_train_dir: str) -> list[str]:
 def load_excited_state_h5_arrays(h5_train_dir, properties_list, *, coordinates_key='coordinates',
                                 species_key='species', configured_n_atoms=None,
                                 configured_possible_species=None, return_database=False, seed=0, shards=None,
-                                read_workers=None, max_inflight_bytes=None):
+                                read_workers=None, max_inflight_bytes=None, mixed_molecules=False):
     """Load explicit multi-state schemas through the shared restartable reader.
 
     HDF5 values already include properties_list unit conversions; do not apply
@@ -1682,27 +1719,34 @@ def load_excited_state_h5_arrays(h5_train_dir, properties_list, *, coordinates_k
         inputs=[species_key, coordinates_key], targets=targets,
         coordinates_key=coordinates_key, species_key=species_key,
         atom_keys=[row['force_db_name'] for row in states],
-        excited_state_properties=properties_list, seed=seed, quiet=True,
+        excited_state_properties=properties_list, seed=seed, quiet=True, mixed_molecules=mixed_molecules,
         read_workers=read_workers, max_inflight_bytes=max_inflight_bytes,
     )
     arrays = {key: value.numpy() for key, value in database.arr_dict.items()}
     species = arrays[species_key]
-    if not np.all(species == species[0]):
-        raise ValueError('Excited-state training requires one exact atomic-number sequence')
-    if np.any(species <= 0):
-        raise ValueError('Species must be positive atomic numbers')
+    if not mixed_molecules:
+        if not np.all(species == species[0]):
+            raise ValueError('Excited-state training requires one exact atomic-number sequence')
+        if np.any(species <= 0):
+            raise ValueError('Species must be positive atomic numbers')
     n_atoms = species.shape[1]
+    if mixed_molecules and configured_n_atoms is not None:
+        raise ValueError('n_atoms can only be configured for a fixed-size excited-state dataset')
     if configured_n_atoms is not None and int(configured_n_atoms) != n_atoms:
         raise ValueError(f'Configured n_atoms={configured_n_atoms} does not match HDF5 atom count {n_atoms}')
-    possible = list(configured_possible_species) if configured_possible_species is not None else [0, *sorted(set(species[0].tolist()))]
+    elements = set(np.unique(species).tolist()) - {0}
+    possible = list(configured_possible_species) if configured_possible_species is not None else [0, *sorted(elements)]
     if not possible or possible[0] != 0 or len(possible) != len(set(possible)) or min(possible) < 0:
         raise ValueError('possible_species must begin with padding species 0 and contain unique nonnegative integers')
-    if not set(species[0]).issubset(possible):
+    if not elements.issubset(possible):
         raise ValueError('possible_species is missing atomic numbers present in HDF5')
-    summary = dict(n_structures=len(species), n_atoms=n_atoms, atomic_numbers=species[0].tolist(),
+    summary = dict(n_structures=len(species), n_atoms=n_atoms,
+                   atomic_numbers=sorted(elements) if mixed_molecules else species[0].tolist(),
                    possible_species=possible, state_table=states, gap_table=gaps,
                    frames=database.alf_frame_manifest,
                    files=[dict(path=str(Path(p).resolve()), sha256=hashlib.sha256(Path(p).read_bytes()).hexdigest()) for p in paths])
+    if mixed_molecules:
+        summary['mixed_molecules'] = True
     if return_database:
         return arrays, summary, database
     # Keep bookkeeping indices outside the public numerical target contract.
@@ -2017,6 +2061,52 @@ def validate_filtered_split_capacity(
         )
 
 
+def filter_mixed_excited_state_arrays(arrays, state_table, frames, *, species_key, **options):
+    """Apply distance and outlier screens to each molecule's unpadded data."""
+    groups = {}
+    for index, frame in enumerate(frames):
+        groups.setdefault(frame[MOLECULE_ID], []).append(index)
+    atom_keys = [species_key, options['coordinates_key'],
+                 *(row['force_db_name'] for row in state_table)]
+    keep = np.zeros(len(frames), dtype=bool)
+    reports = {}
+    for identity, indices in groups.items():
+        subset = {key: value[indices] for key, value in arrays.items()}
+        numbers = subset[species_key]
+        if not np.all(numbers == numbers[0]):
+            raise ValueError(f'{identity}: molecule_id has inconsistent species across frames')
+        width = int(np.count_nonzero(numbers[0]))
+        for key in atom_keys:
+            subset[key] = subset[key][:, :width]
+        subset['indices'] = np.asarray(indices)
+        retained, reports[identity] = filter_excited_state_training_arrays(subset, state_table, **options)
+        keep[retained['indices']] = True
+    return _mask_training_arrays(arrays, keep), {
+        'input_count': len(frames), 'retained_count': int(keep.sum()), 'by_molecule': reports,
+    }
+
+
+def _initialize_shared_elemental_energies(energy_outputs, train, species_key, possible_species, properties):
+    import torch
+
+    elements = possible_species[1:]
+    numbers = train[species_key].cpu().numpy()
+    counts = np.column_stack([(numbers == element).sum(axis=1) for element in elements])
+    scales = [float(properties[row['energy_key']][2]) if len(properties[row['energy_key']]) > 2 else 1.
+              for row, _ in energy_outputs]
+    if any(not np.isfinite(scale) or scale <= 0 for scale in scales):
+        raise ValueError('Mixed-molecule elemental references require positive finite energy conversion factors')
+    ground_key = energy_outputs[0][0]['energy_db_name']
+    energies = train[ground_key].cpu().numpy().reshape(-1).astype(np.float64) / scales[0]
+    offsets, _, _, _ = np.linalg.lstsq(counts, energies, rcond=None)
+    for (_, output), scale in zip(energy_outputs, scales):
+        weight = output.parents[0].torch_module.layers[0].weight
+        with torch.no_grad():
+            weight.copy_(torch.as_tensor(offsets * scale, device=weight.device, dtype=weight.dtype))
+        weight.requires_grad_(False)
+    return dict(zip(elements, offsets.tolist()))
+
+
 def compose_excited_state_loss(
     energy_error_terms: list[tuple[Any, Any]],
     force_error_terms: list[tuple[Any, Any]],
@@ -2091,6 +2181,7 @@ def build_excited_state_training_graph(
     gap_weight: float = 1.0,
     l2_weight: float,
     first_is_interacting: bool = False,
+    mixed_molecules: bool = False,
 ) -> tuple[
     list[tuple[dict[str, Any], Any]],
     list[tuple[dict[str, Any], Any]],
@@ -2100,6 +2191,9 @@ def build_excited_state_training_graph(
     """Attach state heads/gradients and construct the shared training loss."""
 
     from hippynn.graphs import loss, physics, targets
+
+    if mixed_molecules and first_is_interacting:
+        raise ValueError('Mixed-molecule training requires first_is_interacting=false for shared elemental energies')
 
     energy_outputs: list[tuple[dict[str, Any], Any]] = []
     force_outputs: list[tuple[dict[str, Any], Any]] = []
@@ -2128,6 +2222,8 @@ def build_excited_state_training_graph(
 
         energy_rmse = loss.MSELoss.of_node(energy_output) ** 0.5
         energy_mae = loss.MAELoss.of_node(energy_output)
+        # These losses reindex padded forces through the species node, so they
+        # compare real atoms only for both fixed and mixed-size batches.
         force_rmse = loss.MSELoss.of_node(force_output) ** 0.5
         force_mae = loss.MAELoss.of_node(force_output)
         energy_error_terms.append((energy_rmse, energy_mae))
@@ -2161,7 +2257,7 @@ def build_excited_state_training_graph(
         force_error_terms,
         l2_term,
         gap_error_terms=gap_error_terms,
-        n_atoms=n_atoms,
+        n_atoms=1 if mixed_molecules else n_atoms,
         energy_weight=energy_weight,
         force_weight=force_weight,
         gap_weight=gap_weight,
@@ -2298,6 +2394,7 @@ def train_single_excited_state_model(
     network_params = dict(config.get("network_params") or {})
     configured_n_atoms = config.get("n_atoms")
     configured_species = network_params.get("possible_species")
+    mixed_molecules = bool(config.get("mixed_molecules", False))
     arrays, data_summary, database = load_excited_state_h5_arrays(
         h5_train_dir,
         properties_list,
@@ -2309,15 +2406,14 @@ def train_single_excited_state_model(
         configured_possible_species=configured_species, return_database=True, seed=seed,
         shards=shards,
         read_workers=config.get('h5_read_workers'), max_inflight_bytes=config.get('h5_read_max_inflight_bytes'),
+        mixed_molecules=mixed_molecules,
     )
     if "dist_soft_min" not in network_params:
         raise ValueError(
             "network_params.dist_soft_min is required for production-style "
             "excited-state training filtering."
         )
-    arrays, filtering_summary = filter_excited_state_training_arrays(
-        arrays,
-        state_table,
+    filtering_options = dict(
         coordinates_key=coordinates_key,
         dist_soft_min=float(network_params["dist_soft_min"]),
         remove_high_energy_cut=config.get("remove_high_energy_cut"),
@@ -2325,6 +2421,11 @@ def train_single_excited_state_model(
         remove_high_forces_cut=config.get("remove_high_forces_cut"),
         remove_high_forces_std=config.get("remove_high_forces_std"),
     )
+    if mixed_molecules:
+        arrays, filtering_summary = filter_mixed_excited_state_arrays(
+            arrays, state_table, data_summary['frames'], species_key=species_key, **filtering_options)
+    else:
+        arrays, filtering_summary = filter_excited_state_training_arrays(arrays, state_table, **filtering_options)
     validate_filtered_split_capacity(
         int(arrays[coordinates_key].shape[0]),
         test_size=float(config.get("test_size", 0.1)),
@@ -2388,6 +2489,7 @@ def train_single_excited_state_model(
                 first_is_interacting=bool(
                     config.get("first_is_interacting", False)
                 ),
+                mixed_molecules=mixed_molecules,
             )
 
             plot_dir = model_root / str(
@@ -2479,6 +2581,11 @@ def train_single_excited_state_model(
             manifest = dict(files=data_summary['files'], frames=data_summary['frames'],
                             retained_indices=retained, splits=split_indices, split_method=split,
                             filtered_indices=sorted(set(range(data_summary['n_structures_before_filtering'])) - set(retained)))
+            if mixed_molecules:
+                manifest['mixed_molecules'] = True
+                manifest['elemental_energies_eV'] = _initialize_shared_elemental_energies(
+                    energy_outputs, database.splits['train'], species_key,
+                    network_params['possible_species'], properties_list)
             Path('training_input_manifest.json').write_text(json.dumps(manifest, indent=2))
             initial_parameters = [p.detach().clone() for p in training_modules.model.parameters()]
 
@@ -2579,8 +2686,11 @@ def train_single_excited_state_model(
                 json.dumps(_json_safe(summary), indent=2, allow_nan=False),
                 encoding="utf-8",
             )
+            composition = {"atomic_numbers": data_summary["atomic_numbers"]}
+            if mixed_molecules:
+                composition['mixed_molecules'] = True
             Path("member_composition.json").write_text(
-                json.dumps({"atomic_numbers": data_summary["atomic_numbers"]}) + "\n",
+                json.dumps(composition) + "\n",
                 encoding="utf-8",
             )
 

@@ -10,7 +10,7 @@ from alframework.tools.files import fsync_file
 from alframework.tools.label_hdf5 import LabelH5Writer, label_schema_attributes
 from alframework.tools.label_sources import LabelSourceCollector, write_shard_label_sources
 from alframework.tools.label_validation import validate_label
-from alframework.tools.molecules import MoleculesObject
+from alframework.tools.molecules import MOLECULE_ID, MoleculesObject
 
 PAIR_INDEX_METADATA_KEY = "nac_pairs"
 PAIR_INDEX_DATASET = "nac_pairs"
@@ -115,6 +115,7 @@ def store_current_data(h5path, system_data, properties, attributes=None, *, h5_o
 
     When any converged structure has ``charge`` or ``mult`` metadata, every structure in the shard
     gets ``total_charge`` and ``spin_multiplicity`` datasets, which default to 0 and 1.
+    When supplied, ``molecule_id`` records the molecular identity independently of the geometry's ``_id``.
 
     Returns:
         (int): The number of converged structures saved.
@@ -132,6 +133,7 @@ def store_current_data(h5path, system_data, properties, attributes=None, *, h5_o
     data_dict = {}
     # Total charge and spin multiplicity, stored for the whole shard when any structure records them.
     states, has_state = {}, False
+    identities, has_identity = {}, False
     print("Saving h5 file: " + h5path)
     total_number = 0
     sources = LabelSourceCollector()
@@ -167,6 +169,11 @@ def store_current_data(h5path, system_data, properties, attributes=None, *, h5_o
                                          (TOPOLOGY_ATOM_IDS in data_dict[molkey])):
                 raise ValueError("Cannot mix tagged and untagged topology layouts in one formula group.")
             state = system.get_metadata()
+            identity = state.get(MOLECULE_ID, '')
+            if not isinstance(identity, str) or (MOLECULE_ID in state and not identity.strip()):
+                raise ValueError(f'{cur_moliculeid}: molecule_id must be a nonempty string.')
+            has_identity = has_identity or bool(identity)
+            identities.setdefault(molkey, []).append(identity)
             has_state = has_state or STATE_METADATA[0] in state or STATE_METADATA[1] in state
             row_state = (int(state.get(STATE_METADATA[0], 0)), int(state.get(STATE_METADATA[1], 1)))
             # If there is already a molecule with the same formula, append
@@ -232,6 +239,9 @@ def store_current_data(h5path, system_data, properties, attributes=None, *, h5_o
         for isokey, rows in states.items():
             data_dict[isokey][STRUCTURE_STATE_DATASETS[0]] = [charge for charge, _ in rows]
             data_dict[isokey][STRUCTURE_STATE_DATASETS[1]] = [mult for _, mult in rows]
+    if has_identity:
+        for formula, rows in identities.items():
+            data_dict[formula][MOLECULE_ID] = rows
     for isokey in data_dict:
         frames = len(data_dict[isokey]['_id'])
         for key, values in data_dict[isokey].items():
@@ -239,7 +249,7 @@ def store_current_data(h5path, system_data, properties, attributes=None, *, h5_o
                 raise ValueError(f'{isokey}:{key} is not aligned with the {frames} stored frames.')
         # print('isokeys:',isokey)
         for propkey in data_dict[isokey]:
-            if propkey.lower() in ['species','_id']:
+            if propkey.lower() in ('species', '_id', MOLECULE_ID):
                 data_dict[isokey][propkey] = [el.encode('utf-8') for el in list(data_dict[isokey][propkey])]
                 data_dict[isokey][propkey] = np.array(data_dict[isokey][propkey])
             else:

@@ -278,7 +278,7 @@ def _member_training_split(member_directory):
     if (any(type(i) is not int or not 0 <= i < len(frames) for i in indices)
             or len(set(indices)) != len(indices) or excluded.intersection(indices)):
         raise ValueError(f"{path} has invalid training indices or includes held-out or filtered frames.")
-    return files, frames, sorted(indices)
+    return files, frames, sorted(indices), bool(manifest.get('mixed_molecules', False))
 
 
 def _matching_basis(adapter, path, expected):
@@ -295,7 +295,8 @@ def _matching_basis(adapter, path, expected):
     return None
 
 
-def _split_geometries(adapter, properties_list, shards, files, frames, indices, *, read_workers):
+def _split_geometries(adapter, properties_list, shards, files, frames, indices, *, read_workers,
+                      mixed_molecules=False):
     from ase import Atoms
 
     from alframework.ml_interfaces.hippynn.interface import load_excited_state_h5_arrays
@@ -303,7 +304,7 @@ def _split_geometries(adapter, properties_list, shards, files, frames, indices, 
     keys = {role: node.db_name for role, node in zip(adapter.roles, adapter.graph.input_nodes)}
     arrays, summary = load_excited_state_h5_arrays(
         None, properties_list, coordinates_key=keys["positions"], species_key=keys["species"],
-        shards=shards, read_workers=read_workers)
+        shards=shards, read_workers=read_workers, mixed_molecules=mixed_molecules)
     if [entry["sha256"] for entry in summary["files"]] != [entry["sha256"] for entry in files]:
         raise ValueError("NTK training shards do not match the member's training manifest.")
     locations = {entry["path"]: shard for entry, shard in zip(files, shards)}
@@ -312,7 +313,7 @@ def _split_geometries(adapter, properties_list, shards, files, frames, indices, 
     if observed != expected:
         raise ValueError("NTK training frame order does not match the member's training manifest.")
     numbers, coordinates = arrays[keys["species"]], arrays[keys["positions"]]
-    return (Atoms(numbers=numbers[i], positions=coordinates[i]) for i in indices)
+    return (Atoms(numbers=numbers[i, numbers[i] > 0], positions=coordinates[i, numbers[i] > 0]) for i in indices)
 
 
 def load_hippynn_excited_state_ntk_estimator(model_directory, properties_list, *, device="cpu", dtype=None,
@@ -329,7 +330,7 @@ def load_hippynn_excited_state_ntk_estimator(model_directory, properties_list, *
     if not 0 <= member < len(members):
         raise ValueError(f"{model_directory} has {len(members)} members, not a member {member}.")
     directory = members[member]
-    files, frames, indices = _member_training_split(directory)
+    files, frames, indices, mixed_molecules = _member_training_split(directory)
     checksums = [entry["sha256"] for entry in files]
     if shards is None:
         shards = [entry["path"] for entry in files]
@@ -359,12 +360,15 @@ def load_hippynn_excited_state_ntk_estimator(model_directory, properties_list, *
         fcntl.flock(lock, fcntl.LOCK_EX)
         estimator = _matching_basis(adapter, path, expected)
         if estimator is None:
-            geometries = _split_geometries(adapter, properties_list, shards, files, frames, indices,
-                                          read_workers=h5_read_workers)
-            estimator = NTKEstimator(adapter, geometries, energy_scale=energy_scale, force_scale=force_scale,
-                                     sketch_dim=sketch_dim, seed=seed, ridge_factor=ridge_factor,
-                                     fit_provenance=provenance)
-            estimator.save_basis(path)
+            from alframework.tools.task_timeline import phase
+
+            with phase('ntk_fit'):
+                geometries = _split_geometries(adapter, properties_list, shards, files, frames, indices,
+                                              read_workers=h5_read_workers, mixed_molecules=mixed_molecules)
+                estimator = NTKEstimator(adapter, geometries, energy_scale=energy_scale, force_scale=force_scale,
+                                         sketch_dim=sketch_dim, seed=seed, ridge_factor=ridge_factor,
+                                         fit_provenance=provenance)
+                estimator.save_basis(path)
     return estimator
 
 

@@ -3,6 +3,8 @@ from ase import Atoms
 import numpy as np
 import warnings
 
+MOLECULE_ID = 'molecule_id'
+
 class MoleculesObject:
     """One structure: its atoms and ID, its labels once computed, whether they converged, and its metadata."""
     def __init__(self, atoms, moleculeid):

@@ -216,7 +216,8 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
         from alframework.tools.force_screen import physical_force_diagnostics, physical_force_exceeds, force_screen_metadata
         molecule = molecule_objects[index]
         atoms = engine.atoms(index)
-        report = topology_metadata(validate_fixed_topology(atoms, topology)) if topology is not None else {}
+        reference = topology[index] if isinstance(topology, list) else topology
+        report = topology_metadata(validate_fixed_topology(atoms, reference)) if reference is not None else {}
         force = physical_force_diagnostics(observation['prediction']) if cutoff is not None else None
         if force is not None:
             report.update(force_screen_metadata(force))
@@ -276,7 +277,9 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
                         selected=(prediction.get("selected_force_uncertainty") or [None])[0])
                 if screening:
                     signals.update({k:v for k,v in report.items() if k == 'Fmeanmax' or k.startswith('physical_F')})
-                decision = assess_frame(signals, observation['min_distance'], time_ps, sampler_config, settings)
+                decision = assess_frame(
+                    signals, observation['min_distance'], time_ps, sampler_config, settings,
+                    trajectory_id=molecule_objects[index].get_moleculeid(), step=engine.steps[index])
                 entry.update(signals=signals, decision=decision, min_distance=observation['min_distance'],
                              check=check)
                 for key in (*PEAK_SIGNALS, *own_uncertainty):
@@ -548,7 +551,9 @@ def sample_trajectories(molecule_objects, models, sampler_config, engine_class=N
     ``engine_class`` overrides the configured ``driver.engine`` (for tests).
     """
     bundle_dir = sampler_config.get('meta_dir')
-    sampler_config = dict(sampler_config, meta_dir=task_meta_dir(sampler_config, list(molecule_objects)))
+    original_molecules = list(molecule_objects)
+    molecule_objects = original_molecules
+    sampler_config = dict(sampler_config, meta_dir=task_meta_dir(sampler_config, original_molecules))
     driver = driver_settings(sampler_config)
     states = state_settings(sampler_config)
     selection = acquisition_settings(sampler_config)['selection']
@@ -558,14 +563,16 @@ def sample_trajectories(molecule_objects, models, sampler_config, engine_class=N
         if not has_observations or states is not None or (driver['engine'] == 'ase' and engine_class is None):
             raise ValueError("Adaptive NTK needs a ground-state packed evaluator that reports energy_ntk rows.")
     require_members(models, sampler_config)
-    from alframework.tools.molecular_topology import load_reference_topology, validate_fixed_topology, topology_metadata
+    from alframework.tools.molecular_topology import load_reference_topologies, validate_fixed_topology, topology_metadata
+    from alframework.tools.molecules import MOLECULE_ID
     from alframework.tools.force_screen import validated_force_cutoff
     from alframework.tools.screen_audit import RuntimeScreenAudit
-    topology = load_reference_topology(sampler_config)
+    references = load_reference_topologies(
+        sampler_config, [molecule.get_metadata().get(MOLECULE_ID) for molecule in original_molecules])
+    topology = references if any(reference is not None for reference in references) else None
     if sampler_config.get('max_force_cutoff') is not None:
         validated_force_cutoff(sampler_config['max_force_cutoff'])
     screening = topology is not None or sampler_config.get('max_force_cutoff') is not None
-    original_molecules = list(molecule_objects)
     audit = RuntimeScreenAudit(original_molecules, sampler_config) if screening else None
     if states is not None:
         resolved = {resolve_selected_state(m, states) for m in original_molecules}
@@ -573,9 +580,10 @@ def sample_trajectories(molecule_objects, models, sampler_config, engine_class=N
             raise ValueError('A sampler task must share one selected state')
     if topology is not None:
         valid = []
-        for molecule in original_molecules:
+        valid_references = []
+        for molecule, reference in zip(original_molecules, topology):
             atoms = molecule.get_atoms()
-            report = topology_metadata(validate_fixed_topology(atoms, topology))
+            report = topology_metadata(validate_fixed_topology(atoms, reference))
             audit.record(molecule, 'initial', atoms, diagnostics=report)
             molecule.update_metadata(report)
             if not report['topology_valid']:
@@ -585,7 +593,9 @@ def sample_trajectories(molecule_objects, models, sampler_config, engine_class=N
                 molecule.update_atoms(None)
             else:
                 valid.append(molecule)
+                valid_references.append(reference)
         molecule_objects = valid
+        topology = valid_references
     for molecule in original_molecules:
         molecule.update_metadata(dict(sampling_initial_active_width=len(molecule_objects)))
     if not molecule_objects:

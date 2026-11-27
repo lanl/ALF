@@ -43,11 +43,16 @@ def load_config_file(path, master_directory=None, *, working_directory=None):
                 dir_dict[entry[:-4]+'dir'] = '/'.join(config[entry].split('/')[:-1]) + '/'
         config.update(dir_dict)
         topology = config.get('topology_check')
-        if isinstance(topology, dict) and topology.get('enabled') and topology.get('reference_conformer_path'):
-            reference = Path(topology['reference_conformer_path']).expanduser()
-            if not reference.is_absolute():
-                reference = Path(master_directory or Path(path).resolve().parent) / reference
-            topology['reference_conformer_path'] = str(reference.resolve())
+        if isinstance(topology, dict) and topology.get('enabled'):
+            root = Path(master_directory or Path(path).resolve().parent)
+            if topology.get('reference_conformer_path'):
+                topology['reference_conformer_path'] = str(
+                    (root / Path(topology['reference_conformer_path']).expanduser()).resolve())
+            if isinstance(topology.get('references'), dict):
+                topology['references'] = {
+                    identity: str((root / Path(reference).expanduser()).resolve())
+                    for identity, reference in topology['references'].items()
+                }
 
     return config
 

@@ -185,7 +185,7 @@ def _load_rdkit_reference(
     return molecule, selected_format
 
 
-@lru_cache(maxsize=32)
+@lru_cache(maxsize=128)
 def _load_reference_cached(
     reference_path: str,
     reference_sha256: str,
@@ -349,7 +349,30 @@ def load_reference_topology(
     )
 
 
-@lru_cache(maxsize=16)
+def load_reference_topologies(sampler_config, identities):
+    """Resolve one topology per requested molecule, or share a legacy reference."""
+    if not topology_enabled(sampler_config):
+        return [None] * len(identities)
+    raw = sampler_config['topology_check']
+    if 'references' not in raw:
+        return [load_reference_topology(sampler_config)] * len(identities)
+    references = raw['references']
+    if not isinstance(references, dict) or not references or 'reference_conformer_path' in raw:
+        raise ValueError('topology_check.references requires a nonempty molecule-to-reference mapping.')
+    missing = set(identities) - references.keys()
+    if missing:
+        raise ValueError(f'Missing topology references for molecule IDs: {sorted(map(str, missing))}')
+    shared = {key: value for key, value in raw.items() if key != 'references'}
+    loaded = {
+        identity: load_reference_topology({
+            **sampler_config,
+            'topology_check': {**shared, 'reference_conformer_path': references[identity]},
+        }) for identity in set(identities)
+    }
+    return [loaded[identity] for identity in identities]
+
+
+@lru_cache(maxsize=128)
 def _topology_arrays(topology: ReferenceTopology):
     """Index and reference arrays that depend only on the reference, for validate_fixed_topology:
     bonds in their stored order, then every other atom pair in ``combinations`` order with its covalent

@@ -147,7 +147,8 @@ def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Ncheck, Tamp, Tper,
                 max_uncertainty[name] = max(signals[name], max_uncertainty.get(name, signals[name]))
         dist_min = minimum_distance(ase_atoms)
         # Ecrit, Fcrit and Fmcrit: the energy, mean-force and max-force spreads above Escut, Fscut and 3 Fscut.
-        decision = assess_frame(signals, dist_min, i * Ncheck * dt / 1000, criteria, settings)
+        decision = assess_frame(signals, dist_min, i * Ncheck * dt / 1000, criteria, settings,
+                                trajectory_id=molecule_object.get_moleculeid(), step=1 + i * Ncheck)
         Ecrit, Fcrit, Fmcrit, distcrit = (decision[key] for key in ('Ecrit', 'Fcrit', 'Fmcrit', 'distcrit'))
         if decision['outcome'] != 'continue':  # rejected for distcut, or a frame to label, once min_time has passed
             failed = True

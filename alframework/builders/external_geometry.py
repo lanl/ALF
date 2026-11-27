@@ -17,7 +17,7 @@ from alframework.tools.task_timeline import timed
 
 from alframework.tools.atom_order import TOPOLOGY_ATOM_IDS, validated_atom_ids
 from alframework.tools.files import cached_sha256, file_key
-from alframework.tools.molecules import MoleculesObject
+from alframework.tools.molecules import MOLECULE_ID, MoleculesObject
 
 
 def _text(value):
@@ -154,8 +154,10 @@ def build_external_geometries(moleculeids, builder_config, master_directory=None
         raise ValueError('Duplicate molecule IDs in one builder task')
     manifest = geometry_manifest(builder_config, master_directory)
     mode = builder_config.get('selection_mode', 'deterministic_hash')
-    if mode not in {'sequential', 'deterministic_hash'}:
-        raise ValueError('selection_mode must be sequential or deterministic_hash')
+    if mode not in {'sequential', 'sequential_interleave', 'deterministic_hash'}:
+        raise ValueError('selection_mode must be sequential, sequential_interleave, or deterministic_hash')
+    if mode == 'sequential_interleave' and len({block[3] for block in manifest._blocks}) != 1:
+        raise ValueError('sequential_interleave requires an equal number of frames per geometry group')
     outputs = []
     with ExitStack() as stack:
         handles = {}
@@ -166,13 +168,19 @@ def build_external_geometries(moleculeids, builder_config, master_directory=None
 
 def _build_one(moleculeid, manifest, mode, builder_config, handles, stack):
     """Build one molecule, opening each HDF5 source once per task through ``handles``."""
-    if mode == 'sequential':
+    if mode in {'sequential', 'sequential_interleave'}:
         match = re.search(r'(\d+)$', moleculeid)
-        if match is None:
+        if moleculeid == 'test_builder':  # ALF's --test_builder / --test_qm probe
+            selected = 0
+        elif match is None:
             raise ValueError('Sequential selection requires a trailing integer in each ID')
-        selected = int(match.group(1))
+        else:
+            selected = int(match.group(1))
         if selected >= len(manifest):
             raise IndexError(f'Geometry source exhausted at {selected}; {len(manifest)} frames available')
+        if mode == 'sequential_interleave':
+            frame_index, block_index = divmod(selected, len(manifest._blocks))
+            selected = manifest._starts[block_index] + frame_index
     else:
         key = f'{moleculeid}|{int(builder_config.get("selection_seed", 0))}'.encode()
         selected = int.from_bytes(hashlib.sha256(key).digest()[:8], 'big') % len(manifest)
@@ -180,10 +188,13 @@ def _build_one(moleculeid, manifest, mode, builder_config, handles, stack):
     if group is None:
         source = read(path, index=frame, parallel=False)
         source_id = source.info.get('_id', source.info.get('id'))
+        identity = source.info.get(MOLECULE_ID)
     else:
         if path not in handles:
             handles[path] = stack.enter_context(h5py.File(path, 'r'))
-        source, source_id = _h5_frame(handles[path][group], frame)
+        source_group = handles[path][group]
+        source, source_id = _h5_frame(source_group, frame)
+        identity = _text(source_group[MOLECULE_ID][frame]) if MOLECULE_ID in source_group else None
     if (not len(source) or not np.isfinite(source.positions).all()
             or np.any(source.numbers <= 0)):
         raise ValueError(f'Invalid geometry in {path}, frame {frame}')
@@ -195,10 +206,33 @@ def _build_one(moleculeid, manifest, mode, builder_config, handles, stack):
         atoms.set_array(TOPOLOGY_ATOM_IDS,
                         validated_atom_ids(source.arrays[TOPOLOGY_ATOM_IDS], len(source)))
     molecule = MoleculesObject(atoms, moleculeid)
+    if identity:
+        if not isinstance(identity, str):
+            raise ValueError(f'{path}, frame {frame}: molecule_id must be a string')
+        molecule.update_metadata({MOLECULE_ID: identity})
     molecule.update_metadata(dict(geometry_source=path, geometry_source_sha256=fingerprint,
                                   geometry_group=group, geometry_frame=frame,
                                   geometry_source_id=source_id, geometry_index=selected))
     return molecule
+
+
+@python_app(executors=['alf_sampler_executor'])
+@timed('builder')
+def molecular_collection_builder_task(moleculeid=None, moleculeids=None, builder_config=None,
+                                     h5_path=None, current_h5_id=0, master_directory=None):
+    """Interleave balanced bootstrap pools, then sample from seeds or closed labels."""
+    ids = moleculeids if moleculeids is not None else [moleculeid]
+    config = dict(builder_config)
+    if not current_h5_id:
+        config['selection_mode'] = 'sequential_interleave'
+    else:
+        config['selection_mode'] = 'deterministic_hash'
+        if config.get('replay_closed_shards', True):
+            config['sources'] = [*config['sources'], *(str(h5_path).format(i) for i in range(int(current_h5_id)))]
+    result = build_external_geometries(ids, config, master_directory)
+    if any(MOLECULE_ID not in molecule.get_metadata() for molecule in result):
+        raise ValueError('Every molecular collection geometry must carry a molecule_id')
+    return result if moleculeids is not None else result[0]
 
 
 @python_app(executors=['alf_sampler_executor'])

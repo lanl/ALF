@@ -10,18 +10,16 @@ from pathlib import Path
 import h5py
 import numpy as np
 from ase import Atoms
-from ase.data import atomic_numbers
 from ase.io import read
-from parsl import python_app
-from alframework.tools.task_timeline import timed
 
 from alframework.tools.atom_order import TOPOLOGY_ATOM_IDS, validated_atom_ids
+from alframework.tools.elements import atomic_numbers_of, symbol_text
 from alframework.tools.files import cached_sha256, file_key
 from alframework.tools.molecules import MOLECULE_ID, MoleculesObject
+from alframework.tools.tasks import alf_task
 
 
-def _text(value):
-    return value.decode('utf8') if isinstance(value, bytes) else str(value)
+_text = symbol_text
 
 
 class GeometryManifest(Sequence):
@@ -117,12 +115,9 @@ def _h5_frame(group, index):
         species = species[0 if species.shape[0] == 1 else index]
     if species.ndim != 1 or len(species) != len(positions):
         raise ValueError('Geometry species must describe each atom')
-    if species.dtype.kind in 'SUO':
-        numbers = [atomic_numbers[_text(v)] for v in species]
-    elif species.dtype.kind in 'iu':
-        numbers = species
-    else:
+    if species.dtype.kind not in 'SUOiu':
         raise ValueError('Species must be chemical symbols or integer atomic numbers')
+    numbers = atomic_numbers_of(species)
     options = {}
     for key, static_shape in [('cell', (3, 3)), ('pbc', (3,))]:
         if key in group:
@@ -216,8 +211,7 @@ def _build_one(moleculeid, manifest, mode, builder_config, handles, stack):
     return molecule
 
 
-@python_app(executors=['alf_sampler_executor'])
-@timed('builder')
+@alf_task('builder')
 def molecular_collection_builder_task(moleculeid=None, moleculeids=None, builder_config=None,
                                      h5_path=None, current_h5_id=0, master_directory=None):
     """Interleave balanced bootstrap pools, then sample from seeds or closed labels."""
@@ -235,8 +229,7 @@ def molecular_collection_builder_task(moleculeid=None, moleculeids=None, builder
     return result if moleculeids is not None else result[0]
 
 
-@python_app(executors=['alf_sampler_executor'])
-@timed('builder')
+@alf_task('builder')
 def external_geometry_builder_task(moleculeid=None, moleculeids=None,
                                    builder_config=None, master_directory=None):
     """Builder compatible with ALF's single and multi-structure dispatch."""

@@ -87,7 +87,7 @@ class ASEEngine:
     ``step(indices, n)`` returns ``{index: exception}`` for members that failed; ``observe(i)``
     returns the unbiased per-member prediction and minimum distance at the
     current frame; ``atoms(i)``, ``set_temperature(i, T)``,
-    ``scale_cell(i, scalar)``, and ``finish(i)``. A batched engine implements
+    ``scale_cell(i, scalar)``, ``snapshot(i)``, and ``finish(i)``. A batched engine implements
     the same methods over packed systems, freezing members on ``finish``.
     An optional ``synchronize()`` waits for device work before a timing checkpoint.
     """
@@ -159,6 +159,12 @@ class ASEEngine:
 
     def atoms(self, index):
         return self._atoms[index]
+
+    def snapshot(self, index):
+        """A detached copy of the current frame, with the constraints it came with, to label later."""
+        atoms = self._atoms[index].copy()
+        atoms.set_constraint(copy.deepcopy(self._constraints[index]))
+        return atoms
 
     def set_temperature(self, index, temperature_K):
         self._dynamics[index].set_temperature(temperature_K=temperature_K)

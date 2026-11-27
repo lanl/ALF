@@ -7,7 +7,6 @@ loads the copies for the TorchSim and ALCHEMI sampling engines.
 
 Nothing here imports MACE or Torch until it's used, so ALF runs without them installed.
 """
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -132,10 +131,10 @@ class MaceFineTuner:
                              max_inflight_bytes=self.settings.get('h5_read_max_inflight_bytes'))
         if not frames:
             raise ValueError('There are no labeled frames to fine-tune on.')
+        from alframework.tools.files import replaced_atomically
         path = Path(member_dir) / 'train.xyz'
-        temporary = path.with_name(path.name + '.tmp')
-        write(str(temporary), frames, format='extxyz')
-        os.replace(temporary, path)
+        with replaced_atomically(path, suffix='.tmp', durable=False) as temporary:
+            write(str(temporary), frames, format='extxyz')
         return str(path)
 
     def command(self, data, member_dir, seed, device):

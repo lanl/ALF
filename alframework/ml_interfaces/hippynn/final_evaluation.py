@@ -186,6 +186,9 @@ def _edges(plot, ranges):
     ranges = np.array([bounds for bounds in ranges if bounds is not None])
     if not ranges.size:
         raise ValueError('A final evaluation histogram has no values in this split.')
+    if not np.isfinite(ranges).all():
+        raise ValueError('The final evaluation predictions are not finite, so the member was not evaluated; '
+                         'its training most likely diverged to NaN.')
     x = ranges[:, :2]
     y = ranges[:, 2:]
     _, x_edges, y_edges = np.histogram2d(x.reshape(-1), y.reshape(-1), bins=plot.bins)
@@ -193,10 +196,11 @@ def _edges(plot, ranges):
 
 
 def _write(path, data):
-    temporary = path.with_suffix('.partial')
-    with temporary.open('wb') as stream:
-        pickle.dump(data, stream, protocol=pickle.HIGHEST_PROTOCOL)
-    temporary.replace(path)
+    from alframework.tools.files import replaced_atomically
+    # A spool file only this evaluation reads, so it needn't reach the disk first.
+    with replaced_atomically(path, durable=False) as temporary:
+        with temporary.open('wb') as stream:
+            pickle.dump(data, stream, protocol=pickle.HIGHEST_PROTOCOL)
 
 
 def _read(path):

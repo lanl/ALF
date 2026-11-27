@@ -54,17 +54,7 @@ def test_a_trained_model_lists_its_shards_sources_and_the_shards_without_any(tmp
         "label_sources": [SOURCE], "shards_without_label_sources": ["data-0001.h5"], "shards": 2}
 
 
-def test_the_old_names_still_import_from_tools_tools():
-    from alframework.tools import tools
-
-    assert tools.LABEL_PROVENANCE == label_sources.LEGACY_LABEL_PROVENANCE
-    assert tools.SourceCollector is label_sources.LabelSourceCollector
-    assert tools.read_label_provenance is label_sources.read_label_sources
-    assert tools.label_sources is label_sources.label_sources
-    assert tools.write_label_sources is label_sources.write_label_sources
-
-
-def test_label_provenance_uses_the_frozen_inventory(tmp_path):
+def test_label_sources_come_from_the_frozen_inventory(tmp_path):
     from alframework.tools.ensemble_training import training_shards
 
     h5 = tmp_path / "h5"

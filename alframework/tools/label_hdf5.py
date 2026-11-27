@@ -12,6 +12,33 @@ LABEL_PARTS = 'alf_label_parts'
 PROPERTY_SCHEMA = 'alf_label_properties'
 LABEL_UNITS = 'alf_label_units'
 SCHEMA_VERSION = 'alf_label_schema_version'
+# How a shard groups its frames (label_h5_layout.group_by). "formula": one group per sorted species list, the
+# species stored once per group. "atom_count": one group per atom count (and periodicity and topology tagging), the
+# species stored for each frame. Shards without the attribute group by formula.
+GROUP_BY = 'alf_label_group_by'
+GROUP_BY_CHOICES = ('formula', 'atom_count')
+# A formula-grouped shard with more groups than this, and more than MANY_GROUPS_PER_LABEL groups per label, spends
+# most of its storage and reading time on per-group work.
+MANY_GROUPS = 10_000
+MANY_GROUPS_PER_LABEL = 0.1
+
+
+def split_group_by(h5_options):
+    """``(group_by, writer options)`` from a ``label_h5_layout``'s writer options: the grouping is the caller's,
+    the rest configure :class:`LabelH5Writer`."""
+    options = dict(h5_options or {})
+    group_by = options.pop('group_by', None) or 'formula'
+    if group_by not in GROUP_BY_CHOICES:
+        raise ValueError(f'label_h5_layout group_by must be one of {list(GROUP_BY_CHOICES)}, not {group_by!r}.')
+    return group_by, options
+
+
+def many_groups_warning(path, groups, frames, group_by):
+    """Warn when grouping by formula leaves nearly one group per label, which is slow to store and to read."""
+    if group_by == 'formula' and groups > MANY_GROUPS and groups > MANY_GROUPS_PER_LABEL * frames:
+        warnings.warn(f'{path} holds {groups:,} formula groups for {frames:,} labels, so storing and reading it is '
+                      'dominated by per-group work. With many compositions, label_h5_layout group_by "atom_count" '
+                      'groups frames by atom count instead.', stacklevel=3)
 
 
 def discover_label_shards(path):
@@ -78,7 +105,7 @@ def validate_label_parts(handle):
 
 
 class LabelH5Writer:
-    """Write one group of label arrays per composition.
+    """Write groups of label arrays; the caller chooses the groups (see ``GROUP_BY``).
 
     ``complib`` and ``complevel`` select lossless compression. ``shuffle`` adds the byte-shuffle filter
     to numeric arrays, and ``frame_chunk`` groups that many whole frames into each chunk.

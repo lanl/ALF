@@ -24,11 +24,11 @@ import numpy as np
 import pandas as pd
 
 from alframework.tools.task_timeline import read_timeline
+from alframework.tools.tasks import executor_stages
 from alframework.tools.trajectory_summary import COLUMNS as TRAJECTORY_COLUMNS, read_trajectory_summary
 
-# ALF submits each stage's tasks to these executors (see the ``@python_app`` decorators).
-EXECUTOR_STAGES = {'alf_sampler_executor': ('builder', 'sampler'), 'alf_QM_executor': ('QM',),
-                   'alf_ML_executor': ('ML',)}
+# The stages whose tasks ALF submits to each executor, under its current or a former label (alframework.tools.tasks).
+EXECUTOR_STAGES = executor_stages()
 TASK_COLUMNS = ('stage', 'task', 'items', 'start', 'end', 'seconds', 'outcome', 'host', 'slurm_job', 'parsl_block',
                 'gpu_peak_gb')
 SUBMIT_SCRIPT = re.compile(r'parsl\.(?P<executor>[\w-]+)\.block-(?P<block>\d+)\.(?P<time>\d+(?:\.\d+)?)$')

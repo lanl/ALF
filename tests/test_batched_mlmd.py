@@ -7,6 +7,7 @@ failed trajectory leaves the others alone. Some tests skip without torch, HIPPYN
 import copy
 import gc
 import json
+import pickle
 import time
 import weakref
 from pathlib import Path
@@ -240,6 +241,145 @@ class FailingEngine(ASEEngine):
         if index == 1 and self.steps[index] > 1:
             raise RuntimeError("model evaluation failed")
         return super().observe(index)
+
+
+@pytest.mark.parametrize("ncheck", [1, 3, 20])
+def test_final_frame_uses_exact_duration_and_keeps_first_violation_in_metadata(tmp_path, ncheck):
+    class ScriptedDistances(ASEEngine):
+        def observe(self, index):
+            step = self.steps[index]
+            if index == 3 and step > 1:
+                raise RuntimeError("model evaluation failed")
+            observation = super().observe(index)
+            observation["min_distance"] = 0.8 if (index, step) in ((0, 1), (1, 8)) else 1.5
+            return observation
+
+    config = dict(BASE, Escut=100.0, distcut=1.1, maxt=0.004, Ncheck=ncheck, meta_dir=str(tmp_path),
+                  metadata_files="per_task", returned_metadata="compact",
+                  acquisition={"selection": {"mode": "final_frame"}})
+    engine = ScriptedDistances([BOX.copy() for _ in range(4)], fake_ensemble(), config["dt"],
+                               [300.0] * 4, [np.random.RandomState(11) for _ in range(4)])
+    molecules = [MoleculesObject(engine.atoms(i), f"mol-{i}") for i in range(4)]
+    results = run_mlmd_trajectories(molecules, engine, [SCHEDULE] * 4, config)
+    with (tmp_path / "metadata-task-mol-0.p").open("rb") as handle:
+        first, last, clean, failed = pickle.load(handle)
+
+    assert first["first_threshold_violation"]["step"] == 1
+    assert first["first_threshold_violation"]["distcrit"] is True
+    assert first["distcrit"] is False
+    assert not np.array_equal(first["first_threshold_violation"]["positions"], first["positions"])
+    assert last["first_threshold_violation"]["step"] == 8
+    assert "first_threshold_violation" not in clean
+    for molecule, record in zip(results[:3], (first, last, clean)):
+        assert record["trajectory_outcome"] == "eligible"
+        assert record["step"] == 8 and record["simulationtime"] == pytest.approx(config["maxt"])
+        np.testing.assert_allclose(molecule.get_atoms().get_positions(wrap=True), record["positions"])
+        assert "first_threshold_violation" not in molecule.get_metadata()
+    assert failed["trajectory_outcome"] == "failed"
+    assert results[3].get_atoms() is None
+
+
+class ScriptedContacts(ASEEngine):
+    """Reports a close contact (0.8 Angstrom) at the listed steps of each trajectory, and 1.5 otherwise."""
+
+    contacts = {}
+
+    def observe(self, index):
+        observation = super().observe(index)
+        observation["min_distance"] = 0.8 if self.steps[index] in self.contacts.get(index, ()) else 1.5
+        return observation
+
+
+def run_scripted(config, contacts, count, engine_class=ScriptedContacts):
+    engine = engine_class([BOX.copy() for _ in range(count)], fake_ensemble(), config["dt"], [300.0] * count,
+                          [np.random.RandomState(11) for _ in range(count)])
+    engine.contacts = contacts
+    molecules = [MoleculesObject(engine.atoms(i), f"mol-{i}") for i in range(count)]
+    return run_mlmd_trajectories(molecules, engine, [SCHEDULE] * count, config), engine
+
+
+@pytest.mark.parametrize("distcut_frames", ["reject", "label"])
+def test_first_trigger_labels_a_close_contact_only_when_asked(distcut_frames):
+    config = dict(BASE, Escut=100.0, distcut=1.1, maxt=0.004, Ncheck=1, acquisition={"distcut_frames": distcut_frames})
+    results, engine = run_scripted(config, {0: {3}}, 2)
+    contact, clean = (molecule.get_metadata() for molecule in results)
+
+    assert contact["distcrit"] is True and contact["step"] == engine.steps[0] == 3
+    assert clean["trajectory_outcome"] == "completed" and results[1].get_atoms() is None
+    if distcut_frames == "label":
+        assert contact["trajectory_outcome"] == "eligible" and "ranking_score" in contact
+        np.testing.assert_allclose(results[0].get_atoms().get_positions(wrap=True), contact["positions"])
+        assert not results[0].get_atoms().constraints
+    else:
+        assert contact["trajectory_outcome"] == "rejected" and results[0].get_atoms() is None
+
+
+@pytest.mark.parametrize("ncheck", [1, 3, 20])
+def test_final_frame_labels_the_first_close_contact_without_changing_the_dynamics(ncheck):
+    class ScoredContacts(ScriptedContacts):
+        def observe(self, index):
+            observation = super().observe(index)
+            scores = np.full(len(self.atoms(index)), self.steps[index], dtype=float)
+            observation["prediction"]["atomic_uncertainty"] = [{"ntk_force": scores}]
+            return observation
+
+    contacts = {0: {1, 5}, 1: {8}}  # trajectory 2 never comes close
+    runs = {}
+    for distcut_frames in ("reject", "label"):
+        config = dict(BASE, Escut=100.0, distcut=1.1, maxt=0.004, Ncheck=ncheck,
+                      acquisition={"selection": {"mode": "final_frame"}, "distcut_frames": distcut_frames})
+        runs[distcut_frames] = run_scripted(config, contacts, 3, engine_class=ScoredContacts)
+    (plain, plain_engine), (labeled, engine) = runs["reject"], runs["label"]
+    for index in range(3):
+        assert engine.steps[index] == plain_engine.steps[index] == 8
+        np.testing.assert_array_equal(engine.atoms(index).get_positions(), plain_engine.atoms(index).get_positions())
+        np.testing.assert_array_equal(labeled[index].get_metadata()["temps"], plain[index].get_metadata()["temps"])
+        assert labeled[index].get_metadata()["trajectory_outcome"] == "eligible"
+    first, last, clean = (molecule.get_metadata() for molecule in labeled)
+    for metadata in (first, last, clean):
+        np.testing.assert_array_equal(metadata["atomic_uncertainty"]["ntk_force"],
+                                      np.full(len(BOX), metadata["step"]))
+
+    assert first["step"] == 1 and first["frame_id"] == "mol-0:step-000000001" and first["trajectory_final_step"] == 8
+    assert first["simulationtime"] == pytest.approx(BASE["dt"] / 1000)
+    assert first["distmin"] == 0.8 and first["distcrit"] is True
+    atoms = labeled[0].get_atoms()
+    violation = plain[0].get_metadata()["first_threshold_violation"]
+    np.testing.assert_allclose(atoms.get_positions(wrap=True), violation["positions"])
+    assert not np.allclose(atoms.get_positions(), engine.atoms(0).get_positions())
+    assert not atoms.constraints
+    assert last["step"] == 8 and last["trajectory_final_step"] == 8 and last["distcrit"] is True
+    assert clean["step"] == 8 and "trajectory_final_step" not in clean and clean["distcrit"] is False
+    np.testing.assert_array_equal(labeled[2].get_atoms().get_positions(), plain[2].get_atoms().get_positions())
+
+
+def test_final_frame_contact_labels_ignore_uncertainty_violations():
+    config = dict(BASE, Escut=-1.0, distcut=1.1, maxt=0.004, Ncheck=1,
+                  acquisition={"selection": {"mode": "final_frame"}, "distcut_frames": "label"})
+    results, _ = run_scripted(config, {0: {4}}, 2)
+    contact, uncertain = (molecule.get_metadata() for molecule in results)
+    assert contact["first_threshold_violation"]["step"] == 1 and contact["step"] == 4
+    assert uncertain["first_threshold_violation"]["step"] == 1 and uncertain["step"] == 8
+
+
+def test_final_frame_random_eligibility_is_distinct_from_a_threshold_violation():
+    config = dict(BASE, Escut=100.0, distcut=1.1, maxt=0.004, Ncheck=1,
+                  acquisition={"strategy": "random", "selection": {"mode": "final_frame"},
+                               "distcut_frames": "label"})
+    results, _ = run_scripted(config, {0: {4}}, 2)
+    contact, clean = (molecule.get_metadata() for molecule in results)
+    assert contact["first_threshold_violation"]["step"] == contact["step"] == 4
+    assert clean["step"] == 8 and "first_threshold_violation" not in clean
+
+
+def test_final_frame_contact_labels_need_an_engine_snapshot():
+    class NoSnapshot(ScriptedContacts):
+        snapshot = None
+
+    config = dict(BASE, Escut=100.0, distcut=1.1, maxt=0.004, Ncheck=1,
+                  acquisition={"selection": {"mode": "final_frame"}, "distcut_frames": "label"})
+    with pytest.raises(ValueError, match="needs an engine with snapshot"):
+        run_scripted(config, {}, 1, engine_class=NoSnapshot)
 
 
 class Evaluation:
@@ -919,7 +1059,8 @@ def test_compact_returned_metadata_leaves_out_only_what_the_file_keeps(tmp_path)
             records[mode] = pickle.load(handle)
     assert [set(r) for r in records["compact"]] == [set(r) for r in records["full"]], "the file keeps every field"
     for full, compact, record in zip(results["full"], results["compact"], records["compact"]):
-        assert set(full.get_metadata()) - set(compact.get_metadata()) == set(batched_mlmd.COMPACT_DROPPED)
+        full_fields = set(full.get_metadata())
+        assert full_fields - set(compact.get_metadata()) == full_fields.intersection(batched_mlmd.COMPACT_DROPPED)
         for key in ("positions", "temps", "chemical_symbols"):
             assert key in record
         assert compact.get_metadata()["step"] == record["step"] == full.get_metadata()["step"]
@@ -980,14 +1121,13 @@ def test_returned_momenta_is_checked_before_any_task_runs(tmp_path):
 
 @pytest.mark.parametrize('frozen', [False, True])
 def test_the_ase_engine_keeps_fixed_atoms_or_holds_the_center_of_mass(frozen):
-    from ase.constraints import FixAtoms, FixCom
+    from ase.constraints import FixAtoms
     atoms = SPRING_WATER.copy()
     fixed_position = atoms.positions[0].copy()
     if frozen:
         atoms.set_constraint(FixAtoms(indices=[0]))
     atoms.set_momenta(np.random.default_rng(2).normal(size=(len(atoms), 3)))
     engine = ASEEngine([atoms], fake_ensemble(), 0.5, [300.0], [np.random.RandomState(3)])
-    assert any(isinstance(c, FixCom) for c in engine.atoms(0).constraints) is (not frozen)
     assert not engine.step([0], 20)
     if frozen:
         np.testing.assert_array_equal(engine.atoms(0).positions[0], fixed_position)

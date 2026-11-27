@@ -248,7 +248,7 @@ def fine_tune_hippynn_member(arguments):
     """Fine-tune one copy. ``arguments`` is what ``HippynnFineTuner.train_member`` writes."""
     import numpy as np
     import torch
-    from hippynn.databases.database import prettyprint_arrays
+    from alframework.tools.label_arrays import print_arrays
     from hippynn.experiment import SetupParams, setup_and_train
     from hippynn.experiment.controllers import PatienceController, RaiseBatchSizeOnPlateau
     from alframework.ml_interfaces.hippynn.compat import checkpoints
@@ -256,7 +256,7 @@ def fine_tune_hippynn_member(arguments):
     from hippynn.graphs import find_unique_relative
     from hippynn.graphs.nodes.inputs import CellNode
     from hippynn.graphs.nodes.targets import HEnergyNode
-    from hippynn.tools import active_directory, log_terminal
+    from alframework.tools.files import logged_output, working_directory
 
     from alframework.ml_interfaces.hippynn.interface import ALFPyAniDirectoryDB, use_separate_test_set
 
@@ -269,8 +269,8 @@ def fine_tune_hippynn_member(arguments):
     if device != 'cpu':
         torch.cuda.set_device(device)
     Path(member_dir).mkdir(parents=True, exist_ok=True)
-    with active_directory(member_dir, create=False):
-        with log_terminal('training_log.txt', 'wt'):
+    with working_directory(member_dir, create=False):
+        with logged_output('training_log.txt', 'wt'):
             print(f"Fine-tuning from {source} on {arguments['device']}, seed {seed}.")
             bundle = load_checkpoint(str(source / settings['structure_file']), str(source / settings['checkpoint_file']),
                                      restart_db=False, map_location='cpu')
@@ -295,7 +295,7 @@ def fine_tune_hippynn_member(arguments):
                 original_indices = database.arr_dict['indices'].cpu().numpy().copy()
             clean_arrays(database, db_info, settings)
             print('Array Shapes After Cleaning')
-            prettyprint_arrays(database.arr_dict)
+            print_arrays(database.arr_dict)
             needed = 2 if settings['h5_test_dir'] is not None else 3
             if len(database) < needed:
                 raise ValueError(f'Fine-tuning needs at least {needed} labeled structures for its training, validation, '

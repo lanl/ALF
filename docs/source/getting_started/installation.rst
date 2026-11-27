@@ -49,7 +49,8 @@ These tests run without external QM executables, pre-trained ML models, GPUs, or
 a cluster. Tests that exercise the ALF coordinator run real Parsl tasks on local
 threads. Tests that need an optional package, such as HIPPYNN or RDKit, are
 skipped when it is missing, and pytest prints the reason at the end of its
-output.
+output. A few tests train real models in several processes and take tens of seconds each; they are marked
+``slow``, and ``python -m pytest -m "not slow"`` leaves them out for a quick run.
 
 Documentation Install
 ---------------------

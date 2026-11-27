@@ -44,7 +44,7 @@ def test_mixed_excited_state_acquisition_then_replay(tmp_path):
         label(frame)
     label_path = run / 'data' / 'data-0000.h5'
     label_path.parent.mkdir()
-    store_current_data(str(label_path), frames, PROPERTIES)
+    store_current_data(str(label_path), frames, PROPERTIES, h5_options={'group_by': 'atom_count'})
     arrays, data = ml.load_excited_state_h5_arrays(str(label_path.parent), PROPERTIES, mixed_molecules=True)
     assert len(data['frames']) == len(frames)
     assert set(np.count_nonzero(arrays['species'], axis=1)) == {4, 10}

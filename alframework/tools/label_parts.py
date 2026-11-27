@@ -2,15 +2,16 @@
 
 import json
 import os
+import warnings
 from pathlib import Path
 
 import h5py
 import numpy as np
 
-from alframework.tools.files import fsync_file
+from alframework.tools.files import fsync_file, replaced_atomically
 from alframework.tools.label_hdf5 import (
-    LABEL_PARTS, LABEL_UNITS, PROPERTY_SCHEMA, SCHEMA_VERSION, LabelH5Writer, label_schema_attributes,
-    validate_label_parts,
+    GROUP_BY, LABEL_PARTS, LABEL_UNITS, PROPERTY_SCHEMA, SCHEMA_VERSION, LabelH5Writer, label_schema_attributes,
+    many_groups_warning, split_group_by, validate_label_parts,
 )
 from alframework.tools.restarts import HeldLabels, shard_frames
 from alframework.tools.data_shards import PAIR_INDEX_DATASET, STRUCTURE_STATE_DATASETS, store_current_data
@@ -18,6 +19,15 @@ from alframework.tools.label_sources import LEGACY_LABEL_PROVENANCE, SHARD_LABEL
 
 
 STATIC = frozenset(('species', PAIR_INDEX_DATASET))
+# A snapshot that maps more part segments than this (groups x the parts each appears in, per column) is slow to
+# publish and to read, whatever its grouping.
+MANY_SEGMENTS = 1_000_000
+
+
+def _static_names(columns):
+    """The columns of a group stored once for the group: ``nac_pairs``, and ``species`` when it is one row of atoms
+    (grouped by formula). Grouped by atom count, ``species`` has a row per frame and is a column like the others."""
+    return {key for key in STATIC.intersection(columns) if not (key == 'species' and columns[key].ndim > 1)}
 STATE_DEFAULTS = dict(zip(STRUCTURE_STATE_DATASETS, (0, 1)))
 REJECTED_IDS = 'alf_rejected_label_ids'
 
@@ -85,16 +95,17 @@ def write_label_part(results, directory, properties, schema, h5_options=None, la
     """
     import uuid
     from alframework.tools.batching import flatten_molecule_output
-    from alframework.tools.data_shards import compute_empirical_formula
+    from alframework.tools.data_shards import group_key
     from alframework.tools.label_validation import reject_label, screen_labels
 
+    group_by = split_group_by(h5_options)[0]
     results = flatten_molecule_output(results)
     screen_labels(results, properties)
     formulas, rejected, accepted = {}, {}, []
     for result in results:
         if result.check_convergence():
             atoms = result.get_atoms()
-            formula = compute_empirical_formula(atoms.get_chemical_symbols())
+            formula = group_key(atoms, group_by)
             periodic = bool(atoms.pbc.all())
             group = formulas.setdefault(formula, {'ids': [], 'periodic': periodic})
             if group['periodic'] != periodic:
@@ -122,6 +133,9 @@ def write_label_part(results, directory, properties, schema, h5_options=None, la
 def _validate_part_schema(handle, metadata):
     if handle.attrs.get(SCHEMA_VERSION, metadata[SCHEMA_VERSION]) != metadata[SCHEMA_VERSION]:
         raise ValueError(f'{handle.filename}: unsupported label schema version for this generation.')
+    if handle.attrs.get(GROUP_BY, 'formula') != metadata.get(GROUP_BY, 'formula'):
+        raise ValueError(f'{handle.filename}: groups its labels by {handle.attrs.get(GROUP_BY, "formula")}, but this '
+                         f'generation groups by {metadata.get(GROUP_BY, "formula")}.')
     for attribute, default in ((PROPERTY_SCHEMA, None), (LABEL_UNITS, '{}')):
         recorded = handle.attrs.get(attribute, default)
         if recorded is None or json.loads(recorded) != json.loads(metadata.get(attribute, default)):
@@ -149,7 +163,7 @@ def merge_label_parts(job):
                     continue
                 columns = {key: dataset[()] for key, dataset in group.items()}
                 merged = groups.setdefault(formula, {'static': {}, 'pieces': []})
-                for key in STATIC.intersection(columns):
+                for key in _static_names(columns):
                     value = columns.pop(key)
                     if key in merged['static'] and not np.array_equal(merged['static'][key], value):
                         raise ValueError(f'{path}:{formula} has species or pair ordering that differs from the '
@@ -157,10 +171,9 @@ def merge_label_parts(job):
                     merged['static'][key] = value
                 merged['pieces'].append(columns)
     stored = 0
-    partial = Path(str(target) + '.partial')
-    try:
+    with replaced_atomically(target) as partial:
         packer = LabelH5Writer(str(partial), mode='w', **{'libver': 'latest', 'track_order': True,
-                                                       **(h5_options or {})})
+                                                       **split_group_by(h5_options)[1]})
         try:
             for formula, merged in groups.items():
                 pieces = merged['pieces']
@@ -180,12 +193,28 @@ def merge_label_parts(job):
             packer.store.attrs[MERGED_FROM] = json.dumps(list(lines))
         finally:
             packer.cleanup()
-        fsync_file(partial)
-        os.replace(partial, target)
-    except BaseException:
-        partial.unlink(missing_ok=True)
-        raise
     return str(target), stored
+
+
+def part_layout(part):
+    """What :func:`publish_snapshot` needs from one part: its label sources, and each formula group's frame count,
+    static columns and the dtype and shape of its other columns."""
+    with h5py.File(part, 'r') as handle:
+        recorded = handle.attrs.get(SHARD_LABEL_SOURCES, handle.attrs.get(LEGACY_LABEL_PROVENANCE, '[]'))
+        groups = []
+        for formula, group in handle.items():
+            static_names = _static_names(group)
+            static = {key: group[key][:] for key in static_names}
+            columns = {key: (value.dtype, value.shape) for key, value in group.items() if key not in static_names}
+            groups.append((formula, len(group['_id']), static, columns))
+    return json.loads(recorded), groups
+
+
+def _merge_and_lay_out(job):
+    """Merge one part, then read its layout while the merging process still has it in cache, so the coordinator
+    doesn't reopen every dataset of every part when it publishes."""
+    target, _ = merge_label_parts(job)
+    return target, part_layout(target)
 
 
 def hold_ready(take_one_part, waiting, batch_size, *, drain=False, seconds=HOLD_SECONDS, clock=None):
@@ -226,6 +255,9 @@ class HDF5HeldLabels(HeldLabels):
         self.properties = properties
         self.label_units = label_units
         self.schema_attributes = label_schema_attributes(properties, label_units)
+        if split_group_by(self.h5_options)[0] != 'formula':
+            # Recorded on every merged part and the snapshot, and checked on every part this generation adopts.
+            self.schema_attributes[GROUP_BY] = split_group_by(self.h5_options)[0]
         self.schema = self.schema_attributes[PROPERTY_SCHEMA]
         self.batch_size = batch_size
         self.merge_workers = merge_workers
@@ -238,6 +270,7 @@ class HDF5HeldLabels(HeldLabels):
         self._successful = self._converged = self._ids = self._periodic = None
         self._receipts = None
         self._next_piece = 0
+        self._layouts = {}  # merged part path -> part_layout(), for this generation's snapshot
 
     def pieces(self):
         return sorted(path.name for path in self.directory.glob('part-*.h5'))
@@ -407,13 +440,14 @@ class HDF5HeldLabels(HeldLabels):
         return jobs
 
     def merge(self):
-        """Merge the adopted worker parts into this generation's parts, in parallel; returns how many."""
+        """Merge the adopted worker parts into this generation's parts, in parallel; returns how many.
+
+        The layout of each merged part is kept for :meth:`commit`'s snapshot (:func:`part_layout`)."""
         jobs = self.merge_jobs()
         if not jobs:
             return 0
         if len(jobs) == 1 or self.merge_workers <= 1:
-            for job in jobs:
-                merge_label_parts(job)
+            merged = [_merge_and_lay_out(job) for job in jobs]
         else:
             import concurrent.futures
             import multiprocessing
@@ -421,8 +455,9 @@ class HDF5HeldLabels(HeldLabels):
             context = multiprocessing.get_context('spawn')
             with concurrent.futures.ProcessPoolExecutor(max_workers=min(self.merge_workers, len(jobs)),
                                                         mp_context=context) as pool:
-                list(pool.map(merge_label_parts, jobs))
+                merged = list(pool.map(_merge_and_lay_out, jobs))
         fsync_file(self.directory)
+        self._layouts.update(merged)
         self._ids = None  # The merged parts now hold what the receipts described.
         return len(jobs)
 
@@ -434,7 +469,8 @@ class HDF5HeldLabels(HeldLabels):
         worker_parts = [record['path'] for record in self._receipts if record['path'] is not None]
         self.merge()
         parts = [self.directory / name for name in self.pieces()]
-        stored = publish_snapshot(Path(snapshot), parts, {**attributes, **self.schema_attributes})
+        stored = publish_snapshot(Path(snapshot), parts, {**attributes, **self.schema_attributes},
+                                  layouts=self._layouts)
         if not self.keep_worker_parts:
             for path in worker_parts:
                 Path(path).unlink(missing_ok=True)
@@ -460,35 +496,39 @@ def remove_orphan_worker_parts(held):
     return removed
 
 
-def publish_snapshot(path, parts, attributes):
-    """Keep the per-formula schema, row order, and the parts' label sources."""
+def publish_snapshot(path, parts, attributes, layouts=None):
+    """Keep the per-formula schema, row order, and the parts' label sources.
+
+    ``layouts`` maps a part's path to its :func:`part_layout`, for parts already read; the others are read here.
+    """
     if path.exists():
         raise FileExistsError(path)
+    layouts = layouts or {}
     relative_paths = [os.path.relpath(part, path.parent) for part in parts]
     groups, sources, frames = {}, {}, 0
     for part, relative in zip(parts, relative_paths):
-        with h5py.File(part, 'r') as handle:
-            recorded = handle.attrs.get(SHARD_LABEL_SOURCES, handle.attrs.get(LEGACY_LABEL_PROVENANCE, '[]'))
-            for source in json.loads(recorded):
-                sources.setdefault(json.dumps(source, sort_keys=True, default=str), source)
-            for formula, group in handle.items():
-                size = len(group['_id'])
-                frames += size
-                static = {key: group[key][:] for key in STATIC.intersection(group.keys())}
-                columns = {key: (value.dtype, value.shape) for key, value in group.items() if key not in STATIC}
-                if formula not in groups:
-                    groups[formula] = (static, [])
-                expected, segments = groups[formula]
-                if static.keys() != expected.keys() or any(
-                    not np.array_equal(value, expected[key]) for key, value in static.items()
-                ):
-                    raise ValueError(f'{part}:{formula} has inconsistent species or pair ordering.')
-                segments.append((relative, size, columns))
+        recorded, part_groups = layouts.get(str(part)) or part_layout(part)
+        for source in recorded:
+            sources.setdefault(json.dumps(source, sort_keys=True, default=str), source)
+        for formula, size, static, columns in part_groups:
+            frames += size
+            if formula not in groups:
+                groups[formula] = (static, [])
+            expected, segments = groups[formula]
+            if static.keys() != expected.keys() or any(
+                not np.array_equal(value, expected[key]) for key, value in static.items()
+            ):
+                raise ValueError(f'{part}:{formula} has inconsistent species or pair ordering.')
+            segments.append((relative, size, columns))
 
     write_state = any(STATE_DEFAULTS.keys() & columns.keys()
                       for _, segments in groups.values() for _, _, columns in segments)
-    partial = path.with_suffix(path.suffix + '.partial')
-    try:
+    many_groups_warning(path, len(groups), frames, attributes.get(GROUP_BY, 'formula'))
+    segments = sum(len(group_segments) for _, group_segments in groups.values())
+    if segments > MANY_SEGMENTS:
+        warnings.warn(f'{path} maps {segments:,} part segments ({len(groups):,} groups across {len(parts):,} parts), '
+                      'so publishing and reading it is dominated by per-segment work.', stacklevel=2)
+    with replaced_atomically(path, sync_directory=True) as partial:
         with h5py.File(partial, 'w', libver='latest', track_order=True) as handle:
             for formula, (static, segments) in sorted(groups.items()):
                 group = handle.create_group(formula)
@@ -499,12 +539,6 @@ def publish_snapshot(path, parts, attributes):
             handle.attrs[LABEL_PARTS] = json.dumps(relative_paths)
             write_shard_label_sources(handle, list(sources.values()))
             validate_label_parts(handle)
-        fsync_file(partial)
-        os.replace(partial, path)
-        fsync_file(path.parent)
-    except BaseException:
-        partial.unlink(missing_ok=True)
-        raise
     return frames
 
 
@@ -525,13 +559,25 @@ def _write_virtual_columns(group, segments, write_state):
         if not dtypes:
             group.create_dataset(name, shape=(frames,), dtype=dtype, fillvalue=STATE_DEFAULTS[name])
             continue
-        layout = h5py.VirtualLayout(shape=(frames, *shape), dtype=dtype)
+        # The mappings h5py's VirtualLayout and VirtualSource make, through the low-level API, which a snapshot with
+        # one formula group per label spends a third less time creating: each part's rows as a hyperslab of the
+        # virtual dataset, mapped from all of the part's dataset.
+        full = (frames, *shape)
+        dcpl = h5py.h5p.create(h5py.h5p.DATASET_CREATE)
+        dcpl.set_layout(h5py.h5d.VIRTUAL)
+        dataset_name = f'{group.name}/{name}'.encode()
         offset = 0
         for source, size, columns in segments:
             if name in columns:
                 _, source_shape = columns[name]
                 if source_shape[0] != size:
                     raise ValueError(f'{source}:{group.name}/{name} is misaligned with its label IDs.')
-                layout[offset:offset + size] = h5py.VirtualSource(source, f'{group.name}/{name}', shape=source_shape)
+                rows = h5py.h5s.create_simple(full)
+                rows.select_hyperslab((offset,) + (0,) * len(shape), (size, *shape))
+                dcpl.set_virtual(rows, os.fsencode(source), dataset_name, h5py.h5s.create_simple(source_shape))
             offset += size
-        group.create_virtual_dataset(name, layout, fillvalue=STATE_DEFAULTS.get(name))
+        fill = STATE_DEFAULTS.get(name)
+        if fill is not None:
+            dcpl.set_fill_value(np.array([fill]))
+        h5py.h5d.create(group.id, name.encode(), h5py.h5t.py_create(np.dtype(dtype), logical=1),
+                        h5py.h5s.create_simple(full), dcpl=dcpl).close()

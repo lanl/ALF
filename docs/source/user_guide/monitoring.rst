@@ -72,7 +72,8 @@ Slurm job and Parsl block, pool and rank, and ``gpu_peak_gb``: the most GPU memo
 during the task, on the device that used the most, or ``null`` in a worker that doesn't use a GPU through
 PyTorch. A task whose peak stands out from the others' shows what grew before a GPU ran out of memory. A stage's time is then its first task's start to its last
 task's end, without the time a block spends idle. Tasks in your own modules are recorded if they are
-decorated with ``alframework.tools.task_timeline.timed(stage)`` under ``@python_app``. With the variable
+declared with ``alframework.tools.tasks.alf_task`` (see :doc:`extending`), or decorated with
+``alframework.tools.task_timeline.timed(stage)`` under ``@python_app``. With the variable
 unset, nothing is written, and a line that can't be written is skipped without failing the task.
 
 A task can also time its own parts with ``with alframework.tools.task_timeline.phase(name):``. Its line then

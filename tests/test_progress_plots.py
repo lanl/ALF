@@ -16,7 +16,7 @@ def test_an_update_runs_the_utility_in_a_new_process_with_its_arguments(tmp_path
 
 def test_an_update_is_skipped_while_the_previous_one_runs(tmp_path):
     plots = ProgressPlots('tests.helpers.fakes.write_plot_marker')
-    assert plots.update({'plot_dir': str(tmp_path), 'meta_n_cols': 1, 'sleep': 3})
+    assert plots.update({'plot_dir': str(tmp_path), 'meta_n_cols': 1, 'sleep': 1})
     assert not plots.update({'plot_dir': str(tmp_path), 'meta_n_cols': 2})
     plots.wait(timeout=60)
     assert plots.update({'plot_dir': str(tmp_path), 'meta_n_cols': 2})

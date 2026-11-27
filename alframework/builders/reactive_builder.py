@@ -1,12 +1,11 @@
 # The builder code goes here
 import random
 import numpy as np
-from parsl import python_app
-from alframework.tools.task_timeline import timed
 
 import ase
 
 from alframework.tools.molecules import MoleculesObject
+from alframework.tools.tasks import alf_task
 
 
 
@@ -19,8 +18,7 @@ def _rattle_enabled(value):
     raise ValueError('rattle must be a boolean or the string true/false.')
 
 
-@python_app(executors=['alf_sampler_executor'])
-@timed('builder')
+@alf_task('builder')
 def load_reactive_task(moleculeid, builder_config, rattle=True):
     """Loads atomic configurations for reactions from files to be used by the sampler.
 

@@ -27,15 +27,13 @@ from typing import Any
 
 import numpy as np
 from ase.data import chemical_symbols
-from parsl import python_app
-from alframework.tools.task_failure_cleanup import releases_memory_on_failure
-from alframework.tools.task_timeline import timed
 
 from alframework.tools.excited_state_schema import (
     derive_gap_property_table,
     derive_state_property_table,
 )
 from alframework.tools.molecules import MoleculesObject
+from alframework.tools.tasks import alf_task
 
 
 DEFAULT_GPU4PYSCF_CONFIG = {
@@ -679,15 +677,20 @@ def _validated_optical_outputs(dipoles, strengths, *, nroots):
     return dipoles, strengths
 
 
+def nuclear_charge_center(mol):
+    """The nuclear charge center of ``mol``, in bohr: the origin PySCF's TDDFT uses for transition dipoles."""
+    charges = mol.atom_charges()
+    return np.einsum('z,zr->r', charges, mol.atom_coords()) / charges.sum()
+
+
 def transition_dipoles_staged(td, cupy):
     """Two-stage AO->occupied->virtual contraction used by the CPP benchmark.
 
     Avoid the large intermediate in a single three-operand contraction.
     Length-gauge moments are in atomic units; retain the solver's phase.
     """
-    from pyscf.tdscf.rhf import _charge_center
     mol = td.mol
-    with mol.with_common_orig(_charge_center(mol)):
+    with mol.with_common_orig(nuclear_charge_center(mol)):
         ao = cupy.asarray(mol.intor_symmetric("int1e_r", comp=3))
     coefficients = cupy.asarray(td._scf.mo_coeff)
     occupations = cupy.asarray(td._scf.mo_occ)
@@ -1420,9 +1423,7 @@ def label_gpu4pyscf_excited_state_molecule(
     return molecule_object
 
 
-@python_app(executors=["alf_QM_executor"])
-@timed('QM')
-@releases_memory_on_failure
+@alf_task('QM')
 def gpu4pyscf_excited_state_task(
     molecule_object,
     QM_config,

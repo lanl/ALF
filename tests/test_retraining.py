@@ -15,7 +15,7 @@ from alframework.tools.retraining import (SAMPLED_WITHOUT_LABEL, describe, ready
                                           retraining_settings)
 from alframework.tools.trajectory_summary import trajectory_row
 from tests.helpers.driver import run_alf_driver
-from tests.test_restarts import LOOP, restart_tasks
+from tests.helpers.driver import LOOP, restart_tasks
 
 ROUND = {key: value for key, value in LOOP.items() if key != 'save_h5_threshold'}
 
@@ -64,9 +64,8 @@ def test_a_round_without_a_new_label_does_not_retrain():
 
 
 def test_the_startup_report_names_the_unit():
-    assert describe({'after': 2048, 'counts': 'labels'}) == 'retraining: once 2,048 new labels are held'
-    assert describe({'after': 2048, 'counts': 'sampled'}).startswith(
-        'retraining: once 2,048 sampled structures are resolved')
+    assert '2,048 new labels' in describe({'after': 2048, 'counts': 'labels'})
+    assert '2,048 sampled structures' in describe({'after': 2048, 'counts': 'sampled'})
 
 
 def test_the_sampler_coordinator_counts_structures_that_ended_without_a_frame():

@@ -149,7 +149,7 @@ def test_the_coordinator_runs_with_the_block_as_with_each_setting_in_place(tmp_p
     """The same run, with its master settings in the scaling block or each in its usual place, stores the same
     labels the same way, and the block's loop timing, trim and bounded storage all take effect."""
     from tests.helpers.driver import run_alf_driver
-    from tests.test_restarts import LOOP, restart_tasks
+    from tests.helpers.driver import LOOP, restart_tasks
     from alframework.tools.label_hdf5 import LABEL_PARTS
 
     import h5py

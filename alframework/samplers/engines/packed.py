@@ -426,6 +426,12 @@ class PackedMLMDEngine:
         self._sync(index)
         return self._atoms[index]
 
+    def snapshot(self, index):
+        """A detached copy of the current frame, without the FixCom MD adds, to label later."""
+        atoms = self.atoms(index).copy()
+        atoms.set_constraint()
+        return atoms
+
     def set_temperature(self, index, temperature_K):
         self._temperatures[index] = float(temperature_K)
 

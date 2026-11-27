@@ -69,19 +69,21 @@ def test_benchmark_reads_a_run_directory(tmp_path):
     assert run["structure"] == str(tmp_path / "reference.xyz")
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("states", [1, 2])
 def test_benchmark_runs_on_cpu_and_writes_every_measurement(tmp_path, states, capsys):
     pytest.importorskip("hippynn")
     from alframework.benchmark.__main__ import main
 
     output = tmp_path / "sizing.json"
+    # One size of each: every measurement runs in its own process, which imports PyTorch and HIPPYNN afresh.
     main(["--device", "cpu", "--atoms", "6", "--profiles", "hipnn64", "--states", str(states), "--members", "2",
-          "--train-batches", "2", "4", "--sample-batches", "1", "2", "--steps", "1", "--warmup", "0",
+          "--train-batches", "2", "--sample-batches", "2", "--steps", "1", "--warmup", "0",
           "--output", str(output)])
     result = json.loads(output.read_text())
-    assert [r["result"] for r in result["records"]] == ["passed"] * 4, result["records"]
-    assert result["training"]["hipnn64"]["batch_size"] in (2, 4)
-    assert result["sampling"]["hipnn64"]["trajectories_per_gpu"] in (1, 2)
+    assert [r["result"] for r in result["records"]] == ["passed"] * 2, result["records"]
+    assert result["training"]["hipnn64"]["batch_size"] == 2
+    assert result["sampling"]["hipnn64"]["trajectories_per_gpu"] == 2
     printed = capsys.readouterr().out
     assert "Training (one GPU)" in printed and "Suggestions" in printed
 

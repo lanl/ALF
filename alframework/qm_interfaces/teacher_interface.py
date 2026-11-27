@@ -27,10 +27,8 @@ from importlib import import_module, metadata
 from pathlib import Path
 
 import numpy as np
-from parsl import python_app
 from alframework.tools.label_sources import LABEL_SOURCE
-from alframework.tools.task_failure_cleanup import releases_memory_on_failure
-from alframework.tools.task_timeline import timed
+from alframework.tools.tasks import alf_task
 
 TEACHER_PROPERTIES = {"energy": "system", "forces": "atomic"}
 DTYPES = ("float32", "float64")
@@ -346,22 +344,13 @@ def label_with_teacher(molecule_objects, QM_config, properties_list=None, gpus_p
     return molecule_objects
 
 
-@python_app(executors=['alf_QM_executor'])
-@timed('QM')
-@releases_memory_on_failure
+@alf_task('QM', validate_config=validate_teacher_config)
 def teacher_task(molecule_object, QM_config, properties_list, gpus_per_node=None, master_directory=None):
     """Label one structure with the configured teacher. Also used by ``"mode": "sequential"`` batching."""
     return label_with_teacher([molecule_object], QM_config, properties_list, gpus_per_node, master_directory)[0]
 
 
-@python_app(executors=['alf_QM_executor'])
-@timed('QM')
-@releases_memory_on_failure
+@alf_task('QM', validate_config=validate_teacher_config)
 def teacher_batch_task(molecule_objects, QM_config, properties_list, gpus_per_node=None, master_directory=None):
     """Label a batch with one forward pass of the configured teacher, for ``"mode": "native"`` batching."""
     return label_with_teacher(molecule_objects, QM_config, properties_list, gpus_per_node, master_directory)
-
-
-# LabelingCoordinator calls this at startup. The docs build replaces python_app with the plain function.
-for _task in (teacher_task, teacher_batch_task):
-    getattr(_task, "func", _task).validate_config = validate_teacher_config

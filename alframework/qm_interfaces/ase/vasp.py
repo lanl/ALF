@@ -2,11 +2,10 @@
 import re
 
 import numpy as np
-from parsl import python_app
 
 from alframework.tools.label_sources import LABEL_SOURCE
-from alframework.tools.task_timeline import timed
 from alframework.tools.molecules import MoleculesObject
+from alframework.tools.tasks import alf_task
 from .generic import ase_label_source
 
 
@@ -102,8 +101,7 @@ def vasp_input_for_structure(atoms, qm_config, metadata):
     return inputs
 
 
-@python_app(executors=['alf_QM_executor'])
-@timed('QM')
+@alf_task('QM', validate_config=validate_vasp_config)
 def VASP_ase_calculator_task(molecule_object, QM_config, QM_scratch_dir, properties_list):
     """ASE VASP calculator based on the parameters in qm_config.json.
 
@@ -156,6 +154,3 @@ def VASP_ase_calculator_task(molecule_object, QM_config, QM_scratch_dir, propert
         molecule_object.set_converged_flag(False)
 
     return molecule_object
-
-
-getattr(VASP_ase_calculator_task, 'func', VASP_ase_calculator_task).validate_config = validate_vasp_config

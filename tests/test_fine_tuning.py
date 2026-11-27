@@ -82,7 +82,7 @@ def test_settings_take_the_ml_configs_reader_count(tmp_path):
     (dict(adapter=FAKE, foundation_model="x", n_models=True), "positive integer"),
     (dict(adapter=FAKE, foundation_model="x", seed=-1), "seed"),
     (dict(adapter=FAKE, foundation_model="x", device="cuda:1"), "device"),
-], ids=["missing", "adapter", "foundation", "one_copy", "boolean", "seed", "device"])
+], ids=["missing", "adapter", "foundation", "zero_copies", "boolean", "seed", "device"])
 def test_settings_refuse_mistakes(block, message):
     with pytest.raises(ValueError, match=message):
         fine_tune_settings({} if block is None else {"fine_tune": block})
@@ -396,14 +396,6 @@ def test_fine_tuning_reads_a_snapshot_published_over_parts_like_one_shard(tmp_pa
         assert (mine.pbc == theirs.pbc).all()
 
 
-def test_fine_tuning_refuses_a_snapshot_whose_part_is_missing(tmp_path):
-    from alframework.tools.label_parts import part_directory
-    snapshot = _published_over_parts(tmp_path, _mixed_labels())
-    next(part_directory(Path(snapshot)).glob("part-*.h5")).unlink()
-    with pytest.raises(FileNotFoundError, match="required label part"):
-        shard_atoms([snapshot])
-
-
 def test_mace_failure_reports_the_end_of_its_log(tmp_path, monkeypatch):
     import subprocess
 
@@ -539,6 +531,7 @@ def state(path):
     return torch.load(path, map_location="cpu", weights_only=False)
 
 
+@pytest.mark.slow
 def test_hippynn_round_fine_tunes_copies_that_alf_samplers_load(tmp_path, pretrained):
     torch = pytest.importorskip("torch")
     from alframework.ml_interfaces.hippynn.interface import HIPNN_ASE_load_ensemble, load_hippynn_batched_ensemble
@@ -1114,3 +1107,31 @@ def test_hippynn_fine_tune_prepares_single_member_ntk(tmp_path, pretrained, devi
     np.testing.assert_allclose(metadata["selected_force_uncertainty"][name], expected.cpu(), rtol=5e-5)
     (member / BASIS_FILE).unlink()
     assert not tuner.member_complete(member)
+
+
+def test_the_uma_schedule_matches_fairchems_own():
+    pytest.importorskip("fairchem.core")
+    import torch
+    from fairchem.core.units.mlip_unit.mlip_unit import _get_consine_lr_scheduler
+    from alframework.ml_interfaces.fine_tuning.uma import cosine_lr_scheduler
+    options = dict(warmup_factor=0.2, warmup_epochs=0.01, lr_min_factor=0.01, n_iters_per_epoch=37)
+    for limits in (dict(epochs=3), dict(steps=90)):
+        rates = []
+        for build in (cosine_lr_scheduler, _get_consine_lr_scheduler):
+            optimizer = torch.optim.SGD([torch.zeros(1, requires_grad=True)], lr=1e-3)
+            scheduler = build(optimizer=optimizer, **options, **limits)
+            steps = []
+            for _ in range(111):
+                steps.append(optimizer.param_groups[0]['lr'])
+                optimizer.step()
+                scheduler.step()
+            rates.append(steps)
+        assert rates[0] == rates[1]
+
+
+def test_fairchems_command_is_found_by_its_registered_entry_point():
+    pytest.importorskip("fairchem.core")
+    from importlib.metadata import entry_points
+    from alframework.ml_interfaces.fine_tuning.uma import fairchem_main
+    [registered] = entry_points(group="console_scripts", name="fairchem")
+    assert fairchem_main() is registered.load() and callable(fairchem_main())

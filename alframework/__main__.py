@@ -24,7 +24,7 @@ from alframework.tools.h5_parallel import read_shard
 from alframework.tools.molecules import MoleculesObject
 from alframework.tools.bootstrap import next_bootstrap_ids
 from alframework.tools.restarts import (
-    STORED_AT_BUDGET_STOP, StatusFile, find_empty_directory, open_held_labels, reconcile_status,
+    STORED_AT_BUDGET_STOP, StatusFile, describe_shard, find_empty_directory, open_held_labels, reconcile_status,
     write_status,
 )
 from alframework.tools.label_validation import screen_labels
@@ -181,8 +181,12 @@ def store_held_labels(**attributes):
     Publish the shard before advancing status. A restart that finds it ahead of status moves past it.
     """
     hold_finished_labels(drain=True)
-    stored = held.commit(master_config['h5_path'].format(status['current_h5_id']),
-                         master_config['properties_list'], attributes)
+    snapshot = master_config['h5_path'].format(status['current_h5_id'])
+    started = time.perf_counter()
+    stored = held.commit(snapshot, master_config['properties_list'], attributes)
+    if stored:
+        print(f'Stored {snapshot}: {describe_shard(snapshot, stored)}, in {time.perf_counter() - started:.1f} s',
+              flush=True)
     if frame_retirement is not None:
         frame_retirement.snapshot_published()
     status['lifetime_stored_labels'] = status.get('lifetime_stored_labels', 0) + stored

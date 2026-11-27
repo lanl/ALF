@@ -17,12 +17,11 @@ import re
 
 import ase
 import numpy as np
-from parsl import python_app
 
 from alframework.tools.label_validation import validate_geometry, validate_label
 from alframework.tools.molecules import MoleculesObject
-from alframework.tools.task_timeline import timed
 from alframework.tools.label_sources import LABEL_SOURCE
+from alframework.tools.tasks import alf_task
 from .generic import (ERROR_KEYS, _calculator_options, _configuration, _remove_scratch, fresh_scratch_directory,
                       label_one, molecule_directory, remove_scratch_directory)
 
@@ -294,12 +293,7 @@ def label_workflow(molecule_object, QM_config, QM_scratch_dir, properties_list):
     return molecule_object
 
 
-@python_app(executors=['alf_QM_executor'])
-@timed('QM')
+@alf_task('QM', validate_config=validate_ase_workflow_config)
 def ase_workflow_task(molecule_object, QM_config, QM_scratch_dir, properties_list):
     """Label a fixed geometry through ordered upstream ASE calculations."""
     return label_workflow(molecule_object, QM_config, QM_scratch_dir, properties_list)
-
-
-# The coordinator calls this at startup. Without Parsl's decorator (as in the docs build), the task is the function.
-getattr(ase_workflow_task, 'func', ase_workflow_task).validate_config = validate_ase_workflow_config

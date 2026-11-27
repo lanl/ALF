@@ -14,13 +14,12 @@ from ase.constraints import FixAtoms
 from ase.data import atomic_numbers, covalent_radii
 from ase.geometry import find_mic, get_layers, minkowski_reduce
 from ase.neighborlist import neighbor_list
-from parsl import python_app
 from scipy.spatial import Delaunay, QhullError
 
 from alframework.builders.surface_inputs import AdsorbateInput, check_neutral, load_adsorbate, read_geometry, source_key
 from alframework.builders.surface_symmetry import bulk_operations, slab_has_equivalent_faces
 from alframework.tools.molecules import MoleculesObject
-from alframework.tools.task_timeline import timed
+from alframework.tools.tasks import alf_task
 
 
 _IN_PLANE = (True, True, False)
@@ -614,8 +613,7 @@ def _add_adsorbate(slab, exposed, entry, vacuum, rng, surface_metadata):
                      'increase the in-plane dimensions or vacuum_A')
 
 
-@python_app(executors=['alf_sampler_executor'])
-@timed('builder')
+@alf_task('builder')
 def surface_builder_task(moleculeid, builder_config, master_directory=None):
     """Return one unlabeled slab candidate using ALF's standard builder interface."""
     return build_surface(moleculeid, builder_config, master_directory)

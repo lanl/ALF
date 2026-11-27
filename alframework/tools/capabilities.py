@@ -3,10 +3,10 @@
 Some settings are read by only some tasks: ``returned_metadata`` by the batched MLMD sampler, for example, or
 ``shared_training_data`` by HIPPYNN training. ALF checks such a setting against the task that would read it before
 any task runs, so a setting a task would ignore stops the run at startup instead. A task declares what it reads with
-``@declares``, under ``@python_app`` (or ``@join_app``)::
+:func:`alframework.tools.tasks.alf_task`'s ``declares``, or with ``@declares`` under ``@python_app`` (or
+``@join_app``)::
 
-    @python_app(executors=['alf_sampler_executor'])
-    @declares('returned_metadata', 'returned_momenta')
+    @alf_task('sampler', declares=('returned_metadata', 'returned_momenta'))
     def my_sampler_task(molecule_objects, sampler_config, ...):
         ...
 
@@ -14,8 +14,8 @@ any task runs, so a setting a task would ignore stops the run at startup instead
 one that calls it otherwise declares the same features itself.
 
 A task of any role can also check its configuration at startup: give its function a ``validate_config(config,
-master_config)`` attribute, which raises ``ValueError`` for a configuration it can't run. ALF calls it with the
-builder, sampler, QM or ML configuration, before the bootstrap.
+master_config)`` attribute (``alf_task``'s ``validate_config``), which raises ``ValueError`` for a configuration it
+can't run. ALF calls it with the builder, sampler, QM or ML configuration, before the bootstrap.
 """
 
 SUPPORTS = 'alf_supports'
@@ -47,6 +47,7 @@ def require(task, task_path, feature, setting=None):
     if not supports(task, feature):
         raise ValueError(f'{setting or feature} is read only by tasks that declare {feature!r}, and {task_path} does '
                          f'not. A task of your own declares it with '
+                         f'@alf_task(<role>, declares=({feature!r},)), or with '
                          f'@alframework.tools.capabilities.declares({feature!r}) under @python_app.')
 
 

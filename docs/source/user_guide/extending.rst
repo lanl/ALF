@@ -46,12 +46,30 @@ have, and the checks that tell you, in your own tests, that a piece fits.
 ALF fills each task's arguments by name from the configurations (``build_input_dict``), so a task can also take any
 other setting, such as ``master_directory`` or ``gpus_per_node``, by naming it as a parameter.
 
+**Declaring a task.** A task is a Parsl app. Declare it with ``alframework.tools.tasks.alf_task`` and its role,
+``"builder"``, ``"sampler"``, ``"QM"`` or ``"ML"``:
+
+.. code-block:: python
+
+   from alframework.tools.tasks import alf_task
+
+   @alf_task("QM")
+   def my_labeler_task(molecule_object, QM_config, properties_list):
+       ...
+
+The role picks the Parsl executor the task runs on (``alf_sampler_executor`` for builders and samplers,
+``alf_QM_executor`` for labelers, ``alf_ML_executor`` for trainers, joined by a configured
+``alf_<role>_standby_executor``), records each call in the task timeline (see :doc:`monitoring`), and frees what a
+failed call held before its worker takes the next task (see :ref:`running-at-scale-failed-gpu-tasks`). A trainer
+that submits one app per ensemble member uses ``alf_join_task("ML", member_layout=...)``. A task declared with
+``@python_app`` directly also runs, without the timeline record and the cleanup unless it adds them itself.
+
 Optional Hooks
 --------------
 
-**Checking a configuration at startup.** Give a task function a ``validate_config(config, master_config)``
-attribute that raises ``ValueError`` for a configuration it can't run. ALF calls it before the bootstrap, with the
-builder, sampler, QM or ML configuration, so a mistake stops the run instead of failing tasks:
+**Checking a configuration at startup.** Give a task a ``validate_config(config, master_config)`` function that
+raises ``ValueError`` for a configuration it can't run. ALF calls it before the bootstrap, with the builder,
+sampler, QM or ML configuration, so a mistake stops the run instead of failing tasks:
 
 .. code-block:: python
 
@@ -59,19 +77,20 @@ builder, sampler, QM or ML configuration, so a mistake stops the run instead of 
        if "method" not in QM_config:
            raise ValueError("my_labeler_task needs QM_config['method'].")
 
-   getattr(my_labeler_task, "func", my_labeler_task).validate_config = validate_my_labeler
+   @alf_task("QM", validate_config=validate_my_labeler)
+   def my_labeler_task(molecule_object, QM_config, properties_list):
+       ...
+
+A task declared with ``@python_app`` sets it as an attribute instead: ``my_labeler_task.func.validate_config =
+validate_my_labeler``.
 
 **Declaring the settings a task reads.** Some settings are read only by some tasks, and ALF refuses them for a task
 that doesn't declare it reads them, at startup, rather than letting a task ignore them. Declare them with
-``alframework.tools.capabilities.declares``, under ``@python_app``:
+``alf_task``'s ``declares`` (or ``alframework.tools.capabilities.declares``, under ``@python_app``):
 
 .. code-block:: python
 
-   from parsl import python_app
-   from alframework.tools.capabilities import declares
-
-   @python_app(executors=["alf_sampler_executor"])
-   @declares("returned_metadata", "returned_momenta", "metadata_files")
+   @alf_task("sampler", declares=("returned_metadata", "returned_momenta", "metadata_files"))
    def my_sampler_task(molecule_objects, sampler_config, model_path, current_model_id):
        ...
 
@@ -81,10 +100,8 @@ The settings that need a declaration are the sampler's ``returned_metadata``, ``
 inherits its declarations.
 
 **Where your code runs.** The coordinator imports every task's module, and an engine's, to read its signature and
-declarations, so import GPU libraries such as PyTorch inside functions. A task's body runs on the workers of the
-executor its ``@python_app`` names: ``alf_sampler_executor`` for builders and samplers, ``alf_QM_executor`` for
-labelers and ``alf_ML_executor`` for trainers. Decorating it with ``alframework.tools.task_timeline.timed(stage)``,
-under ``@python_app``, records it in the task timeline (see :doc:`monitoring`).
+declarations, so import GPU libraries such as PyTorch inside functions. A task's body runs on the workers of its
+role's executor.
 
 .. _extending-engines:
 

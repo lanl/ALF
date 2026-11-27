@@ -319,6 +319,8 @@ Several GPUs per member
    trains one member per node, on 4 nodes. Each member's Parsl worker must see that many GPUs;
    :ref:`parsl-multinode-training` shows the layouts. Install the ``lightning`` extra in the ML
    worker environment. Both multi-node tasks support it; the single-node tasks stop with an error.
+   The ``sizing`` block's ``labels_per_member_gpu`` can set ``gpus_per_member`` and ``member_nodes`` from
+   the labels a round adds (:ref:`batching-sizing-training`).
 
    The batch sizes in the ML configuration, including the scheduler's maximum, are totals across
    a member's GPUs, so each must divide evenly by ``gpus_per_member``. With ``batch_size`` 64 and 4
@@ -343,6 +345,11 @@ Several GPUs per member
      predicts every n-th evaluation batch, and the metrics are computed over all of them, so they are
      the ones a single GPU would report.
    - By default a member uses one node. ``member_nodes`` spreads it over several, below.
+   - A training loss that isn't finite on any GPU reaches every GPU's weights through the averaged
+     gradients, so the member stops at the end of that epoch with a ``FloatingPointError``. Each GPU
+     that saw it prints its host and its first such batch: one GPU before the others points at that
+     batch or device. The member's seed is printed at the start of training and recorded in
+     ``lightning_training.json``, so a member that fails can be trained again with the same seed.
 
    To train a member on several nodes, set ``member_nodes`` and ``member_launcher``; ``gpus_per_member``
    is then the total, and each node uses ``gpus_per_member / member_nodes`` of its GPUs. The member's
@@ -415,10 +422,10 @@ Training task signature
 
    .. code-block:: python
 
-      from parsl import python_app
+      from alframework.tools.tasks import alf_task
 
 
-      @python_app(executors=["alf_ML_executor"])
+      @alf_task("ML")
       def train_MYMODEL_task(
           ML_config,
           h5_dir,

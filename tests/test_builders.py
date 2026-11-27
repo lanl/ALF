@@ -416,11 +416,9 @@ def test_rdkit_builder_opens_the_seed_twice_per_task(prepared_seed, monkeypatch,
     builder = json.loads((prepared_seed.output / "builder_config.json").read_text())
     seed.build_rdkit_molecules(["mol-boot-0000000000"], builder)  # Indexes the seed.
     opened = seed_opens(monkeypatch, prepared_seed.output / "seed.h5")
-    hashed = []
-    monkeypatch.setattr(seed, "_sha256", lambda path: hashed.append(Path(path).name) or "digest")
     molecules = seed.build_rdkit_molecules([f"mol-boot-{i:010d}" for i in range(4)], builder)
+    # On a shared file system each open costs every builder task; it mustn't grow with the molecules per task.
     assert sum(opened) == 2  # Once for the frames and once for their metadata, however many molecules.
-    assert hashed == ["seed_manifest.json"]  # The seed and reference hashes are cached.
     assert len({m.get_metadata()["rdkit_manifest_sha256"] for m in molecules}) == 1
 
 

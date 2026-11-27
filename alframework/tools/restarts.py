@@ -13,7 +13,7 @@ from pathlib import Path
 import h5py
 
 from alframework.tools.files import write_bytes_atomic, write_json_atomic
-from alframework.tools.label_hdf5 import validate_label_parts
+from alframework.tools.label_hdf5 import split_group_by, validate_label_parts
 from alframework.tools.label_validation import reject_label
 
 HELD_PIECES = 'held_pieces'
@@ -33,12 +33,14 @@ def held_labels_directory(master_config):
     return directory
 
 
-LABEL_LAYOUT_KEYS = {'compression': 'complib', 'level': 'complevel', 'shuffle': 'shuffle', 'frame_chunk': 'frame_chunk'}
+LABEL_LAYOUT_KEYS = {'compression': 'complib', 'level': 'complevel', 'shuffle': 'shuffle', 'frame_chunk': 'frame_chunk',
+                     'group_by': 'group_by'}
 
 
 def label_h5_options(master_config):
     """HDF5 writer options from the optional ``label_h5_layout``: how stored label datasets are compressed
-    and chunked. All choices are lossless; without it labels are written with gzip level 6, as always."""
+    and chunked, and how frames are grouped (``group_by``). All choices are lossless; without it labels are
+    written with gzip level 6, grouped by formula, as always."""
     layout = master_config.get('label_h5_layout')
     if layout is None:
         return {}
@@ -55,7 +57,17 @@ def label_h5_options(master_config):
         raise ValueError('label_h5_layout frame_chunk must be a positive integer.')
     if not isinstance(layout.get('shuffle', False), bool):
         raise ValueError('label_h5_layout shuffle must be true or false.')
+    if 'group_by' in layout:
+        split_group_by({'group_by': layout['group_by']})
     return {LABEL_LAYOUT_KEYS[key]: value for key, value in dict(layout, compression=compression, level=level).items()}
+
+
+def check_label_grouping_for_ml(h5_options, ml_task):
+    """Refuse a label grouping the ML task can't read: the NeuroChem interface reads only formula groups."""
+    if (h5_options or {}).get('group_by') == 'atom_count' and 'neurochem_interface' in str(ml_task or ''):
+        raise ValueError('label_h5_layout group_by "atom_count" stores species for each frame, which the NeuroChem '
+                         'interface cannot read: it needs one species list per group. Group by "formula" with '
+                         f'{ml_task}.')
 
 
 def label_storage_batch_size(master_config):
@@ -134,12 +146,13 @@ class HeldLabels:
 
     def _keep_one_periodicity(self, result):
         """A shard's formula group holds only periodic or only nonperiodic frames, so a converged label that
-        would mix them in the next shard is held unconverged instead: storing it would fail on every restart."""
+        would mix them in the next shard is held unconverged instead: storing it would fail on every restart.
+        (An atom-count group is periodic or not by its name, so its labels never conflict.)"""
         if not result.check_convergence():
             return
-        from alframework.tools.data_shards import compute_empirical_formula
+        from alframework.tools.data_shards import group_key
         atoms = result.get_atoms()
-        formula = compute_empirical_formula(atoms.get_chemical_symbols())
+        formula = group_key(atoms, split_group_by(getattr(self, 'h5_options', None))[0])
         periodic = bool(atoms.pbc.all())
         held = self._periodic.setdefault(formula, periodic)
         if held != periodic:
@@ -229,6 +242,15 @@ class HeldLabels:
 
     def select_snapshot(self, snapshot):
         """Legacy held pieces use the same directory for each generation."""
+
+
+def describe_shard(h5path, labels):
+    """A stored shard of ``labels`` labels in a few words: its groups, and how it groups them. Reads only the root's
+    link count and attributes, so it stays fast however many groups the shard has."""
+    from alframework.tools.label_hdf5 import GROUP_BY
+    with h5py.File(h5path, 'r') as handle:
+        groups, group_by = len(handle), handle.attrs.get(GROUP_BY, 'formula')
+    return f'{labels:,} labels in {groups:,} groups (by {group_by})'
 
 
 def shard_frames(h5path):

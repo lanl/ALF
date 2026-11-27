@@ -92,6 +92,26 @@ def test_close_contacts_are_rejected(engine_name, overlap):
     assert results[1].get_metadata()["distmin"] == pytest.approx(1.0)
 
 
+@pytest.mark.parametrize("mode", ["first_trigger", "final_frame"])
+def test_close_contacts_can_be_labeled(engine_name, mode):
+    bad = Atoms("H2", positions=[[0.1, 0, 0], [9.9, 0, 0]], cell=[10] * 3, pbc=True)
+    good = Atoms("H2", positions=[[1, 0, 0], [2, 0, 0]], cell=[10] * 3, pbc=True)
+    config = dict(CONFIG, dt=0.5, maxt=0.001, Ncheck=1, Escut=1.0, Fscut=1.0, srt_temp=[0.0, 0.0],
+                  end_temp=[0.0, 0.0], amp_temp=[0.0, 0.0], per_temp=[1.0, 1.0], amp_dens=None, per_dens=None,
+                  end_dens=None, MLMD_calculator_options={"well_params": None},
+                  acquisition={"selection": {"mode": mode}, "distcut_frames": "label"})
+    molecules = [MoleculesObject(a, name) for a, name in [(bad, "bad"), (good, "good")]]
+    results = sample_trajectories(molecules, [Tether(0.0), Tether(0.0)], config, engine_class=engine_class(engine_name))
+    contact, clean = (m.get_metadata() for m in results)
+    assert contact["trajectory_outcome"] == "eligible" and contact["distcrit"] is True and contact["step"] == 1
+    assert contact["distmin"] == pytest.approx(0.2)
+    assert results[0].get_atoms() is not None and not results[0].get_atoms().constraints
+    if mode == "final_frame":
+        assert contact["trajectory_final_step"] == 2 and clean["trajectory_outcome"] == "eligible"
+    else:
+        assert clean["trajectory_outcome"] == "completed"
+
+
 def run(groups, config=CONFIG, models=spring_ensemble, engine_name="torchsim"):
     config = copy.deepcopy(config)
     config["driver"]["engine"] = engine_name
@@ -135,6 +155,28 @@ def test_batching_does_not_change_results(engine_name):
                     np.testing.assert_allclose(
                         got.get_atoms().get_positions(), expected.get_atoms().get_positions(), rtol=1e-12, atol=1e-12
                     )
+
+
+def test_labeling_close_contacts_leaves_final_frame_dynamics_unchanged(engine_name):
+    # Uncertainty off, so every recorded violation is a close contact.
+    final = dict(CONFIG, Escut=1e10, Fscut=1e10, acquisition={"selection": {"mode": "final_frame"}})
+    plain = run([inputs()], config=final, engine_name=engine_name)
+    labeled = run([inputs()], config=dict(final, acquisition=dict(final["acquisition"], distcut_frames="label")),
+                  engine_name=engine_name)
+    contacts = 0
+    for name, expected in plain.items():
+        got, want = labeled[name].get_metadata(), expected.get_metadata()
+        assert got["temps"] == want["temps"] and got["trajectory_outcome"] == want["trajectory_outcome"], name
+        assert got.get("trajectory_final_step", got["step"]) == want["step"], name
+        violation = want.get("first_threshold_violation")
+        if violation is not None and violation["distcrit"]:
+            contacts += 1
+            assert got["step"] == violation["step"], name
+            np.testing.assert_allclose(labeled[name].get_atoms().get_positions(wrap=True), violation["positions"])
+        else:
+            assert got["step"] == want["step"], name
+            np.testing.assert_array_equal(labeled[name].get_atoms().get_positions(), expected.get_atoms().get_positions())
+    assert contacts >= 1
 
 
 @pytest.mark.parametrize("strategy", ["uncertainty", "summed"])
@@ -702,17 +744,19 @@ def test_every_neighbor_backend_finds_the_same_pairs(backend):
     assert _pair_set(neighbor_search(backend), positions, cells, counts, 6.0) == reference
 
 
-def test_a_neighbor_backend_is_named_and_installed():
+def test_an_unknown_neighbor_backend_is_refused():
     from alframework.tools.geometry import neighbor_search
     with pytest.raises(ValueError, match="neighbor_backend must be one of"):
         neighbor_search("cells")
-    try:
-        from torch_sim.neighbors.alchemiops import ALCHEMIOPS_AVAILABLE
-    except ImportError:
-        ALCHEMIOPS_AVAILABLE = False
-    if not ALCHEMIOPS_AVAILABLE:
-        with pytest.raises(ValueError, match="alchemiops' needs nvalchemi-toolkit-ops|needs TorchSim"):
-            neighbor_search("alchemiops")
+
+
+def test_alchemiops_without_its_toolkit_names_what_it_needs(monkeypatch):
+    pytest.importorskip("torch_sim")
+    from torch_sim.neighbors import alchemiops
+    from alframework.tools.geometry import neighbor_search
+    monkeypatch.setattr(alchemiops, "ALCHEMIOPS_AVAILABLE", False)
+    with pytest.raises(ValueError, match="alchemiops' needs nvalchemi-toolkit-ops"):
+        neighbor_search("alchemiops")
 
 
 def test_a_missing_vesin_names_the_extra(monkeypatch):

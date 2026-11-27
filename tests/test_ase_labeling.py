@@ -110,19 +110,19 @@ def test_a_calculator_cannot_change_the_geometry_or_the_configuration(tmp_path, 
     np.testing.assert_array_equal(obj.atoms.positions, original.positions)
 
 
-@pytest.mark.parametrize('extra,properties', [
-    ({'input': {}, 'asap_cutoff': True}, PROPERTIES),
-    ({'input': []}, PROPERTIES),
-    ({'input': {'directory': '/elsewhere'}}, PROPERTIES),
-    ({'input': {'ASE_calculator': 'bad'}}, PROPERTIES),
-    ({'input': {'label': '/elsewhere/h2'}}, PROPERTIES),
-    ({'QM_run_command': ''}, PROPERTIES),
-    ({}, {'missing': ['missing', 'system', 1.0]}),
-    ({}, {'energy': ['energy', 'typo', 1.0]}),
-    ({}, {}),
+@pytest.mark.parametrize('extra,properties,error', [
+    ({'input': {}, 'asap_cutoff': True}, PROPERTIES, 'Do not mix input with flat'),
+    ({'input': []}, PROPERTIES, 'input must be a dictionary'),
+    ({'input': {'directory': '/elsewhere'}}, PROPERTIES, r"Reserved calculator options: \['directory'\]"),
+    ({'input': {'ASE_calculator': 'bad'}}, PROPERTIES, r"Reserved calculator options: \['ASE_calculator'\]"),
+    ({'input': {'label': '/elsewhere/h2'}}, PROPERTIES, 'filename without a directory'),
+    ({'QM_run_command': ''}, PROPERTIES, 'QM_run_command must be'),
+    ({}, {'missing': ['missing', 'system', 1.0]}, 'does not implement'),
+    ({}, {'energy': ['energy', 'typo', 1.0]}, "Invalid property schema for 'energy'"),
+    ({}, {}, 'properties_list must be a nonempty'),
 ])
-def test_invalid_settings_stop_the_coordinator_at_startup(extra, properties):
-    with pytest.raises((ValueError, TypeError)):
+def test_invalid_settings_stop_the_coordinator_at_startup(extra, properties, error):
+    with pytest.raises((ValueError, TypeError), match=error):
         LabelingCoordinator(interface.ase_calculator_task, 'ase', dict(EMT_CONFIG, **extra),
                             {'properties_list': properties})
 

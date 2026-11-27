@@ -3,8 +3,7 @@ import json
 import pickle
 import re
 
-import parsl
-from parsl import python_app, bash_app
+from alframework.tools.tasks import alf_task
 
 from importlib import import_module
 import os
@@ -12,7 +11,7 @@ import ase
 from ase import Atoms
 from ase.io import vasp as vasp_io
    
-@python_app(executors=['alf_QM_executor','alf_QM_standby_executor'])
+@alf_task('QM')
 def ase_calculator_task(molecule_object,QM_config,QM_scratch_dir,properties_list):
     
     import glob

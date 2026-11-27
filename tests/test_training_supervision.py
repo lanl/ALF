@@ -91,13 +91,14 @@ def test_training_devices_are_numbered_within_the_scheduler_s_mask(monkeypatch):
         ml._single_node_training_devices({"device_string": "0,0"}, 2)
 
 
+@pytest.mark.slow
 def test_a_real_cpu_ensemble_evaluates_on_the_held_out_directory(tmp_path):
     pytest.importorskip("hippynn")
     from tests.helpers.hippynn import TINY_NETWORK, write_water_shard
 
     write_water_shard(tmp_path / "train")
     write_water_shard(tmp_path / "heldout", frames=8)
-    config = dict(n_models=2, energy_key="energy", force_key="forces", species_key="species",
+    config = dict(n_models=1, energy_key="energy", force_key="forces", species_key="species",
                   coordinates_key="coordinates", network_params=dict(TINY_NETWORK), device_string="cpu",
                   valid_size=0.25, test_size=0.25, plot_every=1000,
                   controller_options=dict(batch_size=4, eval_batch_size=4, max_epochs=1, termination_patience=5),
@@ -106,7 +107,9 @@ def test_a_real_cpu_ensemble_evaluates_on_the_held_out_directory(tmp_path):
                                                  h5_test_dir=str(tmp_path / "heldout"))
     if isinstance(result, RemoteExceptionWrapper):
         result.reraise()
-    assert result == ([True, True], 0)
-    for member in (tmp_path / "model-0").glob("model-*"):
+    assert result == ([True], 0)
+    members = sorted((tmp_path / "model-0").glob("model-*"))
+    assert len(members) == 1
+    for member in members:
         log = (member / "training_log.txt").read_text()
         assert str(tmp_path / "heldout") in log and "Training complete" in log

@@ -4,11 +4,10 @@ import hashlib
 import re
 
 import numpy as np
-from parsl import python_app
 
 from alframework.builders.surface import build_surface
 from alframework.tools.molecules import MoleculesObject
-from alframework.tools.task_timeline import timed
+from alframework.tools.tasks import alf_task
 
 
 def rattle_surface(molecule, builder_config):
@@ -23,15 +22,13 @@ def rattle_surface(molecule, builder_config):
     return molecule
 
 
-@python_app(executors=['alf_sampler_executor'])
-@timed('builder')
+@alf_task('builder')
 def surface_training_builder_task(moleculeid, builder_config, master_directory=None):
     """Use the ALF surface builder and perturb coordinates in the fixed cell."""
     return rattle_surface(build_surface(moleculeid, builder_config, master_directory), builder_config)
 
 
-@python_app(executors=['alf_sampler_executor'])
-@timed('builder')
+@alf_task('builder')
 def perovskite_training_builder_task(moleculeid, builder_config, master_directory=None, current_h5_id=0):
     """Cycle through all material, ligand and termination groups during bootstrap."""
     if __package__:

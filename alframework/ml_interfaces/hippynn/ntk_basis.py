@@ -108,11 +108,12 @@ def _training_geometries(manifest, paths):
     for path, source in zip(paths, manifest["files"]):
         for selection in source["groups"]:
             group = read_group(path, selection["path"], keys=wanted)
-            numbers = _species_numbers(group[species_key])[0]
-            real = numbers > 0
+            species = _species_numbers(group[species_key])
             positions = np.asarray(group[coordinates_key], dtype=dtypes["coordinates"])
             cells = None if cell_key is None else np.asarray(group[cell_key], dtype=dtypes["cell"])
             for row in selection["rows"]:
+                numbers = species[0 if len(species) == 1 else row]
+                real = numbers > 0
                 yield Atoms(numbers=numbers[real], positions=positions[row, real],
                             cell=None if cells is None else cells[row], pbc=cells is not None)
 

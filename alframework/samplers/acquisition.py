@@ -6,7 +6,8 @@ Eligibility is ALF's existing uncertainty trigger, unchanged from
 - ``Es > Escut``, ``Fs > Fscut``, or ``Fsmax > 3 * Fscut``;
 - only once simulated time reaches ``min_time``;
 - a frame whose minimum interatomic distance is below ``distcut`` is rejected
-  (it ends the trajectory), regardless of uncertainty.
+  (it ends the trajectory), regardless of uncertainty. With
+  ``acquisition.distcut_frames`` "label" it is a frame to label instead.
 
 Ranking orders eligible frames and never makes an ineligible frame eligible.
 Scores are built from normalized terms in :data:`SCORE_TERMS`:
@@ -40,6 +41,14 @@ Selection is configured with ``trajectory_policy`` and ``selection``::
                                   "max_candidates_per_trajectory": 4}}
 
 ``first_trigger`` (default) returns each trajectory's first eligible frame.
+``final_frame`` runs each trajectory to its configured duration and returns the
+final frame. Uncertainty and distance thresholds produce diagnostics in this
+mode. Explicit topology and physical-force screens still reject frames.
+``distcut_frames`` is "reject" (default) or "label". With "label", a ``distcut``
+violation is a frame to label rather than a rejection: ``first_trigger`` stops
+there and labels it, and ``final_frame`` still runs to its duration but labels
+the first such frame instead of the final one. It doesn't apply to
+``cohort_top_k``.
 ``cohort_top_k`` pools eligible frames from ``cohort_size`` trajectories and
 labels the ``k`` best (see :mod:`alframework.tools.cohorts`). Under
 ``trajectory_policy`` ``continue`` a trajectory keeps sampling after an
@@ -57,7 +66,8 @@ import numpy as np
 
 STRATEGIES = ("uncertainty", "summed", "largest", "random")
 TRAJECTORY_POLICIES = ("stop", "continue")
-SELECTION_MODES = ("first_trigger", "cohort_top_k")
+SELECTION_MODES = ("first_trigger", "final_frame", "cohort_top_k")
+DISTCUT_FRAMES = ("reject", "label")
 COHORT_SELECTORS = ("top_k", "fps", "adaptive_ntk")
 
 # name: (signal key from ensemble statistics, cutoff key in sampler_config, cutoff multiplier)
@@ -235,7 +245,7 @@ def _selection(block):
     if mode not in SELECTION_MODES:
         raise ValueError(f"acquisition.selection.mode must be one of {SELECTION_MODES}; received {mode!r}.")
     selection = {"mode": mode}
-    if mode == "first_trigger":
+    if mode != "cohort_top_k":
         if set(raw) - {"mode"}:
             raise ValueError("cohort_size, k, and max_candidates_per_trajectory require "
                              "acquisition.selection.mode 'cohort_top_k'.")
@@ -267,7 +277,7 @@ def acquisition_settings(sampler_config):
     """Return validated acquisition settings; ``uncertainty``/``first_trigger`` when unconfigured."""
     block = dict(sampler_config.get("acquisition") or {})
     unknown = set(block) - {"strategy", "weights", "trajectory_policy", "selection", "eligibility", "terms",
-                            "force_atoms", *WEIGHT_SHORTHAND}
+                            "distcut_frames", "force_atoms", *WEIGHT_SHORTHAND}
     if unknown:
         raise ValueError(f"Unknown acquisition settings: {sorted(unknown)}.")
     strategy = block.get("strategy", "uncertainty")
@@ -340,6 +350,12 @@ def acquisition_settings(sampler_config):
         raise ValueError('State-grouped cohorts require model_mode excited_state')
     if policy == "continue" and settings["selection"]["mode"] != "cohort_top_k":
         raise ValueError("acquisition.trajectory_policy 'continue' requires selection.mode 'cohort_top_k'.")
+    distcut_frames = block.get("distcut_frames", "reject")
+    if distcut_frames not in DISTCUT_FRAMES:
+        raise ValueError(f"acquisition.distcut_frames must be one of {DISTCUT_FRAMES}; received {distcut_frames!r}.")
+    if distcut_frames == "label" and settings["selection"]["mode"] == "cohort_top_k":
+        raise ValueError("acquisition.distcut_frames 'label' requires selection.mode 'first_trigger' or 'final_frame'.")
+    settings["distcut_frames"] = distcut_frames
     return settings
 
 
@@ -382,7 +398,8 @@ def assess_frame(signals, min_distance, time_ps, sampler_config, settings, *, tr
 
     Returns:
         (dict): ``outcome`` is ``"rejected"`` (``distcut`` violation, ending
-        the trajectory), ``"eligible"`` (a candidate), or ``"continue"``; plus
+        the trajectory), ``"eligible"`` (a candidate, which with ``distcut_frames``
+        "label" includes a ``distcut`` violation), or ``"continue"``; plus
         the uncertainty flags, ``distcrit``, and, for eligible frames,
         ``ranking_score``.
     """
@@ -401,13 +418,14 @@ def assess_frame(signals, min_distance, time_ps, sampler_config, settings, *, tr
     flags['acquisition_cutoffs'] = cutoffs
     flags["distcrit"] = bool(min_distance < sampler_config.get("distcut", 1.2))
     checked = time_ps >= sampler_config.get("min_time", 0)
-    if checked and flags["distcrit"]:
+    label_contact = flags["distcrit"] and settings.get("distcut_frames", "reject") == "label"
+    if checked and flags["distcrit"] and not label_contact:
         flags["outcome"] = "rejected"
     elif checked and settings.get('strategy') == 'random':
         key = f'{sampler_config.get("random_seed", 0)}|{frame_id(trajectory_id, step)}'.encode()
         score = int.from_bytes(hashlib.sha256(key).digest()[:8], 'big') / 2**64
         flags.update(outcome='eligible', ranking_score=score, acquisition_score_terms={'random': score})
-    elif checked and flags["uncertain"]:
+    elif checked and (flags["uncertain"] or label_contact):
         flags["outcome"] = "eligible"
         flags["ranking_score"] = ranking_score(signals, settings, sampler_config)
         ranked = terms if settings.get('strategy') == 'largest' else UNCERTAINTY_TERMS

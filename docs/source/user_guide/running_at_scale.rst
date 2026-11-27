@@ -81,7 +81,8 @@ metadata files or compact returns off gets a warning naming them.
      - master
      - A lossless layout for those parts: lzf, or gzip at a lower level, with shuffle and whole-frame chunks
        wrote the same labels 1.6 to 2.3 times faster than the default gzip 6, and read them 2.9 to 3.9 times
-       faster.
+       faster. With many compositions, ``group_by`` ``"atom_count"`` published a million labels' snapshot in
+       0.13 s instead of 1,377 s (:ref:`running-at-scale-label-groups`).
    * - ``data_by_reference``
      - master
      - Sampled frames go to QM, and labels come back, through shared files rather than through the
@@ -410,6 +411,45 @@ part per pass, as ALF did before, fell behind at scale: with 1,024 nodes a pass 
 of 2,097,152 labels were still being written 24 minutes after QM finished. A part of 8,192 structures takes about
 1.7 s to write with lzf, most of it building the arrays.
 
+.. _running-at-scale-label-groups:
+
+Grouping Labels by Atom Count
+-----------------------------
+
+A shard groups its frames by sorted species list unless told otherwise, which suits data with a few compositions:
+each group stores its species once. With many compositions, such as structures drawn from a dozen elements in
+varying proportions, almost every label is a group of its own, and every per-group step grows with the number of
+labels: creating each group's datasets, mapping them in the snapshot, and every reader opening them in turn.
+``label_h5_layout`` ``{"group_by": "atom_count"}`` groups frames by atom count instead (and keeps periodic,
+partly periodic and topology-tagged frames apart), storing ``species`` for each frame. Every frame keeps its
+values; trainers read either grouping, and a directory may hold both. Frame order changes with the grouping, so
+seeded splits differ.
+
+For 1,048,576 labels of 199 to 203 atoms drawn from 14 elements:
+
+.. list-table::
+   :header-rows: 1
+
+   * - Grouping
+     - Groups
+     - Publishing the snapshot
+     - Counting labels by walking the groups
+   * - Formula (the default)
+     - 1,027,068
+     - 1,377 s
+     - about 15 minutes
+   * - Atom count
+     - 5
+     - 0.13 s
+     - 0.002 s
+
+A warning names this setting when a stored shard has more than 10,000 formula groups and more than one group per
+ten labels. The NeuroChem interface reads only formula groups, and refuses ``"atom_count"``.
+
+With many distinct atom counts the number of groups stays small, but each group then spans every label part, so
+a snapshot maps about groups times parts segments per column; a warning reports a snapshot that maps more than a
+million.
+
 .. _running-at-scale-training:
 
 Training With Many Labels
@@ -505,15 +545,15 @@ has finished and the ranks have loaded the best checkpoint.
 Failed GPU Tasks
 ----------------
 
-A Parsl worker runs many tasks, one after another. ALF's tasks that use a GPU in the worker process (the MD
-samplers, the teacher, PySEQM, PySCF and GPU4PySCF, and the reactive sampler) free what they held when they
-fail, including PyTorch's and CuPy's cached GPU memory, before the worker takes its next task, and a trajectory
+A Parsl worker runs many tasks, one after another. ALF's tasks free what they held when they fail, including
+PyTorch's and CuPy's cached GPU memory in a worker that uses them, before the worker takes its next task, and a trajectory
 that fails keeps only its error message (``sampling_error``), not the exception. Ensemble members train in a
 child process, so their memory is freed when it exits. Python otherwise keeps a failed task's objects, such as its MD engine
 and the tensors of the evaluation that failed, until its cycle collector happens to run. In one 128-node run,
 one batch of 256 trajectories ran its GPU out of memory, and its 63 GB stayed allocated: that worker then
 failed its next five tasks, four within 0.04 s each, and, being free again first, took the tasks resubmitted
-to replace the lost ones. Your own GPU tasks can do the same with
+to replace the lost ones. Your own tasks do the same when declared with
+``alframework.tools.tasks.alf_task`` (see :doc:`extending`); one declared with ``@python_app`` can use
 ``alframework.tools.task_failure_cleanup.releases_memory_on_failure``, under ``@python_app`` and ``timed``.
 
 The task timeline (see :doc:`monitoring`) records each task's peak GPU memory, to find what grew.

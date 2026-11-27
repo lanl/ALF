@@ -40,14 +40,15 @@ def test_qchem_runs_the_configured_command_with_the_molecule_s_charge_and_spin(t
     np.testing.assert_allclose(obj.get_results()['forces'], np.full((natoms, 3), -.1 * units.Hartree / units.Bohr))
 
 
-@pytest.mark.parametrize('output,exit_code', [('', 0), ('SCF failed to converge', 0),
-                                         (qchem_output().replace('-2.5000000000', 'nan'), 0),
-                                         (qchem_output(), 7)])
-def test_a_failed_or_unreadable_qchem_run_is_unconverged_with_its_error(tmp_path, output, exit_code):
+@pytest.mark.parametrize('output,exit_code,stage', [('', 0, 'validation'), ('SCF failed to converge', 0, 'calculation'),
+                                               (qchem_output().replace('-2.5000000000', 'nan'), 0, 'validation'),
+                                               (qchem_output(), 7, 'calculation')])
+def test_a_failed_or_unreadable_qchem_run_is_unconverged_with_its_error(tmp_path, output, exit_code, stage):
     command = qchem_command(tmp_path, output, exit_code)
     obj = label_with_ase(unlabeled_h2(), {'ASE_calculator': 'ase.calculators.qchem.QChem', 'QM_run_command': command},
                str(tmp_path / 'scratch'), PROPERTIES)
     assert not obj.check_convergence() and obj.metadata['qm_error_type']
+    assert obj.metadata['qm_failed_stage'] == stage
 
 
 def test_orca_runs_the_configured_command_with_the_molecule_s_charge_and_spin(tmp_path):
@@ -94,30 +95,37 @@ def test_orca_and_qchem_refuse_periodic_structures_before_running(tmp_path, back
     assert not obj.check_convergence() and 'nonperiodic' in obj.metadata['qm_error']
 
 
-@pytest.mark.parametrize('options,command,properties', [
-    ({'orcasimpleinput': 'HF STO-3G'}, '/orca', PROPERTIES),
-    ({'orcasimpleinput': 'Opt HF STO-3G'}, '/orca', PROPERTIES),
-    ({'orcasimpleinput': 'EnGrad HF STO-3G', 'orca_env_file': 'env.sh'}, '/orca', PROPERTIES),
-    ({'orcasimpleinput': 'EnGrad HF STO-3G', 'orcablocks': '%coords end'}, '/orca', PROPERTIES),
-    ({'orcasimpleinput': 'EnGrad HF STO-3G', 'mult': True}, '/orca', PROPERTIES),
-    ({'orcasimpleinput': 'EnGrad HF STO-3G'}, None, PROPERTIES),
-    ({'orcasimpleinput': 'EnGrad HF STO-3G'}, '/orca', {'quadrupole': ['q', 'system', 1.]}),
+@pytest.mark.parametrize('options,command,properties,error', [
+    ({'orcasimpleinput': 'HF STO-3G'}, '/orca', PROPERTIES, 'forces require EnGrad'),
+    ({'orcasimpleinput': 'Opt HF STO-3G'}, '/orca', PROPERTIES, 'single points'),
+    ({'orcasimpleinput': 'EnGrad HF STO-3G', 'orca_env_file': 'env.sh'}, '/orca', PROPERTIES,
+     r"Unknown ORCA options: \['orca_env_file'\]"),
+    ({'orcasimpleinput': 'EnGrad HF STO-3G', 'orcablocks': '%coords end'}, '/orca', PROPERTIES, 'coords block'),
+    ({'orcasimpleinput': 'EnGrad HF STO-3G', 'mult': True}, '/orca', PROPERTIES, 'mult must be an integer'),
+    ({'orcasimpleinput': 'EnGrad HF STO-3G'}, None, PROPERTIES, 'ORCA needs QM_run_command'),
+    ({'orcasimpleinput': 'EnGrad HF STO-3G'}, '/orca', {'quadrupole': ['q', 'system', 1.]}, 'not supported'),
 ])
-def test_unsupported_orca_settings_stop_the_coordinator_at_startup(options, command, properties):
+def test_unsupported_orca_settings_stop_the_coordinator_at_startup(options, command, properties, error):
     config = {'ASE_calculator': 'ase.calculators.orca.ORCA',
               'QM_run_command': command, 'input': options}
-    with pytest.raises((TypeError, ValueError)):
+    with pytest.raises((TypeError, ValueError), match=error):
         interface.validate_ase_config(config, {'properties_list': properties})
 
 
-def test_alf_settings_apply_only_to_ase_s_own_orca_and_qchem_classes():
-    class CustomQChem(QChem):
-        pass
-    assert interface._backend(QChem).__name__.endswith('.qchem')
-    assert interface._backend(ORCA).__name__.endswith('.orca')
-    assert interface._backend(CustomQChem) is None
-    assert interface._configuration({'ASE_calculator': 'ase.calculators.orca.ORCA',
-        'QM_run_command': '/orca', 'input': {'orcasimpleinput': 'EnGrad HF STO-3G'}})[0] is ORCA
+class CustomQChem(QChem):
+    """A subclass of ASE's Q-Chem calculator, which ALF treats as any other calculator."""
+
+
+@pytest.mark.parametrize('calculator, checked', [('ase.calculators.qchem.QChem', True),
+                                                 ('tests.test_ase_orca_qchem.CustomQChem', False)])
+def test_alf_checks_charge_and_spin_only_for_ase_s_own_qchem_class(calculator, checked):
+    config = {'ASE_calculator': calculator, 'QM_run_command': '/qchem',
+              'input': {'method': 'hf', 'basis': 'sto-3g', 'charge': 'neutral'}}
+    if checked:
+        with pytest.raises(ValueError, match='charge'):
+            interface.validate_ase_config(config, {'properties_list': PROPERTIES})
+    else:
+        interface.validate_ase_config(config, {'properties_list': PROPERTIES})
 
 
 def test_qchem_without_a_command_uses_ase_s_command_and_cpu_flags(tmp_path):
@@ -150,9 +158,11 @@ def test_a_new_calculator_does_not_keep_the_previous_molecule_s_charge_and_spin(
         atoms.info.clear()
 
 
-@pytest.mark.parametrize('options', [{'jobtype': 'OPT'}, {'jobtype': 'SP'}, {'nt': 0}, {'np': True}])
-def test_unsupported_qchem_jobs_or_resources_stop_the_coordinator_at_startup(options):
-    with pytest.raises(ValueError):
+@pytest.mark.parametrize('options,error', [({'jobtype': 'OPT'}, 'SP or FORCE only'),
+                                           ({'jobtype': 'SP'}, 'forces require jobtype FORCE'),
+                                           ({'nt': 0}, 'nt must be at least 1'), ({'np': True}, 'np must be an integer')])
+def test_unsupported_qchem_jobs_or_resources_stop_the_coordinator_at_startup(options, error):
+    with pytest.raises(ValueError, match=error):
         interface.validate_ase_config({'ASE_calculator': 'ase.calculators.qchem.QChem', 'input': options},
                                       {'properties_list': PROPERTIES})
 

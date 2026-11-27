@@ -1516,7 +1516,11 @@ def test_ground_state_ntk_uses_exact_training_rows_and_scores_at_checks(tmp_path
         water["coordinates"][0, 1] = [0.1, 0.0, 0.0]  # Removed by the close-atom screen.
         hydrogen = handle.create_group("hydrogen")
         coords = water["coordinates"][1:, :2]
-        hydrogen["species"] = np.array(["H", "H"], dtype="S")
+        if periodic:
+            # Atom-count groups can store a different composition in each frame.
+            hydrogen["species"] = np.array([["H", "H"]] + [["H", "O"]] * (len(coords) - 1), dtype="S")
+        else:
+            hydrogen["species"] = np.array(["H", "H"], dtype="S")
         hydrogen["coordinates"] = coords
         hydrogen["energy"] = (coords ** 2).sum(axis=(1, 2))
         hydrogen["forces"] = -2 * coords
@@ -1792,3 +1796,24 @@ def test_gap_stratified_split_is_used_recorded_and_restored(two_state_ensemble, 
     assert {key: values["indices"].tolist() for key, values in restored.splits.items()} == manifest["splits"]
     with pytest.raises(ValueError, match="split.method"):
         ml.validate_excited_state_training_config(dict(config, split={"method": "kmeans"}), _properties(with_gap=True))
+
+
+def test_the_training_screen_without_a_cell_keeps_what_hippynn_kept():
+    pytest.importorskip("hippynn")
+    import torch
+    from hippynn.pretraining import calculate_min_dists
+    rng = np.random.default_rng(3)
+    sizes = rng.integers(2, 15, size=200)
+    positions = np.zeros((200, 14, 3))
+    species = np.zeros((200, 14), dtype=np.int64)
+    for frame, size in enumerate(sizes):
+        positions[frame, :size] = rng.uniform(0, 1.5 + 0.02 * frame, size=(size, 3))
+        species[frame, :size] = 1
+    arrays = {"species": torch.as_tensor(species), "coordinates": torch.as_tensor(positions)}
+    ours = ml.training_minimum_distances(arrays, "species", "coordinates", None, "cpu")
+    theirs = calculate_min_dists(arrays, species_name="species", positions_name="coordinates", dist_hard_max=6.0,
+                                 cell_name=None, batch_size=64, device="cpu")
+    close = theirs < 6.0
+    np.testing.assert_allclose(ours[close].numpy(), theirs[close].numpy(), rtol=1e-12)
+    for soft_min in (0.3, 0.7, 1.0):
+        np.testing.assert_array_equal((ours > soft_min).numpy(), (theirs > soft_min).numpy())

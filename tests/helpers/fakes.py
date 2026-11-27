@@ -1,6 +1,5 @@
 """Stand-ins for calculators, Parsl tasks, worker pools, and optional backends."""
 
-import copy
 import importlib
 import sys
 from pathlib import Path
@@ -8,45 +7,6 @@ from types import ModuleType, SimpleNamespace
 
 import numpy as np
 from ase.calculators.calculator import Calculator, all_changes
-
-
-class FakeASECalculator(Calculator):
-    implemented_properties = ["energy", "forces"]
-
-    def __init__(
-        self,
-        atoms=None,
-        directory=None,
-        command=None,
-        fake_results=None,
-        fake_converged=True,
-        fake_expected_command=None,
-        fake_expected_properties=None,
-        **kwargs,
-    ):
-        super().__init__()
-        self.init_atoms = atoms
-        self.directory = directory
-        self.command = command
-        self.kwargs = kwargs
-        self.fake_results = fake_results
-        self.converged = fake_converged
-        self.fake_expected_command = fake_expected_command
-        self.fake_expected_properties = fake_expected_properties
-        self.calculate_calls = []
-
-    def calculate(self, atoms=None, properties=("energy",), system_changes=all_changes):
-        super().calculate(atoms, properties, system_changes)
-        self.calculate_calls.append((atoms, list(properties)))
-        if self.fake_expected_command is not None:
-            assert self.command == self.fake_expected_command
-        if self.fake_expected_properties is not None:
-            assert list(properties) == list(self.fake_expected_properties)
-
-        if self.fake_results is None:
-            self.results = {"energy": -1.25, "forces": np.ones((len(atoms), 3))}
-        else:
-            self.results = copy.deepcopy(self.fake_results)
 
 
 class FixedCalculator(Calculator):

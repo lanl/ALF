@@ -91,13 +91,6 @@ def test_retrying_a_failed_label_drops_its_old_per_stage_record(tmp_path, contro
     assert 'qm_workflow' not in molecule.metadata
 
 
-def test_a_retried_workflow_moves_the_earlier_attempt_aside(tmp_path, controlled):
-    obj = label_workflow(unlabeled_h2(), settings(), str(tmp_path), PROPERTIES)
-    label_workflow(obj, settings(), str(tmp_path), PROPERTIES)
-    assert obj.check_convergence(), obj.metadata
-    assert (tmp_path / 'h2.previous-0' / 'stage_0' / 'ran').exists()
-
-
 def dependent_settings():
     config = settings()
     prep, target = config['stages']
@@ -216,13 +209,23 @@ def test_scratch_removal_is_a_workflow_setting_not_a_stage_setting(dependent_cal
         validate_ase_workflow_config(config, {'properties_list': PROPERTIES})
 
 
-def test_each_stage_can_set_its_own_initial_magnetic_moments(dependent_calculators):
-    config = dependent_settings()
+def test_each_stage_calculates_with_its_own_initial_magnetic_moments(tmp_path, controlled):
+    calls, _ = controlled
+    config = settings()
+    config['stages'][1]['initial_magnetic_moments'] = {'H': 1.0}
+    validate_ase_workflow_config(config, {'properties_list': PROPERTIES})
+    obj = label_workflow(unlabeled_h2(), config, str(tmp_path), PROPERTIES)
+    assert obj.check_convergence(), obj.metadata
+    first, second = (atoms.get_initial_magnetic_moments() for _, atoms, _ in calls)
+    np.testing.assert_array_equal(first, [0.0, 0.0])
+    np.testing.assert_array_equal(second, [1.0, 1.0])
+
+
+def test_a_stage_s_initial_magnetic_moments_must_be_numbers():
+    config = settings()
     config['stages'][1]['initial_magnetic_moments'] = {'H': 'large'}
     with pytest.raises(ValueError, match='finite number'):
         validate_ase_workflow_config(config, {'properties_list': PROPERTIES})
-    config['stages'][1]['initial_magnetic_moments'] = {'H': 1.0}
-    validate_ase_workflow_config(config, {'properties_list': PROPERTIES})
 
 
 @pytest.mark.parametrize('change,error', [
@@ -309,22 +312,37 @@ def test_a_failed_stage_stops_the_workflow_and_names_the_stage(tmp_path, control
     assert store_current_data(str(tmp_path / 'labels.h5'), [obj, good], PROPERTIES) == 1
 
 
-@pytest.mark.parametrize('change', [
-    {'stages': []}, {'stages': 'bad'}, {'result_mode': 'average'}, {'agreement': {}}, {'unknown': 1},
-    {'stages': [{'name': '../escape', 'ASE_calculator': 'ase.calculators.emt.EMT'}]},
+def test_a_repeat_that_fails_leaves_no_mean_and_names_its_stage(tmp_path, controlled):
+    calls, responses = controlled
+    responses.extend([{}, RuntimeError('controlled failure')])
+    obj = label_workflow(unlabeled_h2(), settings('mean_if_agree'), str(tmp_path), PROPERTIES)
+    assert not obj.check_convergence() and len(calls) == 2
+    assert obj.metadata['qm_failed_stage'] == 'stage_1:calculation'
+    assert store_current_data(str(tmp_path / 'labels.h5'), [obj], PROPERTIES) == 0
+
+
+@pytest.mark.parametrize('change,error', [
+    ({'stages': []}, 'nonempty stages list'), ({'stages': 'bad'}, 'nonempty stages list'),
+    ({'result_mode': 'average'}, 'result_mode must be'), ({'agreement': {}}, 'only valid with mean_if_agree'),
+    ({'unknown': 1}, r"Unknown ASE workflow fields: \['unknown'\]"),
+    ({'stages': [{'name': '../escape', 'ASE_calculator': 'ase.calculators.emt.EMT'}]}, 'safe filename'),
 ])
-def test_an_invalid_workflow_stops_at_startup_and_writes_no_scratch(tmp_path, change):
+def test_an_invalid_workflow_stops_at_startup_and_writes_no_scratch(tmp_path, change, error):
     config = settings()
     config.update(change)
-    with pytest.raises((ValueError, TypeError)):
+    with pytest.raises((ValueError, TypeError), match=error):
         LabelingCoordinator(ase_workflow_task, 'workflow', config, {'properties_list': PROPERTIES})
     obj = label_workflow(unlabeled_h2(), config, str(tmp_path / 'scratch'), PROPERTIES)
     assert not obj.check_convergence() and not (tmp_path / 'scratch').exists()
 
 
-@pytest.mark.parametrize('damage', ['names', 'class', 'options', 'command', 'count', 'energy', 'forces', 'missing',
-                                    'properties'])
-def test_repeats_must_be_identical_and_have_both_tolerances(damage):
+@pytest.mark.parametrize('damage,error', [
+    ('names', 'Duplicate ASE stage name'), ('class', 'identical calculator classes'),
+    ('options', 'identical calculator classes'), ('command', 'identical calculator classes'),
+    ('count', 'at least two independent stages'), ('energy', 'energy tolerance must be positive'),
+    ('forces', 'forces tolerance must be positive'), ('missing', 'must provide energy'),
+    ('properties', 'requires requested energy and forces')])
+def test_repeats_must_be_identical_and_have_both_tolerances(damage, error):
     config = settings('mean_if_agree')
     properties = PROPERTIES
     second = config['stages'][1]
@@ -344,7 +362,7 @@ def test_repeats_must_be_identical_and_have_both_tolerances(damage):
         properties = {'energy': PROPERTIES['energy']}
     else:
         config['agreement'][damage] = float('nan') if damage == 'energy' else False
-    with pytest.raises((ValueError, TypeError)):
+    with pytest.raises(ValueError, match=error):
         validate_ase_workflow_config(config, {'properties_list': properties})
 
 

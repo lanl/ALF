@@ -1,5 +1,6 @@
 import json
 import shutil
+from pathlib import Path
 
 import h5py
 import numpy as np
@@ -13,7 +14,8 @@ from alframework.tools.restarts import open_held_labels, shard_frames
 from alframework.tools.data_shards import store_current_data
 from alframework.tools.label_sources import LABEL_SOURCE, read_label_sources
 from tests.helpers.driver import run_alf_driver, stored_ids
-from tests.test_restarts import LOOP, PROPERTIES, labeled, restart_tasks
+from tests.helpers.driver import LOOP, restart_tasks
+from tests.test_restarts import PROPERTIES, labeled
 
 
 def test_snapshot_matches_legacy_layout_and_moves_with_its_parts(tmp_path):
@@ -240,11 +242,7 @@ def test_a_label_layout_rejects_unknown_settings(layout, message):
     from alframework.tools.restarts import label_h5_options
     with pytest.raises(ValueError, match=message):
         label_h5_options({'label_h5_layout': layout})
-
-
-def test_without_a_layout_labels_are_written_as_before():
-    from alframework.tools.restarts import label_h5_options
-    assert label_h5_options({}) == {}
+    assert label_h5_options({}) == {}, 'without a layout, labels are written as before'
 
 
 class _Queue:
@@ -402,3 +400,33 @@ def test_label_units_are_recorded_on_shards_and_checked_as_one_inventory(tmp_pat
         pass
     with pytest.warns(UserWarning, match='mix declared and unknown'):
         validate_training_units([legacy, ordinary], ['energy'])
+
+
+def test_a_reader_never_sees_a_snapshot_that_is_still_being_written(tmp_path, monkeypatch):
+    """The snapshot appears under its name only once complete; a publish that fails leaves no snapshot at all."""
+    import contextlib
+
+    labels = [labeled(f'mol-{i}', energy=-i) for i in range(3)]
+    real, seen = label_parts.replaced_atomically, []
+
+    @contextlib.contextmanager
+    def watched(path, **options):
+        with real(path, **options) as partial:
+            yield partial
+            seen.append((Path(path).exists(), Path(partial).exists()))  # written, not yet renamed
+
+    monkeypatch.setattr(label_parts, 'replaced_atomically', watched)
+    snapshot = tmp_path / 'h5' / 'data-0000.h5'
+    held = HDF5HeldLabels(snapshot, PROPERTIES, batch_size=2)
+    held.hold(labels)
+    assert held.commit(snapshot, PROPERTIES, {}) == 3
+    assert (False, True) in seen, 'while the snapshot was written, only its partial file existed'
+    assert sorted(read_shard(str(snapshot))) and snapshot.exists()
+
+    failing = tmp_path / 'failing' / 'data-0000.h5'
+    held = HDF5HeldLabels(failing, PROPERTIES, batch_size=2)
+    held.hold(labels)
+    monkeypatch.setattr(label_parts, '_write_virtual_columns', lambda *_: (_ for _ in ()).throw(OSError('disk full')))
+    with pytest.raises(OSError, match='disk full'):
+        held.commit(failing, PROPERTIES, {})
+    assert not failing.exists() and not failing.with_name(failing.name + '.partial').exists()

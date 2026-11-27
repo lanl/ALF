@@ -15,13 +15,12 @@ import ase
 import numpy as np
 from ase.calculators.calculator import BaseCalculator, all_changes
 from ase.data import chemical_symbols
-from parsl import python_app
 
 from alframework.tools.label_sources import LABEL_SOURCE
 from alframework.tools.label_validation import validate_geometry, validate_label
 from alframework.tools.molecules import MoleculesObject
-from alframework.tools.task_timeline import timed
 from alframework.tools.config import load_module_from_config
+from alframework.tools.tasks import alf_task
 
 # QM_config keys that are ALF settings, never calculator options.
 ALF_SETTINGS = {'ASE_calculator', 'QM_run_command', 'batching', 'input', 'initial_magnetic_moments',
@@ -352,12 +351,7 @@ def label_one(molecule_object, QM_config, QM_scratch_dir, properties_list, *, di
     return molecule_object
 
 
-@python_app(executors=['alf_QM_executor'])
-@timed('QM')
+@alf_task('QM', validate_config=validate_ase_config)
 def ase_calculator_task(molecule_object, QM_config, QM_scratch_dir, properties_list):
     """Label one molecule through upstream ASE and ALF's shared validation."""
     return label_one(molecule_object, QM_config, QM_scratch_dir, properties_list)
-
-
-# The coordinator calls this at startup. Without Parsl's decorator (as in the docs build), the task is the function.
-getattr(ase_calculator_task, 'func', ase_calculator_task).validate_config = validate_ase_config

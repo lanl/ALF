@@ -25,13 +25,13 @@ def test_it_is_off_unless_the_master_config_sets_an_interval(tmp_path):
 
 
 def test_it_samples_a_process_and_its_children_until_the_process_exits(tmp_path):
-    # A parent that starts one child, then both live for about two seconds.
+    # A parent that starts one child, then both live for about a second.
     parent = subprocess.Popen([sys.executable, '-c',
                                'import subprocess, sys, time; '
-                               'child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(2)"]); '
-                               'time.sleep(2); child.wait()'])
+                               'child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(1)"]); '
+                               'time.sleep(1); child.wait()'])
     path = tmp_path / 'memory' / 'coordinator_memory.csv'
-    sampler = memory_sampler.start({'coordinator_memory_sample': 0.2, 'coordinator_memory_path': str(path)},
+    sampler = memory_sampler.start({'coordinator_memory_sample': 0.1, 'coordinator_memory_path': str(path)},
                                    pid=parent.pid)
     parent.wait(timeout=30)
     sampler.wait(timeout=30)  # It stops by itself once the sampled process has gone.

@@ -23,6 +23,7 @@ from ase.data import chemical_symbols, covalent_radii
 from alframework.tools.atom_order import TOPOLOGY_ATOM_IDS
 from alframework.tools.files import cached_sha256
 from alframework.tools.molecules import MOLECULE_ID
+from alframework.tools.tasks import alf_task
 
 
 SCHEMA = "alf.rdkit_kdg_fps.v1"
@@ -455,12 +456,7 @@ def build_rdkit_molecules(moleculeids, builder_config, h5_path=None, current_h5_
     return molecules
 
 
-from parsl import python_app
-from alframework.tools.task_timeline import timed
-
-
-@python_app(executors=['alf_sampler_executor'])
-@timed('builder')
+@alf_task('builder')
 def rdkit_molecule_builder_task(moleculeid=None, moleculeids=None, builder_config=None,
                                 h5_path=None, current_h5_id=0, master_directory=None):
     """Ordinary ALF builder; CPU geometry preparation is explicit and separate."""

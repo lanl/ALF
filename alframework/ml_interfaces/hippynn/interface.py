@@ -21,7 +21,7 @@ from alframework.tools.atom_order import TOPOLOGY_ATOM_IDS, canonical_orders
 from alframework.tools import ensemble_training
 from alframework.ml_interfaces.hippynn.compat import node_from_name, system_energy
 from alframework.tools.excited_state_schema import derive_state_property_table, derive_gap_property_table
-from alframework.tools.data_shards import STRUCTURE_STATE_DATASETS
+from alframework.tools.data_shards import PAIR_INDEX_DATASET, STRUCTURE_STATE_DATASETS
 
 
 def _species_numbers(values):
@@ -50,18 +50,35 @@ def __getattr__(name):
     # exposing the database class at a stable module path for checkpoint reload.
     if name != 'ALFPyAniDirectoryDB':
         raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
-    from hippynn.databases import PyAniDirectoryDB
+    import os
+    from hippynn.databases.database import Database
+    from hippynn.databases.restarter import Restartable
     from alframework.tools.h5_parallel import READ_WORKERS, read_shard
+    from alframework.tools.label_arrays import assemble_label_arrays, atom_axes
     from alframework.tools.label_hdf5 import discover_label_shards
 
-    class ALFPyAniDirectoryDB(PyAniDirectoryDB):
-        def __init__(self, directory, *args, coordinates_key='coordinates', atom_keys=(),
+    class ALFPyAniDirectoryDB(Database, Restartable):
+        """ALF's label shards as a HIPPYNN database.
+
+        ALF reads the shards (:func:`alframework.tools.h5_parallel.read_shard`) and assembles whole padded arrays
+        (:func:`alframework.tools.label_arrays.assemble_label_arrays`); HIPPYNN's generic
+        ``Database`` holds them, splits them and makes the loaders. A checkpoint records how to rebuild it, under
+        this name and with these arguments.
+        """
+        _IGNORE_KEYS = ('path', 'Jnames')
+
+        def __init__(self, directory, inputs, targets, *args, files=None, allow_unfound=False, species_key=None,
+                     quiet=False, driver='core', coordinates_key='coordinates', atom_keys=(),
                      excited_state_properties=None, retained_indices=None, read_workers=None,
-                     max_inflight_bytes=None, files=None, **kwargs):
+                     max_inflight_bytes=None, **kwargs):
+            self.directory = directory
+            self.inputs, self.targets = inputs, targets
+            self.species_key = species_key
+            self.driver = driver
             self.coordinates_key = coordinates_key
             self.excited_state_properties = excited_state_properties
             self.retained_indices = retained_indices
-            # ML_config's h5_read_workers; set before HIPPYNN's constructor reads the files.
+            # ML_config's h5_read_workers.
             self.read_workers = read_workers
             self.max_inflight_bytes = max_inflight_bytes
             self.alf_frame_manifest = []
@@ -71,11 +88,16 @@ def __getattr__(name):
                 files = discover_label_shards(directory)
                 if not files:
                     raise FileNotFoundError(f"No ALF HDF5 shards were found in {str(directory)!r}.")
-            super().__init__(directory, *args, files=files, **kwargs)
+            self.files = files
+            arr_dict = self.load_arrays(allow_unfound=allow_unfound, quiet=quiet)
+            Database.__init__(self, arr_dict, inputs, targets, *args, **kwargs, quiet=quiet,
+                              allow_unfound=allow_unfound)
             # HIPPYNN persists this restarter in checkpoints; retain custom schema.
+            self.restarter = self.make_restarter(directory, inputs, targets, *args, files=files, quiet=quiet,
+                                                 species_key=self.species_key, **kwargs)
             self.restarter.kwargs.update(coordinates_key=coordinates_key, atom_keys=self.atom_keys,
                                         read_workers=read_workers, max_inflight_bytes=max_inflight_bytes,
-                                        allow_unfound=kwargs.get('allow_unfound', False))
+                                        allow_unfound=allow_unfound)
             if excited_state_properties is not None:
                 self.restarter.kwargs.update(excited_state_properties=excited_state_properties,
                                             retained_indices=retained_indices)
@@ -96,8 +118,9 @@ def __getattr__(name):
                                      f"\tFound keys: {set(group.keys())}")
                 batch = {}
                 for key, value in group.items():
-                    if key in self._IGNORE_KEYS or key in dropped or (permit_only and key != species_key
-                                                                     and key not in permit_only):
+                    # nac_pairs describes the group's pair order once, not a value per frame.
+                    if key in self._IGNORE_KEYS or key in dropped or key == PAIR_INDEX_DATASET or (
+                            permit_only and key != species_key and key not in permit_only):
                         continue
                     value = value if np.isscalar(value) else np.asarray(value)
                     if key == species_key:
@@ -190,7 +213,18 @@ def __getattr__(name):
             return selected, n_atoms_max, sum(len(b[self.coordinates_key]) for b in selected)
 
         def load_arrays(self, allow_unfound=False, quiet=False):
-            arrays = super().load_arrays(allow_unfound=allow_unfound, quiet=quiet)
+            files = sorted(os.path.join(self.directory, file) for file in self.files)
+            if not quiet:
+                print('Gathering data from files:\n\t', end='')
+                print(*files, sep='\n\t')
+            # Without allow_unfound, read only the inputs and targets.
+            permit_only = (not allow_unfound) and set(self.var_list)
+            batches = []
+            for file in files:
+                batches.extend(self.extract_full_file(file, species_key=self.species_key, permit_only=permit_only)[0])
+            axes = atom_axes(files, self.species_key, self.coordinates_key, self.atom_keys)
+            arrays = assemble_label_arrays(batches, axes, self.species_key, self.coordinates_key)
+            arrays = self._filter_arrays(arrays, allow_unfound=allow_unfound, quiet=quiet)
             if self.excited_state_properties is not None and self.retained_indices is not None:
                 indices = np.asarray(self.retained_indices, dtype=int)
                 arrays = {key: value[indices] for key, value in arrays.items()}
@@ -198,42 +232,23 @@ def __getattr__(name):
                 self.alf_frame_manifest = [self.alf_frame_manifest[i] for i in indices]
             return arrays
 
-        def determine_key_structure(self, batches, sys_count, n_atoms_max, species_key='species'):
-            if not batches:
-                raise ValueError('No structure groups in the ALF training dataset')
-            if self.excited_state_properties is None and all(batch[species_key].shape[1] >= 7 for batch in batches):
-                return super().determine_key_structure(batches, sys_count, n_atoms_max, species_key=species_key)
-
-            keys = set(batches[0])
-            atom_keys = set(self.atom_keys) | {species_key}
-            shapes = {}
-            padding = {}
-            for key, value in batches[0].items():
-                shapes[key] = [sys_count, *value.shape[1:]]
-                padding[key] = [1] if key in atom_keys else []
-                if padding[key]:
-                    if value.ndim < 2:
-                        raise ValueError(f'Atom property {key!r} has no atom axis')
-                    shapes[key][1] = n_atoms_max
-            for batch in batches:
-                if set(batch) != keys:
-                    raise ValueError('Inconsistent property keys across ALF structure groups')
-                coordinates = batch[self.coordinates_key]
-                n_frames, n_atoms = coordinates.shape[:2]
-                if coordinates.shape != (n_frames, n_atoms, 3):
-                    raise ValueError('ALF coordinates must have shape (frames, atoms, 3)')
-                if batch[species_key].shape != (1, n_atoms):
-                    raise ValueError('ALF species must describe one fixed composition per group')
-                for key, value in batch.items():
-                    expected = list(shapes[key][1:])
-                    if key in atom_keys:
-                        expected[0] = n_atoms
-                    if list(value.shape[1:]) != expected:
-                        raise ValueError(f'Unsupported trailing shape for {key!r}; configure its atom-property key')
-                    if key != species_key and value.shape[0] != n_frames:
-                        raise ValueError(f'Frame count mismatch for {key!r}')
-            padding['sys_number'] = []
-            return padding, shapes, self.coordinates_key
+        def _filter_arrays(self, arrays, allow_unfound=False, quiet=False):
+            """Keep only the inputs and targets unless ``allow_unfound``, and store 64-bit floats in torch's
+            default floating type."""
+            import torch
+            if not quiet:
+                print('Arrays found: ', list(arrays))
+            floating = torch.ones(1, dtype=torch.get_default_dtype()).numpy().dtype
+            wanted = set(self.inputs or ()) | set(self.targets or ())
+            kept = {}
+            for key, value in arrays.items():
+                if not allow_unfound and key not in wanted:
+                    continue
+                kept[key] = value.astype(floating) if value.dtype == np.float64 else value
+            if not quiet:
+                print('Data types:')
+                print({key: value.dtype for key, value in kept.items()})
+            return kept
 
     ALFPyAniDirectoryDB.__qualname__ = 'ALFPyAniDirectoryDB'
     globals()[name] = ALFPyAniDirectoryDB

@@ -1,6 +1,7 @@
 """data_by_reference labels: QM workers write their labels as parts and return receipts; the coordinator adopts the
 receipts and merges the parts before publishing. Snapshots must hold exactly what the coordinator's own parts would."""
 import json
+from pathlib import Path
 
 import h5py
 import numpy as np
@@ -111,6 +112,43 @@ def test_a_restart_counts_adopted_receipts_once_before_and_after_the_merge(tmp_p
     assert again.commit(snapshot, PROPERTIES, {}) == 3
 
 
+def test_a_crash_partway_through_a_merge_stores_every_label_once_after_the_restart(tmp_path, monkeypatch):
+    from alframework.tools import label_parts
+    snapshot = tmp_path / 'h5' / 'data-0000.h5'
+    held = HDF5HeldLabels(snapshot, PROPERTIES, batch_size=2, merge_workers=1)
+    held.adopt([_write(_labels(2, f'r{i}'), snapshot) for i in range(3)])
+    real, calls = label_parts._merge_and_lay_out, []
+
+    def killed_on_the_second(job):
+        calls.append(job)
+        if len(calls) == 2:
+            raise KeyboardInterrupt('the coordinator was killed')
+        return real(job)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(label_parts, '_merge_and_lay_out', killed_on_the_second)
+        with pytest.raises(KeyboardInterrupt):
+            held.merge()
+    restarted = HDF5HeldLabels(snapshot, PROPERTIES, batch_size=2, merge_workers=1)
+    assert restarted.converged() == 6
+    assert restarted.commit(snapshot, PROPERTIES, {}) == 6
+    with h5py.File(snapshot) as handle:
+        ids = [i for group in handle.values() for i in group['_id'][()]]
+    assert len(ids) == len(set(ids)) == 6
+
+
+def test_an_adopted_part_that_has_gone_is_named_when_the_round_is_stored(tmp_path):
+    snapshot = tmp_path / 'h5' / 'data-0000.h5'
+    held = HDF5HeldLabels(snapshot, PROPERTIES, batch_size=4)
+    receipts = [_write(_labels(2, f'q{i}'), snapshot) for i in range(2)]
+    held.adopt(receipts)
+    gone = Path(receipts[1].as_record()['path'])
+    gone.unlink()
+    with pytest.raises(FileNotFoundError, match=gone.name):
+        HDF5HeldLabels(snapshot, PROPERTIES, batch_size=4).commit(snapshot, PROPERTIES, {})
+    assert not snapshot.exists(), 'no snapshot is published without every label'
+
+
 def test_a_manifest_line_cut_short_by_a_crash_was_never_adopted(tmp_path):
     snapshot = tmp_path / 'h5' / 'data-0000.h5'
     held = HDF5HeldLabels(snapshot, PROPERTIES, batch_size=4)
@@ -196,17 +234,20 @@ def test_labels_by_reference_needs_native_qm_batching():
 
 def test_the_coordinator_stores_the_same_labels_with_labels_by_reference(tmp_path, monkeypatch):
     """The same finite bootstrap, labeled the usual way and by reference, stores the same labels in its first
-    shard; by reference, the QM workers wrote them and the coordinator only merged them."""
+    shard; by reference, the QM workers wrote them and the coordinator only merged them. Grouped by atom count, the
+    same labels are stored in one group per size."""
     from alframework.tools import config as workflow_config, sampled_frames
     from tests.helpers.driver import run_alf_driver, stored_ids
     from tests.test_labeling_coordinator import native_qm
     from tests.helpers.driver import LOOP, restart_tasks
 
-    first = {}
-    for arm in ('coordinator', 'by_reference'):
+    first, groups = {}, {}
+    for arm in ('coordinator', 'by_reference', 'by_reference_atom_count'):
         run_dir = tmp_path / arm
         run_dir.mkdir()
         extra = {} if arm == 'coordinator' else {'data_by_reference': {'labels': True, 'merge_workers': 2}}
+        if arm == 'by_reference_atom_count':
+            extra['label_h5_layout'] = {'group_by': 'atom_count'}
         with monkeypatch.context() as patch:
             # The by-reference QM wrapper looks its labeler up by name, as the driver's stand-ins are.
             patch.setattr(sampled_frames, 'load_module_from_string',
@@ -220,12 +261,15 @@ def test_the_coordinator_stores_the_same_labels_with_labels_by_reference(tmp_pat
         assert run.status['lifetime_stored_labels'] > 0
         with h5py.File(run_dir / 'h5' / 'data-0000.h5') as handle:
             first[arm] = sorted(i.decode() for group in handle.values() for i in group['_id'][()])
-        if arm == 'by_reference':
+            groups[arm] = sorted(handle)
+        if arm != 'coordinator':
             incoming = run_dir / 'h5' / '.alf-label-parts' / INCOMING
             assert incoming.is_dir(), 'QM workers wrote parts'
             ids = stored_ids(run_dir / 'h5')
             assert len(ids) == len(set(ids)), 'no label was stored twice'
-    assert first['by_reference'] == first['coordinator']
+    assert first['by_reference'] == first['coordinator'] == first['by_reference_atom_count']
+    assert all(name.startswith('atoms_') for name in groups['by_reference_atom_count']), groups
+    assert groups['by_reference_atom_count'] != groups['coordinator']
 
 
 def test_a_real_parsl_worker_writes_the_part_and_returns_its_receipt(tmp_path, monkeypatch):

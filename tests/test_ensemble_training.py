@@ -642,3 +642,23 @@ def test_multinode_control_loop_records_label_sources_once_members_finish(tmp_pa
     assert not events, "label sources are written only after training"
     member.set_result(True)
     assert outcome.result(timeout=30) == ([True], 3) and events == ["finish"]
+
+
+def test_a_round_whose_shards_declare_different_units_trains_no_member(tmp_path):
+    """Training freezes the round's shards and checks their declared units before it starts any member."""
+    from parsl.app.errors import RemoteExceptionWrapper
+    from alframework.tools.data_shards import store_current_data
+    from tests.helpers.labels import PROPERTIES, labeled_h2
+
+    h5 = tmp_path / "h5"
+    h5.mkdir()
+    store_current_data(str(h5 / "data-0000.h5"), [labeled_h2("a")], PROPERTIES, label_units={"energy": "eV"})
+    store_current_data(str(h5 / "data-0001.h5"), [labeled_h2("b")], PROPERTIES, label_units={"energy": "Hartree"})
+    config = dict(n_models=2, energy_key="energy", force_key="forces", species_key="species",
+                  coordinates_key="coordinates", device_string="cpu")
+    result = ml.train_HIPPYNN_ensemble_task.func(config, str(h5), str(tmp_path / "model-{}"), 0, 0)
+    with pytest.raises(ValueError, match="'energy' declares units 'Hartree'"):
+        if isinstance(result, RemoteExceptionWrapper):
+            result.reraise()
+        raise AssertionError(f"training ran: {result}")
+    assert not (tmp_path / "model-0").exists()

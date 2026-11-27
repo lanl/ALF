@@ -312,6 +312,15 @@ def test_a_failed_stage_stops_the_workflow_and_names_the_stage(tmp_path, control
     assert store_current_data(str(tmp_path / 'labels.h5'), [obj, good], PROPERTIES) == 1
 
 
+def test_a_repeat_that_fails_leaves_no_mean_and_names_its_stage(tmp_path, controlled):
+    calls, responses = controlled
+    responses.extend([{}, RuntimeError('controlled failure')])
+    obj = label_workflow(unlabeled_h2(), settings('mean_if_agree'), str(tmp_path), PROPERTIES)
+    assert not obj.check_convergence() and len(calls) == 2
+    assert obj.metadata['qm_failed_stage'] == 'stage_1:calculation'
+    assert store_current_data(str(tmp_path / 'labels.h5'), [obj], PROPERTIES) == 0
+
+
 @pytest.mark.parametrize('change,error', [
     ({'stages': []}, 'nonempty stages list'), ({'stages': 'bad'}, 'nonempty stages list'),
     ({'result_mode': 'average'}, 'result_mode must be'), ({'agreement': {}}, 'only valid with mean_if_agree'),

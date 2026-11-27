@@ -1,5 +1,6 @@
 import json
 import shutil
+from pathlib import Path
 
 import h5py
 import numpy as np
@@ -399,3 +400,33 @@ def test_label_units_are_recorded_on_shards_and_checked_as_one_inventory(tmp_pat
         pass
     with pytest.warns(UserWarning, match='mix declared and unknown'):
         validate_training_units([legacy, ordinary], ['energy'])
+
+
+def test_a_reader_never_sees_a_snapshot_that_is_still_being_written(tmp_path, monkeypatch):
+    """The snapshot appears under its name only once complete; a publish that fails leaves no snapshot at all."""
+    import contextlib
+
+    labels = [labeled(f'mol-{i}', energy=-i) for i in range(3)]
+    real, seen = label_parts.replaced_atomically, []
+
+    @contextlib.contextmanager
+    def watched(path, **options):
+        with real(path, **options) as partial:
+            yield partial
+            seen.append((Path(path).exists(), Path(partial).exists()))  # written, not yet renamed
+
+    monkeypatch.setattr(label_parts, 'replaced_atomically', watched)
+    snapshot = tmp_path / 'h5' / 'data-0000.h5'
+    held = HDF5HeldLabels(snapshot, PROPERTIES, batch_size=2)
+    held.hold(labels)
+    assert held.commit(snapshot, PROPERTIES, {}) == 3
+    assert (False, True) in seen, 'while the snapshot was written, only its partial file existed'
+    assert sorted(read_shard(str(snapshot))) and snapshot.exists()
+
+    failing = tmp_path / 'failing' / 'data-0000.h5'
+    held = HDF5HeldLabels(failing, PROPERTIES, batch_size=2)
+    held.hold(labels)
+    monkeypatch.setattr(label_parts, '_write_virtual_columns', lambda *_: (_ for _ in ()).throw(OSError('disk full')))
+    with pytest.raises(OSError, match='disk full'):
+        held.commit(failing, PROPERTIES, {})
+    assert not failing.exists() and not failing.with_name(failing.name + '.partial').exists()

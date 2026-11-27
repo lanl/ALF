@@ -186,7 +186,7 @@ def training_config(settings, train_dir, valid_dir, references, normalizer_rmsd,
                       'heads': '${data.heads}'},
             'optimizer_fn': {'_target_': 'torch.optim.AdamW', '_partial_': True, 'lr': '${lr}',
                              'weight_decay': '${weight_decay}'},
-            'cosine_lr_scheduler_fn': {'_target_': 'fairchem.core.units.mlip_unit.mlip_unit._get_consine_lr_scheduler',
+            'cosine_lr_scheduler_fn': {'_target_': 'alframework.ml_interfaces.fine_tuning.uma.cosine_lr_scheduler',
                                        '_partial_': True, 'warmup_factor': 0.2, 'warmup_epochs': 0.01,
                                        'lr_min_factor': 0.01, 'epochs': '${epochs}', 'steps': '${steps}'},
             'print_every': 10, 'clip_grad_norm': 100}
@@ -206,6 +206,32 @@ def training_config(settings, train_dir, valid_dir, references, normalizer_rmsd,
                    'evaluate_every_n_steps': '${evaluate_every_n_steps}',
                    'callbacks': [{'_target_': 'fairchem.core.components.callbacks.TrainCheckpointCallback',
                                   'checkpoint_every_n_steps': '${checkpoint_every_n_steps}', 'max_saved_checkpoints': 5}]}}
+
+
+def cosine_lr_scheduler(warmup_factor, warmup_epochs, lr_min_factor, n_iters_per_epoch, optimizer, epochs=None,
+                        steps=None):
+    """FairChem's warm-up then cosine learning-rate schedule, built from its public ``CosineLRLambda``.
+
+    The same schedule FairChem's UMA fine-tuning configurations build with its private
+    ``mlip_unit._get_consine_lr_scheduler``; give either ``epochs`` or ``steps``.
+    """
+    import torch
+    from fairchem.core.modules.scheduler import CosineLRLambda
+    if (epochs is None) == (steps is None):
+        raise ValueError('Give exactly one of epochs and steps for the learning-rate schedule.')
+    total = int(epochs * n_iters_per_epoch) if steps is None else steps
+    schedule = CosineLRLambda(warmup_epochs=max(int(warmup_epochs * n_iters_per_epoch), 1),
+                              warmup_factor=warmup_factor, epochs=total, lr_min_factor=lr_min_factor)
+    return torch.optim.lr_scheduler.LambdaLR(optimizer, schedule)
+
+
+def fairchem_main():
+    """FairChem's command-line entry point, ``fairchem``, as its package registers it."""
+    from importlib.metadata import entry_points
+    found = entry_points(group='console_scripts', name='fairchem')
+    if not found:
+        raise RuntimeError("fairchem-core is installed without its 'fairchem' command.")
+    return next(iter(found)).load()
 
 
 def write_database(directory, frames):
@@ -232,7 +258,6 @@ def fine_tune_uma_member(arguments):
     import argparse
 
     from ase.calculators.singlepoint import SinglePointCalculator
-    from fairchem.core._cli import main
 
     from alframework.ml_interfaces.fine_tuning import ENERGY_KEY, FORCES_KEY, shard_atoms
 
@@ -257,7 +282,7 @@ def fine_tune_uma_member(arguments):
     (member_dir / CONFIG).write_text(json.dumps(config, indent=1) + '\n')
     print(f"Fine-tuning UMA task {settings['task']} from {settings['foundation_model']}: {len(train)} training and "
           f"{len(valid)} validation structures, seed {seed}, E0s {settings['E0s']}.", flush=True)
-    main(argparse.Namespace(config=str(member_dir / CONFIG)), [])
+    fairchem_main()(argparse.Namespace(config=str(member_dir / CONFIG)), [])
     final = member_dir / 'runs' / 'copy' / 'checkpoints' / 'final' / 'inference_ckpt.pt'
     if not final.is_file():
         raise RuntimeError(f'fairchem finished without writing {final}.')

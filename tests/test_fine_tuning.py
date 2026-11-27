@@ -982,3 +982,31 @@ def test_uma_example_configuration_is_valid(tmp_path):
     sampler = json.loads((example / "mlmd_config.json").read_text())
     assert sampler["batched_calculator"] == "alframework.ml_interfaces.fine_tuning.uma.load_uma_batched_ensemble"
     assert sampler["batched_calculator_options"]["task"] == tuner.settings["task"]
+
+
+def test_the_uma_schedule_matches_fairchems_own():
+    pytest.importorskip("fairchem.core")
+    import torch
+    from fairchem.core.units.mlip_unit.mlip_unit import _get_consine_lr_scheduler
+    from alframework.ml_interfaces.fine_tuning.uma import cosine_lr_scheduler
+    options = dict(warmup_factor=0.2, warmup_epochs=0.01, lr_min_factor=0.01, n_iters_per_epoch=37)
+    for limits in (dict(epochs=3), dict(steps=90)):
+        rates = []
+        for build in (cosine_lr_scheduler, _get_consine_lr_scheduler):
+            optimizer = torch.optim.SGD([torch.zeros(1, requires_grad=True)], lr=1e-3)
+            scheduler = build(optimizer=optimizer, **options, **limits)
+            steps = []
+            for _ in range(111):
+                steps.append(optimizer.param_groups[0]['lr'])
+                optimizer.step()
+                scheduler.step()
+            rates.append(steps)
+        assert rates[0] == rates[1]
+
+
+def test_fairchems_command_is_found_by_its_registered_entry_point():
+    pytest.importorskip("fairchem.core")
+    import inspect
+    from alframework.ml_interfaces.fine_tuning.uma import fairchem_main
+    main = fairchem_main()
+    assert list(inspect.signature(main).parameters)[:2] == ['args', 'override_args']

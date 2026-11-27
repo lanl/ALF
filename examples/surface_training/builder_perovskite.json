@@ -1,0 +1,156 @@
+{
+  "seed": 17,
+  "miller_indices": [
+    [
+      1,
+      0,
+      0
+    ]
+  ],
+  "min_slab_thickness_A": 10.0,
+  "min_in_plane_A": 8.0,
+  "target_a_A": 12.0,
+  "target_b_A": 12.0,
+  "vacuum_A": 20.0,
+  "max_atoms": 200,
+  "rattle_A": 0.025,
+  "face": "both",
+  "materials": [
+    {
+      "id": "CsPbBr3_H2O",
+      "bulk_file": "perovskite_bulk_oc25/CsPbBr3.extxyz",
+      "adsorbates": [
+        {
+          "smiles": "O",
+          "relax_smiles": true,
+          "anchor_indices": [
+            0
+          ],
+          "mode": "binding_sites",
+          "site_types": [
+            "ontop"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "CsPbBr3_NH3",
+      "bulk_file": "perovskite_bulk_oc25/CsPbBr3.extxyz",
+      "adsorbates": [
+        {
+          "smiles": "N",
+          "relax_smiles": true,
+          "anchor_indices": [
+            0
+          ],
+          "mode": "binding_sites",
+          "site_types": [
+            "ontop"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "CsPbI3_H2O",
+      "bulk_file": "perovskite_bulk_oc25/CsPbI3.extxyz",
+      "adsorbates": [
+        {
+          "smiles": "O",
+          "relax_smiles": true,
+          "anchor_indices": [
+            0
+          ],
+          "mode": "binding_sites",
+          "site_types": [
+            "ontop"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "CsPbI3_NH3",
+      "bulk_file": "perovskite_bulk_oc25/CsPbI3.extxyz",
+      "adsorbates": [
+        {
+          "smiles": "N",
+          "relax_smiles": true,
+          "anchor_indices": [
+            0
+          ],
+          "mode": "binding_sites",
+          "site_types": [
+            "ontop"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "CsSnBr3_H2O",
+      "bulk_file": "perovskite_bulk_oc25/CsSnBr3.extxyz",
+      "adsorbates": [
+        {
+          "smiles": "O",
+          "relax_smiles": true,
+          "anchor_indices": [
+            0
+          ],
+          "mode": "binding_sites",
+          "site_types": [
+            "ontop"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "CsSnBr3_NH3",
+      "bulk_file": "perovskite_bulk_oc25/CsSnBr3.extxyz",
+      "adsorbates": [
+        {
+          "smiles": "N",
+          "relax_smiles": true,
+          "anchor_indices": [
+            0
+          ],
+          "mode": "binding_sites",
+          "site_types": [
+            "ontop"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "CsSnI3_H2O",
+      "bulk_file": "perovskite_bulk_oc25/CsSnI3.extxyz",
+      "adsorbates": [
+        {
+          "smiles": "O",
+          "relax_smiles": true,
+          "anchor_indices": [
+            0
+          ],
+          "mode": "binding_sites",
+          "site_types": [
+            "ontop"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "CsSnI3_NH3",
+      "bulk_file": "perovskite_bulk_oc25/CsSnI3.extxyz",
+      "adsorbates": [
+        {
+          "smiles": "N",
+          "relax_smiles": true,
+          "anchor_indices": [
+            0
+          ],
+          "mode": "binding_sites",
+          "site_types": [
+            "ontop"
+          ]
+        }
+      ]
+    }
+  ]
+}

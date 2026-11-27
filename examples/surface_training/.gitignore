@@ -1,4 +1,6 @@
 /foundation/
 /runs/
+/perovskite_bulk/
+/perovskite_bulk_oc25/
 /status_*.json*
 /qm_test*.h5

@@ -86,6 +86,22 @@ def _spacing_kpoints(atoms, setting, spacing, vacuum_axes):
             for axis, length in zip(_CELL_AXES, reciprocal_lengths)]
 
 
+def vasp_input_for_structure(atoms, qm_config, metadata):
+    """Apply the labeler's per-structure reciprocal mesh and slab dipole settings."""
+    inputs = qm_config['input'].copy()
+    setting, spacing = _kpoint_spacing(qm_config)
+    if spacing is not None:
+        if 'kpoints' in metadata:
+            raise ValueError(f'{setting} cannot be combined with molecule metadata kpoints.')
+        vacuum_axes = ('c',) if setting == _SLAB_SPACING else metadata.get('vacuum_axes', ())
+        inputs.update(kpts=_spacing_kpoints(atoms, setting, spacing, vacuum_axes), gamma=True)
+    elif 'kpoints' in metadata:
+        inputs['kpts'] = metadata['kpoints']
+    if _slab_dipole_enabled(qm_config) and 'surface_builder' in metadata:
+        inputs.update(ldipol=True, idipol=3, dipol=_slab_dipole_center(atoms, metadata))
+    return inputs
+
+
 @python_app(executors=['alf_QM_executor'])
 @timed('QM')
 def VASP_ase_calculator_task(molecule_object, QM_config, QM_scratch_dir, properties_list):
@@ -112,19 +128,8 @@ def VASP_ase_calculator_task(molecule_object, QM_config, QM_scratch_dir, propert
     properties = list(properties_list.keys())
     atoms = molecule_object.get_atoms()
 
-    calc_input = QM_config['input'].copy()
     metadata = molecule_object.get_metadata()
-    setting, spacing = _kpoint_spacing(QM_config)
-    if spacing is not None:
-        if 'kpoints' in metadata:
-            raise ValueError(f'{setting} cannot be combined with molecule metadata kpoints.')
-        vacuum_axes = ('c',) if setting == _SLAB_SPACING else metadata.get('vacuum_axes', ())
-        calc_input.update(kpts=_spacing_kpoints(atoms, setting, spacing, vacuum_axes), gamma=True)
-    elif 'kpoints' in metadata:
-        calc_input['kpts'] = metadata['kpoints']
-    dipole_correction = _slab_dipole_enabled(QM_config)
-    if dipole_correction and 'surface_builder' in metadata:
-        calc_input.update(ldipol=True, idipol=3, dipol=_slab_dipole_center(atoms, metadata))
+    calc_input = vasp_input_for_structure(atoms, QM_config, metadata)
     if metadata.get('fixed_substrate_indices') and calc_input.get('nsw') in (None, 0):
         # Fixed layers constrain sampling. A static label includes the forces on those sites.
         atoms = atoms.copy()
@@ -140,9 +145,10 @@ def VASP_ase_calculator_task(molecule_object, QM_config, QM_scratch_dir, propert
     txt = open(directory + '/OUTCAR','r').read()
     if len(convergedre.findall(txt)) == 1:
         source = ase_label_source('VASP_ase_calculator_task', 'ase.calculators.vasp.Vasp', QM_config['input'])
+        setting, spacing = _kpoint_spacing(QM_config)
         if spacing is not None:
             source[setting] = spacing
-        if dipole_correction:
+        if _slab_dipole_enabled(QM_config):
             source['slab_dipole_correction'] = True
         molecule_object.update_metadata({LABEL_SOURCE: source})
         molecule_object.set_converged_flag(True)

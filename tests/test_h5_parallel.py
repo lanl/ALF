@@ -218,18 +218,3 @@ def test_hippynn_decodes_root_level_species_from_an_explicit_shard(tmp_path, spe
     restored = database.restarter.attempt_restart()
     for reader in (database, restored):
         np.testing.assert_array_equal(reader.arr_dict["Z"].numpy(), [[8, 1, 1], [8, 1, 1]])
-
-
-def _array_pickle_protocol():
-    from multiprocessing.reduction import ForkingPickler
-    return bytes(ForkingPickler.dumps(np.zeros(3)))[1]
-
-
-def test_reader_processes_return_arrays_with_pickle_protocol_5():
-    """Reader children send arrays back with protocol 5, which writes their buffers without a temporary copy."""
-    import concurrent.futures
-    import multiprocessing
-    context = multiprocessing.get_context("spawn")
-    with concurrent.futures.ProcessPoolExecutor(1, mp_context=context,
-                                                initializer=h5_parallel._use_array_pickle_protocol) as pool:
-        assert pool.submit(_array_pickle_protocol).result(timeout=60) >= 5

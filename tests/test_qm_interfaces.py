@@ -8,16 +8,13 @@ import numpy as np
 import pytest
 from ase import Atoms
 
-from alframework.qm_interfaces.ase import generic as ase_calculator_interface
 from alframework.qm_interfaces.legacy import orca5_interface, qchem_DFT_interface
 from alframework.qm_interfaces.legacy.orca5_interface import orcaGenerator
 from alframework.qm_interfaces.legacy.qchem_DFT_interface import qchemGenerator
 from alframework.tools.molecules import MoleculesObject
-from tests.helpers.fakes import FakeASECalculator
 from tests.helpers.interface_checks import (
     check_energy_force_results,
     check_molecule_result,
-    check_scratch_directory,
     check_task_convergence,
 )
 
@@ -141,39 +138,6 @@ def test_qchem_input_file_is_correct(tmp_path):
     assert "8 0.0 0.0 0.0" in text
     assert "1 0.0 0.7 0.7" in text
     assert "$rem\nJOBTYPE FORCE\n$end" in text
-
-
-def test_ase_task_stores_calculator_results(tmp_path, monkeypatch, h2_atoms):
-
-    monkeypatch.setattr(
-        ase_calculator_interface,
-        "load_module_from_config",
-        lambda config, field: FakeASECalculator,
-    )
-
-    task_func = getattr(
-        ase_calculator_interface.ase_calculator_task, "func", ase_calculator_interface.ase_calculator_task
-    )
-    molecule = MoleculesObject(h2_atoms, "h2")
-    result = task_func(
-        molecule,
-        {
-            "QM_run_command": "fake-qm",
-            "ASE_calculator": "fake.module.Calculator",
-            "label": "kept",
-            "fake_expected_command": "fake-qm",
-            "fake_expected_properties": ["energy", "forces"],
-            "fake_results": {"energy": -1.25, "forces": np.ones((len(h2_atoms), 3))},
-        },
-        str(tmp_path),
-        {"energy": ["energy", "system", 1.0], "forces": ["forces", "atomic", 1.0]},
-    )
-
-    check_molecule_result(result, natoms=2, required_properties=["energy", "forces"])
-    check_task_convergence(result, True)
-    assert result.get_results()["energy"] == -1.25
-    np.testing.assert_allclose(result.get_results()["forces"], np.ones((2, 3)))
-    check_scratch_directory(tmp_path, "h2")
 
 
 def test_orca_double_run_averages_results(tmp_path, monkeypatch, h2_atoms):

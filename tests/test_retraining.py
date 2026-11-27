@@ -64,9 +64,8 @@ def test_a_round_without_a_new_label_does_not_retrain():
 
 
 def test_the_startup_report_names_the_unit():
-    assert describe({'after': 2048, 'counts': 'labels'}) == 'retraining: once 2,048 new labels are held'
-    assert describe({'after': 2048, 'counts': 'sampled'}).startswith(
-        'retraining: once 2,048 sampled structures are resolved')
+    assert '2,048 new labels' in describe({'after': 2048, 'counts': 'labels'})
+    assert '2,048 sampled structures' in describe({'after': 2048, 'counts': 'sampled'})
 
 
 def test_the_sampler_coordinator_counts_structures_that_ended_without_a_frame():

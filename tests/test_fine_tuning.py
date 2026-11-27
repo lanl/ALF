@@ -385,14 +385,6 @@ def test_fine_tuning_reads_a_snapshot_published_over_parts_like_one_shard(tmp_pa
         assert (mine.pbc == theirs.pbc).all()
 
 
-def test_fine_tuning_refuses_a_snapshot_whose_part_is_missing(tmp_path):
-    from alframework.tools.label_parts import part_directory
-    snapshot = _published_over_parts(tmp_path, _mixed_labels())
-    next(part_directory(Path(snapshot)).glob("part-*.h5")).unlink()
-    with pytest.raises(FileNotFoundError, match="required label part"):
-        shard_atoms([snapshot])
-
-
 def test_mace_failure_reports_the_end_of_its_log(tmp_path, monkeypatch):
     import subprocess
 

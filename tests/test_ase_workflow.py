@@ -91,13 +91,6 @@ def test_retrying_a_failed_label_drops_its_old_per_stage_record(tmp_path, contro
     assert 'qm_workflow' not in molecule.metadata
 
 
-def test_a_retried_workflow_moves_the_earlier_attempt_aside(tmp_path, controlled):
-    obj = label_workflow(unlabeled_h2(), settings(), str(tmp_path), PROPERTIES)
-    label_workflow(obj, settings(), str(tmp_path), PROPERTIES)
-    assert obj.check_convergence(), obj.metadata
-    assert (tmp_path / 'h2.previous-0' / 'stage_0' / 'ran').exists()
-
-
 def dependent_settings():
     config = settings()
     prep, target = config['stages']

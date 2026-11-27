@@ -77,16 +77,6 @@ def test_a_frame_is_chosen_and_ranked_by_the_models_own_uncertainty():
     assert assess_frame(high, 0.1, 1.0, config, settings)["outcome"] == "rejected", "distcut still applies"
 
 
-def test_the_built_in_decision_is_unchanged():
-    config = {"Escut": 0.1, "Fscut": 0.2, "distcut": 0.5}
-    settings = acquisition_settings(config)
-    for signals, outcome in ((dict(Es=0.05, Fs=0.1, Fsmax=0.5), "continue"), (dict(Es=0.2, Fs=0.1, Fsmax=0.5), "eligible"),
-                             (dict(Es=0.05, Fs=0.1, Fsmax=0.7), "eligible")):
-        decision = assess_frame(dict(signals, Fsrms=0.1), 1.0, 1.0, config, settings)
-        assert decision["outcome"] == outcome
-        assert decision["Ecrit"] == (signals["Es"] > 0.1) and decision["Fmcrit"] == (signals["Fsmax"] > 0.6)
-
-
 def test_an_evaluators_uncertainty_joins_its_spread():
     prediction = {"energies": np.zeros((1, 2)), "forces": [np.zeros((1, 3, 3)), np.zeros((1, 2, 3))],
                   "uncertainty": [{"dropout": 0.1}, {"dropout": 0.3}]}

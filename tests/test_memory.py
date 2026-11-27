@@ -1,16 +1,8 @@
 import sys
-from pathlib import Path
 
 import pytest
 
 from alframework.tools import memory
-
-
-def _thp_disabled():
-    for line in Path('/proc/self/status').read_text().splitlines():
-        if line.startswith('THP_enabled:'):
-            return line.split()[1] == '0'
-    pytest.skip('this kernel does not report THP_enabled')
 
 
 def test_nothing_changes_unless_requested():

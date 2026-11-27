@@ -1,4 +1,5 @@
-"""The low-distance filter before training: ALF's batched search gives hippynn's minimum distances."""
+"""The low-distance filter before training: ALF's screens agree with hippynn's minimum distances and keep the same
+structures."""
 
 import numpy as np
 import pytest
@@ -68,14 +69,20 @@ def test_structures_without_a_close_pair_get_their_exact_minimum_and_are_kept_as
     assert torch.equal(ours > 0.8, theirs > 0.8)
 
 
-def test_nonperiodic_data_and_no_batched_search_use_hippynn(monkeypatch):
+def test_nonperiodic_data_and_no_batched_search_keep_what_hippynn_kept(monkeypatch):
+    """Without a cell, ALF measures every pair exactly (in float64, rounded to the positions' float32); without a
+    batched search, each periodic structure is measured alone. Both agree with hippynn's float32 values."""
     arrays = periodic_arrays(systems=8)
     open_arrays = {k: v for k, v in arrays.items() if k != "cell"}
-    assert torch.equal(training_minimum_distances(open_arrays, "Z", "R", None, "cpu", batch_size=16),
-                       hippynn_reference(open_arrays, cell=None))
-    monkeypatch.setattr(geometry, "neighbor_search", lambda backend="auto": None)
-    assert torch.equal(training_minimum_distances(arrays, "Z", "R", "cell", "cpu", batch_size=16),
-                       hippynn_reference(arrays))
+    for ours, theirs in (
+            (training_minimum_distances(open_arrays, "Z", "R", None, "cpu", batch_size=16),
+             hippynn_reference(open_arrays, cell=None)),
+            (monkeypatch.setattr(geometry, "neighbor_search", lambda backend="auto": None)
+             or training_minimum_distances(arrays, "Z", "R", "cell", "cpu", batch_size=16),
+             hippynn_reference(arrays))):
+        assert ours.dtype == arrays["R"].dtype
+        assert torch.allclose(ours, theirs, rtol=1e-5, atol=1e-5)
+        assert torch.equal(ours > 0.8, theirs > 0.8)
 
 
 def test_screening_shared_among_devices_gives_the_same_distances():

@@ -7,9 +7,6 @@ from alframework._moved_modules import redirect_moved_modules
 
 MOVED_MODULES = {
     'hippynn_interface': 'alframework.ml_interfaces.hippynn.interface',
-    'hippynn_lightning': 'alframework.ml_interfaces.hippynn.lightning',
-    'hippynn_final': 'alframework.ml_interfaces.hippynn.final_evaluation',
-    '_hippynn_compat': 'alframework.ml_interfaces.hippynn.compat',
 }
 
 redirect_moved_modules(__name__, MOVED_MODULES)

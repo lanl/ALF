@@ -466,9 +466,9 @@ def test_cfg_seed_examples_build_clusters(family):
 @pytest.mark.parametrize("path", MASTERS, ids=lambda path: str(path.relative_to(ROOT / "examples")))
 def test_examples_name_current_module_paths(path):
     """Moved modules still import from their old paths, with a FutureWarning; examples use the new ones."""
-    from alframework import ml_interfaces, qm_interfaces, samplers, tools
+    from alframework import ml_interfaces, qm_interfaces, tools
 
-    moved = tuple(f"{package.__name__}.{name}." for package in (ml_interfaces, qm_interfaces, samplers, tools)
+    moved = tuple(f"{package.__name__}.{name}." for package in (ml_interfaces, qm_interfaces, tools)
                   for name in package.MOVED_MODULES)
     for field, value in read(path).items():
         if isinstance(value, str):

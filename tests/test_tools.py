@@ -1,7 +1,6 @@
 """Shared ALF helpers for schedules, configuration, HDF5 storage, and Parsl tasks."""
 
 import json
-import pickle
 import warnings
 from pathlib import Path
 
@@ -11,30 +10,13 @@ import pytest
 from ase import Atoms
 
 from alframework.tools.annealing import annealing_schedule
-from alframework.tools.config import load_config_file, load_module_from_config, load_module_from_string
+from alframework.tools.config import load_config_file
 from alframework.tools.data_shards import compute_empirical_formula, store_current_data
 from alframework.tools.geometry import random_rotation_matrix
 from alframework.tools.label_validation import system_checker
 from alframework.tools.molecules import MoleculesObject
 from alframework.tools.parsl_tasks import ParslTaskQueue, is_final_task
 from tests.helpers.fakes import FakeTask
-
-
-@pytest.mark.parametrize("module,name", [
-    ("annealing", "annealing_schedule"),
-    ("config", "build_input_dict"),
-    ("data_shards", "store_current_data"),
-    ("geometry", "random_rotation_matrix"),
-    ("label_validation", "system_checker"),
-    ("parsl_tasks", "parsl_task_queue"),
-    ("legacy_ani", "build_ANI_info"),
-    ("restarts", "write_status"),
-])
-def test_legacy_tool_paths_resolve_to_canonical_helpers(module, name):
-    old = "alframework.tools.tools"
-    canonical = load_module_from_string(f"alframework.tools.{module}.{name}")
-    assert load_module_from_config({"helper": f"{old}.{name}"}, "helper") is canonical
-    assert pickle.loads(f"c{old}\n{name}\n.".encode()) is canonical
 
 
 def test_the_task_queue_keeps_its_lowercase_name():

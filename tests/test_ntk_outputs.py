@@ -19,6 +19,7 @@ from alframework.ml_interfaces.ntk.couplings import physical_coupling_uncertaint
 
 NETWORK = {"possible_species": [0, 1, 8], "n_features": 6, "n_sensitivities": 4, "dist_soft_min": 0.5,
            "dist_soft_max": 2.5, "dist_hard_max": 3.0, "n_interaction_layers": 1, "n_atom_layers": 1}
+SYSTEM_INDEX = getattr(IdxType, "Systems", None) or IdxType.Molecules
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -51,7 +52,7 @@ def toy_coupling_graph():
         torch.manual_seed(9)
         species, positions = inputs.SpeciesNode("species"), inputs.PositionsNode("positions")
         net = networks.Hipnn("hipnn", (species, positions), module_kwargs=NETWORK)
-        gap = inputs.InputNode("GAP12", db_name="GAP12", index_state=IdxType.Systems)
+        gap = inputs.InputNode("GAP12", db_name="GAP12", index_state=SYSTEM_INDEX)
         out = system_energy(targets.HEnergyNode("readout", net)) * gap
         out.db_name = "coupling12"
         return GraphModule((species, positions, gap), (out,)).double().eval()

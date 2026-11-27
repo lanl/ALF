@@ -533,8 +533,8 @@ Preferred ASE route
    same; see :doc:`teacher_student` for how a teacher uses these sources.
 
    Scratch directories are kept by default. With ``"remove_scratch_on_success": true``, ALF deletes a
-   molecule's scratch directory once its label has passed every check; a failed label's directory is always
-   kept for inspection. Turn it on for production runs whose calculators leave large files, such as VASP's
+   molecule's scratch directory once its label has passed every check, with any earlier attempts at it that
+   were moved aside (``<molecule>.previous-N``); a failed label's directory is always kept for inspection. Turn it on for production runs whose calculators leave large files, such as VASP's
    ``CHGCAR`` and ``WAVECAR``.
 
    ``initial_magnetic_moments`` gives a starting moment, in Bohr magnetons, for each element:

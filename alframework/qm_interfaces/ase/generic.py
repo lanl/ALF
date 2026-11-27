@@ -5,6 +5,7 @@ A QM configuration names the calculator class in ``ASE_calculator`` and gives it
 then gives every label a fresh calculator, a fresh scratch directory and a copy of the molecule's geometry.
 """
 from copy import deepcopy
+import glob
 import inspect
 import os
 from pathlib import Path
@@ -259,11 +260,14 @@ def _place_input_files(input_files, directory):
 
 
 def remove_scratch_directory(directory):
-    """Delete a finished label's scratch directory; a failure to delete leaves the label as it is."""
-    try:
-        shutil.rmtree(directory)
-    except OSError as error:
-        print(f'Warning: could not remove scratch directory {directory}: {error}', flush=True)
+    """Delete a finished label's scratch directory, and the earlier attempts at it that
+    :func:`fresh_scratch_directory` moved aside; a failure to delete leaves the label as it is."""
+    earlier = sorted(glob.glob(f'{glob.escape(str(directory))}.previous-*'))
+    for path in [directory, *earlier]:
+        try:
+            shutil.rmtree(path)
+        except OSError as error:
+            print(f'Warning: could not remove scratch directory {path}: {error}', flush=True)
 
 
 def _check_converged(calc):

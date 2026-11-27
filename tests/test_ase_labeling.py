@@ -139,6 +139,26 @@ def test_a_retried_label_moves_the_earlier_attempt_aside(tmp_path):
     assert not (directory / 'old.out').exists()
 
 
+def test_removing_scratch_on_success_also_removes_earlier_attempts(tmp_path):
+    scratch = tmp_path / 'scratch'
+    (scratch / 'h2').mkdir(parents=True)
+    (scratch / 'h2' / 'old.out').write_text('a crashed attempt')
+    (scratch / 'h2.previous-0').mkdir()
+    (scratch / 'h2-other.previous-0').mkdir()  # another molecule's, whose name starts the same
+    obj = label_with_ase(unlabeled_h2(), dict(EMT_CONFIG, remove_scratch_on_success=True), str(scratch), PROPERTIES)
+    assert obj.check_convergence(), obj.metadata
+    assert sorted(path.name for path in scratch.iterdir()) == ['h2-other.previous-0']
+
+
+def test_a_failed_label_keeps_its_scratch_and_earlier_attempts(tmp_path, monkeypatch):
+    scratch = tmp_path / 'scratch'
+    (scratch / 'h2').mkdir(parents=True)
+    monkeypatch.setattr(EMT, 'calculate', lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError('failed')))
+    obj = label_with_ase(unlabeled_h2(), dict(EMT_CONFIG, remove_scratch_on_success=True), str(scratch), PROPERTIES)
+    assert not obj.check_convergence()
+    assert sorted(path.name for path in scratch.iterdir()) == ['h2', 'h2.previous-0']
+
+
 @pytest.mark.parametrize('name', ['../outside', '/absolute', '..', ''])
 def test_a_molecule_id_cannot_point_outside_the_scratch_directory(tmp_path, name):
     obj = label_with_ase(unlabeled_h2(name), EMT_CONFIG, str(tmp_path / 'scratch'), PROPERTIES)

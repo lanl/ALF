@@ -199,6 +199,48 @@ def test_invalid_settings_are_rejected(block, error):
         acquisition_settings({**CONFIG, "acquisition": block})
 
 
+@pytest.mark.parametrize("selector", [{"indices": []}, {"indices": [0, 0]}, {"indices": [True]},
+                                      {"indices": [-1]}, {"indices": [0], "array": "active_site"}])
+def test_invalid_force_atom_settings(selector):
+    with pytest.raises(ValueError, match="acquisition.force_atoms"):
+        acquisition_settings({**CONFIG, "acquisition": {"force_atoms": selector}})
+
+
+def test_resolving_force_atoms_validates_each_trajectory():
+    atoms = WATER.copy()
+    with pytest.raises(ValueError, match="trajectory 'water'.*out of range"):
+        acquisition.resolve_force_atom_indices({"indices": (3,)}, atoms, "water")
+    for mask in (None, np.ones(3, dtype=int), np.ones((3, 1), dtype=bool)):
+        if mask is not None:
+            atoms.set_array("active_site", None)
+            atoms.new_array("active_site", mask)
+        with pytest.raises(ValueError, match="trajectory 'water'.*boolean vector"):
+            acquisition.resolve_force_atom_indices({"array": "active_site"}, atoms, "water")
+    atoms.set_array("active_site", None)
+    atoms.new_array("active_site", np.zeros(3, dtype=bool))
+    with pytest.raises(ValueError, match="trajectory 'water'.*selects no atoms"):
+        acquisition.resolve_force_atom_indices({"array": "active_site"}, atoms, "water")
+
+
+def test_selected_force_and_total_energy_are_independent_triggers():
+    force_signal = "ntk_force_selected_max"
+    config = {"acquisition": {"strategy": "largest", "force_atoms": {"indices": [0]},
+                              "terms": {"energy_ntk": {"uncertainty": "ntk_energy", "cutoff": 0.1},
+                                        "force_ntk": {"uncertainty": force_signal, "cutoff": 0.2}},
+                              "eligibility": ["energy_ntk", "force_ntk"]}}
+    settings = acquisition_settings(config)
+    for energy, component, flags in [(0.2, 0.1, (True, False)), (0.05, 0.4, (False, True)),
+                                     (0.05, 0.1, (False, False))]:
+        signals = {"ntk_energy": energy}
+        acquisition.selected_force_diagnostics(signals, settings["selected_force_signals"], (0,),
+                                               atomic={"ntk_force": [component, 5.0]})
+        decision = assess_frame(signals, 2.0, 0.0, config, settings)
+        assert decision["acquisition_trigger_flags"] == dict(zip(["energy_ntk", "force_ntk"], flags))
+        assert decision["outcome"] == ("eligible" if any(flags) else "continue")
+        if any(flags):
+            assert decision["ranking_score"] == pytest.approx(2.0)
+
+
 def test_top_k_ignores_input_order():
     candidates = [
         {"trajectory_id": f"mol-{t}", "step": s, "ranking_score": score}

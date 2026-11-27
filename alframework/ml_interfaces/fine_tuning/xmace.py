@@ -25,9 +25,11 @@ import json
 import os
 import subprocess
 import sys
+from hashlib import sha256
 from pathlib import Path
 
 from alframework.ml_interfaces.fine_tuning import ENERGY_KEY, FORCES_KEY, SMOOTH_NACS_KEY, shard_state_atoms
+from alframework.tools.files import cached_sha256, fsync_file, write_json_atomic
 
 MODEL_NAME = 'xmace'
 MODELS = ('ExcitedMACE', 'AutoencoderExcitedMACE', 'LEHExcitedMACE')
@@ -35,6 +37,7 @@ DTYPES = ('float32', 'float64')
 E0_CHOICES = ('average', 'foundation', 'estimated')
 NTK_BASIS_FILE = 'ntk_basis.npz'
 NTK_SETTINGS_FILE = 'ntk_settings.json'
+SPLIT_FILE = 'training_split.json'
 NTK_PARAMETERS = ('trainable', 'excited', 'all')
 # Arguments ALF sets itself, from fine_tune settings or per copy.
 MANAGED = {'name', 'seed', 'train_file', 'valid_file', 'valid_fraction', 'foundation_model', 'E0s', 'energy_key',
@@ -164,14 +167,22 @@ class XMaceFineTuner:
     def frames(self, shards):
         s = self.settings
         return shard_state_atoms(shards, s['energy_datasets'], s['forces_datasets'], s['nacs_dataset'],
-                                 s.get('h5_read_workers'), max_inflight_bytes=s.get('h5_read_max_inflight_bytes'))
+                                 s.get('h5_read_workers'), max_inflight_bytes=s.get('h5_read_max_inflight_bytes'),
+                                 include_frame_ids=True)
 
     def prepare_data(self, shards, member_dir):
-        """Write every labeled frame to ``member_dir/train.xyz``, in eV, eV/Å, and eV/Å for smooth couplings."""
+        """Keep the input paths until the per-member split seed is available."""
+        return [Path(shard).resolve() for shard in shards]
+
+    def write_split(self, shards, member_dir, seed):
+        """Preserve X-MACE's seeded split and record exactly which rows enter each file."""
+        import numpy as np
         from ase.io import write
+
+        member_dir = Path(member_dir).resolve()
         frames = self.frames(shards)
-        if not frames:
-            raise ValueError('There are no frames with every state labeled to fine-tune on.')
+        if len(frames) < 2:
+            raise ValueError('X-MACE fine-tuning needs at least two fully labeled frames for training and validation.')
         pairs = {json.dumps(atoms.info.get('nac_pairs')) for atoms in frames}
         if self.settings['nacs_dataset'] and len(pairs) != 1:
             raise ValueError('Every shard must couple the same state pairs to train one coupling layout.')
@@ -181,19 +192,30 @@ class XMaceFineTuner:
             if SMOOTH_NACS_KEY in atoms.arrays:
                 atoms.arrays[SMOOTH_NACS_KEY] = atoms.arrays[SMOOTH_NACS_KEY].reshape(len(atoms), -1)
             atoms.info.pop('nac_pairs', None)
-        path = Path(member_dir) / 'train.xyz'
-        temporary = path.with_name(path.name + '.tmp')
-        write(str(temporary), frames, format='extxyz')
-        os.replace(temporary, path)
         if self.settings['nacs_dataset']:
-            (Path(member_dir) / 'nac_pairs.json').write_text(pairs.pop())
-        return str(path)
+            write_json_atomic(member_dir / 'nac_pairs.json', json.loads(pairs.pop()))
+
+        fraction = self.settings['valid_fraction']
+        n_valid = max(1, int(fraction * len(frames)))
+        order = np.random.default_rng(seed).permutation(len(frames))
+        split = dict(version=1, seed=seed, valid_fraction=fraction)
+        for name, indices in (('train', order[:-n_valid]), ('valid', order[-n_valid:])):
+            path = member_dir / f'{name}.xyz'
+            selected = [frames[index] for index in indices]
+            temporary = path.with_suffix('.xyz.tmp')
+            write(temporary, selected, format='extxyz')
+            fsync_file(temporary)
+            os.replace(temporary, path)
+            split[name] = dict(file=path.name, sha256=cached_sha256(path),
+                               frames=[atoms.info['alf_frame'] for atoms in selected])
+        write_json_atomic(member_dir / SPLIT_FILE, split)
+        return str(member_dir / split['train']['file'])
 
     def command(self, data, member_dir, seed, device):
         s = self.settings
         arguments = dict(name=MODEL_NAME, work_dir=member_dir, model_dir=member_dir, seed=seed, model=s['model'],
                          n_energies=s['n_states'], foundation_model=s['foundation_model'], train_file=data,
-                         valid_fraction=s['valid_fraction'], E0s=s['E0s'], energy_key=ENERGY_KEY,
+                         valid_file=Path(member_dir).resolve() / 'valid.xyz', E0s=s['E0s'], energy_key=ENERGY_KEY,
                          forces_key=FORCES_KEY, lr=s['learning_rate'], max_num_epochs=s['max_num_epochs'],
                          batch_size=s['batch_size'], valid_batch_size=s['batch_size'], device=device,
                          default_dtype=s['dtype'], multiheads_finetuning=s['replay_file'] is not None)
@@ -217,20 +239,32 @@ class XMaceFineTuner:
         return command
 
     def train_member(self, data, member_dir, member, seed, device, environment):
+        train_file = self.write_split(data, member_dir, seed)
         log = Path(member_dir) / 'train.log'
         with open(log, 'w') as handle:
-            finished = subprocess.run(self.command(data, str(member_dir), seed, device), cwd=member_dir,
+            finished = subprocess.run(self.command(train_file, str(member_dir), seed, device), cwd=member_dir,
                                       env=environment, stdout=handle, stderr=subprocess.STDOUT)
         if finished.returncode != 0:
             tail = log.read_text(errors='replace').strip().splitlines()[-5:]
             raise RuntimeError(f'X-MACE training in {member_dir} exited with {finished.returncode}: ' + ' | '.join(tail))
         if self.settings['ntk'] is not None:
-            fit_member_ntk(member_dir, data, self.settings['ntk'], device='cuda' if device.startswith('cuda') else 'cpu')
+            fit_device = 'cuda:0' if device == 'cuda' else device
+            command = [sys.executable, '-m', 'alframework.ml_interfaces.fine_tuning.xmace',
+                       str(Path(member_dir).resolve()), train_file, json.dumps(self.settings['ntk']), fit_device]
+            log = Path(member_dir) / 'ntk_fit.log'
+            with log.open('w') as handle:
+                finished = subprocess.run(command, cwd=member_dir, env=environment, stdout=handle,
+                                          stderr=subprocess.STDOUT)
+            if finished.returncode:
+                tail = log.read_text(errors='replace').strip().splitlines()[-5:]
+                raise RuntimeError(f'X-MACE NTK preparation in {member_dir} failed: ' + ' | '.join(tail))
 
     def member_complete(self, member_dir):
         member_dir = Path(member_dir)
-        done = (member_dir / f'{MODEL_NAME}.model').is_file()
-        return done and (self.settings['ntk'] is None or (member_dir / NTK_BASIS_FILE).is_file())
+        files = [f'{MODEL_NAME}.model', SPLIT_FILE]
+        if self.settings['ntk'] is not None:
+            files.extend([NTK_BASIS_FILE, NTK_SETTINGS_FILE])
+        return all((member_dir / name).is_file() for name in files)
 
 
 def _adapter(member_dir, parameters, device, dtype=None):
@@ -239,17 +273,36 @@ def _adapter(member_dir, parameters, device, dtype=None):
                                            parameters=parameters)
 
 
+def _training_split(member_dir):
+    path = Path(member_dir) / SPLIT_FILE
+    if not path.is_file():
+        raise ValueError(f'{path} is missing. Retrain the X-MACE member to produce a verified NTK basis.')
+    contents = path.read_bytes()
+    split = json.loads(contents)
+    if split.get('version') != 1:
+        raise ValueError(f'{path} has an unsupported X-MACE training split version.')
+    return split, {'training_split_sha256': sha256(contents).hexdigest()}
+
+
 def fit_member_ntk(member_dir, train_file, ntk, device='cpu'):
     """Fit and save the NTK posterior of a fine-tuned copy on the frames it trained on."""
     from ase.io import read
     from alframework.ml_interfaces.ntk.estimator import NTKEstimator
 
-    adapter = _adapter(member_dir, ntk['parameters'], device)
+    split, provenance = _training_split(member_dir)
+    recorded = split['train']
+    if (Path(train_file).resolve() != (Path(member_dir) / recorded['file']).resolve()
+            or cached_sha256(train_file) != recorded['sha256']):
+        raise ValueError('X-MACE training input does not match its recorded training split.')
     frames = read(str(train_file), index=':')
+    if len(frames) != len(recorded['frames']):
+        raise ValueError('X-MACE training input has a different frame count from its recorded training split.')
+    adapter = _adapter(member_dir, ntk['parameters'], device)
     estimator = NTKEstimator(adapter, frames, energy_scale=ntk['energy_scale'], force_scale=ntk['force_scale'],
-                             sketch_dim=ntk['sketch_dim'], seed=ntk['seed'], ridge_factor=ntk['ridge_factor'])
+                             sketch_dim=ntk['sketch_dim'], seed=ntk['seed'], ridge_factor=ntk['ridge_factor'],
+                             fit_provenance=provenance)
     estimator.save_basis(Path(member_dir) / NTK_BASIS_FILE)
-    (Path(member_dir) / NTK_SETTINGS_FILE).write_text(json.dumps(ntk, sort_keys=True))
+    write_json_atomic(Path(member_dir) / NTK_SETTINGS_FILE, ntk)
     return estimator
 
 
@@ -259,17 +312,24 @@ def load_xmace_ntk_estimator(member_dir, device='cpu'):
     from alframework.ml_interfaces.ntk.estimator import NTKEstimator, read_basis_metadata
 
     member_dir = Path(member_dir)
+    split, provenance = _training_split(member_dir)
     ntk = json.loads((member_dir / NTK_SETTINGS_FILE).read_text())
-    dtype = getattr(torch, read_basis_metadata(member_dir / NTK_BASIS_FILE)['dtype'])
-    return NTKEstimator.from_basis(_adapter(member_dir, ntk['parameters'], device, dtype), member_dir / NTK_BASIS_FILE)
+    with (member_dir / NTK_BASIS_FILE).open('rb') as handle:
+        metadata = read_basis_metadata(handle)
+        if (metadata.get('fit_provenance') != provenance
+                or metadata.get('training_structure_count') != len(split['train']['frames'])):
+            raise ValueError('X-MACE NTK basis does not match its recorded training split. Refit the basis.')
+        dtype = getattr(torch, metadata['dtype'])
+        handle.seek(0)
+        return NTKEstimator.from_basis(_adapter(member_dir, ntk['parameters'], device, dtype), handle)
 
 
 def load_xmace_ntk(model_directory, device='cuda:0', *, member=0, selected_state=0, scores=None,
                    crossing_gap_eV=0.1):
-    """``batched_calculator`` loader: one fine-tuned copy, MD on ``selected_state``, with NTK scores.
+    """``batched_calculator`` loader: one fine-tuned copy with NTK scores.
 
-    ``scores`` are the options of ``NTKEstimator.score``, for example ``{"hessian_probes": 4,
-    "outputs": ["state_offsets"]}``.
+    ALF's excited-state sampler chooses the propagation state. ``selected_state`` sets the state
+    for direct use of the evaluator. ``scores`` are the options of ``NTKEstimator.score``.
     """
     from alframework.ml_interfaces.ntk.estimator import NTKPackedEvaluator
 
@@ -309,3 +369,9 @@ class XMaceExcitedStateEnsemble:
 def load_xmace_excited_state_ensemble(model_directory, device='cuda:0', dtype='float32'):
     """Load the fine-tuned copies for state-aware batched sampling."""
     return XMaceExcitedStateEnsemble(model_directory, device=device, dtype=dtype)
+
+
+if __name__ == '__main__':
+    directory, training, options, device = sys.argv[1:]
+    fitted = fit_member_ntk(directory, training, json.loads(options), device=device)
+    print(json.dumps({'basis_id': fitted.basis_id, 'device': str(fitted.device), **fitted.metadata}, indent=2))

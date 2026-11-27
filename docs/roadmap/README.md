@@ -6,8 +6,12 @@ This is the plan for ALF's `development` branch: what has been built, what has b
 real hardware, the decisions that shape it, and what comes next. Detailed work logs and validation
 evidence are kept outside the repository.
 
-The [uncertainty integration guide](uncertainty-integration.md) tracks the
-feature branch for atom-resolved uncertainty and its qualification runs.
+## Current focus on `ALF_NTK`
+
+The [NTK roadmap](uncertainty-integration.md#current-priority-ntk) is the active work on this branch.
+The [ground-state HIPPYNN path](uncertainty-integration.md#ground-state-hippynn-basis-and-sampling)
+shares a prepared NTK basis across replay and sampling. The [benchmark handoff](uncertainty-integration.md#benchmark-handoff)
+covers the fixed-pool QM-force study and packed GPU measurements on the target machine.
 
 ## Status
 

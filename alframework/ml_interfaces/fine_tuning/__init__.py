@@ -108,12 +108,13 @@ def _label_targets(settings):
 
 
 def shard_atoms(shards, energy_dataset='energy', forces_dataset='forces', read_workers=None, *,
-                max_inflight_bytes=None):
+                max_inflight_bytes=None, include_frame_ids=False):
     """Read ALF shards as ``ase.Atoms`` carrying ``REF_energy`` and ``REF_forces``.
 
     A shard's ``total_charge`` and ``spin_multiplicity``, if it has them, go to ``atoms.info`` as
     ``charge`` and ``spin``. A shard published over label parts is read from its parts, and a missing part
-    is an error (see :func:`alframework.tools.h5_parallel.read_shard`).
+    is an error (see :func:`alframework.tools.h5_parallel.read_shard`). With ``include_frame_ids``,
+    ``atoms.info['alf_frame']`` records the shard, group, row, and optional ALF structure ID.
     """
     import numpy as np
     from ase import Atoms
@@ -122,8 +123,11 @@ def shard_atoms(shards, energy_dataset='energy', forces_dataset='forces', read_w
     from alframework.tools.h5_parallel import read_shard
 
     keys = {'species', 'coordinates', 'cell', energy_dataset, forces_dataset, *STRUCTURE_STATE_DATASETS}
+    if include_frame_ids:
+        keys.add('_id')
     frames = []
     for shard in shards:
+        source = str(Path(shard).resolve()) if include_frame_ids else None
         for group in read_shard(shard, keys, read_workers, max_inflight_bytes=max_inflight_bytes):
             if energy_dataset not in group:
                 continue
@@ -135,11 +139,15 @@ def shard_atoms(shards, energy_dataset='energy', forces_dataset='forces', read_w
                 raise ValueError(f'{shard}:{group["path"].lstrip("/")} has no {forces_dataset!r} dataset to '
                                  'fine-tune forces on.')
             cells = group.get('cell')
+            ids = group.get('_id')
             for index in range(len(energies)):
                 atoms = Atoms(symbols, positions=coordinates[index],
                               cell=None if cells is None else cells[index], pbc=cells is not None)
                 atoms.info[ENERGY_KEY] = float(energies[index])
                 atoms.arrays[FORCES_KEY] = np.asarray(forces[index], dtype=float)
+                if include_frame_ids:
+                    atoms.info['alf_frame'] = dict(shard=source, group=group['path'], row=index,
+                                                   id=None if ids is None else str(ids[index]))
                 for key, dataset in zip(('charge', 'spin'), STRUCTURE_STATE_DATASETS):
                     if dataset in group:
                         atoms.info[key] = int(group[dataset][index])
@@ -151,15 +159,17 @@ SMOOTH_NACS_KEY = 'REF_smooth_nacs'
 
 
 def shard_state_atoms(shards, energy_datasets, forces_datasets, nacs_dataset=None, read_workers=None, *,
-                      max_inflight_bytes=None):
+                      max_inflight_bytes=None, signed_gap=False, include_frame_ids=False):
     """Read multi-state ALF shards as ``ase.Atoms`` for excited-state training.
 
     Each frame carries ``REF_energy`` ``[S]`` in ``atoms.info``, and ``REF_forces`` ``[N, S, 3]`` in
     ``atoms.arrays``, in eV and eV/Å. With ``nacs_dataset`` (ALF's ``pair_atomic`` couplings, ``[P, N, 3]``
     in 1/Å, with their state pairs in the shard's ``nac_pairs``), it also carries ``REF_smooth_nacs``
     ``[N, P, 3]``. That's each coupling times the size of its pair's gap, X-MACE's smooth form, which stays
-    finite at crossings. ``atoms.info["nac_pairs"]`` keeps the pairs. A shard's ``total_charge`` and
-    ``spin_multiplicity`` go to ``atoms.info`` as ``charge`` and ``spin``.
+    finite at crossings. ``signed_gap`` instead scales each coupling by E_j − E_i.
+    ``atoms.info["nac_pairs"]`` keeps the pairs. A shard's ``total_charge`` and
+    ``spin_multiplicity`` go to ``atoms.info`` as ``charge`` and ``spin``. With ``include_frame_ids``,
+    ``atoms.info['alf_frame']`` records the shard, group, row, and optional ALF structure ID.
     """
     import numpy as np
     from ase import Atoms
@@ -171,10 +181,13 @@ def shard_state_atoms(shards, energy_datasets, forces_datasets, nacs_dataset=Non
     if not energy_datasets or len(energy_datasets) != len(forces_datasets):
         raise ValueError('Give one forces dataset for each state energy dataset.')
     keys = {'species', 'coordinates', 'cell', *energy_datasets, *forces_datasets, *STRUCTURE_STATE_DATASETS}
+    if include_frame_ids:
+        keys.add('_id')
     if nacs_dataset:
         keys |= {nacs_dataset, PAIR_INDEX_DATASET}
     frames = []
     for shard in shards:
+        source = str(Path(shard).resolve()) if include_frame_ids else None
         for group in read_shard(shard, keys, read_workers, max_inflight_bytes=max_inflight_bytes):
             if any(name not in group for name in energy_datasets):
                 continue
@@ -194,13 +207,18 @@ def shard_state_atoms(shards, energy_datasets, forces_datasets, nacs_dataset=Non
                 if nacs.shape[1] != len(pairs) or pairs.max() >= len(energy_datasets):
                     raise ValueError(f'{shard}: {nacs_dataset!r} pairs do not match the {len(energy_datasets)} states.')
             cells = group.get('cell')
+            ids = group.get('_id')
             for index in range(len(energies)):
                 atoms = Atoms(symbols, positions=group['coordinates'][index],
                               cell=None if cells is None else cells[index], pbc=cells is not None)
                 atoms.info[ENERGY_KEY] = energies[index].copy()
                 atoms.arrays[FORCES_KEY] = forces[index].copy()
+                if include_frame_ids:
+                    atoms.info['alf_frame'] = dict(shard=source, group=group['path'], row=index,
+                                                   id=None if ids is None else str(ids[index]))
                 if nacs is not None:
-                    gaps = np.abs(energies[index][pairs[:, 1]] - energies[index][pairs[:, 0]])
+                    gaps = energies[index][pairs[:, 1]] - energies[index][pairs[:, 0]]
+                    gaps = gaps if signed_gap else np.abs(gaps)
                     atoms.arrays[SMOOTH_NACS_KEY] = np.transpose(nacs[index] * gaps[:, None, None], (1, 0, 2))
                     atoms.info['nac_pairs'] = pairs.tolist()
                 for key, dataset in zip(('charge', 'spin'), STRUCTURE_STATE_DATASETS):

@@ -48,6 +48,13 @@ or the batched ``load_hippynn_batched_ensemble``; see :doc:`ml_interfaces`.
        trained with.
    * - ``freeze``
      - Graph nodes, or parameter-name prefixes, whose weights stay fixed. See below.
+   * - ``lora``, ``lora_rank``, ``lora_alpha``, ``lora_targets``
+     - Optional low-rank adaptation (defaults ``false``, 4, 1, and every network node). Each matrix-shaped
+       weight W of the targeted nodes becomes W₀ + (α/r)·B·A. W₀ is frozen, and only A and B train; B
+       starts at zero, so training starts from the pretrained model. The energy heads train fully. The copy
+       keeps this form, which ALF's loaders read, and NTK uncertainty on it covers exactly what LoRA trained.
+       ``alframework.ml_interfaces.hippynn.lora.merge_lora`` folds the update into plain weights, for use
+       outside ALF.
    * - ``valid_size``, ``test_size``
      - Fractions of the labels for validation and testing, 0.1 each. Each gets at least one structure,
        so an early round with few labels still trains. A round needs at least 3 labels, or 2 with
@@ -63,6 +70,22 @@ or the batched ``load_hippynn_batched_ensemble``; see :doc:`ml_interfaces`.
        none.
    * - ``structure_file``, ``checkpoint_file``
      - The source files. Defaults: ``experiment_structure.pt`` and ``best_checkpoint.pt``.
+   * - ``ntk``
+     - Optional post-training basis fit for one-member acquisition. Its settings are ``energy_scale`` (eV),
+       ``force_scale`` (eV/Å), ``sketch_dim``, ``seed``, and ``ridge_factor``. Use validation errors for the
+       scales. Defaults in a supplied block are 0.05, 0.10, 64, 0, and 0.001. ``null`` is the default.
+   * - ``record_ntk_training_split``
+     - Save the training rows after filtering and splitting for a later basis fit. ``ntk`` enables this
+       automatically. The default is ``false``.
+
+Single-Model NTK Acquisition
+----------------------------
+
+Set ``n_models`` to ``1`` and supply an ``ntk`` block to fit the basis after each round. The fit uses
+the same assigned device as training. Keep ``ntk_training_split.json`` and ``ntk_basis.npz`` with the
+checkpoint. ``ntk_fit.log`` records the device and fitted basis ID. In the sampler, use the
+:ref:`prepared HIPPYNN NTK loader <prepared-ground-state-hippynn-force-ntk>` with a named NTK
+acquisition term. That loader also accepts fine-tuned LoRA models.
 
 Freezing
 --------

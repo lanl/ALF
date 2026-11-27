@@ -57,7 +57,7 @@ def __getattr__(name):
     class ALFPyAniDirectoryDB(PyAniDirectoryDB):
         def __init__(self, directory, *args, coordinates_key='coordinates', atom_keys=(),
                      excited_state_properties=None, retained_indices=None, read_workers=None,
-                     max_inflight_bytes=None, files=None, **kwargs):
+                     max_inflight_bytes=None, files=None, split_indices=None, record_frame_groups=False, **kwargs):
             self.coordinates_key = coordinates_key
             self.excited_state_properties = excited_state_properties
             self.retained_indices = retained_indices
@@ -65,6 +65,7 @@ def __getattr__(name):
             self.read_workers = read_workers
             self.max_inflight_bytes = max_inflight_bytes
             self.alf_frame_manifest = []
+            self.alf_frame_groups = [] if record_frame_groups else None
             self.atom_keys = tuple(dict.fromkeys(('coordinates', 'forces', 'charges', coordinates_key,
                                                  *(key for key in atom_keys if key is not None))))
             if not files:
@@ -79,6 +80,19 @@ def __getattr__(name):
             if excited_state_properties is not None:
                 self.restarter.kwargs.update(excited_state_properties=excited_state_properties,
                                             retained_indices=retained_indices)
+            if split_indices is not None:
+                # An explicit (for example gap-stratified) split, replayed exactly on a checkpoint restart.
+                self.apply_split_indices(split_indices)
+
+        def apply_split_indices(self, split_indices):
+            import torch
+            for name in ('test', 'valid'):
+                self.make_explicit_split(name, torch.as_tensor(np.asarray(split_indices[name], dtype=int)))
+            self.split_the_rest('train')
+            self.restarter.kwargs.pop('test_size', None)
+            self.restarter.kwargs.pop('valid_size', None)
+            self.restarter.kwargs.update(split_indices={name: [int(i) for i in split_indices[name]]
+                                                        for name in ('test', 'valid')})
 
         def _extract_groups(self, file, species_key, permit_only):
             from collections import Counter
@@ -105,6 +119,9 @@ def __getattr__(name):
                         n_atoms_max = max(n_atoms_max, value.shape[1])
                     counter[key] += value.shape[0]
                     batch[key] = value
+                if self.alf_frame_groups is not None:
+                    self.alf_frame_groups.append((str(Path(file).resolve()), group['path'],
+                                                  len(batch[self.coordinates_key])))
                 batches.append(batch)
             return batches, n_atoms_max, (max(counter.values()) if counter else 0)
 
@@ -376,6 +393,7 @@ def train_HIPNN_model(model_dir,
                       shared_training_data = None,
                       stream_final_evaluation = None,
                       shards = None,
+                      record_ntk_training_split = False,
                       ):
     """Train one HIPPYNN model on the HDF5 data in a directory.
 
@@ -396,6 +414,7 @@ def train_HIPNN_model(model_dir,
             If True, at least one of ``charges_key``, ``dipole_key``, or ``quadrupole_key`` must be set.
         cell_key (str): Cell key inside the HDF5 dataset. Leave as None if the data is not periodic.
         force_key (str): Force key inside the HDF5 dataset. Leave as None to remove force training.
+        record_ntk_training_split (bool): Save the exact training rows for explicit NTK basis preparation.
         hipnn_order (str): ``'scalar'``, ``'vector'``, or ``'quadradic'``.
         first_is_interacting (bool): Passed to HIPPYNN's energy target node.
         energy_mae_loss_weight (float): MAE per-atom energy loss weight.
@@ -452,6 +471,8 @@ def train_HIPNN_model(model_dir,
     if ensemble_training.validated_gpus_per_member(gpus_per_member) == 1 and member_nodes != 1:
         raise ValueError(f'member_nodes is {member_nodes!r}, but gpus_per_member is 1: a member on several nodes '
                          'trains on all of their GPUs, so gpus_per_member counts them.')
+    if type(record_ntk_training_split) is not bool:
+        raise ValueError('record_ntk_training_split must be a boolean.')
     from alframework.tools.h5_parallel import read_budget_setting, read_workers_setting
     from alframework.ml_interfaces.hippynn.lightning import option_setting
     read_workers_setting(h5_read_workers)
@@ -733,11 +754,13 @@ def train_HIPNN_model(model_dir,
                                    max_inflight_bytes=h5_read_max_inflight_bytes)
             prepared = _PreparationTimer()
             database = ALFPyAniDirectoryDB(directory=h5_train_dir,files=shards,allow_unfound=True,quiet=False,seed=np.random.randint(1e9),inputs=None,targets=None,
-                                           **database_schema)
+                                           record_frame_groups=record_ntk_training_split, **database_schema)
             prepared('reading the HDF5 data')
             
             #Ensure that species array is int64 for indexing
             arrays = database.arr_dict
+            if record_ntk_training_split:
+                original_indices = arrays['indices'].cpu().numpy().copy()
 
             arrays[species_key] = arrays[species_key].to(torch.int64)   # or .long()
 
@@ -853,6 +876,12 @@ def train_HIPNN_model(model_dir,
                 hierarchical_energy_initialization(henergy, database, peratom=False, energy_name=energy_key, decay_factor=1e-2)
             
             prepared('E0 values and float32 splits')
+            if record_ntk_training_split:
+                from alframework.ml_interfaces.hippynn.ntk_basis import capture_training_split, write_training_split
+
+                ntk_training_split = capture_training_split(database, original_indices, species_key=species_key,
+                                                            coordinates_key=coordinates_key, cell_key=cell_key,
+                                                            energy_key=energy_key, force_key=force_key)
             optimizer = torch.optim.Adam(training_modules.model.parameters(), lr=learning_rate)
             
             scheduler = RaiseBatchSizeOnPlateau(
@@ -891,6 +920,8 @@ def train_HIPNN_model(model_dir,
                     database=database,
                     setup_params=experiment_params,
                 )
+            if record_ntk_training_split:
+                write_training_split(ntk_training_split)
             # The same record an excited-state member writes, for run reports: metrics per split, per epoch,
             # and after the final test, with epoch times.
             Path("training_summary.json").write_text(json.dumps({
@@ -1261,7 +1292,7 @@ class HippynnBatchedEnsemble:
     """
 
     def __init__(self, model_directory, device="cuda:0", energy_key="energy", force_key="forces",
-                 hippynn_kernel="auto", pair_skin=1.0, neighbor_backend="ase"):
+                 hippynn_kernel="auto", pair_skin=1.0, neighbor_backend="ase", *, _member=None):
         import torch
         import hippynn
         hippynn.custom_kernels.set_custom_kernels(hippynn_kernel)
@@ -1272,11 +1303,13 @@ class HippynnBatchedEnsemble:
         self.pairs = None  # VerletPairs, once a periodic graph is built
         self.device = torch.device(device)
         self.energy_key, self.force_key = energy_key, force_key
-        directories = sorted(glob.glob(os.path.join(str(model_directory), "model-*/")))
-        # One member is allowed; a run whose acquisition reads the spread refuses it (acquisition.require_members).
-        if not directories:
-            raise ValueError(f"No model-* members in {model_directory}.")
-        self._members = [_load_member(directory, self.device) for directory in directories]
+        if _member is None:
+            directories = sorted(glob.glob(os.path.join(str(model_directory), "model-*/")))
+            if not directories:
+                raise ValueError(f"No model-* members in {model_directory}.")
+            self._members = [_load_member(directory, self.device) for directory in directories]
+        else:
+            self._members = [_member.to(self.device)]
         self.n_models = len(self._members)
         self._graphs = {}
 
@@ -1515,6 +1548,9 @@ def validate_excited_state_training_config(
             "Excited-state checkpoints require export_force_gradients=true "
             "so every F# node is available to sampling."
         )
+
+    from alframework.tools.splits import split_settings
+    split_settings(config.get("split"), len(state_table))
 
     gap_config = config.get("gap_targets")
     if gap_config is not None and not isinstance(gap_config, dict):
@@ -2417,20 +2453,31 @@ def train_single_excited_state_model(
             )
             database.inputs, database.targets = db_info['inputs'], db_info['targets']
             database.arr_dict = {key: torch.as_tensor(value) for key, value in arrays.items()}
-            database.make_trainvalidtest_split(test_size=float(config.get('test_size', .1)),
-                                               valid_size=float(config.get('valid_size', .1)))
+            from alframework.tools.splits import frame_gaps, gap_stratified_split, split_settings
+            split = split_settings(config.get('split'), len(state_table))
+            test_size, valid_size = float(config.get('test_size', .1)), float(config.get('valid_size', .1))
             retained = arrays['indices'].tolist()
             database.restarter.args = (database.directory, database.inputs, database.targets)
-            database.restarter.kwargs.update(retained_indices=retained,
-                                             test_size=float(config.get('test_size', .1)),
-                                             valid_size=float(config.get('valid_size', .1)))
-            split_indices = {name: split['indices'].tolist() for name, split in database.splits.items()}
+            database.restarter.kwargs.update(retained_indices=retained, test_size=test_size, valid_size=valid_size)
+            if split['method'] == 'gap_stratified':
+                energies = {int(row['state']): arrays[str(row['energy_db_name'])].reshape(-1) for row in state_table}
+                parts = gap_stratified_split(frame_gaps(energies, split['pairs']), test_size=test_size,
+                                             valid_size=valid_size, bins=split['bins'], seed=seed)
+                if min(len(part) for part in parts) < 1:
+                    raise ValueError('The gap-stratified split left an empty train, valid, or test set; use fewer bins '
+                                     'or more data.')
+                _, valid_positions, test_positions = parts
+                database.apply_split_indices({'test': arrays['indices'][test_positions],
+                                              'valid': arrays['indices'][valid_positions]})
+            else:
+                database.make_trainvalidtest_split(test_size=test_size, valid_size=valid_size)
+            split_indices = {name: split_part['indices'].tolist() for name, split_part in database.splits.items()}
             fraction = float((config.get('controller_options') or {}).get('fraction_train_eval',
                                                                          config.get('fraction_train_eval', .1)))
             if not 0 < fraction <= 1 or int(len(split_indices['train']) * fraction) < 1:
                 raise ValueError('fraction_train_eval selects no training frames; increase it for this small dataset')
             manifest = dict(files=data_summary['files'], frames=data_summary['frames'],
-                            retained_indices=retained, splits=split_indices,
+                            retained_indices=retained, splits=split_indices, split_method=split,
                             filtered_indices=sorted(set(range(data_summary['n_structures_before_filtering'])) - set(retained)))
             Path('training_input_manifest.json').write_text(json.dumps(manifest, indent=2))
             initial_parameters = [p.detach().clone() for p in training_modules.model.parameters()]

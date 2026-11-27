@@ -9,6 +9,7 @@ Training runs in a child process (``python -m alframework.ml_interfaces.fine_tun
 each copy sees only its own GPU, as for MACE. Nothing here imports Torch until training starts.
 """
 import json
+import math
 import subprocess
 import sys
 from pathlib import Path
@@ -21,9 +22,11 @@ DEFAULTS = dict(learning_rate=1e-4, scheduler_options={}, controller_options={},
                 force_key='forces', species_key='species', coordinates_key='coordinates', quadrupole_key=None,
                 remove_high_energy_cut=None, remove_high_energy_std=None, remove_high_forces_cut=None,
                 remove_high_forces_std=None, structure_file='experiment_structure.pt',
-                checkpoint_file='best_checkpoint.pt')
+                checkpoint_file='best_checkpoint.pt', lora=False, lora_rank=4, lora_alpha=1.0, lora_targets=None,
+                record_ntk_training_split=False, ntk=None)
 CONTROLLER_DEFAULTS = dict(batch_size=32, eval_batch_size=64, max_epochs=200, termination_patience=51)
 SCHEDULER_DEFAULTS = dict(max_batch_size=64, patience=20, factor=0.5)
+NTK_DEFAULTS = dict(energy_scale=0.05, force_scale=0.1, sketch_dim=64, seed=0, ridge_factor=1e-3)
 
 
 class HippynnFineTuner:
@@ -33,6 +36,12 @@ class HippynnFineTuner:
     level of theory, and ``"average"`` refits them to the labels, as ALF's trainer fits them.
     ``freeze`` lists graph node names, such as ``"hipnn"``, or parameter-name prefixes, whose
     weights stay fixed.
+
+    ``lora`` freezes the targeted nodes and trains low-rank updates of their weights
+    (:mod:`alframework.ml_interfaces.hippynn.lora`), with ``lora_rank`` (default 4) and ``lora_alpha``
+    (default 1). ``lora_targets`` names the nodes to adapt; the default is every network node, so the
+    energy heads train fully. The saved copy keeps the low-rank form, which ALF's loaders read, and NTK
+    linearizes it in exactly what LoRA trained.
     """
 
     def __init__(self, settings):
@@ -51,6 +60,34 @@ class HippynnFineTuner:
         freeze = settings['freeze']
         if not isinstance(freeze, list) or not all(isinstance(entry, str) and entry for entry in freeze):
             raise ValueError('fine_tune.freeze must be a list of node names or parameter-name prefixes.')
+        if not isinstance(settings['lora'], bool):
+            raise ValueError('fine_tune.lora must be true or false.')
+        rank, alpha = settings['lora_rank'], settings['lora_alpha']
+        if isinstance(rank, bool) or not isinstance(rank, int) or rank < 1:
+            raise ValueError('fine_tune.lora_rank must be a positive integer.')
+        if isinstance(alpha, bool) or not isinstance(alpha, (int, float)) or alpha <= 0:
+            raise ValueError('fine_tune.lora_alpha must be a positive number.')
+        targets = settings['lora_targets']
+        if targets is not None and (not isinstance(targets, list) or not all(isinstance(t, str) and t for t in targets)):
+            raise ValueError('fine_tune.lora_targets must be a list of node names, or null for every network node.')
+        if type(settings['record_ntk_training_split']) is not bool:
+            raise ValueError('fine_tune.record_ntk_training_split must be a boolean.')
+        ntk = settings['ntk']
+        if ntk is not None:
+            if not isinstance(ntk, dict) or set(ntk) - set(NTK_DEFAULTS):
+                raise ValueError(f'fine_tune.ntk must be null or a dictionary with keys from {sorted(NTK_DEFAULTS)}.')
+            ntk = {**NTK_DEFAULTS, **ntk}
+            for key in ('energy_scale', 'force_scale', 'ridge_factor'):
+                value = ntk[key]
+                if type(value) not in (int, float) or not math.isfinite(value) or value <= 0:
+                    raise ValueError(f'fine_tune.ntk.{key} must be positive and finite.')
+            if type(ntk['sketch_dim']) is not int or ntk['sketch_dim'] < 1:
+                raise ValueError('fine_tune.ntk.sketch_dim must be a positive integer.')
+            if type(ntk['seed']) is not int or ntk['seed'] < 0:
+                raise ValueError('fine_tune.ntk.seed must be a nonnegative integer.')
+            settings.update(ntk=ntk, record_ntk_training_split=True)
+        if settings['record_ntk_training_split'] and not settings['force_key']:
+            raise ValueError('Recording a force NTK split requires fine_tune.force_key.')
         self.settings = settings
 
     def sources(self):
@@ -123,11 +160,31 @@ class HippynnFineTuner:
             source = training_log if training_log.is_file() else log
             tail = source.read_text(errors='replace').strip().splitlines()[-3:]
             raise RuntimeError(f'HIPPYNN fine-tuning in {member_dir} exited with {finished.returncode}: ' + ' | '.join(tail))
+        if self.settings['ntk'] is not None:
+            fit_device = 'cuda:0' if device == 'cuda' else device
+            command = [sys.executable, '-m', 'alframework.ml_interfaces.hippynn.ntk_basis', 'prepare',
+                       str(Path(member_dir).resolve()), '--device', fit_device]
+            for key, value in self.settings['ntk'].items():
+                command.extend((f'--{key.replace("_", "-")}', str(value)))
+            log = Path(member_dir) / 'ntk_fit.log'
+            with log.open('w') as handle:
+                finished = subprocess.run(command, cwd=member_dir, env=environment, stdout=handle,
+                                          stderr=subprocess.STDOUT)
+            if finished.returncode:
+                tail = log.read_text(errors='replace').strip().splitlines()[-5:]
+                raise RuntimeError(f'HIPPYNN NTK preparation in {member_dir} failed: ' + ' | '.join(tail))
 
     def member_complete(self, member_dir):
         member_dir = Path(member_dir)
         log = member_dir / 'training_log.txt'
-        return ((member_dir / 'best_model.pt').is_file() and log.is_file()
+        from alframework.ml_interfaces.hippynn.ntk_basis import BASIS_FILE, MANIFEST_FILE
+
+        files = ['best_model.pt']
+        if self.settings['record_ntk_training_split']:
+            files.append(MANIFEST_FILE)
+        if self.settings['ntk'] is not None:
+            files.append(BASIS_FILE)
+        return (all((member_dir / name).is_file() for name in files) and log.is_file()
                 and log.read_text(errors='replace').count('Training complete') == 1)
 
 
@@ -197,12 +254,14 @@ def fine_tune_hippynn_member(arguments):
     from alframework.ml_interfaces.hippynn.compat import checkpoints
     load_checkpoint = checkpoints().load_checkpoint
     from hippynn.graphs import find_unique_relative
+    from hippynn.graphs.nodes.inputs import CellNode
     from hippynn.graphs.nodes.targets import HEnergyNode
     from hippynn.tools import active_directory, log_terminal
 
     from alframework.ml_interfaces.hippynn.interface import ALFPyAniDirectoryDB, use_separate_test_set
 
     settings, seed = arguments['settings'], int(arguments['seed'])
+    record_split = settings.get('record_ntk_training_split', False)
     source, member_dir = Path(arguments['source']), str(Path(arguments['member_dir']).resolve())
     device = 'cuda:0' if arguments['device'] == 'cuda' else 'cpu'
     torch.manual_seed(seed)
@@ -217,6 +276,8 @@ def fine_tune_hippynn_member(arguments):
                                      restart_db=False, map_location='cpu')
             training_modules = bundle['training_modules']
             db_info = training_modules.evaluator.db_info
+            if record_split and settings['force_key'] not in db_info['targets']:
+                raise ValueError('Recording a force NTK split requires a model trained on the configured force key.')
             stopping_key = settings['stopping_key'] or bundle['controller'].stopping_key
             losses = list(training_modules.evaluator.loss_names)
             if stopping_key not in losses:
@@ -228,7 +289,10 @@ def fine_tune_hippynn_member(arguments):
                           max_inflight_bytes=settings.get('h5_read_max_inflight_bytes'))
             data = arguments['data']
             database = ALFPyAniDirectoryDB(directory=data['directory'], files=data['files'], allow_unfound=True,
-                                           quiet=False, seed=seed, inputs=None, targets=None, **schema)
+                                           quiet=False, seed=seed, inputs=None, targets=None,
+                                           record_frame_groups=record_split, **schema)
+            if record_split:
+                original_indices = database.arr_dict['indices'].cpu().numpy().copy()
             clean_arrays(database, db_info, settings)
             print('Array Shapes After Cleaning')
             prettyprint_arrays(database.arr_dict)
@@ -244,6 +308,15 @@ def fine_tune_hippynn_member(arguments):
                 database.make_random_split('test', split_size(database, settings['test_size']))
                 database.split_the_rest('train')
 
+            if record_split:
+                from alframework.ml_interfaces.hippynn.ntk_basis import capture_training_split, write_training_split
+
+                cell_key = next((node.db_name for node in training_modules.model.input_nodes
+                                 if isinstance(node, CellNode)), None)
+                split = capture_training_split(database, original_indices, species_key=settings['species_key'],
+                                               coordinates_key=settings['coordinates_key'], cell_key=cell_key,
+                                               energy_key=settings['energy_key'], force_key=settings['force_key'])
+
             if settings['E0s'] == 'average':
                 from hippynn.pretraining import hierarchical_energy_initialization
                 henergy = find_unique_relative(training_modules.model.nodes_to_compute, HEnergyNode,
@@ -251,6 +324,12 @@ def fine_tune_hippynn_member(arguments):
                 hierarchical_energy_initialization(henergy, database, peratom=False, energy_name=settings['energy_key'], decay_factor=1e-2)
                 print('Refit atomic energies (E0s) to the labels.')
 
+            if settings['lora']:
+                from alframework.ml_interfaces.hippynn.lora import apply_lora, lora_parameter_count
+                apply_lora(training_modules.model, rank=settings['lora_rank'], alpha=settings['lora_alpha'],
+                           targets=settings['lora_targets'], seed=seed)
+                print(f"LoRA rank {settings['lora_rank']}, alpha {settings['lora_alpha']}: "
+                      f"{lora_parameter_count(training_modules.model)} low-rank parameters.")
             frozen = set(frozen_parameters(training_modules.model, settings['freeze']))
             names = set(trainable_names(training_modules.model))
             trainable = []
@@ -271,6 +350,8 @@ def fine_tune_hippynn_member(arguments):
                                             **controller_options)
             setup_and_train(training_modules=training_modules, database=database,
                             setup_params=SetupParams(controller=controller, device=device))
+            if record_split:
+                write_training_split(split)
 
 
 if __name__ == '__main__':

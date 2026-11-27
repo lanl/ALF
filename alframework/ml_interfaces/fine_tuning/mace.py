@@ -21,8 +21,8 @@ E0_CHOICES = ('average', 'foundation', 'estimated')
 # Arguments ALF sets itself, from fine_tune settings or per copy.
 MANAGED = {'name', 'seed', 'train_file', 'valid_file', 'valid_fraction', 'foundation_model', 'E0s',
            'energy_key', 'forces_key', 'lr', 'max_num_epochs', 'batch_size', 'valid_batch_size', 'device',
-           'default_dtype', 'multiheads_finetuning', 'pt_train_file', 'freeze', 'model_dir', 'work_dir',
-           'log_dir', 'checkpoints_dir', 'results_dir'}
+           'default_dtype', 'multiheads_finetuning', 'pt_train_file', 'freeze', 'lora', 'lora_rank', 'lora_alpha',
+           'model_dir', 'work_dir', 'log_dir', 'checkpoints_dir', 'results_dir'}
 # Defaults from MACE's own fine-tuning guidance (mace-docs, "Fine-tuning foundation models"), which
 # mace_options can override: plain (naive) fine-tuning, and multihead fine-tuning with replay.
 GUIDE = 'https://mace-docs.readthedocs.io/en/latest/guide/finetuning.html'
@@ -48,6 +48,10 @@ class MaceFineTuner:
     not ``"average"``. Without ``replay_file``, copies are fine-tuned on ALF's labels alone; with it,
     MACE's multihead fine-tuning also trains on that local sample of the foundation model's data, to
     limit forgetting. The other defaults follow MACE's guidance for each of the two.
+
+    ``lora`` (with ``lora_rank``, default 4, and ``lora_alpha``, default 1) freezes the foundation model and
+    trains low-rank adapters in it, through MACE's own ``--lora``. MACE merges them into the model's
+    weights when training ends, so the saved copy loads like any other.
     """
 
     def __init__(self, settings):
@@ -59,6 +63,9 @@ class MaceFineTuner:
         settings.setdefault('valid_fraction', 0.1)
         settings.setdefault('dtype', 'float64')
         settings.setdefault('freeze', None)
+        settings.setdefault('lora', False)
+        settings.setdefault('lora_rank', 4)
+        settings.setdefault('lora_alpha', 1.0)
         settings.setdefault('replay_file', None)
         settings.setdefault('energy_dataset', 'energy')
         settings.setdefault('forces_dataset', 'forces')
@@ -74,6 +81,10 @@ class MaceFineTuner:
         _positive(settings, 'learning_rate', float)
         _positive(settings, 'max_num_epochs', int)
         _positive(settings, 'batch_size', int)
+        if not isinstance(settings['lora'], bool):
+            raise ValueError('fine_tune.lora must be true or false.')
+        _positive(settings, 'lora_rank', int)
+        _positive(settings, 'lora_alpha', float)
         if not 0 < settings['valid_fraction'] < 1:
             raise ValueError('fine_tune.valid_fraction must be between 0 and 1.')
         if settings['dtype'] not in DTYPES:
@@ -139,6 +150,8 @@ class MaceFineTuner:
             arguments['pt_train_file'] = s['replay_file']
         if s['freeze'] is not None:
             arguments['freeze'] = s['freeze']
+        if s['lora']:
+            arguments.update(lora='True', lora_rank=s['lora_rank'], lora_alpha=s['lora_alpha'])
         arguments.update(s['mace_options'])
         command = [sys.executable, '-m', 'mace.cli.run_train']
         for key, value in arguments.items():

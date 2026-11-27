@@ -10,6 +10,7 @@ Platforms, Inc. and affiliates, MIT license), which ship only in fairchem's git 
 Nothing here imports fairchem or Torch until it's used.
 """
 import json
+import math
 import shutil
 import subprocess
 import sys
@@ -21,10 +22,15 @@ MODEL_NAME = 'uma.pt'
 ARGUMENTS = 'fine_tune_args.json'
 CONFIG = 'fine_tune.yaml'
 LOG = 'train.log'
+LORA_FILE = 'uma_lora.pt'
+SPLIT_FILE = 'training_split.json'
+BASIS_FILE = 'ntk_basis.npz'
+NTK_DEFAULTS = dict(energy_scale=0.05, force_scale=0.1, sketch_dim=64, seed=0, ridge_factor=1e-3)
 # As fairchem's template sets them; raise epochs for a small label set.
 DEFAULTS = dict(epochs=1, steps=None, batch_size=2, lr=4e-4, weight_decay=1e-3, max_neighbors=300,
                 valid_fraction=0.1, energy_dataset='energy', forces_dataset='forces',
-                keep_training_checkpoints=False)
+                keep_training_checkpoints=False, freeze_backbone=False, lora=False, lora_rank=4,
+                lora_alpha=1.0, ntk=None)
 # fairchem's job config takes the enum's names.
 DEVICE_TYPES = {'cpu': 'CPU', 'cuda': 'CUDA'}
 
@@ -57,6 +63,32 @@ class UmaFineTuner:
                 raise ValueError(f'fine_tune.{key} must be a {"positive" if key == "lr" else "nonnegative"} number.')
         if not 0 < settings['valid_fraction'] < 1:
             raise ValueError('fine_tune.valid_fraction must be between 0 and 1.')
+        for key in ('freeze_backbone', 'lora'):
+            if type(settings[key]) is not bool:
+                raise ValueError(f'fine_tune.{key} must be a boolean.')
+        if type(settings['lora_rank']) is not int or settings['lora_rank'] < 1:
+            raise ValueError('fine_tune.lora_rank must be a positive integer.')
+        alpha = settings['lora_alpha']
+        if type(alpha) not in (int, float) or not math.isfinite(alpha) or alpha <= 0:
+            raise ValueError('fine_tune.lora_alpha must be positive and finite.')
+        ntk = settings['ntk']
+        if (settings['freeze_backbone'] or settings['lora'] or ntk is not None) and settings['task'] != 'omol':
+            raise ValueError('UMA freeze_backbone, LoRA, and NTK currently require task omol.')
+        if ntk is not None:
+            if not settings['freeze_backbone'] and not settings['lora']:
+                raise ValueError('UMA NTK requires freeze_backbone or lora.')
+            if not isinstance(ntk, dict) or set(ntk) - set(NTK_DEFAULTS):
+                raise ValueError(f'fine_tune.ntk takes settings from {sorted(NTK_DEFAULTS)}.')
+            ntk = {**NTK_DEFAULTS, **ntk}
+            for key in ('energy_scale', 'force_scale', 'ridge_factor'):
+                value = ntk[key]
+                if type(value) not in (int, float) or not math.isfinite(value) or value <= 0:
+                    raise ValueError(f'fine_tune.ntk.{key} must be positive and finite.')
+            if type(ntk['sketch_dim']) is not int or ntk['sketch_dim'] < 1:
+                raise ValueError('fine_tune.ntk.sketch_dim must be a positive integer.')
+            if type(ntk['seed']) is not int or ntk['seed'] < 0:
+                raise ValueError('fine_tune.ntk.seed must be a nonnegative integer.')
+            settings['ntk'] = ntk
         self.settings = settings
 
     def validate(self, master_config):
@@ -83,6 +115,7 @@ class UmaFineTuner:
         return [str(shard) for shard in shards]
 
     def train_member(self, data, member_dir, member, seed, device, environment):
+        member_dir = Path(member_dir).resolve()
         path = Path(member_dir) / ARGUMENTS
         path.write_text(json.dumps(dict(shards=data, member_dir=str(member_dir), seed=seed, device=device,
                                         settings=self.settings), indent=2, default=str) + '\n')
@@ -93,9 +126,24 @@ class UmaFineTuner:
         if finished.returncode != 0:
             tail = log.read_text(errors='replace').strip().splitlines()[-3:]
             raise RuntimeError(f'UMA fine-tuning in {member_dir} exited with {finished.returncode}: ' + ' | '.join(tail))
+        if self.settings['ntk'] is not None:
+            fit_device = 'cuda:0' if device == 'cuda' else device
+            log = member_dir / 'ntk_fit.log'
+            command = [sys.executable, '-m', 'alframework.ml_interfaces.ntk.uma', str(member_dir), fit_device]
+            with log.open('w') as handle:
+                finished = subprocess.run(command, cwd=member_dir, env=environment, stdout=handle,
+                                          stderr=subprocess.STDOUT)
+            if finished.returncode:
+                tail = log.read_text(errors='replace').strip().splitlines()[-5:]
+                raise RuntimeError(f'UMA NTK preparation in {member_dir} failed: ' + ' | '.join(tail))
 
     def member_complete(self, member_dir):
-        return (Path(member_dir) / MODEL_NAME).is_file()
+        files = [MODEL_NAME]
+        if self.settings['lora']:
+            files.append(LORA_FILE)
+        if self.settings['ntk'] is not None:
+            files.extend((SPLIT_FILE, BASIS_FILE))
+        return all((Path(member_dir) / name).is_file() for name in files)
 
 
 def split(frames, fraction, seed):
@@ -190,6 +238,11 @@ def training_config(settings, train_dir, valid_dir, references, normalizer_rmsd,
                                        '_partial_': True, 'warmup_factor': 0.2, 'warmup_epochs': 0.01,
                                        'lr_min_factor': 0.01, 'epochs': '${epochs}', 'steps': '${steps}'},
             'print_every': 10, 'clip_grad_norm': 100}
+    model = unit['model']
+    model['overrides']['freeze_backbone'] = bool(settings.get('freeze_backbone') or settings.get('lora'))
+    if settings.get('lora'):
+        model.update(_target_=f'{__package__}.uma_lora.initialize_lora_model',
+                     rank=settings['lora_rank'], alpha=settings['lora_alpha'])
     return {
         'defaults': ['_self_'],
         'job': {'device_type': DEVICE_TYPES[device], 'scheduler': {'mode': 'LOCAL', 'ranks_per_node': 1, 'num_nodes': 1},
@@ -230,18 +283,37 @@ def write_database(directory, frames):
 def fine_tune_uma_member(arguments):
     """Fine-tune one copy. ``arguments`` is what ``UmaFineTuner.train_member`` writes."""
     import argparse
+    from importlib.util import find_spec
 
     from ase.calculators.singlepoint import SinglePointCalculator
     from fairchem.core._cli import main
 
     from alframework.ml_interfaces.fine_tuning import ENERGY_KEY, FORCES_KEY, shard_atoms
+    from alframework.tools.files import cached_sha256, write_json_atomic
 
     settings, seed, member_dir = arguments['settings'], int(arguments['seed']), Path(arguments['member_dir'])
+    record = settings.get('freeze_backbone') or settings.get('lora') or settings.get('ntk') is not None
     frames = shard_atoms(arguments['shards'], settings['energy_dataset'], settings['forces_dataset'],
-                         settings.get('h5_read_workers'), max_inflight_bytes=settings.get('h5_read_max_inflight_bytes'))
+                         settings.get('h5_read_workers'), max_inflight_bytes=settings.get('h5_read_max_inflight_bytes'),
+                         include_frame_ids=record)
     train, valid = split(frames, settings['valid_fraction'], seed)
+    if settings.get('ntk') is not None:
+        states = {(atoms.info.get('charge', 0), atoms.info.get('spin', 1)) for atoms in frames}
+        if len(states) != 1 or any(len(atoms) < 2 or atoms.pbc.any() for atoms in frames):
+            raise ValueError('UMA NTK requires nonperiodic molecules with at least two atoms and one charge and '
+                             'spin multiplicity per run.')
     write_database(member_dir / 'data' / 'train', train)
     write_database(member_dir / 'data' / 'valid', valid)
+    if record:
+        split_record = {'version': 1, 'seed': seed, 'task': settings['task'], 'lora': bool(settings.get('lora'))}
+        for name, subset in (('train', train), ('valid', valid)):
+            relative = f'data/{name}/data.0000.aselmdb'
+            split_record[name] = {'file': relative, 'sha256': cached_sha256(member_dir / relative),
+                                  'frames': [frame.info['alf_frame'] for frame in subset]}
+        if settings.get('ntk') is not None:
+            charge, spin = next(iter(states))
+            split_record.update(charge=charge, spin=spin, ntk=settings['ntk'])
+        write_json_atomic(member_dir / SPLIT_FILE, split_record)
     if settings['E0s'] == 'average':
         labeled = []
         for atoms in train:
@@ -253,6 +325,8 @@ def fine_tune_uma_member(arguments):
         references, rmsd = checkpoint_references(settings['foundation_model'], settings['task'])
     config = training_config(settings, member_dir / 'data' / 'train', member_dir / 'data' / 'valid', references, rmsd,
                              member_dir / 'runs', seed, arguments['device'])
+    if find_spec('fairchem.core.components.callbacks') is None:
+        config['runner']['callbacks'][0]['_target_'] = 'fairchem.core.components.train.train_runner.TrainCheckpointCallback'
     # JSON is valid YAML, so Hydra reads it.
     (member_dir / CONFIG).write_text(json.dumps(config, indent=1) + '\n')
     print(f"Fine-tuning UMA task {settings['task']} from {settings['foundation_model']}: {len(train)} training and "
@@ -261,7 +335,12 @@ def fine_tune_uma_member(arguments):
     final = member_dir / 'runs' / 'copy' / 'checkpoints' / 'final' / 'inference_ckpt.pt'
     if not final.is_file():
         raise RuntimeError(f'fairchem finished without writing {final}.')
-    shutil.copyfile(final, member_dir / MODEL_NAME)
+    if settings.get('lora'):
+        from alframework.ml_interfaces.fine_tuning.uma_lora import export_lora_checkpoint
+
+        export_lora_checkpoint(final, member_dir / MODEL_NAME, member_dir / LORA_FILE)
+    else:
+        shutil.copyfile(final, member_dir / MODEL_NAME)
     if not settings['keep_training_checkpoints']:
         # Resume checkpoints hold optimizer state and several copies of the weights; the copy is in uma.pt.
         shutil.rmtree(member_dir / 'runs' / 'copy' / 'checkpoints')

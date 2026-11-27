@@ -22,6 +22,7 @@ from alframework.ml_interfaces.ntk.adapter import gaussian_probes
 from alframework.samplers.adaptive_ntk import initial_energy_score
 from alframework.samplers.engines.packed import PackedMLMDEngine
 from alframework.testing import check_evaluator
+from tests.helpers.engines import require_engine
 
 NETWORK = {"n_features": 8, "n_sensitivities": 4, "n_interaction_layers": 1, "n_atom_layers": 1}
 
@@ -302,6 +303,40 @@ def test_multistate_graph_reports_state_and_gap_scores(atoms):
     assert {"ntk_energy_E0", "ntk_energy_E1", "ntk_force_max_E1", "ntk_hessian_E0", "ntk_dE01"} <= set(scores)
     assert set(calculator.results["alf_atomic_uncertainty"]) == {"ntk_force_E0", "ntk_force_E1"}
     assert calculator.results["energy"] == pytest.approx(float(result["energy"][1]))
+
+
+@pytest.mark.parametrize("engine", ["ase", "torchsim", "alchemi"])
+def test_excited_state_sampler_uses_ntk_gap_on_configured_state(atoms, engine):
+    from alframework.samplers.batched_mlmd import sample_trajectories
+    from alframework.tools.molecules import MoleculesObject
+
+    require_engine(engine)
+    graph = molecular_graph("Hipnn", n_states=3)
+    estimator = EnergyNTK(graph, [atoms], sketch_dim=16)
+    pairs = [[0, 2], [1, 2]]
+    evaluator = NTKPackedEvaluator(estimator, selected_state=0, forces=False, gap_pairs=pairs)
+    config = {
+        "driver": {"engine": engine}, "model_mode": "excited_state",
+        "state_selection": {"mode": "fixed", "state": 2}, "random_seed": 7,
+        "dt": 0.25, "maxt": 0.002, "Ncheck": 2, "min_time": 0.0005, "distcut": 0.3,
+        "metadata_files": "none", "srt_temp": [300., 300.], "end_temp": [300., 300.],
+        "amp_temp": [0., 0.], "per_temp": [1., 1.], "amp_dens": None, "per_dens": None, "end_dens": None,
+        "acquisition": {"terms": {"ntk_dE02": {"uncertainty": "ntk_dE02", "cutoff": 1e-12}},
+                        "eligibility": ["ntk_dE02"], "strategy": "largest"},
+    }
+    molecules = [MoleculesObject(atoms.copy(), f"mol-0000-{i:010d}") for i in range(2)]
+    for molecule in sample_trajectories(molecules, evaluator, config, device="cpu"):
+        metadata = molecule.get_metadata()
+        assert metadata["trajectory_outcome"] == "eligible", metadata
+        assert metadata["selected_state"] == 2
+        structure = estimator.structure_from_atoms(molecule.get_atoms())
+        values, rows = compute_rows(estimator.adapter, structure, RowRequest(), estimator.sketch)
+        score = estimator.posterior.variance(rows["energy"][2] - rows["energy"][0]).sqrt()
+        assert metadata["E2_mean"] == pytest.approx(float(values["energy"][2]))
+        assert metadata["ntk_dE02"] == pytest.approx(float(score))
+        assert "ntk_dE01" not in metadata
+    with pytest.raises(ValueError, match="ordered states"):
+        estimator.predict(atoms, forces=False, gap_pairs=[[2, 0]])
 
 
 def test_packed_ntk_scores_are_lazy_and_follow_active_atom_order(graph, atoms, monkeypatch):

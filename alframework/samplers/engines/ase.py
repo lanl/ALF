@@ -9,7 +9,7 @@ from ase.io.trajectory import Trajectory
 from ase.constraints import FixCom
 from ase.md.langevin import Langevin
 
-from alframework.ml_interfaces.ensemble_inference import SelectedStateEvaluator
+from alframework.ml_interfaces.ensemble_inference import SelectedStateEvaluator, add_observed_uncertainty
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator
 from alframework.tools.gap_seeking import gap_seeking_energy_forces
 from alframework.tools.geometry import minimum_distance
@@ -130,10 +130,20 @@ class ASEEngine:
         return failures
 
     def observe(self, index):
+        return self._observe(index, score_uncertainty=True)
+
+    def observe_physical(self, index):
+        return self._observe(index, score_uncertainty=False) if self._states else self.observe(index)
+
+    def _observe(self, index, *, score_uncertainty):
         atoms = self._atoms[index]
         if self._states:
             atoms.calc.calculate(atoms)
-            return dict(prediction=atoms.calc.prediction, min_distance=minimum_distance(atoms))
+            prediction = atoms.calc.prediction
+            if score_uncertainty:
+                add_observed_uncertainty(prediction, atoms.calc.evaluator,
+                                         [(atoms.numbers, atoms.positions, atoms.cell.array, atoms.pbc)])
+            return dict(prediction=prediction, min_distance=minimum_distance(atoms))
         atoms.calc.calculate(atoms, properties=list(OBSERVED_PROPERTIES))
         results = atoms.calc.results
         prediction = {'energies': np.array(results['energy_contributions'][:self.n_models], dtype=float)[:, None],

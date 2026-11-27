@@ -23,6 +23,7 @@ class RowRequest:
     """Which functionals to evaluate, and which of them need sketched rows.
 
     ``energy`` and ``forces`` request rows for every state's energy and for every force component.
+    With ``force_atom_indices``, the force values and rows follow that selection's order.
     ``force_probes`` ``[k, N, 3]`` request rows for the projections wᵀF. ``hvp_probes`` ``[k, N, 3]``
     request rows for every component of H v. ``bilinear_probes`` ``(u, v)``, each ``[k, N, 3]``, request
     rows for u_kᵀ H v_k. ``outputs`` names smooth model outputs (see ``NTKAdapter.outputs``), returned
@@ -37,6 +38,7 @@ class RowRequest:
     bilinear_probes: tuple = None
     force_values: bool = False
     outputs: tuple = ()
+    force_atom_indices: tuple = None
 
     @property
     def row_keys(self):
@@ -64,7 +66,7 @@ class RowRequest:
         if self.energy:
             count += 1
         if self.forces:
-            count += 3 * n_atoms
+            count += 3 * (n_atoms if self.force_atom_indices is None else len(self.force_atom_indices))
         if self.force_probes is not None:
             count += len(self.force_probes)
         if self.hvp_probes is not None:
@@ -80,7 +82,7 @@ def _assemble(energy, gradient, hvp_of, request):
     if gradient is None:
         return values
     forces = -gradient
-    values["forces"] = forces
+    values["forces"] = forces if request.force_atom_indices is None else forces[:, request.force_atom_indices, :]
     if request.force_probes is not None:
         values["force_projection"] = torch.einsum("snc,knc->sk", forces, request.force_probes)
     if request.hvp_probes is not None:
@@ -199,7 +201,8 @@ def _reverse_rows(adapter, structure, request, sketch, keys, output_chunk):
 def compute_rows(adapter, structure, request, sketch, *, engine="auto", output_chunk=256):
     """Return ``(values, rows)`` for one structure.
 
-    ``values[key]`` holds the predictions (energies ``[S]``, forces ``[S, N, 3]``, projections ``[S, k]``,
+    ``values[key]`` holds the predictions (energies ``[S]``, forces ``[S, N, 3]`` or ``[S, M, 3]`` for a
+    selection of ``M`` atoms, projections ``[S, k]``,
     HVPs ``[S, k, N, 3]``). ``rows[key]`` holds the sketched rows, with an extra trailing ``[p]`` axis, for
     the keys in ``request.row_keys``.
     """

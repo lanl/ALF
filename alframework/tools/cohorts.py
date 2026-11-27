@@ -156,6 +156,9 @@ class CohortPool:
         if candidate.get('topology_atom_ids') is not None:
             from alframework.tools.atom_order import validated_atom_ids
             atoms.set_array('topology_atom_ids', validated_atom_ids(candidate['topology_atom_ids'], len(atoms)))
+        if "force_atom_mask" in candidate:
+            name, mask = candidate["force_atom_mask"]
+            atoms.set_array(name, mask.copy())
         frame = MoleculesObject(atoms, "{}-s{:09d}".format(candidate["trajectory_id"], candidate["step"]))
         frame.update_metadata({**candidate.get('metadata', {}),
                                "cohort_id": cohort.cohort_id, "cohort_model_id": cohort.model_id,

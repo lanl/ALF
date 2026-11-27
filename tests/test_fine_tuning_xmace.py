@@ -10,7 +10,7 @@ h5py = pytest.importorskip("h5py")
 
 from alframework.ml_interfaces.fine_tuning import (ENERGY_KEY, FORCES_KEY, SMOOTH_NACS_KEY, _label_targets,
                                                    shard_state_atoms)
-from alframework.ml_interfaces.fine_tuning.xmace import XMaceFineTuner
+from alframework.ml_interfaces.fine_tuning.xmace import SPLIT_FILE, XMaceFineTuner
 
 N_FRAMES, N_STATES = 16, 3
 
@@ -78,13 +78,25 @@ def test_training_data_and_command(tmp_path):
     member = tmp_path / "model-00"
     member.mkdir()
     tuner = XMaceFineTuner({**SETTINGS, "lora": True, "freeze": 2})
-    data = tuner.prepare_data([shard], member)
+    prepared = tuner.prepare_data([shard], member)
+    data = tuner.write_split(prepared, member, 7)
     from ase.io import read
     frames = read(data, index=":")
-    assert len(frames) == N_FRAMES and frames[0].arrays[FORCES_KEY].shape == (3, 3 * N_STATES)
+    valid = read(member / "valid.xyz", index=":")
+    split = json.loads((member / SPLIT_FILE).read_text())
+    expected = list(range(N_FRAMES))
+    np.random.default_rng(7).shuffle(expected)
+    assert split["seed"] == 7 and len(frames) == N_FRAMES - 1 and len(valid) == 1
+    assert [atoms.info["alf_frame"]["row"] for atoms in frames + valid] == expected
+    assert [atoms.info["alf_frame"] for atoms in frames] == split["train"]["frames"]
+    assert valid[0].info["alf_frame"] == split["valid"]["frames"][0]
+    assert valid[0].info["alf_frame"]["id"] == f"frame-{expected[-1]}"
+    assert frames[0].arrays[FORCES_KEY].shape == (3, 3 * N_STATES)
     assert frames[0].arrays[SMOOTH_NACS_KEY].shape == (3, 3) and len(frames[0].info[ENERGY_KEY]) == N_STATES
     assert json.loads((member / "nac_pairs.json").read_text()) == [[1, 2]]
     command = tuner.command(data, str(member), 7, "cpu")
+    assert f"--train_file={member / 'train.xyz'}" in command
+    assert f"--valid_file={member / 'valid.xyz'}" in command
     for argument in ("--model=ExcitedMACE", "--n_energies=3", "--compute_nacs", "--nac_num=1",
                      f"--nacs_key={SMOOTH_NACS_KEY}", "--nacs_format=smooth", "--lora=True", "--lora_rank=4",
                      "--freeze=2", "--E0s=average", "--seed=7", "--forces_weight=100.0", "--multiheads_finetuning=False"):
@@ -92,13 +104,17 @@ def test_training_data_and_command(tmp_path):
 
 
 @pytest.mark.parametrize("lora", [False, True], ids=["full", "lora"])
-def test_fine_tuning_then_ntk_end_to_end(tmp_path, lora):
+@pytest.mark.parametrize("device", list(dict.fromkeys(("cpu", os.environ.get("ALF_TEST_NTK_DEVICE", "cpu")))))
+def test_fine_tuning_then_ntk_end_to_end(tmp_path, lora, device):
     """Fine-tune a 3-state ExcitedMACE from a small ground-state MACE, then score with its NTK basis."""
     torch = pytest.importorskip("torch")
     pytest.importorskip("mace.modules.excited", reason="X-MACE is not installed")
     from mace import modules
     from e3nn import o3
-    from alframework.ml_interfaces.fine_tuning.xmace import load_xmace_excited_state_ensemble, load_xmace_ntk
+    from alframework.ml_interfaces.ensemble_inference import SelectedStateEvaluator
+    from alframework.ml_interfaces.fine_tuning import child_environment
+    from alframework.ml_interfaces.fine_tuning.xmace import (fit_member_ntk, load_xmace_excited_state_ensemble,
+                                                           load_xmace_ntk, load_xmace_ntk_estimator)
 
     with torch.random.fork_rng():
         torch.manual_seed(0)
@@ -116,11 +132,25 @@ def test_fine_tuning_then_ntk_end_to_end(tmp_path, lora):
     tuner = XMaceFineTuner({**SETTINGS, "foundation_model": str(tmp_path / "foundation.model"),
                             "max_num_epochs": 2, "batch_size": 4, "ntk": {"sketch_dim": 8}, "lora": lora})
     data = tuner.prepare_data([shard], member)
-    tuner.train_member(data, member, 0, 0, "cpu", dict(os.environ))
+    child, environment = child_environment(device)
+    tuner.train_member(data, member, 0, 0, child, environment)
     assert tuner.member_complete(member)
-    evaluator = load_xmace_ntk(tmp_path / "models", "cpu", selected_state=1, scores={"hessian_probes": 2})
+    assert f'"device": "{("cuda:0" if child == "cuda" else child)}"' in (member / "ntk_fit.log").read_text()
+    evaluator = load_xmace_ntk(tmp_path / "models", device, selected_state=1, scores={"hessian_probes": 2})
     estimator = evaluator.estimator
-    assert estimator.state_names == ("E0", "E1", "E2") and estimator.training_structure_count == N_FRAMES
+    assert estimator.state_names == ("E0", "E1", "E2") and estimator.training_structure_count == N_FRAMES - 1
+    assert f"Total number of configurations: train={N_FRAMES - 1}, valid=1" in (member / "train.log").read_text()
+    with pytest.raises(ValueError, match="training input does not match"):
+        fit_member_ntk(member, member / "valid.xyz", tuner.settings["ntk"])
+    manifest = member / SPLIT_FILE
+    contents = manifest.read_text()
+    manifest.write_text(contents + "\n")
+    with pytest.raises(ValueError, match="basis does not match its recorded training split"):
+        load_xmace_ntk_estimator(member)
+    manifest.unlink()
+    with pytest.raises(ValueError, match="Retrain the X-MACE member"):
+        load_xmace_ntk_estimator(member)
+    manifest.write_text(contents)
     names = list(estimator.adapter.live_parameters())
     # With LoRA, X-MACE merges the low-rank weights into the backbone, so NTK covers the readouts and adapter.
     assert any(name.startswith("backbone.") for name in names) != lora
@@ -131,7 +161,9 @@ def test_fine_tuning_then_ntk_end_to_end(tmp_path, lora):
     energies, forces = evaluator.evaluate(numbers, positions, None, torch.tensor(atoms.pbc), [3])
     observation = evaluator.observe_uncertainty(numbers, positions, None, torch.tensor(atoms.pbc))
     assert {"ntk_energy_E1", "ntk_hessian_E1", "ntk_dE12"} <= set(observation["uncertainty"])
-    ensemble = load_xmace_excited_state_ensemble(tmp_path / "models", "cpu", dtype="float64")
+    ensemble = load_xmace_excited_state_ensemble(tmp_path / "models", device, dtype="float64")
     state_energies, state_forces = ensemble.evaluate_states(numbers, positions, None, torch.tensor(atoms.pbc), [3])
     assert state_energies.shape == (1, 3, 1) and state_forces.shape == (1, 3, 3, 3)
-    np.testing.assert_allclose(energies[0].numpy(), state_energies[0, 1].numpy(), rtol=1e-5)
+    np.testing.assert_allclose(energies[0].cpu().numpy(), state_energies[0, 1].cpu().numpy(), rtol=1e-5)
+    wrapped = SelectedStateEvaluator(evaluator, 2)
+    np.testing.assert_allclose(wrapped.predict([atoms])["energies"], state_energies[:, 2].cpu().numpy(), rtol=1e-5)

@@ -79,6 +79,41 @@ Two settings also apply, whichever terms you choose:
   rejected and ends its trajectory, however uncertain it is. The default for
   ``mlmd_trajectories_task`` is ``1.2``.
 
+Selecting Atoms for Force Uncertainty
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Use ``acquisition.force_atoms`` when a subset of atoms should drive force-based
+acquisition. For a common atom order, give zero-based indices. This example
+uses the maximum per-atom ensemble disagreement over atoms 12 and 47.
+
+.. code-block:: json
+
+   {
+     "acquisition": {
+       "force_atoms": {"indices": [12, 47]},
+       "terms": {
+         "site_force": {"uncertainty": "ensemble_force_selected_max", "cutoff": 0.20}
+       },
+       "eligibility": ["site_force"],
+       "strategy": "largest"
+     }
+   }
+
+When the selected atoms vary by structure, supply a one-dimensional boolean
+ASE atom array with one entry per atom. For an array named ``active_site``, use
+``"force_atoms": {"array": "active_site"}``. Each structure must select at least
+one atom. The ensemble score for one atom is the norm of the three force
+component standard deviations across the unbiased member predictions.
+The cutoff above is illustrative and has units of eV/Å.
+
+For NTK, use ``ntk_force_selected_max`` with the same selector and an exact atom
+score provider. The prepared HIPPYNN sampler has a mode that computes only
+the selected atoms' sensitivity rows. Both methods evaluate the full structure
+for MD and QM labeling. The existing whole-frame force and energy terms retain
+their definitions. For selected frames, ``force_atom_indices`` lists the resolved
+indices, and ``selected_force_uncertainty`` maps each selected-force signal name to
+its per-atom scores in that order.
+
 Ranking
 -------
 
@@ -384,8 +419,11 @@ The calculator and the packed evaluator take the scores to compute:
      - ``ntk_hvp`` (per atom)
      - The per-atom Hessian uncertainty from k Hessian-vector products: 3N rows per probe.
 
-A model with several states adds the state name to each score (``ntk_energy_E1``, ``ntk_hessian_E1``) and
-reports gaps (``ntk_dE01``). It also reports ``ntk_near_crossing_E1``, which is 1.0 when a predicted gap
+A model with several states adds the state name to each score (``ntk_energy_E1``, ``ntk_hessian_E1``).
+It reports adjacent gaps by default. To score specific pairs, give ``gap_pairs`` to ``predict`` or in
+``batched_calculator_options.scores``. For example, ``{"gap_pairs": [[1, 2], [1, 3]], "forces": false}``
+reports ``ntk_dE12`` and ``ntk_dE13`` for a four-state model. The ``ntk_near_crossing_E1`` flag still uses
+adjacent gaps. It is 1.0 when a predicted gap
 next to that state is below ``crossing_gap_eV``, an option of the calculator and evaluator (default
 0.1 eV). Adiabatic energies are not smooth where states cross. Their Hessians and Hessian scores grow
 like 1/gap there, so don't use per-state Hessian scores inside that window. The gap scores and the scores
@@ -432,6 +470,83 @@ ROCm. Run the first two commands on NVIDIA and AMD, and the third on NVIDIA.
    ALF_TEST_NTK_DEVICE=cuda:0 python -m pytest tests/test_hippynn_ntk.py
    python examples/atom_resolved_uncertainty/ntk_replay.py --device cuda:0 --engine torchsim
    python examples/atom_resolved_uncertainty/ntk_replay.py --device cuda:0 --engine alchemi
+
+.. _prepared-ground-state-hippynn-force-ntk:
+
+Prepared ground-state HIPPYNN force NTK
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For packed ground-state HIPPYNN, set ``record_ntk_training_split`` to ``true`` in
+the ML configuration before training. Each member records its training rows
+after filtering and splitting. Prepare the basis once after training, using
+energy and force scales in eV and eV/Å chosen from validation data. The numbers
+below are illustrative.
+
+.. code-block:: sh
+
+   python -m alframework.ml_interfaces.hippynn.ntk_basis prepare models/model-0000 \
+       --member 0 --device cuda:0 --energy-scale 0.05 --force-scale 0.10
+
+Preparation writes ``ntk_basis.npz`` beside that member's checkpoint and
+``ntk_training_split.json``. Keep both files with the checkpoint. The
+default device is CPU, sketch width is 64, and seed is 0. Use the target GPU when
+preparing a basis in GPU precision. If the training shards moved, specify their
+paths in manifest order with ``--shards`` and keep any backing parts alongside
+them in their original relative layout. Use ``--basis-file`` to prepare a separate
+artifact for different fit settings.
+
+Configure the sampler with an illustrative cutoff for the projected score.
+
+.. code-block:: json
+
+   {
+     "driver": {"strategy": "batched", "engine": "torchsim"},
+     "batching": {"batch_size": 8},
+     "batched_calculator": "alframework.ml_interfaces.hippynn.ntk_basis.load_hippynn_ground_state_ntk",
+     "batched_calculator_options": {"member": 0, "force_score": "projected", "force_probes": 8},
+     "acquisition": {
+       "terms": {"force_ntk": {"uncertainty": "ntk_force_rms", "cutoff": 0.05}},
+       "eligibility": ["force_ntk"],
+       "strategy": "largest"
+     }
+   }
+
+The same loader works with ALCHEMI. One chosen member evaluates the physical
+energies and forces during packed MD. At acquisition checks, ``projected`` uses
+eight force probes by default and reports only frame-level RMS uncertainty. For
+exact atom scores, set ``force_score`` to ``"exact"`` and use ``ntk_force_max``
+as the acquisition signal. Both modes use the same basis. Replay can load that
+basis directly with ``load_hippynn_ground_state_ntk_estimator`` from the same
+module. Loading verifies the checkpoint and split without reopening label shards
+or fitting in a worker. Prepare a basis for each new checkpoint before sampling.
+To compare derivative performance on the same basis, set ``ntk_engine`` in
+``batched_calculator_options`` to ``"reverse"`` or ``"forward"``. The default
+``"auto"`` chooses the differentiation backend from the number of requested rows.
+
+To combine exact selected-atom forces and total-energy uncertainty, use the
+same prepared basis and change the calculator options and acquisition block.
+
+.. code-block:: json
+
+   {
+     "batched_calculator_options": {"member": 0, "force_score": "selected", "energy_score": true},
+     "acquisition": {
+       "force_atoms": {"indices": [12, 47]},
+       "terms": {
+         "site_force": {"uncertainty": "ntk_force_selected_max", "cutoff": 0.20},
+         "total_energy": {"uncertainty": "ntk_energy", "cutoff": 0.10}
+       },
+       "eligibility": ["site_force", "total_energy"],
+       "strategy": "largest"
+     }
+   }
+
+At each check for this example, two selected atoms and the total energy need
+seven sensitivity rows. Either term can trigger labeling. The energy cutoff
+is in eV, and periodic frames also report ``ntk_energy_per_atom`` when energy
+scoring is enabled. Use ``energy_score`` with projected or exact force modes as
+well. It defaults to false. Projected Hessian scoring is available through the
+general NTK evaluator above.
 
 Selection
 ---------

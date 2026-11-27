@@ -1,5 +1,7 @@
 """The NTK core on a pair potential that is linear in its weights, against closed forms."""
 
+import json
+
 import numpy as np
 import pytest
 from ase import Atoms
@@ -86,6 +88,30 @@ def test_scores_equal_closed_form_bayesian_linear_regression(engine):
     torch.testing.assert_close(rows["hvp"][0].reshape(9, 9, 8), (h @ S.T).transpose(0, 1))
 
 
+@pytest.mark.parametrize("engine", ["forward", "reverse"])
+def test_selected_force_rows_and_total_energy_match_full_scores(engine, monkeypatch):
+    estimator = NTKEstimator(LinearPairAdapter(), [molecule(1)], energy_scale=0.3, force_scale=0.7,
+                             sketch_dim=8, engine=engine)
+    structure = estimator.structure_from_atoms(molecule(5))
+    full = estimator.score(structure)
+    requests = []
+
+    def record_rows(adapter, structure, request, *args, **kwargs):
+        values, rows = compute_rows(adapter, structure, request, *args, **kwargs)
+        requests.append((request.output_count(1, structure.n_atoms), rows["forces"].shape))
+        return values, rows
+
+    monkeypatch.setattr("alframework.ml_interfaces.ntk.estimator.compute_rows", record_rows)
+    selected = estimator.score_forces(structure, atom_indices=[2, 0], include_energy=True)
+    assert requests == [(7, (1, 2, 3, 8))]
+    torch.testing.assert_close(selected["energy_uncertainty_score"], full["energy_uncertainty_score"])
+    torch.testing.assert_close(selected["force_uncertainty_score"], full["force_uncertainty_score"][:, [2, 0]])
+    assert selected["force_rms_uncertainty"] == pytest.approx(
+        full["force_component_uncertainty_score"][:, [2, 0]].square().mean().sqrt().item())
+    with pytest.raises(ValueError, match="requires exact"):
+        estimator.score_forces(structure, atom_indices=[0], force_probes=8)
+
+
 def test_projections_estimate_the_exact_force_and_hessian_uncertainty():
     estimator = NTKEstimator(LinearPairAdapter(), [molecule(1)], energy_scale=0.3, force_scale=0.7,
                              sketch_dim=5, seed=4, ridge=0.05)
@@ -148,6 +174,24 @@ def test_calculator_reports_probe_scores_and_basis_round_trip(tmp_path):
         changed = LinearPairAdapter()
         changed.digest = lambda: "other"
         NTKEstimator.from_basis(changed, path)
+
+
+@pytest.mark.parametrize("with_outputs", [False, True], ids=["previous_format", "empty_output_scales"])
+def test_version_two_basis_preserves_its_metadata_and_id(tmp_path, with_outputs):
+    fitted = NTKEstimator(LinearPairAdapter(), [molecule(1)], energy_scale=0.3, force_scale=0.7, sketch_dim=5)
+    metadata = fitted.metadata
+    if with_outputs:
+        metadata["scales"]["outputs"] = {}
+    else:
+        metadata["scales"].pop("outputs", None)
+    basis_id = fitted.posterior.basis_id(metadata)
+    path = tmp_path / "basis.npz"
+    np.savez(path, metadata=json.dumps(metadata), basis_id=basis_id, information=fitted.posterior.information.numpy())
+
+    restored = NTKEstimator.from_basis(LinearPairAdapter(), path)
+    assert restored.metadata == metadata and restored.basis_id == basis_id
+    torch.testing.assert_close(restored.predict(molecule(2))["force_uncertainty_score"],
+                               fitted.predict(molecule(2))["force_uncertainty_score"])
 
 
 class TwoStateAdapter(NTKAdapter):
@@ -217,3 +261,8 @@ def test_crossing_flags_mark_states_next_to_a_small_gap():
     assert [scalar[f"ntk_near_crossing_E{i}"] for i in range(3)] == [1.0, 1.0, 0.0]
     scalar, _ = reported_uncertainty(result, ("E0", "E1", "E2"), 3, crossing_gap_eV=None)
     assert not any(key.startswith("ntk_near_crossing") for key in scalar)
+    nonadjacent = dict(result, energy=torch.tensor([0.0, 0.05, 0.55]), gap=torch.tensor([0.55]),
+                       gap_pairs=torch.tensor([[0, 2]]), gap_uncertainty_score=torch.tensor([0.03]))
+    scalar, _ = reported_uncertainty(nonadjacent, ("E0", "E1", "E2"), 3, crossing_gap_eV=0.1)
+    assert [scalar[f"ntk_near_crossing_E{i}"] for i in range(3)] == [1.0, 1.0, 0.0]
+    assert scalar["ntk_dE02"] == pytest.approx(0.03) and "ntk_dE01" not in scalar

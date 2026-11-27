@@ -6,6 +6,25 @@ TorchSim until an ensemble is built.
 """
 
 
+def packed_state(numbers, positions, cells, pbc, counts, *, device, dtype, charge=None, spin=None):
+    """Build the same TorchSim input for ordinary and differentiable model evaluation."""
+    import torch
+    import torch_sim as ts
+
+    counts = torch.as_tensor(counts, device=device)
+    n_systems = len(counts)
+    extras = {name: torch.full((n_systems,), int(value), device=device)
+              for name, value in (('charge', charge), ('spin', spin)) if value is not None}
+    positions = positions.detach().to(device, dtype)
+    return ts.SimState(positions=positions, masses=torch.ones(len(positions), device=device, dtype=dtype),
+                       cell=cells.detach().to(device, dtype).transpose(-1, -2),
+                       pbc=torch.as_tensor(pbc, device=device, dtype=torch.bool),
+                       atomic_numbers=numbers.to(device, torch.long),
+                       system_idx=torch.repeat_interleave(torch.arange(n_systems, device=device), counts,
+                                                          output_size=len(numbers)),
+                       _system_extras=extras)
+
+
 class TorchSimBatchedEnsemble:
     """Implements ``evaluate(numbers, positions, cells, pbc, counts)`` for the batched engines.
 
@@ -27,22 +46,8 @@ class TorchSimBatchedEnsemble:
         self.charge, self.spin = charge, spin
 
     def state(self, numbers, positions, cells, pbc, counts):
-        import torch_sim as ts
-        torch = self._torch
-        counts = torch.as_tensor(counts, device=self.device)
-        n_systems = len(counts)
-        extras = {}
-        if self.charge is not None:
-            extras['charge'] = torch.full((n_systems,), int(self.charge), device=self.device)
-        if self.spin is not None:
-            extras['spin'] = torch.full((n_systems,), int(self.spin), device=self.device)
-        positions = positions.detach().to(self.device, self.dtype)
-        return ts.SimState(positions=positions, masses=torch.ones(len(positions), device=self.device, dtype=self.dtype),
-                           cell=cells.detach().to(self.device, self.dtype).transpose(-1, -2),
-                           pbc=torch.as_tensor([bool(value) for value in pbc], device=self.device),
-                           atomic_numbers=numbers.to(self.device, torch.long),
-                           system_idx=torch.repeat_interleave(torch.arange(n_systems, device=self.device), counts),
-                           _system_extras=extras)
+        return packed_state(numbers, positions, cells, pbc, counts, device=self.device, dtype=self.dtype,
+                            charge=self.charge, spin=self.spin)
 
     def evaluate(self, numbers, positions, cells, pbc, counts):
         torch = self._torch

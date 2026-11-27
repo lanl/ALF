@@ -52,7 +52,8 @@ from alframework.tools.capabilities import declares
 
 from alframework.ml_interfaces.ensemble_inference import atomic_uncertainty_batch, ensemble_statistics, SelectedStateEvaluator
 from alframework.samplers.acquisition import (acquisition_settings, assess_frame, custom_terms, frame_id,
-                                              require_members, top_k, worker_retention_limit)
+                                              require_members, resolve_force_atom_indices,
+                                              selected_force_diagnostics, top_k, worker_retention_limit)
 # Keep the old paths importable, including for previously pickled calculators.
 from alframework.samplers.engines.ase import ASEEngine, OBSERVED_PROPERTIES, _PredictedMember, _StateMeanCalculator
 from alframework.samplers.engines.factory import make_engine
@@ -120,6 +121,15 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
     meta_dir = sampler_config.get('meta_dir')
     n_checks = int(np.ceil((1000 * maxt) / (dt * Ncheck)))
     count = len(molecule_objects)
+    force_atoms = settings.get("force_atoms")
+    selected_sources = settings.get("selected_force_signals", ())
+    force_atom_indices = None if force_atoms is None else [
+        resolve_force_atom_indices(force_atoms, molecule.get_atoms(), molecule.get_moleculeid())
+        for molecule in molecule_objects]
+    set_force_atoms = getattr(engine, "set_force_atom_indices", None)
+    if callable(set_force_atoms):
+        set_force_atoms(force_atom_indices)
+    force_atom_array = None if force_atoms is None else force_atoms.get("array")
     started = time.time()
     state = []
     for index, schedule in enumerate(schedules):
@@ -257,6 +267,12 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
                         continue
                 prediction = observation['prediction']
                 signals = ensemble_statistics(prediction)[0]
+                diagnostics = {}
+                if selected_sources:
+                    diagnostics = selected_force_diagnostics(
+                        signals, selected_sources, force_atom_indices[index], member_forces=prediction["forces"][0],
+                        atomic=(prediction.get("atomic_uncertainty") or [None])[0],
+                        selected=(prediction.get("selected_force_uncertainty") or [None])[0])
                 if screening:
                     signals.update({k:v for k,v in report.items() if k == 'Fmeanmax' or k.startswith('physical_F')})
                 decision = assess_frame(signals, observation['min_distance'], time_ps, sampler_config, settings)
@@ -266,7 +282,6 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
                     if key in signals:  # gap_std only with a gap_uncertainty pair.
                         entry['peaks'][key] = max(signals[key], entry['peaks'].get(key, signals[key]))
                 if decision['outcome'] == 'eligible':
-                    diagnostics = {}
                     if prediction.get('atomic_uncertainty') is not None:
                         [atomic] = atomic_uncertainty_batch(prediction['atomic_uncertainty'],
                                                             [len(engine.atoms(index))])
@@ -275,7 +290,8 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
                     if cohort:
                         candidate = _candidate(
                             molecule_objects[index], engine, index, signals, decision, time_ps,
-                            entry['temps'][-1] if entry['temps'] else schedule['Tsrt'], diagnostics=diagnostics)
+                            entry['temps'][-1] if entry['temps'] else schedule['Tsrt'], diagnostics=diagnostics,
+                            force_atom_array=force_atom_array)
                         if adaptive_ntk:
                             from alframework.samplers.adaptive_ntk import energy_ntk_row
                             basis, ridge, row = energy_ntk_row(prediction.get('energy_ntk', [None])[0])
@@ -388,8 +404,10 @@ def _record(molecule, entry, schedule, sampler_config, settings, engine, index, 
     meta_dict.update(kinetic_temperature_K=entry.get('finished_kinetic_temperature_K'),
                      thermostat_temperature_K=entry['temps'][-1] if entry['temps'] else schedule['Tsrt'])
     meta_dict.update(signals)
-    if entry['outcome'] == 'eligible' and 'atomic_uncertainty' in entry:
-        meta_dict['atomic_uncertainty'] = entry['atomic_uncertainty']
+    if entry['outcome'] == 'eligible':
+        for key in ('atomic_uncertainty', 'force_atom_indices', 'selected_force_uncertainty'):
+            if key in entry:
+                meta_dict[key] = entry[key]
     own = {name: peak for name, peak in entry['peaks'].items() if name not in PEAK_SIGNALS}
     if own:
         meta_dict['max_uncertainty'] = own
@@ -411,10 +429,11 @@ def _record(molecule, entry, schedule, sampler_config, settings, engine, index, 
     return meta_dict
 
 
-def _candidate(molecule, engine, index, signals, decision, time_ps, thermostat_temperature_K=None, *, diagnostics=None):
+def _candidate(molecule, engine, index, signals, decision, time_ps, thermostat_temperature_K=None, *,
+               diagnostics=None, force_atom_array=None):
     atoms = engine.atoms(index)
     step = engine.steps[index]
-    return {"trajectory_id": molecule.get_moleculeid(), "step": int(step),
+    candidate = {"trajectory_id": molecule.get_moleculeid(), "step": int(step),
             "frame_id": frame_id(molecule.get_moleculeid(), step),
             "time_ps": float(time_ps), "ranking_score": float(decision['ranking_score']),
             "signals": {key: float(value) for key, value in signals.items()},
@@ -429,6 +448,9 @@ def _candidate(molecule, engine, index, signals, decision, time_ps, thermostat_t
                                                           'acquisition_score_terms') if key in decision}},
             "topology_atom_ids": None if 'topology_atom_ids' not in atoms.arrays else
                 atoms.arrays['topology_atom_ids'].copy()}
+    if force_atom_array is not None:
+        candidate["force_atom_mask"] = (force_atom_array, atoms.arrays[force_atom_array].copy())
+    return candidate
 
 
 def _prune(candidates, selection):

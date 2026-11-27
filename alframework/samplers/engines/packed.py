@@ -131,6 +131,7 @@ class PackedMLMDEngine:
         self.batched_distance_screen = self.device.type != "cpu"
         self._host = self._distances = None
         self._observed_scores = None
+        self._force_atom_indices = None
         self._evaluate()
 
     # -- packed layout ---------------------------------------------------------------------------
@@ -339,6 +340,14 @@ class PackedMLMDEngine:
         """Read the current physical predictions for screening before dynamics."""
         return self._observe(index, score_uncertainty=False)
 
+    def set_force_atom_indices(self, selections):
+        """Pass trajectory-local selections only to evaluators that request them."""
+        if getattr(self.evaluator, "requires_force_atom_indices", False):
+            if selections is None:
+                raise ValueError("The packed evaluator requires acquisition.force_atoms.")
+            self._force_atom_indices = selections
+            self._observed_scores = None
+
     def _batched_scores(self, index):
         """Score the current packed state once, keyed by stable trajectory index."""
         state = self.state
@@ -346,9 +355,11 @@ class PackedMLMDEngine:
         cells = state.cell.transpose(-1, -2)
         if self._observed_scores is None:
             try:
+                options = {} if self._force_atom_indices is None else {
+                    "force_atom_indices": [self._force_atom_indices[i] for i in self._rows]}
                 rows = batched_uncertainty_observations(
                     self.evaluator, state.atomic_numbers, state.positions, cells, state.pbc,
-                    self._counts, energies, forces)
+                    self._counts, energies, forces, **options)
             except Exception:
                 if len(self._rows) == 1:
                     raise
@@ -359,9 +370,12 @@ class PackedMLMDEngine:
                 self._observed_scores = dict(zip(self._rows, rows))
         if index not in self._observed_scores:
             row, selection = self._position[index], self._slices[index]
+            options = {} if self._force_atom_indices is None else {
+                "force_atom_indices": [self._force_atom_indices[index]]}
             [result] = batched_uncertainty_observations(
                 self.evaluator, state.atomic_numbers[selection], state.positions[selection], cells[row:row + 1],
-                state.pbc, [selection.stop - selection.start], energies[:, row:row + 1], forces[:, selection])
+                state.pbc, [selection.stop - selection.start], energies[:, row:row + 1], forces[:, selection],
+                **options)
             self._observed_scores[index] = result
         return self._observed_scores[index]
 

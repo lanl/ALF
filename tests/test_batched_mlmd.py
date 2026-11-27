@@ -32,7 +32,8 @@ from alframework.samplers.mlmd_sampling import mlmd_sampling
 from alframework.tools.cohorts import CohortPool
 from alframework.tools.molecules import MoleculesObject
 from alframework.tools.annealing import annealing_schedule
-from tests.helpers.fakes import PairSpringCalculator, QuadraticStateEnsemble, QuadraticStateMember
+from tests.helpers.engines import require_engine
+from tests.helpers.fakes import FixedCalculator, PairSpringCalculator, QuadraticStateEnsemble, QuadraticStateMember
 from tests.helpers.fakes import spring_ensemble as fake_ensemble
 from tests.helpers.molecules import SPRING_WATER
 
@@ -64,6 +65,59 @@ def run_new(atoms_list, config, schedules, rngs, models=None):
     engine = ASEEngine([a.copy() for a in atoms_list], models or fake_ensemble(), config["dt"], temperatures, rngs)
     molecules = [MoleculesObject(engine.atoms(i), f"mol-{i}") for i in range(len(atoms_list))]
     return run_mlmd_trajectories(molecules, engine, schedules, config), engine
+
+
+@pytest.mark.parametrize("engine", ["ase", "torchsim", "alchemi"])
+def test_selected_ensemble_forces_follow_trajectory_masks_and_cohort_frame(engine):
+    require_engine(engine)
+    signal = "ensemble_force_selected_max"
+    selection = {"mode": "cohort_top_k", "cohort_size": 2, "k": 1}
+    config = dict(BASE, maxt=0.001, Ncheck=1, device="cpu", random_seed=3,
+                  srt_temp=[0, 0], end_temp=[0, 0], amp_temp=[0, 0], per_temp=[1, 1],
+                  amp_dens=None, per_dens=None, end_dens=None,
+                  driver={"strategy": "batched", "engine": engine},
+                  batching={"batch_size": 2},
+                  acquisition={"strategy": "largest", "force_atoms": {"array": "active_site"},
+                               "terms": {"force": {"uncertainty": signal, "cutoff": 0.5}},
+                               "eligibility": ["force"], "selection": selection})
+    forces = np.array([[0.1, 0, 0], [0, 0.2, 0], [3, 4, 0]])
+    masks = [np.array([True, True, False]), np.array([False, True, True])]
+    molecules = []
+    pool = CohortPool(selection)
+    for index, mask in enumerate(masks):
+        atoms = SPRING_WATER.copy()
+        atoms.new_array("active_site", mask)
+        molecule = MoleculesObject(atoms, f"mask-{index}")
+        pool.admit(molecule, 0)
+        molecules.append(molecule)
+    results = sample_trajectories(molecules, [FixedCalculator(0, forces), FixedCalculator(0, -forces)], config)
+    for result in results:
+        pool.record(result)
+    assert [m.get_metadata()["trajectory_outcome"] for m in results] == ["completed", "eligible"]
+    assert results[0].get_metadata()["Fsmax"] == pytest.approx(4.0)
+    assert results[0].get_metadata()[signal] == pytest.approx(0.2)
+    [frame] = pool.ready()
+    meta = frame.get_metadata()
+    assert meta["force_atom_indices"] == [1, 2]
+    assert meta[signal] == pytest.approx(5.0)
+    np.testing.assert_allclose(meta["selected_force_uncertainty"][signal], [0.2, 5.0])
+    np.testing.assert_array_equal(frame.get_atoms().arrays["active_site"], masks[1])
+
+
+def test_scalar_ase_acquisition_records_selected_ensemble_forces():
+    signal = "ensemble_force_selected_max"
+    forces = np.array([[0.1, 0, 0], [0, 0.2, 0], [3, 4, 0]])
+    calculator = MLMD_calculator([FixedCalculator(0, forces), FixedCalculator(0, -forces)])
+    molecule = MoleculesObject(SPRING_WATER.copy(), "selected")
+    config = dict(BASE, acquisition={"strategy": "largest", "force_atoms": {"indices": [2, 1]},
+                                    "terms": {"force": {"uncertainty": signal, "cutoff": 0.5}},
+                                    "eligibility": ["force"]})
+    result = mlmd_sampling(molecule, calculator, **config, **SCHEDULE)
+    assert result.get_atoms() is not None
+    meta = result.get_metadata()
+    assert meta["force_atom_indices"] == [2, 1]
+    assert meta["uncertainty"][signal] == pytest.approx(5.0)
+    np.testing.assert_allclose(meta["selected_force_uncertainty"][signal], [5.0, 0.2])
 
 
 @pytest.mark.parametrize("case", sorted(CASES))

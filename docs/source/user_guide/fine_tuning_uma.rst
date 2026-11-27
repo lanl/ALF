@@ -82,6 +82,51 @@ copies' input and output tensor precision; selecting ``float64`` does not increa
    * - ``keep_training_checkpoints``
      - ``false`` by default: after training, fairchem's resume checkpoints, which hold optimizer state
        and several copies of the weights, are removed, keeping the copy itself.
+   * - ``freeze_backbone``
+     - Train the energy and force head on a frozen backbone. The default is ``false``.
+   * - ``lora``, ``lora_rank``, ``lora_alpha``
+     - Train the head and low-rank updates to the first two linear layers in each interaction block's
+       radial MLP. Defaults are ``false``, ``4``, and ``1.0``. The original backbone weights are held fixed.
+   * - ``ntk``
+     - Fit an NTK basis after fine-tuning with ``freeze_backbone`` or ``lora``. ``null`` is the default.
+       A supplied block can set ``energy_scale`` (eV), ``force_scale`` (eV/Å), ``sketch_dim``, ``seed``,
+       and ``ridge_factor``. Defaults in the block are ``0.05``, ``0.1``, ``64``, ``0``, and ``0.001``.
+
+Single-Model NTK Acquisition
+----------------------------
+
+Use a conservative UMA-S ``omol`` checkpoint. Set ``fine_tune.n_models`` to ``1``, enable
+``freeze_backbone`` or ``lora``, and supply an ``ntk`` block. Choose the two observation scales from
+reference errors on validation data. With a frozen backbone, the basis covers the trainable head.
+With LoRA, it covers the factors and head used by the exported model's EMA snapshot. The fit uses
+the same assigned device as training and only the frames in the recorded training split.
+
+Configure TorchSim with the prepared UMA loader and a named acquisition term. This fragment uses
+zero-based atom indices and an illustrative cutoff.
+
+.. code-block:: json
+
+   {
+     "driver": {"strategy": "batched", "engine": "torchsim"},
+     "batching": {"batch_size": 4},
+     "batched_calculator": "alframework.ml_interfaces.ntk.uma.load_uma_ntk",
+     "batched_calculator_options": {"force_score": "selected", "energy_score": true},
+     "acquisition": {
+       "force_atoms": {"indices": [0, 2]},
+       "terms": {"site": {"uncertainty": "ntk_force_selected_max", "cutoff": 0.15}},
+       "eligibility": ["site"], "strategy": "largest"
+     }
+   }
+
+The sampler uses one resident model for batched energies and forces. It scores uncertainty at
+acquisition checks. For projected whole-frame uncertainty, use ``force_score: "projected"`` and
+``ntk_force_rms``. With ``energy_score`` enabled, ``ntk_energy`` is available as a second named term.
+See :doc:`acquisition` for calibration and combining terms. The NTK workflow supports nonperiodic
+molecules with at least two atoms and a common charge and spin multiplicity. The sampler inherits
+these from its basis unless you supply matching ``charge`` and ``spin`` values explicitly.
+
+Keep ``training_split.json``, ``ntk_basis.npz``, and the LoRA artifact, when present, with the
+checkpoint. For offline replay call ``load_uma_ntk_estimator`` with the individual member directory.
 
 Reference energies
 ------------------
@@ -116,6 +161,10 @@ validation sets; ``train.log``; and fairchem's logs under ``runs/``.
 
 Each copy holds a full UMA model while sampling, so several copies of a large checkpoint need GPU
 memory to match.
+
+LoRA rounds export a standard merged ``uma.pt`` for Fairchem and ``uma_lora.pt`` containing the
+EMA factors and their base matrices. If resume checkpoints are kept, their unmerged training
+configuration also needs ALF. ``ntk_fit.log`` records the device, timing, and basis identity.
 
 Walkthrough
 -----------

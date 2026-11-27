@@ -66,7 +66,8 @@ def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Ncheck, Tamp, Tper,
     assert isinstance(molecule_object, MoleculesObject), 'molecule_object must be an instance of MoleculesObject'
     # The same frame decision as the multi-trajectory sampler: the ensemble's spread against Escut and Fscut, and any
     # terms of the run's own on the uncertainty its calculators report (acquisition.terms).
-    from alframework.samplers.acquisition import acquisition_settings, assess_frame, custom_terms
+    from alframework.samplers.acquisition import (acquisition_settings, assess_frame, custom_terms,
+                                                  resolve_force_atom_indices, selected_force_diagnostics)
     criteria = {key: value for key, value in dict(Escut=Escut, Fscut=Fscut, distcut=distcut, min_time=min_time,
                                                   acquisition=acquisition).items() if value is not None}
     settings = acquisition_settings(criteria)
@@ -74,6 +75,10 @@ def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Ncheck, Tamp, Tper,
     max_uncertainty = {}
 
     ase_atoms = molecule_object.get_atoms()
+    selected_sources = settings.get("selected_force_signals", ())
+    force_atom_indices = resolve_force_atom_indices(settings.get("force_atoms"), ase_atoms,
+                                                    molecule_object.get_moleculeid())
+    force_diagnostics = {}
     T = annealing_schedule(0.0, maxt, Tamp, Tper, Tsrt, Tend)
     molecule_object.update_metadata(initialize_velocities(ase_atoms, T, velocity_initialization,
                                                         molecule_id=molecule_object.get_moleculeid(),
@@ -128,6 +133,13 @@ def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Ncheck, Tamp, Tper,
         results = getattr(ase_atoms.calc, 'results', {})
         own_scores = results.get('alf_uncertainty') or {}
         signals = {'Es': Es, 'Fs': Fs, 'Fsmax': Fsmax, **own_scores}
+        if selected_sources:
+            member_forces = results.get('forces_contributions')
+            if member_forces is not None:
+                member_forces = member_forces[:getattr(ase_atoms.calc, 'N_models', None)]
+            force_diagnostics = selected_force_diagnostics(
+                signals, selected_sources, force_atom_indices, member_forces=member_forces,
+                atomic=results.get('alf_atomic_uncertainty'))
         for name in own_uncertainty:
             if name in signals:
                 max_uncertainty[name] = max(signals[name], max_uncertainty.get(name, signals[name]))
@@ -192,8 +204,9 @@ def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Ncheck, Tamp, Tper,
         atomic = atomic_uncertainty_arrays(results.get('alf_atomic_uncertainty', {}), len(ase_atoms))
         if atomic:
             meta_dict['atomic_uncertainty'] = {name: values.copy() for name, values in atomic.items()}
-        if atomic or own_scores:
-            meta_dict['uncertainty'] = dict(own_scores)
+        if atomic or own_scores or force_diagnostics:
+            meta_dict.update(force_diagnostics)
+            meta_dict['uncertainty'] = {**own_scores, **{name: signals[name] for name in selected_sources}}
             for key in ('acquisition_trigger_flags', 'acquisition_cutoffs', 'acquisition_score_terms'):
                 meta_dict[key] = decision[key]
 

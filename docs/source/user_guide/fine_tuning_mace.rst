@@ -48,6 +48,10 @@ The sampler loads the copies for batched MD, with ``mlmd_trajectories_task`` as 
      - Training precision, ``float64`` (the default) or ``float32``.
    * - ``freeze``
      - Optional. Freezes layers, as MACE's ``--freeze``.
+   * - ``lora``, ``lora_rank``, ``lora_alpha``
+     - Optional low-rank adaptation, through MACE's ``--lora``: the foundation model is frozen and
+       low-rank adapters in it are trained (defaults ``false``, 4, 1). MACE merges them into the weights when
+       training ends, so the copy loads like any other.
    * - ``replay_file``
      - Optional. A local file with a sample of the foundation model's training data, for MACE's
        multihead fine-tuning; see :ref:`Forgetting And Checking A Fine-Tuned Model <fine-tuning-forgetting>`.

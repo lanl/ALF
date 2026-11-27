@@ -73,11 +73,14 @@ def test_ground_state_member_trains_on_two_devices_inside_a_slurm_step(tmp_path,
                          controller_options=dict(batch_size=4, eval_batch_size=4, max_epochs=3,
                                                  termination_patience=10),
                          scheduler_options=dict(max_batch_size=8, patience=5, factor=0.5),
-                         device_string="cpu", gpus_per_member=2)
+                         device_string="cpu", gpus_per_member=2, record_ntk_training_split=True)
     _check_member(member)
     assert ml._ground_state_member_complete(str(member))
     ml.HIPNN_ASE_calculator(str(member), energy_key="energy", device="cpu")
     _check_training_summary(member, epochs=3, gpus_per_member=2)
+    manifest = json.loads((member / "ntk_training_split.json").read_text())
+    summary = json.loads((member / "training_summary.json").read_text())
+    assert manifest["training_structure_count"] == summary["split_counts"]["train"]
 
 
 def _check_training_summary(member, epochs, gpus_per_member):

@@ -53,6 +53,10 @@ class SelectedStateEvaluator:
                 raise ValueError('Adjacent gaps require at least two states')
         elif gap_pair is not None and not 0 <= gap_pair[0] < gap_pair[1] < evaluator.n_states:
             raise ValueError('Gap pair is absent from the ensemble')
+        for name in ('observe_uncertainty', 'observe_uncertainty_batch'):
+            hook = getattr(evaluator, name, None)
+            if callable(hook):
+                setattr(self, name, hook)
 
     def predict(self, atoms_list):
         states = self.evaluator.predict_states(atoms_list)
@@ -162,9 +166,9 @@ def add_observed_uncertainty(prediction, evaluator, frames):
                                    [len(frame[0]) for frame in frames])
 
 
-def batched_uncertainty_observations(evaluator, numbers, positions, cells, pbc, counts, energies, forces):
+def batched_uncertainty_observations(evaluator, numbers, positions, cells, pbc, counts, energies, forces, **options):
     """Call a packed hook and check that its observation rows can be aligned with the structures."""
-    rows = list(evaluator.observe_uncertainty_batch(numbers, positions, cells, pbc, counts, energies, forces))
+    rows = list(evaluator.observe_uncertainty_batch(numbers, positions, cells, pbc, counts, energies, forces, **options))
     if len(rows) != len(counts):
         raise ValueError(f"observe_uncertainty_batch returned {len(rows)} rows for {len(counts)} structures.")
     return rows
@@ -172,7 +176,7 @@ def batched_uncertainty_observations(evaluator, numbers, positions, cells, pbc, 
 
 def merge_uncertainty_observations(prediction, observations, counts):
     """Merge observations from either packed hook with scores from ordinary inference."""
-    reported = {"uncertainty": [], "atomic_uncertainty": []}
+    reported = {"uncertainty": [], "atomic_uncertainty": [], "selected_force_uncertainty": []}
     energy_ntk = []
     for index, (observation, count) in enumerate(zip(observations, counts)):
         if not isinstance(observation, Mapping):

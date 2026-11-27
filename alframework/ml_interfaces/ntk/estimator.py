@@ -1,5 +1,6 @@
 """Fit an NTK posterior for one frozen potential and report its uncertainty to ALF."""
 
+from copy import deepcopy
 from io import BytesIO
 import json
 import math
@@ -12,6 +13,7 @@ from alframework.ml_interfaces.ntk.adapter import gaussian_probes
 from alframework.ml_interfaces.ntk.posterior import Posterior
 from alframework.ml_interfaces.ntk.rows import RowRequest, compute_rows
 from alframework.ml_interfaces.ntk.sketch import Sketch
+from alframework.tools.excited_state_schema import gap_key_for_pair
 
 BASIS_VERSION = 2
 # Offsets that keep the probe streams of different quantities independent.
@@ -39,6 +41,18 @@ def _count(name, value):
     return value
 
 
+def _gap_pairs(pairs, n_states):
+    if not isinstance(pairs, (list, tuple)) or not pairs:
+        raise ValueError("gap_pairs must be a nonempty list of lower and upper state pairs.")
+    if any(not isinstance(pair, (list, tuple)) or len(pair) != 2 or
+           any(isinstance(state, (bool, np.bool_)) or not isinstance(state, (int, np.integer)) for state in pair)
+           or not 0 <= pair[0] < pair[1] < n_states for pair in pairs):
+        raise ValueError(f"Each gap_pairs entry must give two ordered states below {n_states}.")
+    if len(set(map(tuple, pairs))) != len(pairs):
+        raise ValueError("gap_pairs must be distinct.")
+    return pairs
+
+
 class NTKEstimator:
     """A sketched NTK posterior fit on the training geometries of one frozen potential.
 
@@ -53,17 +67,34 @@ class NTKEstimator:
       for the randomized scheme or full-Hessian training. Its information is estimated from
       ``hessian_fit_probes`` fresh Gaussian probes, using E[v vᵀ] = I. ``atoms.info["hessian_states"]``
       names the states whose Hessians were supervised, by default the first state.
+    - Rows of non-energy model outputs, from ``output_scales`` ``{name: scale}``, for an adapter whose
+      outputs were trained, such as a scaled-coupling model. Set ``energy_scale=None`` for a model with no
+      energies.
 
-    Refit when the model changes. Scores are raw posterior standard deviations; calibrate them against
-    errors before using them as error estimates.
+    ``fit_provenance`` optionally records JSON-serializable details about the training data and fit
+    in the saved basis and its checksum. Refit when the model changes. Scores are raw posterior
+    standard deviations; calibrate them against errors before using them as error estimates.
     """
 
     @torch.inference_mode(False)
     def __init__(self, adapter, training_geometries=(), *, energy_scale=1.0, force_scale=None,
                  hessian_scale=None, hessian_fit_probes=4, sketch_dim=64, seed=0, ridge=None,
-                 ridge_factor=1e-3, engine="auto", probe_seed=0, sketch_store=None):
+                 ridge_factor=1e-3, engine="auto", probe_seed=0, sketch_store=None, output_scales=None,
+                 fit_provenance=None):
         self.adapter = adapter
+        self._fit_provenance = deepcopy(fit_provenance)
+        if not adapter.state_names:
+            if energy_scale not in (None, 1.0) or force_scale is not None or hessian_scale is not None:
+                raise ValueError("This model predicts no energies; fit it on output_scales only.")
+            energy_scale = None
         self.energy_scale = _positive("energy_scale", energy_scale)
+        # Earlier version 2 bases predate this field. Preserve its presence
+        # on round trip so their checksums and cohort basis IDs stay valid.
+        self._record_output_scales = output_scales is not None
+        self.output_scales = {str(name): _positive(f"output_scales[{name!r}]", scale)
+                              for name, scale in dict(output_scales or {}).items()}
+        if self.energy_scale is None and not self.output_scales:
+            raise ValueError("Give energy_scale or output_scales: the fit needs rows of something the model learned.")
         self.force_scale = _positive("force_scale", force_scale)
         self.hessian_scale = _positive("hessian_scale", hessian_scale)
         self.hessian_fit_probes = _count("hessian_fit_probes", hessian_fit_probes)
@@ -102,13 +133,19 @@ class NTKEstimator:
 
     @property
     def metadata(self):
-        return {
+        scales = {"energy": self.energy_scale, "force": self.force_scale, "hessian": self.hessian_scale}
+        if self._record_output_scales:
+            scales["outputs"] = dict(self.output_scales)
+        metadata = {
             "version": BASIS_VERSION, "adapter": type(self.adapter).__name__, "model": self.adapter.digest(),
             "sketch": self.sketch.digest, "seed": self.seed, "sketch_dim": self.sketch.width,
             "dtype": str(self.dtype).split(".")[-1], "ridge": self.ridge, "states": list(self.state_names),
-            "scales": {"energy": self.energy_scale, "force": self.force_scale, "hessian": self.hessian_scale},
+            "scales": scales,
             "rows": dict(self.posterior.counts), "training_structure_count": self.training_structure_count,
         }
+        if self._fit_provenance is not None:
+            metadata["fit_provenance"] = deepcopy(self._fit_provenance)
+        return metadata
 
     # -- fitting ---------------------------------------------------------------------------------------
     def structure_from_atoms(self, atoms):
@@ -139,9 +176,13 @@ class NTKEstimator:
             if unknown:
                 raise ValueError(f"hessian_states {sorted(unknown)} are not model states {list(self.state_names)}.")
             hessian_states = [self.state_names.index(name) for name in names]
-        request = RowRequest(energy=True, forces=self.force_scale is not None, hvp_probes=hvp_probes)
+        request = RowRequest(energy=self.energy_scale is not None, forces=self.force_scale is not None,
+                             hvp_probes=hvp_probes, outputs=tuple(self.output_scales))
         _, rows = compute_rows(self.adapter, structure, request, self.sketch, engine=self.engine)
-        self.posterior.add(rows["energy"], self.energy_scale, "energy")
+        if self.energy_scale is not None:
+            self.posterior.add(rows["energy"], self.energy_scale, "energy")
+        for name, scale in self.output_scales.items():
+            self.posterior.add(rows[f"output:{name}"], scale, f"output:{name}")
         if self.force_scale is not None:
             self.posterior.add(rows["forces"], self.force_scale, "force")
         if hvp_probes is not None:
@@ -181,7 +222,8 @@ class NTKEstimator:
         scales = metadata["scales"]
         estimator = cls(adapter, None, energy_scale=scales["energy"], force_scale=scales["force"],
                         hessian_scale=scales["hessian"], sketch_dim=width, seed=metadata["seed"],
-                        engine=engine, probe_seed=probe_seed)
+                        engine=engine, probe_seed=probe_seed, output_scales=scales.get("outputs"),
+                        fit_provenance=metadata.get("fit_provenance"))
         if metadata["sketch"] != estimator.sketch.digest:
             raise ValueError("The NTK basis does not match this model's parameter sketch.")
         estimator.posterior.information = torch.from_numpy(information).to(
@@ -198,8 +240,49 @@ class NTKEstimator:
         return estimator
 
     # -- scoring ---------------------------------------------------------------------------------------
+    def _probes(self, kind, count, n_atoms):
+        return (gaussian_probes(count, n_atoms, seed=self._probe_seed(kind, n_atoms), device=self.device,
+                                dtype=self.dtype) if count else None)
+
+    def _force_uncertainty(self, rows, n_atoms):
+        if "force_projection" in rows and "forces" not in rows:
+            return {"force_rms_uncertainty": (self.posterior.variance(rows["force_projection"]).mean(-1)
+                                              / (3 * n_atoms)).sqrt()}
+        component = self.posterior.variance(rows["forces"])
+        atomic = component.sum(-1).sqrt()
+        return {"force_component_uncertainty_score": component.sqrt(), "force_uncertainty_score": atomic,
+                "max_force_uncertainty_score": atomic.amax(-1),
+                "force_rms_uncertainty": (component.sum((-1, -2)) / (3 * n_atoms)).sqrt()}
+
     @torch.inference_mode(False)
-    def score(self, structure, *, forces=True, force_probes=0, hessian_probes=0, hvp_probes=0, outputs=()):
+    def score_forces(self, structure, *, force_probes=0, atom_indices=None, include_energy=False):
+        """Score exact forces (optionally on selected atoms) or estimate the frame RMS with probes.
+
+        With ``include_energy``, also score each state's total energy using the same basis and row request.
+        """
+        count = _count("force_probes", force_probes)
+        n_atoms = structure.n_atoms
+        if atom_indices is not None:
+            atom_indices = tuple(atom_indices)
+            if count:
+                raise ValueError("Atom selection requires exact force scoring.")
+            if (not atom_indices
+                    or any(isinstance(i, (bool, np.bool_)) or not isinstance(i, (int, np.integer))
+                           or not 0 <= i < n_atoms for i in atom_indices)
+                    or len(set(atom_indices)) != len(atom_indices)):
+                raise ValueError("atom_indices must contain distinct, in-range atom indices.")
+            n_atoms = len(atom_indices)
+        request = RowRequest(energy=include_energy, forces=count == 0, force_atom_indices=atom_indices,
+                             force_probes=self._probes(_FORCE_PROBES, count, structure.n_atoms))
+        _, rows = compute_rows(self.adapter, structure, request, self.sketch, engine=self.engine)
+        scores = self._force_uncertainty(rows, n_atoms)
+        if include_energy:
+            scores["energy_uncertainty_score"] = self.posterior.variance(rows["energy"]).sqrt()
+        return scores
+
+    @torch.inference_mode(False)
+    def score(self, structure, *, forces=True, force_probes=0, hessian_probes=0, hvp_probes=0, outputs=(),
+              gap_pairs=None):
         """Predictions and raw posterior standard deviations for one :class:`Structure`.
 
         - ``forces``: rows for every force component, which give per-atom scores.
@@ -207,40 +290,55 @@ class NTKEstimator:
           Hessian-element uncertainty, with about k rows each.
         - ``hvp_probes``: rows for H v, giving per-atom Hessian scores. That's 3N rows per probe.
         - ``outputs``: names of smooth model outputs (see ``NTKAdapter.outputs``) to score elementwise.
+        - ``gap_pairs``: ordered state pairs for ``gap`` and ``gap_uncertainty_score``. The
+          default reports adjacent pairs. Explicit pairs are returned in ``gap_pairs``.
 
         Outputs have a leading state axis.
         """
         n = structure.n_atoms
+        if gap_pairs is not None:
+            gap_pairs = _gap_pairs(gap_pairs, len(self.state_names))
         k_f, k_h, k_v = (_count(name, value) for name, value in
                          (("force_probes", force_probes), ("hessian_probes", hessian_probes),
                           ("hvp_probes", hvp_probes)))
 
         def probes(kind, count):
-            return gaussian_probes(count, n, seed=self._probe_seed(kind, n), device=self.device,
-                                   dtype=self.dtype) if count else None
+            return self._probes(kind, count, n)
 
+        variance = self.posterior.variance
+        if not self.state_names:
+            # A model with outputs only, such as a coupling model: no energies, forces, or Hessians.
+            if k_f or k_h or k_v:
+                raise ValueError("Force and Hessian scores need a model with energies.")
+            values, rows = compute_rows(self.adapter, structure, RowRequest(energy=False, outputs=tuple(outputs)),
+                                        self.sketch, engine=self.engine)
+            result = {}
+            for name in outputs:
+                result[f"output_{name}"] = values[f"output:{name}"]
+                result[f"output_{name}_uncertainty_score"] = variance(rows[f"output:{name}"]).sqrt()
+            return result
         bilinear = (probes(_BILINEAR_U, k_h), probes(_BILINEAR_V, k_h)) if k_h else None
         request = RowRequest(energy=True, forces=bool(forces), force_probes=probes(_FORCE_PROBES, k_f),
                              hvp_probes=probes(_HVP_PROBES, k_v), bilinear_probes=bilinear, force_values=True,
                              outputs=tuple(outputs))
         values, rows = compute_rows(self.adapter, structure, request, self.sketch, engine=self.engine)
-        variance = self.posterior.variance
         result = {"energy": values["energy"], "forces": values["forces"],
                   "energy_uncertainty_score": variance(rows["energy"]).sqrt()}
         if len(self.state_names) > 1:
-            result["gap"] = values["energy"][1:] - values["energy"][:-1]
-            result["gap_uncertainty_score"] = variance(rows["energy"][1:] - rows["energy"][:-1]).sqrt()
+            if gap_pairs is None:
+                result["gap"] = values["energy"].diff()
+                gap_rows = rows["energy"][1:] - rows["energy"][:-1]
+            else:
+                pairs = torch.as_tensor(gap_pairs, dtype=torch.long, device=self.device)
+                lower, upper = pairs.T
+                result.update(gap_pairs=pairs, gap=values["energy"][upper] - values["energy"][lower])
+                gap_rows = rows["energy"][upper] - rows["energy"][lower]
+            result["gap_uncertainty_score"] = variance(gap_rows).sqrt()
         for name in outputs:
             result[f"output_{name}"] = values[f"output:{name}"]
             result[f"output_{name}_uncertainty_score"] = variance(rows[f"output:{name}"]).sqrt()
-        if forces:
-            component = variance(rows["forces"])
-            result["force_component_uncertainty_score"] = component.sqrt()
-            result["force_uncertainty_score"] = component.sum(-1).sqrt()
-            result["max_force_uncertainty_score"] = result["force_uncertainty_score"].amax(-1)
-            result["force_rms_uncertainty"] = (component.sum((-1, -2)) / (3 * n)).sqrt()
-        elif k_f:
-            result["force_rms_uncertainty"] = (variance(rows["force_projection"]).mean(-1) / (3 * n)).sqrt()
+        if forces or k_f:
+            result.update(self._force_uncertainty(rows, n))
         if k_h:
             # E_{u,v}[(uᵀ δH v)²] = ‖δH‖_F², so this is the RMS uncertainty of one Hessian element.
             result["hessian_rms_uncertainty"] = variance(rows["bilinear"]).mean(-1).sqrt() / (3 * n)
@@ -296,10 +394,13 @@ def reported_uncertainty(result, state_names, n_atoms, periodic=False, *, crossi
             if key in result:
                 atomic[f"{name}{suffix}"] = result[key][index].detach().cpu().numpy()
     if "gap_uncertainty_score" in result:
-        for index, value in enumerate(result["gap_uncertainty_score"]):
-            scalar[f"ntk_dE{index}{index + 1}"] = float(value)
+        pairs = (result["gap_pairs"].tolist() if "gap_pairs" in result
+                 else zip(range(len(state_names) - 1), range(1, len(state_names))))
+        for (lower, upper), value in zip(pairs, result["gap_uncertainty_score"]):
+            scalar[f"ntk_{gap_key_for_pair(lower, upper)}"] = float(value)
     if multi and "gap" in result and crossing_gap_eV is not None:
-        gaps = result["gap"].abs().detach().cpu().numpy()
+        adjacent = result["energy"].diff() if "gap_pairs" in result else result["gap"]
+        gaps = adjacent.abs().detach().cpu().numpy()
         for index, state in enumerate(state_names):
             neighbours = [gaps[i] for i in (index - 1, index) if 0 <= i < len(gaps)]
             scalar[f"ntk_near_crossing_{state}"] = float(min(neighbours) < crossing_gap_eV)
@@ -354,6 +455,9 @@ class NTKPackedEvaluator:
 
     def __init__(self, estimator, *, force_diagnostics=None, selected_state=0, crossing_gap_eV=0.1, **scores):
         self.estimator, self.force_diagnostics = estimator, force_diagnostics
+        self.n_states = len(estimator.state_names)
+        if not 0 <= selected_state < self.n_states:
+            raise ValueError("Selected state is absent from the NTK model.")
         self.selected_state, self.scores = selected_state, scores
         self.crossing_gap_eV = crossing_gap_eV
         if force_diagnostics is not None:
@@ -366,18 +470,33 @@ class NTKPackedEvaluator:
     @torch.inference_mode(False)
     def evaluate(self, numbers, positions, cells, pbc, counts):
         """Return ``[1, systems]`` energies and ``[1, atoms, 3]`` forces of the selected state, unscored."""
+        energies, forces = self.evaluate_states(numbers, positions, cells, pbc, counts)
+        return energies[:, self.selected_state], forces[:, self.selected_state]
+
+    def evaluate_states(self, numbers, positions, cells, pbc, counts):
+        """Return unscored physical predictions with axes ``[member, state, system or atom, ...]``."""
         if not counts or min(counts) <= 0 or sum(counts) != len(numbers) or positions.shape != (len(numbers), 3):
             raise ValueError("Packed atom counts must match the nonempty input structures.")
         energies, forces = self.estimator.adapter.predict_batch(numbers, positions, cells, pbc, counts)
-        state = self.selected_state
-        return energies[state][None], forces[state][None]
+        return energies[None], forces[None]
+
+    def predict_states(self, atoms_list):
+        """Return unscored molecular predictions for ASE's state-aware sampler."""
+        if not atoms_list or any(atoms.pbc.any() for atoms in atoms_list):
+            raise ValueError("ASE state prediction requires nonperiodic molecules.")
+        counts = [len(atoms) for atoms in atoms_list]
+        energies, forces = self.evaluate_states(torch.as_tensor(np.concatenate([a.numbers for a in atoms_list])),
+                                                torch.as_tensor(np.concatenate([a.positions for a in atoms_list])),
+                                                None, (False, False, False), counts)
+        return dict(state_energies=energies.cpu().numpy(),
+                    state_forces=[part.cpu().numpy() for part in forces.split(counts, dim=2)])
 
     @torch.inference_mode(False)
     def observe_uncertainty(self, numbers, positions, cell, pbc):
         """Return scores, and any energy row or atom diagnostics, for one structure."""
         estimator = self.estimator
         periodic = bool(torch.as_tensor(pbc).any())
-        if estimator.energy_only:
+        if estimator.energy_only and self.n_states == 1:
             payload = estimator.candidate_features(numbers, positions, pbc, cell if periodic else None,
                                                    state=self.selected_state)
             row = payload["row"].astype(np.float64, copy=False)
@@ -395,16 +514,70 @@ class NTKPackedEvaluator:
                                               crossing_gap_eV=self.crossing_gap_eV)
         return {"uncertainty": scalar, "atomic_uncertainty": atomic}
 
-    def observe_uncertainty_batch(self, numbers, positions, cells, pbc, counts, energies, forces):
+    def observe_uncertainty_batch(self, numbers, positions, cells, pbc, counts, energies, forces,
+                                  *, force_atom_indices=None):
         """Score every active structure at an acquisition check, in batch order.
 
         This is one call per check, so the packed engine can retry structures one at a time if a batch
         fails. Each structure's rows are still computed separately.
         """
+        selections = [None] * len(counts) if force_atom_indices is None else force_atom_indices
+        if len(selections) != len(counts):
+            raise ValueError("Supply one force atom selection per packed structure.")
         observations, start = [], 0
         for index, count in enumerate(counts):
             stop = start + count
             cell = None if cells is None else cells[index]
-            observations.append(self.observe_uncertainty(numbers[start:stop], positions[start:stop], cell, pbc))
+            options = {} if selections[index] is None else {"force_atom_indices": selections[index]}
+            observations.append(self.observe_uncertainty(numbers[start:stop], positions[start:stop], cell, pbc,
+                                                         **options))
             start = stop
         return observations
+
+
+class GroundStateNTKPackedEvaluator(NTKPackedEvaluator):
+    """Ordinary one-member dynamics with NTK acquisition checks."""
+
+    def __init__(self, estimator, inference=None, *, force_score="projected", force_probes=8, energy_score=False):
+        super().__init__(estimator)
+        if force_score not in {"projected", "exact", "selected"}:
+            raise ValueError("force_score must be 'projected', 'exact', or 'selected'.")
+        if type(force_probes) is not int or force_probes < 1:
+            raise ValueError("force_probes must be a positive integer.")
+        if type(energy_score) is not bool:
+            raise ValueError("energy_score must be true or false.")
+        self.inference = inference
+        self.force_probes = force_probes if force_score == "projected" else 0
+        self.requires_force_atom_indices = force_score == "selected"
+        self.energy_score = energy_score
+
+    @torch.inference_mode(False)
+    def evaluate(self, numbers, positions, cells, pbc, counts):
+        if self.inference is None:
+            return super().evaluate(numbers, positions, cells, pbc, counts)
+        return self.inference.evaluate(numbers, positions, cells, pbc, counts)
+
+    @torch.inference_mode(False)
+    def observe_uncertainty(self, numbers, positions, cell, pbc, *, force_atom_indices=None):
+        if self.requires_force_atom_indices and force_atom_indices is None:
+            raise ValueError("force_score='selected' requires acquisition.force_atoms.")
+        estimator = self.estimator
+        structure = estimator.adapter.structure(numbers, positions, cell, pbc)
+        scores = estimator.score_forces(structure, force_probes=self.force_probes,
+                                         atom_indices=force_atom_indices, include_energy=self.energy_score)
+        scalar, report = {}, {}
+        if self.energy_score:
+            scalar["ntk_energy"] = float(scores["energy_uncertainty_score"][0])
+            if bool(torch.as_tensor(pbc).any()):
+                scalar["ntk_energy_per_atom"] = scalar["ntk_energy"] / len(numbers)
+        if self.requires_force_atom_indices:
+            report["selected_force_uncertainty"] = {
+                "ntk_force_selected_max": scores["force_uncertainty_score"][0].cpu().numpy()}
+        else:
+            scalar["ntk_force_rms"] = float(scores["force_rms_uncertainty"][0])
+            if not self.force_probes:
+                scalar["ntk_force_max"] = float(scores["max_force_uncertainty_score"][0])
+                report["atomic_uncertainty"] = {"ntk_force": scores["force_uncertainty_score"][0].cpu().numpy()}
+        if not all(math.isfinite(value) for value in scalar.values()):
+            raise FloatingPointError("Nonfinite NTK uncertainty score.")
+        return {"uncertainty": scalar, "atomic_uncertainty": {}, **report}

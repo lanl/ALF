@@ -1496,19 +1496,224 @@ def test_separate_test_set_matches_the_training_arrays_and_leaves_them_alone(tmp
     assert len(train["energy"]) + len(database.splits["valid"]["energy"]) == 4
 
 
-def test_excited_state_ntk_predicts_like_the_ensemble_and_caches_its_basis(two_state_ensemble):
+@pytest.mark.parametrize("periodic", [False, True], ids=["internal-test-molecules", "external-test-periodic"])
+def test_ground_state_ntk_uses_exact_training_rows_and_scores_at_checks(tmp_path, monkeypatch, periodic):
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("hippynn")
+    from hippynn import experiment
+
+    from alframework.ml_interfaces.hippynn import ntk_basis
+    from alframework.ml_interfaces.ntk import NTKEstimator
+    from alframework.ml_interfaces.ntk import estimator as estimator_module
+    from alframework.samplers.engines.packed import PackedMLMDEngine
+    from tests.helpers.hippynn import TINY_NETWORK, write_water_shard
+
+    data = tmp_path / "train"
+    write_water_shard(data)
+    shard = data / "data.h5"
+    with h5py.File(shard, "a") as handle:
+        water = handle["water"]
+        water["coordinates"][0, 1] = [0.1, 0.0, 0.0]  # Removed by the close-atom screen.
+        hydrogen = handle.create_group("hydrogen")
+        coords = water["coordinates"][1:, :2]
+        hydrogen["species"] = np.array(["H", "H"], dtype="S")
+        hydrogen["coordinates"] = coords
+        hydrogen["energy"] = (coords ** 2).sum(axis=(1, 2))
+        hydrogen["forces"] = -2 * coords
+        if periodic:
+            for group in (water, hydrogen):
+                group["cell"] = np.tile(np.eye(3) * 8.0, (len(group["coordinates"]), 1, 1))
+    heldout = None
+    if periodic:
+        heldout = tmp_path / "heldout"
+        write_water_shard(heldout, frames=6)
+        with h5py.File(heldout / "data.h5", "a") as handle:
+            handle["water"]["cell"] = np.tile(np.eye(3) * 8.0, (6, 1, 1))
+
+    member = tmp_path / "ensemble" / "model-00"
+    member.mkdir(parents=True)
+    observed = {}
+    train_model = experiment.setup_and_train
+
+    def capture_split(training_modules, database, **options):
+        for name in ("train", "valid", "test"):
+            observed[name] = {key: value.detach().cpu().numpy().copy()
+                              for key, value in database.splits[name].items()}
+        return train_model(training_modules, database, **options)
+
+    monkeypatch.setattr(experiment, "setup_and_train", capture_split)
+    ml.train_HIPNN_model(str(member), str(data), energy_key="energy", coordinates_key="coordinates",
+                         species_key="species", force_key="forces", cell_key="cell" if periodic else None,
+                         network_params=dict(TINY_NETWORK), device_string="cpu", valid_size=0.25, test_size=0.25,
+                         controller_options=dict(batch_size=4, eval_batch_size=4, max_epochs=2,
+                                                 termination_patience=10, fraction_train_eval=1.0),
+                         plot_every=1000, h5_test_dir=None if heldout is None else str(heldout),
+                         record_ntk_training_split=True)
+
+    manifest_path = member / ntk_basis.MANIFEST_FILE
+    manifest_text = manifest_path.read_text()
+    manifest = json.loads(manifest_text)
+    [source] = manifest["files"]
+    assert source["path"] == str(shard)
+    assert 0 not in next(group["rows"] for group in source["groups"] if group["path"] == "/water")
+    with pytest.raises(ValueError, match="ntk_basis prepare"):
+        ntk_basis.load_hippynn_ground_state_ntk_estimator(member.parent)
+    relocated = tmp_path / "relocated.h5"
+    shutil.copyfile(shard, relocated)
+    fit = dict(energy_scale=0.2, force_scale=0.4, sketch_dim=8)
+    prepared = ntk_basis.prepare_hippynn_ground_state_ntk(member.parent, shards=[relocated], **fit)
+
+    split = observed["train"]
+    training = [Atoms(numbers=numbers[numbers > 0], positions=positions[numbers > 0],
+                      cell=split["cell"][i] if periodic else None, pbc=periodic)
+                for i, (numbers, positions) in enumerate(zip(split["species"], split["coordinates"]))]
+    assert {len(atoms) for atoms in training} == {2, 3}
+    assert prepared.training_structure_count == len(training)
+    assert len(observed["valid"]["indices"]) and len(observed["test"]["indices"])
+    direct_fit = NTKEstimator(prepared.adapter, training, **fit)
+    torch.testing.assert_close(prepared.posterior.information, direct_fit.posterior.information)
+    assert ntk_basis.prepare_hippynn_ground_state_ntk(member.parent, **fit).basis_id == prepared.basis_id
+    with pytest.raises(ValueError, match="Choose another --basis-file"):
+        ntk_basis.prepare_hippynn_ground_state_ntk(member.parent, **dict(fit, sketch_dim=9))
+    with h5py.File(relocated, "a") as handle:
+        handle.attrs["changed"] = True
+    with pytest.raises(ValueError, match="does not match the NTK training manifest"):
+        ntk_basis.prepare_hippynn_ground_state_ntk(member.parent, shards=[relocated], **fit)
+
+    def unexpected_shard_read(*args, **kwargs):
+        pytest.fail("Loading a prepared basis must not reopen the training shards")
+
+    monkeypatch.setattr(ntk_basis, "_checked_shards", unexpected_shard_read)
+    monkeypatch.setattr(ntk_basis, "_training_geometries", unexpected_shard_read)
+    offline = ntk_basis.load_hippynn_ground_state_ntk_estimator(member.parent)
+    systems = [next(atoms.copy() for atoms in training if len(atoms) == count) for count in (2, 3)]
+    projected = ntk_basis.load_hippynn_ground_state_ntk(member.parent, device="cpu")
+    exact = ntk_basis.load_hippynn_ground_state_ntk(member.parent, device="cpu", force_score="exact")
+    assert offline.basis_id == projected.estimator.basis_id == exact.estimator.basis_id == prepared.basis_id
+    reference = ml.HippynnBatchedEnsemble(member.parent, device="cpu")
+    expected_scores = [offline.predict(atoms, forces=False, force_probes=8)["force_rms_uncertainty"][0].item()
+                       for atoms in systems]
+    requests = []
+    row_counts = []
+    score_rows = estimator_module.compute_rows
+
+    def record_rows(adapter, structure, request, *args, **kwargs):
+        requests.append(request.row_keys)
+        row_counts.append(request.output_count(len(adapter.state_names), structure.n_atoms))
+        return score_rows(adapter, structure, request, *args, **kwargs)
+
+    monkeypatch.setattr(estimator_module, "compute_rows", record_rows)
+
+    class TestPackedEngine(PackedMLMDEngine):
+        def _baoab(self):
+            return self._evaluate()
+
+    rngs = [np.random.RandomState(1), np.random.RandomState(2)]
+    engine = TestPackedEngine(systems, projected, 0.5, [300, 300], rngs)
+    assert not engine.step([0, 1], 2)
+    assert not requests
+    state = engine.state
+    tensors = (state.atomic_numbers, state.positions, state.cell.transpose(-1, -2), state.pbc, [2, 3])
+    for actual, baseline in zip(projected.evaluate(*tensors), reference.evaluate(*tensors)):
+        torch.testing.assert_close(actual, baseline[:1])
+    if periodic:
+        assert projected.inference.pairs.builds == 1
+    for i, expected in enumerate(expected_scores):
+        prediction = engine.observe(i)["prediction"]
+        assert prediction["uncertainty"][0] == {"ntk_force_rms": pytest.approx(expected)}
+        assert "atomic_uncertainty" not in prediction
+    assert requests == [("force_projection",), ("force_projection",)]
+
+    expected = offline.predict(systems[1])["force_uncertainty_score"][0].numpy()
+    report = exact.observe_uncertainty(tensors[0][2:], tensors[1][2:], tensors[2][1], tensors[3])
+    np.testing.assert_allclose(report["atomic_uncertainty"]["ntk_force"], expected)
+    assert report["uncertainty"]["ntk_force_max"] == pytest.approx(expected.max())
+    assert requests[-1] == ("forces",)
+    for i in range(len(systems)):
+        engine.finish(i)
+
+    selected = ntk_basis.load_hippynn_ground_state_ntk(
+        member.parent, device="cpu", force_score="selected", energy_score=True)
+    selected_engine = TestPackedEngine(systems, selected, 0.5, [300, 300], rngs)
+    atom_indices = [(1,), (2, 0)]
+    selected_engine.set_force_atom_indices(atom_indices)
+    expected = [offline.predict(atoms) for atoms in systems]
+    requests.clear()
+    row_counts.clear()
+    assert not selected_engine.step([0, 1], 1)
+    assert not requests
+    observations = []
+    observe_batch = selected.observe_uncertainty_batch
+
+    def retry_batch(numbers, positions, cells, pbc, counts, energies, forces, *, force_atom_indices):
+        observations.append(force_atom_indices)
+        if len(counts) == 2:
+            raise RuntimeError("check single-trajectory retry")
+        return observe_batch(numbers, positions, cells, pbc, counts, energies, forces,
+                             force_atom_indices=force_atom_indices)
+
+    monkeypatch.setattr(selected, "observe_uncertainty_batch", retry_batch)
+    for i, indices in enumerate(atom_indices):
+        prediction = selected_engine.observe(i)["prediction"]
+        np.testing.assert_allclose(
+            prediction["selected_force_uncertainty"][0]["ntk_force_selected_max"],
+            expected[i]["force_uncertainty_score"][0, list(indices)].numpy())
+        assert prediction["uncertainty"][0]["ntk_energy"] == pytest.approx(
+            float(expected[i]["energy_uncertainty_score"][0]))
+        assert "atomic_uncertainty" not in prediction
+        assert "ntk_force_rms" not in prediction["uncertainty"][0]
+    selected_engine.finish(0)
+    assert not selected_engine.step([1], 1)
+    selected_engine.observe(1)
+    assert observations == [atom_indices, [(1,)], [(2, 0)], [(2, 0)]]
+    assert requests == [("energy", "forces")] * 3
+    assert row_counts == [4, 7, 7]
+    selected_engine.finish(1)
+
+    manifest["files"][0]["groups"][0]["rows"].reverse()
+    manifest_path.write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match="does not match the recorded training split"):
+        ntk_basis.load_hippynn_ground_state_ntk_estimator(member.parent)
+    manifest_path.write_text(manifest_text)
+    weights_path = member / "best_model.pt"
+    original_weights = weights_path.read_bytes()
+    weights = torch.load(weights_path, map_location="cpu", weights_only=True)
+    next(value for value in weights.values() if value.is_floating_point() and value.numel()).add_(0.1)
+    torch.save(weights, weights_path)
+    try:
+        with pytest.raises(ValueError, match="does not match this model snapshot"):
+            ntk_basis.load_hippynn_ground_state_ntk_estimator(member.parent)
+        with pytest.raises(ValueError, match="does not match the checkpoint recorded"):
+            ntk_basis.prepare_hippynn_ground_state_ntk(member.parent, **fit)
+    finally:
+        weights_path.write_bytes(original_weights)
+
+
+def test_excited_state_ntk_predicts_like_the_ensemble_and_caches_its_basis(two_state_ensemble, monkeypatch):
     import torch
     from alframework.ml_interfaces.hippynn.ntk import (NTK_BASIS_FILE, load_hippynn_excited_state_ntk,
                                                       load_hippynn_excited_state_ntk_estimator)
-    from alframework.ml_interfaces.ntk import NTKASECalculator
+    from alframework.ml_interfaces.ntk import NTKASECalculator, NTKEstimator
 
     properties = _properties(with_gap=True)
+    manifest = json.loads((two_state_ensemble.member / "training_input_manifest.json").read_text())
+    indices = manifest["splits"]["train"]
+    split = _reload_checkpoint(two_state_ensemble)["database"].splits["train"]
+    assert split["indices"].tolist() == indices
+    training = [Atoms(numbers=numbers.numpy(), positions=positions.numpy())
+                for numbers, positions in zip(split["species"], split["coordinates"])]
+
+    def unexpected_shard_read(*args, **kwargs):
+        pytest.fail("A matching NTK basis should load without rereading the training shards")
+
     for scale in (1.0, 2.0):
         scaled = {key: [value[0], value[1], scale] for key, value in properties.items()}
-        options = dict(shards=[str(two_state_ensemble.data / "data.h5")], sketch_dim=8, dtype=torch.float64,
-                       basis_file=f"ntk-{scale}.npz")
+        options = dict(sketch_dim=8, dtype=torch.float64, basis_file=f"ntk-{scale}.npz")
         estimator = load_hippynn_excited_state_ntk_estimator(two_state_ensemble.directory, scaled, **options)
-        assert estimator.state_names == ("E0", "E1") and estimator.training_structure_count == 12
+        assert estimator.state_names == ("E0", "E1") and estimator.training_structure_count == len(indices)
+        assert manifest["splits"]["valid"] and manifest["splits"]["test"] and manifest["filtered_indices"]
+        exact = NTKEstimator(estimator.adapter, training, energy_scale=0.05, force_scale=0.1, sketch_dim=8)
+        torch.testing.assert_close(estimator.posterior.information, exact.posterior.information)
         assert (two_state_ensemble.member / f"ntk-{scale}.npz").is_file()
         atoms = _molecule_from(two_state_ensemble)
         reference = _load_evaluator(two_state_ensemble, scaled).predict_states([atoms])
@@ -1517,7 +1722,9 @@ def test_excited_state_ntk_predicts_like_the_ensemble_and_caches_its_basis(two_s
         np.testing.assert_allclose(result["energy"].numpy(), reference["state_energies"][0, :, 0], rtol=1e-5, atol=1e-6)
         # The ensemble evaluates in float32.
         np.testing.assert_allclose(result["forces"].numpy(), reference["state_forces"][0][0], rtol=1e-5, atol=1e-6)
-        restored = load_hippynn_excited_state_ntk_estimator(two_state_ensemble.directory, scaled, **options)
+        with monkeypatch.context() as patch:
+            patch.setattr(ml, "load_excited_state_h5_arrays", unexpected_shard_read)
+            restored = load_hippynn_excited_state_ntk_estimator(two_state_ensemble.directory, scaled, **options)
         assert restored.basis_id == estimator.basis_id
     calculator = NTKASECalculator(estimator, selected_state=1, hessian_probes=2)
     calculator.calculate(atoms)
@@ -1528,3 +1735,60 @@ def test_excited_state_ntk_predicts_like_the_ensemble_and_caches_its_basis(two_s
                                           torch.tensor(atoms.pbc), [3])
     np.testing.assert_allclose(energies[0, 0].item(), reference["state_energies"][0, 1, 0] * 2.0, rtol=1e-5)
     assert NTK_BASIS_FILE == "ntk_basis.npz"
+
+
+def test_excited_state_ntk_refits_on_split_or_fit_changes(two_state_ensemble, tmp_path):
+    from alframework.ml_interfaces.hippynn.ntk import (NTK_BASIS_FILE, excited_state_ntk_adapter,
+                                                      load_hippynn_excited_state_ntk_estimator)
+    from alframework.ml_interfaces.ntk import NTKEstimator
+
+    copy = _copied_ensemble(two_state_ensemble, tmp_path)
+    member = copy.directory / "model-00"
+    properties = _properties(with_gap=True)
+    manifest_path = member / "training_input_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    original = Atoms("OHH", positions=two_state_ensemble.coordinates[0])
+    adapter = excited_state_ntk_adapter(member, properties)
+    legacy = NTKEstimator(adapter, [original], energy_scale=0.05, force_scale=0.1, sketch_dim=8)
+    legacy.save_basis(member / NTK_BASIS_FILE)
+
+    relocated = tmp_path / "relocated.h5"
+    shutil.copyfile(two_state_ensemble.data / "data.h5", relocated)
+    fitted = load_hippynn_excited_state_ntk_estimator(copy.directory, properties, shards=[relocated], sketch_dim=8)
+    assert fitted.basis_id != legacy.basis_id
+    assert fitted.training_structure_count == len(manifest["splits"]["train"])
+
+    train, test = (manifest["splits"][name] for name in ("train", "test"))
+    train[0], test[0] = test[0], train[0]
+    manifest_path.write_text(json.dumps(manifest))
+    refitted = load_hippynn_excited_state_ntk_estimator(copy.directory, properties, sketch_dim=8)
+    assert refitted.training_structure_count == fitted.training_structure_count
+    assert refitted.metadata["fit_provenance"] != fitted.metadata["fit_provenance"]
+    assert refitted.basis_id != fitted.basis_id
+
+    changed = load_hippynn_excited_state_ntk_estimator(copy.directory, properties, sketch_dim=8, ridge_factor=0.01)
+    assert changed.ridge == pytest.approx(10 * refitted.ridge)
+    assert changed.basis_id != refitted.basis_id
+    with h5py.File(relocated, "a") as handle:
+        handle.attrs["changed"] = True
+    with pytest.raises(ValueError, match="shards must match the member's training manifest"):
+        load_hippynn_excited_state_ntk_estimator(copy.directory, properties, shards=[relocated], sketch_dim=8)
+
+
+def test_gap_stratified_split_is_used_recorded_and_restored(two_state_ensemble, tmp_path):
+    config = dict(two_state_ensemble.config, split={"method": "gap_stratified", "bins": 2, "pairs": [[0, 1]]},
+                  valid_size=0.2, test_size=0.2)
+    member = tmp_path / "model-00"
+    ml.train_single_excited_state_model(model_id=0, model_dir=str(member), h5_train_dir=str(two_state_ensemble.data),
+                                        properties_list=_properties(with_gap=True), ML_config=config)
+    manifest = json.loads((member / "training_input_manifest.json").read_text())
+    assert manifest["split_method"]["method"] == "gap_stratified"
+    assert sorted(sum(manifest["splits"].values(), [])) == manifest["retained_indices"]
+    assert all(len(manifest["splits"][name]) >= 1 for name in ("train", "valid", "test"))
+    from alframework.ml_interfaces.hippynn.compat import checkpoints
+    restored = checkpoints().load_checkpoint(str(member / "experiment_structure.pt"),
+                                             str(member / "best_checkpoint.pt"), map_location="cpu",
+                                             restart_db=True)["database"]
+    assert {key: values["indices"].tolist() for key, values in restored.splits.items()} == manifest["splits"]
+    with pytest.raises(ValueError, match="split.method"):
+        ml.validate_excited_state_training_config(dict(config, split={"method": "kmeans"}), _properties(with_gap=True))

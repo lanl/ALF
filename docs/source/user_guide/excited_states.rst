@@ -325,6 +325,13 @@ differences:
      - Optional gap training, such as ``{"enabled": true, "weight": 1.0, "pairs":
        [[0, 1]]}``. Each gap needs a ``dE##`` property, and gaps are derived from
        the state heads rather than trained as separate heads.
+   * - ``split``
+     - Optional. ``{"method": "gap_stratified", "bins": 20, "pairs": [[1, 2]]}`` balances the
+       train, validation, and test splits on the energy gap: frames are ranked by the smallest
+       \|E_j − E_i\| over ``pairs`` (default: every adjacent pair) and grouped into equal-count bins.
+       ALF distributes the requested held-out frame counts across the bins and retains at least one
+       frame per split, including for small datasets. The default is ``{"method": "random"}``.
+       A checkpoint restart reuses the saved split.
    * - ``optimizer``
      - Must be ``AdamW``.
    * - ``batch_size``, ``eval_batch_size``, ``max_epochs``, ``termination_patience``
@@ -529,10 +536,23 @@ Excited-State API Links
 Uncertainty From One Model
 --------------------------
 
-An excited-state HIPPYNN ensemble member can also report its own NTK uncertainty, per state, for packed
-MD on one state. Use ``"batched_calculator":
+An excited-state HIPPYNN member can report its own NTK uncertainty in the state-aware sampler. Use
+``"model_mode": "excited_state"`` and the same ``state_selection`` settings as for ensemble sampling.
+For the model loader, use ``"batched_calculator":
 "alframework.ml_interfaces.hippynn.ntk.load_hippynn_excited_state_ntk"`` with ``batched_calculator_options``
-giving ``properties_list``, ``selected_state``, and ``scores`` (see :doc:`acquisition`). On its first
-load, ALF fits the member's posterior on the training shards recorded in ``label_sources.json``. It saves
-the posterior as ``ntk_basis.npz`` in the member directory, and later loads reuse it. To fine-tune an
-excited-state model from a ground-state foundation model instead, see :doc:`fine_tuning_xmace`.
+giving ``properties_list`` and ``scores`` (see :doc:`acquisition`). Use named NTK acquisition terms,
+such as ``ntk_dE12``. ASE, TorchSim, and ALCHEMI evaluate these scores at acquisition checks. On its first
+load, ALF fits the posterior on the exact training split in the member's ``training_input_manifest.json``.
+It saves ``ntk_basis.npz`` in the member directory and reuses it when the model, training split, and fit
+settings match. An older cache without a recorded split is rebuilt from the manifest. If the training
+shards moved, pass their paths in manifest order as ``batched_calculator_options.shards``. ALF verifies
+the file checksums. For training from a ground-state foundation model, see :doc:`fine_tuning_xmace`.
+
+Scoring Outputs Of A Separate Coupling Model
+--------------------------------------------
+
+For uncertainty, ``HippynnOutputsNTKAdapter`` (in ``alframework.ml_interfaces.hippynn.ntk``) scores a
+coupling graph on its outputs. ``frozen_model_inputs`` feeds it gradient differences and gaps from a frozen
+energy model, and ``alframework.ml_interfaces.ntk.couplings.physical_coupling_uncertainty`` combines the
+scaled coupling and gap uncertainties into a first-order uncertainty for the physical coupling. This
+propagation assumes independent errors and a nonzero gap.

@@ -21,6 +21,7 @@ from alframework.ml_interfaces.fine_tuning.mace import MaceFineTuner
 from alframework.tools.molecules import MoleculesObject
 from alframework.tools.data_shards import store_current_data
 from tests.helpers.fake_fine_tuner import trained
+from tests.helpers.engines import require_engine
 from tests.helpers.molecules import WATER
 
 PROPERTIES = {"energy": ["energy", "system", 1.0], "forces": ["forces", "atomic", 1.0]}
@@ -293,15 +294,25 @@ def test_mace_command_turns_on_replay_freezing_and_extra_options(tmp_path):
     assert args["swa"] is True and "ema" not in args and args["patience"] == "5"
 
 
+def test_mace_command_turns_on_lora(tmp_path):
+    assert "lora" not in arguments(mace(tmp_path).command("train.xyz", "member", 0, "cpu"))
+    args = arguments(mace(tmp_path, lora=True, lora_rank=8, lora_alpha=2.0).command("train.xyz", "member", 0, "cpu"))
+    assert (args["lora"], args["lora_rank"], args["lora_alpha"]) == ("True", "8", "2.0")
+
+
 @pytest.mark.parametrize("settings, message", [
     (dict(E0s=None), "E0s"),
+    (dict(lora="yes"), "lora"),
+    (dict(lora=True, lora_rank=0), "lora_rank"),
+    (dict(mace_options={"lora": True}), "may not set"),
     (dict(E0s="guess"), "E0s"),
     (dict(dtype="float16"), "dtype"),
     (dict(learning_rate=0), "learning_rate"),
     (dict(freeze=True), "freeze"),
     (dict(valid_fraction=1.0), "valid_fraction"),
     (dict(mace_options={"lr": 0.1, "seed": 3}), r"may not set \['lr', 'seed'\]"),
-], ids=["no_E0s", "bad_E0s", "dtype", "learning_rate", "freeze", "valid_fraction", "managed_options"])
+], ids=["no_E0s", "lora", "lora_rank", "lora_option", "bad_E0s", "dtype", "learning_rate", "freeze",
+         "valid_fraction", "managed_options"])
 def test_mace_refuses_mistakes(tmp_path, settings, message):
     if settings.get("E0s", "") is None:
         block = dict(adapter=MACE, foundation_model="x")
@@ -628,7 +639,12 @@ def test_hippynn_refuses_an_unknown_stopping_key(tmp_path, pretrained):
     (dict(learning_rate=-1), "learning_rate"),
     (dict(valid_size=0), "valid_size"),
     (dict(freeze="hipnn"), "freeze must be a list"),
-], ids=["no_E0s", "mace_E0s", "learning_rate", "valid_size", "freeze_string"])
+    (dict(lora="yes"), "lora must be"),
+    (dict(lora=True, lora_rank=0), "lora_rank"),
+    (dict(lora=True, lora_alpha=0), "lora_alpha"),
+    (dict(lora=True, lora_targets="hipnn"), "lora_targets"),
+], ids=["no_E0s", "mace_E0s", "learning_rate", "valid_size", "freeze_string", "lora", "lora_rank", "lora_alpha",
+        "lora_targets"])
 def test_hippynn_refuses_mistakes(tmp_path, settings, message):
     from alframework.ml_interfaces.fine_tuning.hippynn import HippynnFineTuner
 
@@ -815,7 +831,13 @@ def uma(tmp_path, **settings):
     (dict(batch_size=0), "batch_size"),
     (dict(lr=0), "lr must be a positive number"),
     (dict(valid_fraction=1.5), "valid_fraction"),
-], ids=["no_task", "bad_task", "no_E0s", "mace_E0s", "neither", "both", "batch_size", "lr", "valid_fraction"])
+    (dict(freeze_backbone="true"), "freeze_backbone must be a boolean"),
+    (dict(lora=True, task="omat"), "currently require task omol"),
+    (dict(lora_rank=0), "lora_rank must be a positive integer"),
+    (dict(ntk={}), "NTK requires freeze_backbone or lora"),
+    (dict(lora=True, ntk={"sketch_dim": 0}), "sketch_dim must be a positive integer"),
+], ids=["no_task", "bad_task", "no_E0s", "mace_E0s", "neither", "both", "batch_size", "lr", "valid_fraction",
+        "freeze_type", "lora_task", "lora_rank", "ntk_full", "ntk_sketch"])
 def test_uma_refuses_mistakes(tmp_path, settings, message):
     from alframework.ml_interfaces.fine_tuning.uma import UmaFineTuner
 
@@ -874,6 +896,21 @@ def test_uma_training_config_follows_fairchems_template(tmp_path):
     samplers = [config[key]["batch_sampler_fn"]["seed"] for key in ("train_dataloader", "eval_dataloader")]
     assert samplers == [7, 7]
     json.dumps(config)  # Written as JSON, which Hydra reads as YAML.
+
+
+@pytest.mark.parametrize("lora", [False, True])
+def test_uma_train_config_freezes_backbone_and_selects_lora_initializer(tmp_path, lora):
+    from alframework.ml_interfaces.fine_tuning.uma import training_config
+
+    settings = uma(tmp_path, freeze_backbone=not lora, lora=lora, ntk={"sketch_dim": 16}).settings
+    config = training_config(settings, tmp_path / "train", tmp_path / "valid", [0.0] * 100, 1.0,
+                             tmp_path / "runs", 0, "cpu")
+    model = config["runner"]["train_eval_unit"]["model"]
+    assert model["overrides"]["freeze_backbone"] is True
+    assert model["_target_"].endswith("initialize_lora_model" if lora else "initialize_finetuning_model")
+    assert settings["ntk"]["sketch_dim"] == 16
+    if lora:
+        assert (model["rank"], model["alpha"]) == (4, 1.0)
 
 
 def test_uma_splits_differ_by_seed_and_keep_one_structure_aside(tmp_path):
@@ -982,3 +1019,98 @@ def test_uma_example_configuration_is_valid(tmp_path):
     sampler = json.loads((example / "mlmd_config.json").read_text())
     assert sampler["batched_calculator"] == "alframework.ml_interfaces.fine_tuning.uma.load_uma_batched_ensemble"
     assert sampler["batched_calculator_options"]["task"] == tuner.settings["task"]
+
+
+def test_hippynn_lora_trains_only_low_rank_factors_and_heads_and_loads_everywhere(tmp_path, pretrained):
+    torch = pytest.importorskip("torch")
+    from alframework.ml_interfaces.hippynn.compat import checkpoints
+    from alframework.ml_interfaces.hippynn.interface import HIPNN_ASE_load_ensemble, load_hippynn_batched_ensemble
+    from alframework.ml_interfaces.hippynn.lora import merge_lora
+    from alframework.ml_interfaces.hippynn.ntk import EnergyForceNTK
+    load_checkpoint = checkpoints().load_checkpoint
+
+    member_dir = fine_tune_in_process(tmp_path, hippynn_tuner(pretrained, lora=True, lora_rank=2))
+    assert "low-rank parameters" in (member_dir / "training_log.txt").read_text()
+    source = load_checkpoint(str(pretrained / "model-00" / "experiment_structure.pt"),
+                             str(pretrained / "model-00" / "best_checkpoint.pt"), restart_db=False,
+                             map_location="cpu")["training_modules"].model.state_dict()
+    tuned = state(member_dir / "best_model.pt")
+    bases = {name: value for name, value in tuned.items() if name.endswith("_lora_base")}
+    assert bases, "LoRA should adapt the network's weights"
+    for name, value in bases.items():
+        # The pretrained weights stay frozen as the base of each update.
+        torch.testing.assert_close(value, source[name[:-len("_lora_base")]])
+    assert any(not torch.equal(tuned[name], torch.zeros_like(tuned[name])) for name in tuned if name.endswith("_lora_B"))
+    # ALF's checkpoint loader reads the adapted copy.
+    model = load_checkpoint(str(member_dir / "experiment_structure.pt"), str(member_dir / "best_checkpoint.pt"),
+                            restart_db=False, map_location="cpu")["training_modules"].model
+    trainable = {name for name, p in model.named_parameters() if p.requires_grad and p.is_floating_point()}
+    assert any(n.endswith(("_lora_A", "_lora_B")) for n in trainable)
+    assert not any(n.endswith("_lora_base") for n in trainable)
+    network = [n for n in trainable if not n.endswith(("_lora_A", "_lora_B"))]
+    assert network and all("henergy" in n or "moddict" in n for n in network)
+    # NTK on the adapted copy linearizes in the LoRA factors and heads only.
+    from hippynn.graphs import GraphModule
+    from alframework.ml_interfaces.hippynn.interface import _target
+    graph = GraphModule(model.input_nodes, [_target(model, "energy")]).double()
+    estimator = EnergyForceNTK(graph, [WATER.copy()], energy_scale=0.05, force_scale=0.1, sketch_dim=8)
+    names = list(estimator.adapter.live_parameters())
+    assert any(name.endswith(("_lora_A", "_lora_B")) for name in names)
+    assert not any(n.endswith("_lora_base") for n in names)
+    assert np.isfinite(float(estimator.predict(WATER.copy(), hessian_probes=2)["hessian_rms_uncertainty"][0]))
+    # Merging (in place, so last) folds the factors in and keeps the predictions.
+    graph = GraphModule(model.input_nodes, [_target(model, "energy")]).double()
+    from hippynn.graphs.nodes.inputs import SpeciesNode
+    species, coordinates = torch.tensor([[8, 1, 1]]), torch.tensor(WATER.positions, dtype=torch.float64)[None]
+    arguments = [species if isinstance(node, SpeciesNode) else coordinates for node in graph.input_nodes]
+    before = graph(*arguments)[0]
+    merged = merge_lora(graph)
+    assert merged > 0 and not any("_lora_" in name for name, _ in graph.named_parameters())
+    torch.testing.assert_close(graph(*arguments)[0], before)
+
+
+@pytest.mark.parametrize("device", list(dict.fromkeys(("cpu", os.environ.get("ALF_TEST_NTK_DEVICE", "cpu")))))
+def test_hippynn_fine_tune_prepares_single_member_ntk(tmp_path, pretrained, device):
+    torch = pytest.importorskip("torch")
+    h5py = pytest.importorskip("h5py")
+    require_engine("torchsim")
+    from alframework.ml_interfaces.hippynn.ntk_basis import BASIS_FILE, MANIFEST_FILE, load_hippynn_ground_state_ntk
+    from alframework.samplers.batched_mlmd import sample_trajectories
+
+    labels = water_labels(tmp_path / "h5") / "data-0000.h5"
+    with h5py.File(labels, "r+") as handle:
+        handle["water/forces"][0] = 1000.0
+    tuner = hippynn_tuner(pretrained, lora=True, lora_rank=2, ntk={"sketch_dim": 8}, remove_high_forces_cut=100.0)
+    root = tmp_path / "fitted"
+    member = root / "model-00"
+    assert fine_tuning.fine_tune_member(tuner.settings, [str(labels)], member, 0, device)
+    manifest = json.loads((member / MANIFEST_FILE).read_text())
+    assert manifest["training_structure_count"] == 13
+    assert 0 not in manifest["files"][0]["groups"][0]["rows"]
+    fit_device = "cpu" if device == "cpu" else "cuda:0"
+    assert f'"device": "{fit_device}"' in (member / "ntk_fit.log").read_text()
+    evaluator = load_hippynn_ground_state_ntk(root, device, force_score="selected", ntk_engine="reverse",
+                                              hippynn_kernel=False)
+    estimator = evaluator.estimator
+    assert estimator.engine == "reverse" and estimator.training_structure_count == 13
+    assert estimator.device == torch.device(device) and evaluator.n_models == 1
+    assert any(name.endswith("_lora_B") for name in estimator.adapter.live_parameters())
+    name = "ntk_force_selected_max"
+    config = {
+        "driver": {"engine": "torchsim"}, "dt": 0.25, "maxt": 0.002, "Ncheck": 2,
+        "min_time": 0.0005, "distcut": 0.3, "metadata_files": "none", "random_seed": 7,
+        "srt_temp": [300., 300.], "end_temp": [300., 300.], "amp_temp": [0., 0.], "per_temp": [1., 1.],
+        "amp_dens": None, "per_dens": None, "end_dens": None,
+        "acquisition": {"force_atoms": {"indices": [0, 2]},
+                        "terms": {name: {"uncertainty": name, "cutoff": 1e-12}},
+                        "eligibility": [name], "strategy": "largest"},
+    }
+    atoms = WATER.copy()
+    [sample] = sample_trajectories([MoleculesObject(atoms, "mol-0000-0000000000")], evaluator, config, device=device)
+    metadata = sample.get_metadata()
+    assert metadata["trajectory_outcome"] == "eligible", metadata.get("sampling_error", metadata)
+    structure = estimator.structure_from_atoms(sample.get_atoms())
+    expected = estimator.score_forces(structure, atom_indices=[0, 2])["force_uncertainty_score"][0]
+    np.testing.assert_allclose(metadata["selected_force_uncertainty"][name], expected.cpu(), rtol=5e-5)
+    (member / BASIS_FILE).unlink()
+    assert not tuner.member_complete(member)

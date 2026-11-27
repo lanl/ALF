@@ -67,6 +67,9 @@ UNCERTAINTY_TERMS = ("energy", "force_mean", "force_max")
 WEIGHT_SHORTHAND = {"w_energy": "energy", "w_force": "force_rms"}
 # The settings each built-in term needs, for runs that use only terms of their own.
 SPREAD_CUTOFFS = ("Escut", "Fscut")
+ENSEMBLE_FORCE_SELECTED = "ensemble_force_selected_max"
+NTK_FORCE_SELECTED = "ntk_force_selected_max"
+SELECTED_FORCE_SIGNALS = (ENSEMBLE_FORCE_SELECTED, NTK_FORCE_SELECTED)
 
 
 def custom_terms(sampler_config):
@@ -115,8 +118,52 @@ def used_terms(settings):
 
 
 def uses_spread(sampler_config):
-    """Whether a run's acquisition reads the ensemble's spread (any built-in term), so needs two or more members."""
-    return any(term in SCORE_TERMS for term in used_terms(acquisition_settings(sampler_config)))
+    """Whether acquisition reads an ensemble spread and therefore needs two or more members."""
+    settings = acquisition_settings(sampler_config)
+    return (any(term in SCORE_TERMS for term in used_terms(settings))
+            or ENSEMBLE_FORCE_SELECTED in settings.get("selected_force_signals", ()))
+
+
+def resolve_force_atom_indices(selection, atoms, trajectory_id):
+    """Resolve a validated selection in this trajectory's original atom order."""
+    if selection is None:
+        return None
+    context = f"acquisition.force_atoms for trajectory {trajectory_id!r}"
+    if "indices" in selection:
+        indices = selection["indices"]
+        if max(indices) >= len(atoms):
+            raise ValueError(f"{context}: an index is out of range for {len(atoms)} atoms.")
+        return indices
+    name = selection["array"]
+    mask = atoms.arrays.get(name)
+    if not isinstance(mask, np.ndarray) or mask.shape != (len(atoms),) or mask.dtype.kind != "b":
+        raise ValueError(f"{context}: ASE atom array {name!r} must be a boolean vector of length {len(atoms)}.")
+    indices = tuple(np.flatnonzero(mask).tolist())
+    if not indices:
+        raise ValueError(f"{context}: ASE atom array {name!r} selects no atoms.")
+    return indices
+
+
+def selected_force_diagnostics(signals, sources, indices, *, member_forces=None, atomic=None, selected=None):
+    """Add selected-atom signals before eligibility and return the corresponding diagnostics."""
+    scores = {}
+    for source in sources:
+        if source == ENSEMBLE_FORCE_SELECTED:
+            if member_forces is None or len(member_forces) < 2:
+                raise ValueError(f"{source} requires forces from at least two ensemble members.")
+            spread = np.std(np.asarray(member_forces, dtype=float)[:, indices, :], axis=0)
+            values = np.linalg.norm(spread, axis=-1)
+        elif selected and source in selected:
+            values = np.asarray(selected[source], dtype=float)
+        elif atomic and "ntk_force" in atomic:
+            values = np.asarray(atomic["ntk_force"], dtype=float)[list(indices)]
+        else:
+            raise ValueError(f"{source} requires exact NTK atom scores. Use force_score='selected' or 'exact'.")
+        if values.shape != (len(indices),) or not np.isfinite(values).all() or np.any(values < 0):
+            raise ValueError(f"Invalid per-atom uncertainty values for {source}.")
+        signals[source] = float(values.max())
+        scores[source] = values.copy()
+    return {"force_atom_indices": list(indices), "selected_force_uncertainty": scores}
 
 
 SINGLE_MEMBER = ("{what} has one member, so no spread, but this run's acquisition reads the ensemble's spread "
@@ -214,7 +261,7 @@ def acquisition_settings(sampler_config):
     """Return validated acquisition settings; ``uncertainty``/``first_trigger`` when unconfigured."""
     block = dict(sampler_config.get("acquisition") or {})
     unknown = set(block) - {"strategy", "weights", "trajectory_policy", "selection", "eligibility", "terms",
-                            *WEIGHT_SHORTHAND}
+                            "force_atoms", *WEIGHT_SHORTHAND}
     if unknown:
         raise ValueError(f"Unknown acquisition settings: {sorted(unknown)}.")
     strategy = block.get("strategy", "uncertainty")
@@ -250,6 +297,26 @@ def acquisition_settings(sampler_config):
     if policy not in TRAJECTORY_POLICIES:
         raise ValueError(f"acquisition.trajectory_policy must be one of {TRAJECTORY_POLICIES}; received {policy!r}.")
     settings["trajectory_policy"] = policy
+    if "force_atoms" in block:
+        selection = block["force_atoms"]
+        if isinstance(selection, dict) and selection.keys() == {"indices"}:
+            indices = selection["indices"]
+            if (not isinstance(indices, (list, tuple)) or not indices
+                    or any(type(index) is not int or index < 0 for index in indices)
+                    or len(set(indices)) != len(indices)):
+                raise ValueError("acquisition.force_atoms.indices requires distinct nonnegative integer indices.")
+            settings["force_atoms"] = {"indices": tuple(indices)}
+        elif (isinstance(selection, dict) and selection.keys() == {"array"}
+              and isinstance(selection["array"], str) and selection["array"]):
+            settings["force_atoms"] = {"array": selection["array"]}
+        else:
+            raise ValueError('acquisition.force_atoms requires either {"indices": [...]} or {"array": "..."}')
+    used_signals = {custom[term]["uncertainty"] for term in used_terms(settings) & custom.keys()}
+    selected_sources = tuple(source for source in SELECTED_FORCE_SIGNALS if source in used_signals)
+    if selected_sources:
+        if "force_atoms" not in settings:
+            raise ValueError("Selected force uncertainty requires acquisition.force_atoms.")
+        settings["selected_force_signals"] = selected_sources
     used = set(eligibility) | {key for key, weight in settings.get('weights', {}).items() if weight > 0}
     if 'gap' in used:
         from alframework.tools.sampler_coordinator import state_settings

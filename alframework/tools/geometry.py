@@ -145,40 +145,65 @@ def padded_minimum_distances(positions, mask, device=None, pair_budget=PAIR_BUDG
     """Each frame's minimum interatomic distance, without periodic images, for a padded batch.
 
     ``positions`` [frames, atoms, 3] and ``mask`` [frames, atoms] (true for real atoms; padding has species 0)
-    are NumPy arrays or torch tensors. In chunks of about ``pair_budget`` pairs on ``device`` (the positions' own
-    by default), in float64, cdist's fast matrix-product form finds each frame's closest pair of real atoms, and
-    that pair's distance is then computed directly, so the value is exact even far from the origin (the fast form
-    alone loses precision there). Only two pairs within about 1e-8 Å of each other can be told apart wrongly,
-    which no screen notices. A frame with fewer than two real atoms gets infinity. Frames of more than
-    ``ALL_PAIRS_LIMIT`` atoms use ``minimum_distance``. Returns a float64 CPU tensor.
+    are NumPy arrays or torch tensors. In chunks of about ``pair_budget`` pairs, in float64, each frame's closest
+    pair of real atoms is found from squared distances by matrix products (torch's cdist on ``device``, the
+    positions' own by default, or NumPy without torch), and that pair's distance is then computed directly, so the
+    value is exact even far from the origin, where the products alone lose precision. Only two pairs within about
+    1e-8 Å of each other can be told apart wrongly, which no screen notices. A frame with fewer than two real atoms
+    gets infinity. Frames of more than ``ALL_PAIRS_LIMIT`` atoms use ``minimum_distance``. Returns a float64 NumPy
+    array.
     """
-    import torch
-    positions = torch.as_tensor(positions)
-    mask = torch.as_tensor(mask, dtype=torch.bool)
-    target = torch.device(device) if device is not None else positions.device
+    try:
+        import torch
+    except ImportError:
+        torch = None
+    if torch is not None and isinstance(positions, torch.Tensor):
+        mask = torch.as_tensor(mask, dtype=torch.bool)
+    else:
+        positions, mask = np.asarray(positions, dtype=np.float64), np.asarray(mask, dtype=bool)
     frames, atoms = mask.shape
-    found = torch.full((frames,), float('inf'), dtype=torch.float64)
+    found = np.full(frames, np.inf)
     if atoms < 2 or frames == 0:
         return found
     if atoms > ALL_PAIRS_LIMIT:
         from ase import Atoms
         for frame in range(frames):
-            real = mask[frame]
-            found[frame] = minimum_distance(Atoms(positions=positions[frame][real].double().cpu().numpy()))
+            points = positions[frame][mask[frame]]
+            points = points.double().cpu().numpy() if torch is not None and isinstance(points, torch.Tensor) else points
+            found[frame] = minimum_distance(Atoms(positions=points))
         return found
     step = max(1, pair_budget // (atoms * atoms))
-    distinct = ~torch.eye(atoms, dtype=torch.bool, device=target)
     for start in range(0, frames, step):
         chunk = slice(start, start + step)
-        points = positions[chunk].to(target, torch.float64)
-        real = mask[chunk].to(target)
-        pairs = real[:, :, None] & real[:, None, :] & distinct
-        rough = torch.cdist(points, points).masked_fill(~pairs, float('inf')).flatten(1)
-        closest = rough.argmin(dim=1)
-        rows = torch.arange(len(points), device=target)
-        exact = (points[rows, closest // atoms] - points[rows, closest % atoms]).norm(dim=1)
-        found[chunk] = torch.where(torch.isfinite(rough[rows, closest]), exact, float('inf')).cpu()
+        if torch is not None:
+            target = torch.device(device) if device is not None else torch.as_tensor(positions[:0]).device
+            found[chunk] = _closest_pairs_torch(torch, torch.as_tensor(positions[chunk]).to(target, torch.float64),
+                                                torch.as_tensor(mask[chunk]).to(target))
+        else:
+            found[chunk] = _closest_pairs_numpy(positions[chunk], mask[chunk])
     return found
+
+
+def _closest_pairs_torch(torch, points, real):
+    atoms = real.shape[1]
+    pairs = real[:, :, None] & real[:, None, :] & ~torch.eye(atoms, dtype=torch.bool, device=points.device)
+    rough = torch.cdist(points, points).masked_fill(~pairs, float('inf')).flatten(1)
+    closest = rough.argmin(dim=1)
+    rows = torch.arange(len(points), device=points.device)
+    exact = (points[rows, closest // atoms] - points[rows, closest % atoms]).norm(dim=1)
+    return torch.where(torch.isfinite(rough[rows, closest]), exact, float('inf')).cpu().numpy()
+
+
+def _closest_pairs_numpy(points, real):
+    atoms = real.shape[1]
+    squares = np.einsum('fai,fai->fa', points, points)
+    rough = squares[:, :, None] + squares[:, None, :] - 2 * np.einsum('fai,fbi->fab', points, points)
+    pairs = real[:, :, None] & real[:, None, :] & ~np.eye(atoms, dtype=bool)
+    rough = np.where(pairs, rough, np.inf).reshape(len(points), -1)
+    closest = rough.argmin(axis=1)
+    rows = np.arange(len(points))
+    exact = np.linalg.norm(points[rows, closest // atoms] - points[rows, closest % atoms], axis=1)
+    return np.where(np.isfinite(rough[rows, closest]), exact, np.inf)
 
 
 def random_rotation_matrix(deflection=1.0, randnums=None):

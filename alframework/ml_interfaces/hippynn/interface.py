@@ -268,7 +268,7 @@ def training_minimum_distances(arrays, species_key, coordinates_key, cell_key, d
     species = torch.as_tensor(arrays[species_key])
     positions = torch.as_tensor(arrays[coordinates_key])
     if not cell_key or cell_key not in arrays:
-        return padded_minimum_distances(positions, species != 0, device=device).to(positions.dtype)
+        return torch.as_tensor(padded_minimum_distances(positions, species != 0, device=device)).to(positions.dtype)
     cells = torch.as_tensor(arrays[cell_key])
     targets = [torch.device(d) for d in devices] if devices else \
         [torch.device(device) if device is not None else torch.device('cpu')]
@@ -1689,7 +1689,7 @@ def _minimum_structure_distances(coordinates: np.ndarray) -> np.ndarray:
     from alframework.tools.geometry import padded_minimum_distances
 
     coordinates = np.asarray(coordinates)
-    return padded_minimum_distances(coordinates, np.ones(coordinates.shape[:2], dtype=bool)).numpy()
+    return padded_minimum_distances(coordinates, np.ones(coordinates.shape[:2], dtype=bool))
 
 
 def _property_outlier_mask(

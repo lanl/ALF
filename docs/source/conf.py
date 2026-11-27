@@ -79,3 +79,24 @@ html_theme_options = {
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
 html_css_files = ['custom.css']
+
+
+def _inference_mode_signature(_app, obj, _bound_method):
+    """Recover the wrapped signature when autodoc mocks torch.inference_mode."""
+    from inspect import isclass, isfunction, signature
+
+    is_class = isclass(obj)
+    constructor = obj.__init__ if is_class else obj
+    if getattr(type(constructor), "__display_name__", None) != "torch.inference_mode":
+        return
+    args = constructor.__sphinx_decorator_args__
+    if len(args) != 1 or not isfunction(args[0]):
+        return
+    original = signature(args[0])
+    if is_class:
+        original = original.replace(parameters=tuple(original.parameters.values())[1:])
+    obj.__signature__ = original
+
+
+def setup(app):
+    app.connect("autodoc-before-process-signature", _inference_mode_signature)

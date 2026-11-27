@@ -1494,3 +1494,24 @@ def test_separate_test_set_matches_the_training_arrays_and_leaves_them_alone(tmp
     assert sorted(test["energy"].tolist()) == [-60.0, -30.0]
     torch.testing.assert_close(test["energyperatom"], test["energy"] / 3)
     assert len(train["energy"]) + len(database.splits["valid"]["energy"]) == 4
+
+
+def test_the_training_screen_without_a_cell_keeps_what_hippynn_kept():
+    pytest.importorskip("hippynn")
+    import torch
+    from hippynn.pretraining import calculate_min_dists
+    rng = np.random.default_rng(3)
+    sizes = rng.integers(2, 15, size=200)
+    positions = np.zeros((200, 14, 3))
+    species = np.zeros((200, 14), dtype=np.int64)
+    for frame, size in enumerate(sizes):
+        positions[frame, :size] = rng.uniform(0, 1.5 + 0.02 * frame, size=(size, 3))
+        species[frame, :size] = 1
+    arrays = {"species": torch.as_tensor(species), "coordinates": torch.as_tensor(positions)}
+    ours = ml.training_minimum_distances(arrays, "species", "coordinates", None, "cpu")
+    theirs = calculate_min_dists(arrays, species_name="species", positions_name="coordinates", dist_hard_max=6.0,
+                                 cell_name=None, batch_size=64, device="cpu")
+    close = theirs < 6.0
+    np.testing.assert_allclose(ours[close].numpy(), theirs[close].numpy(), rtol=1e-12)
+    for soft_min in (0.3, 0.7, 1.0):
+        np.testing.assert_array_equal((ours > soft_min).numpy(), (theirs > soft_min).numpy())

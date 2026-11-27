@@ -259,40 +259,32 @@ def training_minimum_distances(arrays, species_key, coordinates_key, cell_key, d
                                batch_size=256, devices=None):
     """Each structure's minimum interatomic distance, for the low-distance filter before training.
 
-    hippynn's ``calculate_min_dists`` builds every pair within ``dist_hard_max``: about 0.35 s per batch of 256
-    periodic 200-atom structures on one GPU, 6 minutes for 262,144 structures, repeated by every member at
-    every training. For periodic data, ALF's batched neighbor search (the sampler's screen,
-    ``tools.geometry.batched_minimum_distances``) finds the same minimum within its smaller search radius;
-    a structure with no pair that close gets its exact minimum-image minimum from ``minimum_distance``.
-    (hippynn gives such a structure the largest distance found in its batch, so its value depends on the other
-    structures in the batch, but a filter below the search radius keeps it either way.) Non-periodic data and
-    environments without a batched search use hippynn's function as before. Returns a CPU tensor in the
-    positions' dtype, as hippynn's does.
+    Periodic data use ALF's batched neighbor search (the sampler's screen,
+    ``tools.geometry.batched_minimum_distances``), which finds the minimum within its search radius; a structure
+    with no pair that close, or every structure where no batched search is installed, gets its exact
+    minimum-image minimum from ``minimum_distance``. Data without a cell are measured exactly over every pair of
+    real atoms (``tools.geometry.padded_minimum_distances``). Every value is the structure's own, whatever its
+    batch. (HIPPYNN's ``calculate_min_dists``, used before for data without a cell, looked only within
+    ``dist_hard_max`` and gave a structure with no pair that close the largest distance in its batch; a filter
+    below ``dist_hard_max`` keeps the same structures either way.) Returns a CPU tensor in the positions' dtype.
 
     ``devices``, a list, shares the periodic batches among several devices, one thread each, such as the
     GPUs of a member's node. Each structure's value doesn't depend on its batch, so the result is the same.
+    ``dist_hard_max`` is accepted for callers that pass it; no search radius depends on it.
     """
     import torch
     from ase import Atoms
-    from hippynn.pretraining import calculate_min_dists
-    from alframework.tools.geometry import batched_minimum_distances, minimum_distance
+    from alframework.tools.geometry import batched_minimum_distances, minimum_distance, padded_minimum_distances
 
-    def by_hippynn(subset):
-        # Keywords: hippynn's development branch made dist_hard_max the second positional argument.
-        return calculate_min_dists(subset, species_name=species_key, positions_name=coordinates_key,
-                                   dist_hard_max=dist_hard_max, cell_name=cell_key, batch_size=batch_size,
-                                   device=device)
-
-    if not cell_key or cell_key not in arrays:
-        return by_hippynn(arrays)
     species = torch.as_tensor(arrays[species_key])
     positions = torch.as_tensor(arrays[coordinates_key])
+    if not cell_key or cell_key not in arrays:
+        return padded_minimum_distances(positions, species != 0, device=device).to(positions.dtype)
     cells = torch.as_tensor(arrays[cell_key])
     targets = [torch.device(d) for d in devices] if devices else \
         [torch.device(device) if device is not None else torch.device('cpu')]
-    found = torch.empty(len(species), dtype=torch.float64)
+    found = torch.full((len(species),), float('inf'), dtype=torch.float64)
     starts = list(range(0, len(species), batch_size))
-    unavailable = []
 
     def screen(worker):
         target = targets[worker]
@@ -305,8 +297,7 @@ def training_minimum_distances(arrays, species_key, coordinates_key, cell_key, d
                 batch = batched_minimum_distances(positions[chunk].to(target)[real], cells[chunk].to(target),
                                                   system_idx, real.shape[0])
                 if batch is None:
-                    unavailable.append(worker)
-                    return
+                    return  # No batched search installed: every structure is measured one by one below.
                 found[chunk] = batch.cpu()
 
     if len(targets) == 1:
@@ -315,8 +306,6 @@ def training_minimum_distances(arrays, species_key, coordinates_key, cell_key, d
         import concurrent.futures
         with concurrent.futures.ThreadPoolExecutor(max_workers=len(targets)) as pool:
             list(pool.map(screen, range(len(targets))))
-    if unavailable:
-        return by_hippynn(arrays)
     for i in (~torch.isfinite(found)).nonzero().squeeze(1).tolist():
         real = species[i] != 0
         found[i] = minimum_distance(Atoms(numbers=species[i][real].numpy(), positions=positions[i][real].numpy(),
@@ -1706,20 +1695,11 @@ def excited_training_device(device_string, model_id, gpus_per_node):
 
 
 def _minimum_structure_distances(coordinates: np.ndarray) -> np.ndarray:
-    """Return the shortest nonperiodic pair distance in every structure."""
+    """Return the shortest nonperiodic pair distance in every structure (all its atoms are real)."""
+    from alframework.tools.geometry import padded_minimum_distances
 
-    count, atom_count, _ = coordinates.shape
-    if atom_count < 2:
-        return np.full(count, np.inf, dtype=np.float64)
-    minima = np.full(count, np.inf, dtype=np.float64)
-    for first in range(atom_count - 1):
-        distances = np.linalg.norm(
-            coordinates[:, first + 1 :, :]
-            - coordinates[:, first : first + 1, :],
-            axis=-1,
-        )
-        minima = np.minimum(minima, np.min(distances, axis=1))
-    return minima
+    coordinates = np.asarray(coordinates)
+    return padded_minimum_distances(coordinates, np.ones(coordinates.shape[:2], dtype=bool)).numpy()
 
 
 def _property_outlier_mask(

@@ -137,6 +137,46 @@ def batched_minimum_distances(positions, cells, system_idx, n_systems, backend='
     return distances.scatter_reduce_(0, system_mapping[distinct], vectors[distinct].norm(dim=1), reduce='amin')
 
 
+# Pair distances one chunk of padded frames holds at once in padded_minimum_distances (frames x atoms x atoms).
+PAIR_BUDGET = 1 << 24
+
+
+def padded_minimum_distances(positions, mask, device=None, pair_budget=PAIR_BUDGET):
+    """Each frame's minimum interatomic distance, without periodic images, exactly, for a padded batch.
+
+    ``positions`` [frames, atoms, 3] and ``mask`` [frames, atoms] (true for real atoms; padding has species 0)
+    are NumPy arrays or torch tensors. Every pair of real atoms is measured, in chunks of about ``pair_budget``
+    pairs on ``device`` (the positions' own by default), in float64. A frame with fewer than two real atoms
+    gets infinity. Frames of more than ``ALL_PAIRS_LIMIT`` atoms use ``minimum_distance``. Returns a float64 CPU
+    tensor.
+    """
+    import torch
+    positions = torch.as_tensor(positions)
+    mask = torch.as_tensor(mask, dtype=torch.bool)
+    target = torch.device(device) if device is not None else positions.device
+    frames, atoms = mask.shape
+    found = torch.full((frames,), float('inf'), dtype=torch.float64)
+    if atoms < 2 or frames == 0:
+        return found
+    if atoms > ALL_PAIRS_LIMIT:
+        from ase import Atoms
+        for frame in range(frames):
+            real = mask[frame]
+            found[frame] = minimum_distance(Atoms(positions=positions[frame][real].double().cpu().numpy()))
+        return found
+    step = max(1, pair_budget // (atoms * atoms))
+    distinct = ~torch.eye(atoms, dtype=torch.bool, device=target)
+    for start in range(0, frames, step):
+        chunk = slice(start, start + step)
+        points = positions[chunk].to(target, torch.float64)
+        real = mask[chunk].to(target)
+        # Direct differences: the matrix-product form cdist uses for large inputs loses precision for close pairs.
+        distances = torch.cdist(points, points, compute_mode='donot_use_mm_for_euclid_dist')
+        pairs = real[:, :, None] & real[:, None, :] & distinct
+        found[chunk] = distances.masked_fill(~pairs, float('inf')).amin(dim=(1, 2)).cpu()
+    return found
+
+
 def random_rotation_matrix(deflection=1.0, randnums=None):
     """Returns a random rotation matrix
 

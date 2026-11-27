@@ -2,6 +2,7 @@
 
 import json
 import os
+import warnings
 from pathlib import Path
 
 import h5py
@@ -9,8 +10,8 @@ import numpy as np
 
 from alframework.tools.files import fsync_file
 from alframework.tools.label_hdf5 import (
-    LABEL_PARTS, LABEL_UNITS, PROPERTY_SCHEMA, SCHEMA_VERSION, LabelH5Writer, label_schema_attributes,
-    validate_label_parts,
+    GROUP_BY, LABEL_PARTS, LABEL_UNITS, PROPERTY_SCHEMA, SCHEMA_VERSION, LabelH5Writer, label_schema_attributes,
+    many_groups_warning, split_group_by, validate_label_parts,
 )
 from alframework.tools.restarts import HeldLabels, shard_frames
 from alframework.tools.data_shards import PAIR_INDEX_DATASET, STRUCTURE_STATE_DATASETS, store_current_data
@@ -18,6 +19,15 @@ from alframework.tools.label_sources import LEGACY_LABEL_PROVENANCE, SHARD_LABEL
 
 
 STATIC = frozenset(('species', PAIR_INDEX_DATASET))
+# A snapshot that maps more part segments than this (groups x the parts each appears in, per column) is slow to
+# publish and to read, whatever its grouping.
+MANY_SEGMENTS = 1_000_000
+
+
+def _static_names(columns):
+    """The columns of a group stored once for the group: ``nac_pairs``, and ``species`` when it is one row of atoms
+    (grouped by formula). Grouped by atom count, ``species`` has a row per frame and is a column like the others."""
+    return {key for key in STATIC.intersection(columns) if not (key == 'species' and columns[key].ndim > 1)}
 STATE_DEFAULTS = dict(zip(STRUCTURE_STATE_DATASETS, (0, 1)))
 REJECTED_IDS = 'alf_rejected_label_ids'
 
@@ -85,16 +95,17 @@ def write_label_part(results, directory, properties, schema, h5_options=None, la
     """
     import uuid
     from alframework.tools.batching import flatten_molecule_output
-    from alframework.tools.data_shards import compute_empirical_formula
+    from alframework.tools.data_shards import group_key
     from alframework.tools.label_validation import reject_label, screen_labels
 
+    group_by = split_group_by(h5_options)[0]
     results = flatten_molecule_output(results)
     screen_labels(results, properties)
     formulas, rejected, accepted = {}, {}, []
     for result in results:
         if result.check_convergence():
             atoms = result.get_atoms()
-            formula = compute_empirical_formula(atoms.get_chemical_symbols())
+            formula = group_key(atoms, group_by)
             periodic = bool(atoms.pbc.all())
             group = formulas.setdefault(formula, {'ids': [], 'periodic': periodic})
             if group['periodic'] != periodic:
@@ -122,6 +133,9 @@ def write_label_part(results, directory, properties, schema, h5_options=None, la
 def _validate_part_schema(handle, metadata):
     if handle.attrs.get(SCHEMA_VERSION, metadata[SCHEMA_VERSION]) != metadata[SCHEMA_VERSION]:
         raise ValueError(f'{handle.filename}: unsupported label schema version for this generation.')
+    if handle.attrs.get(GROUP_BY, 'formula') != metadata.get(GROUP_BY, 'formula'):
+        raise ValueError(f'{handle.filename}: groups its labels by {handle.attrs.get(GROUP_BY, "formula")}, but this '
+                         f'generation groups by {metadata.get(GROUP_BY, "formula")}.')
     for attribute, default in ((PROPERTY_SCHEMA, None), (LABEL_UNITS, '{}')):
         recorded = handle.attrs.get(attribute, default)
         if recorded is None or json.loads(recorded) != json.loads(metadata.get(attribute, default)):
@@ -149,7 +163,7 @@ def merge_label_parts(job):
                     continue
                 columns = {key: dataset[()] for key, dataset in group.items()}
                 merged = groups.setdefault(formula, {'static': {}, 'pieces': []})
-                for key in STATIC.intersection(columns):
+                for key in _static_names(columns):
                     value = columns.pop(key)
                     if key in merged['static'] and not np.array_equal(merged['static'][key], value):
                         raise ValueError(f'{path}:{formula} has species or pair ordering that differs from the '
@@ -160,7 +174,7 @@ def merge_label_parts(job):
     partial = Path(str(target) + '.partial')
     try:
         packer = LabelH5Writer(str(partial), mode='w', **{'libver': 'latest', 'track_order': True,
-                                                       **(h5_options or {})})
+                                                       **split_group_by(h5_options)[1]})
         try:
             for formula, merged in groups.items():
                 pieces = merged['pieces']
@@ -195,8 +209,9 @@ def part_layout(part):
         recorded = handle.attrs.get(SHARD_LABEL_SOURCES, handle.attrs.get(LEGACY_LABEL_PROVENANCE, '[]'))
         groups = []
         for formula, group in handle.items():
-            static = {key: group[key][:] for key in STATIC.intersection(group.keys())}
-            columns = {key: (value.dtype, value.shape) for key, value in group.items() if key not in STATIC}
+            static_names = _static_names(group)
+            static = {key: group[key][:] for key in static_names}
+            columns = {key: (value.dtype, value.shape) for key, value in group.items() if key not in static_names}
             groups.append((formula, len(group['_id']), static, columns))
     return json.loads(recorded), groups
 
@@ -246,6 +261,9 @@ class HDF5HeldLabels(HeldLabels):
         self.properties = properties
         self.label_units = label_units
         self.schema_attributes = label_schema_attributes(properties, label_units)
+        if split_group_by(self.h5_options)[0] != 'formula':
+            # Recorded on every merged part and the snapshot, and checked on every part this generation adopts.
+            self.schema_attributes[GROUP_BY] = split_group_by(self.h5_options)[0]
         self.schema = self.schema_attributes[PROPERTY_SCHEMA]
         self.batch_size = batch_size
         self.merge_workers = merge_workers
@@ -511,6 +529,11 @@ def publish_snapshot(path, parts, attributes, layouts=None):
 
     write_state = any(STATE_DEFAULTS.keys() & columns.keys()
                       for _, segments in groups.values() for _, _, columns in segments)
+    many_groups_warning(path, len(groups), frames, attributes.get(GROUP_BY, 'formula'))
+    segments = sum(len(group_segments) for _, group_segments in groups.values())
+    if segments > MANY_SEGMENTS:
+        warnings.warn(f'{path} maps {segments:,} part segments ({len(groups):,} groups across {len(parts):,} parts), '
+                      'so publishing and reading it is dominated by per-segment work.', stacklevel=2)
     partial = path.with_suffix(path.suffix + '.partial')
     try:
         with h5py.File(partial, 'w', libver='latest', track_order=True) as handle:

@@ -28,7 +28,16 @@ def _species_numbers(values):
     from ase.data import atomic_numbers
 
     species = np.asarray(values)
-    if species.dtype.kind in 'SUO':
+    if species.dtype.kind == 'S' and species.dtype.itemsize <= 2:
+        # Symbols stored as bytes, such as a species row per frame: each symbol's two bytes index a table of
+        # atomic numbers, so a million frames convert at array speed rather than one symbol at a time.
+        pairs = species.astype('S2').view(np.uint8).reshape(*species.shape, 2)
+        codes = pairs[..., 0].astype(np.int32) << 8 | pairs[..., 1]
+        table = np.zeros(1 << 16, dtype=np.int64)
+        for code in np.flatnonzero(np.bincount(codes.ravel(), minlength=1 << 16)):
+            table[code] = atomic_numbers[bytes([code >> 8, code & 255]).rstrip(b'\0').decode('utf-8')]
+        species = table[codes]
+    elif species.dtype.kind in 'SUO':
         species = np.array([atomic_numbers[value.decode('utf-8') if isinstance(value, bytes) else str(value)]
                             for value in species.flat]).reshape(species.shape)
     return species[None] if species.ndim == 1 else species
@@ -61,7 +70,7 @@ def __getattr__(name):
         """ALF's label shards as a HIPPYNN database.
 
         ALF reads the shards (:func:`alframework.tools.h5_parallel.read_shard`) and assembles whole padded arrays
-        (:func:`alframework.tools.label_arrays.assemble_label_arrays`); HIPPYNN's generic
+        (:func:`alframework.tools.label_arrays.assemble_label_arrays`), for either label grouping; HIPPYNN's generic
         ``Database`` holds them, splits them and makes the loaders. A checkpoint records how to rebuild it, under
         this name and with these arguments.
         """
@@ -157,19 +166,21 @@ def __getattr__(name):
                     raise ValueError(f'{context}: coordinates must be nonempty [frames, atoms, 3]')
                 count, atoms = coordinates.shape[:2]
                 species = _species_numbers(batch[species_key])
-                if species.shape != (1, atoms):
-                    raise ValueError(f'{context}: species must describe one composition per group')
+                # One composition per group (grouped by formula), or one species row per frame (by atom count).
+                if species.shape not in ((1, atoms), (count, atoms)):
+                    raise ValueError(f'{context}: species must describe one composition per group or each frame')
+                per_frame = species.shape[0] != 1
                 species_rows = np.broadcast_to(species, (count, atoms)).copy()
                 orders = None
                 if TOPOLOGY_ATOM_IDS in batch:
                     orders = canonical_orders(batch[TOPOLOGY_ATOM_IDS], count, atoms, context=context)
                     species_rows = np.take_along_axis(species_rows, orders, axis=1)
                     coordinates = np.take_along_axis(coordinates, orders[:, :, None], axis=1)
-                if not np.all(species_rows == species_rows[0]):
+                if not per_frame and not np.all(species_rows == species_rows[0]):
                     raise ValueError(f'{context}: topology mappings change the atomic-number sequence')
                 if 'pbc' in batch and np.any(batch['pbc']):
                     raise ValueError('Excited-state training requires nonperiodic data')
-                out = {self.coordinates_key: coordinates, species_key: species_rows[:1]}
+                out = {self.coordinates_key: coordinates, species_key: species_rows if per_frame else species_rows[:1]}
                 for row in states:
                     ekey, fkey = row['energy_db_name'], row['force_db_name']
                     if ekey not in batch or fkey not in batch:

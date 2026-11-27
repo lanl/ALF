@@ -188,7 +188,11 @@ The master config controls the workflow wiring. Common fields include:
        per chunk). For example ``{"compression": "lzf", "shuffle": true,
        "frame_chunk": 1024}``. Every choice is lossless: the shards stay HDF5 with the
        same datasets, dtypes and values, and read as before. The default is gzip level 6
-       with h5py's chunks. See :ref:`running-at-scale-storing-labels`.
+       with h5py's chunks. ``group_by`` chooses the groups: ``"formula"`` (the default,
+       one group per sorted species list) or ``"atom_count"`` (one group per atom count,
+       with ``species`` stored for each frame), for data with many compositions. The
+       NeuroChem interface reads only ``"formula"``. See
+       :ref:`running-at-scale-storing-labels` and :ref:`running-at-scale-label-groups`.
    * - ``label_units``
      - Optional. The units of the stored HDF5 datasets after conversion, keyed by
        dataset name, for example ``{"energy": "eV", "forces": "eV/Å"}``. New shards
@@ -345,7 +349,8 @@ and ``(atoms, 3)`` forces. A label that fails is held unconverged, with the reas
 rest. A shard stores fully periodic or nonperiodic frames, and one formula group in it
 can't mix the two: a partly periodic label, or one whose periodicity differs from the
 held labels of its formula, is held unconverged the same way. After a store, the next
-shard can take the other periodicity. Storing a label that bypassed these checks fails
+shard can take the other periodicity. Grouped by atom count, periodic and nonperiodic
+frames go to groups of their own, so they never conflict. Storing a label that bypassed these checks fails
 and writes nothing.
 
 .. _configuration-restarts:

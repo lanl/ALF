@@ -7,7 +7,7 @@ from ase.geometry import complete_cell
 
 from alframework.tools.atom_order import TOPOLOGY_ATOM_IDS, validated_atom_ids
 from alframework.tools.files import fsync_file
-from alframework.tools.label_hdf5 import LabelH5Writer, label_schema_attributes
+from alframework.tools.label_hdf5 import GROUP_BY, LabelH5Writer, label_schema_attributes, many_groups_warning, split_group_by
 from alframework.tools.label_sources import LabelSourceCollector, write_shard_label_sources
 from alframework.tools.label_validation import validate_label
 from alframework.tools.molecules import MoleculesObject
@@ -34,6 +34,29 @@ def compute_empirical_formula(S):
     arg_sort = np.argsort(uniques[0])
 
     return "_".join([i+str(j).zfill(2) for i,j in zip(uniques[0][arg_sort], uniques[1][arg_sort])])
+
+
+def group_key(atoms, group_by='formula'):
+    """The shard group a structure is stored in.
+
+    ``"formula"`` groups by sorted species list (:func:`compute_empirical_formula`). ``"atom_count"`` groups by atom
+    count, and keeps periodic, partly periodic and nonperiodic frames, and frames with and without topology atom
+    IDs, in groups of their own, as a group's columns must agree: ``atoms_0200``, ``atoms_0200_periodic``,
+    ``atoms_0012_pbc110``, ``atoms_0042_tagged``.
+    """
+    if group_by == 'formula':
+        return compute_empirical_formula(atoms.get_chemical_symbols())
+    if group_by != 'atom_count':
+        raise ValueError(f'Unknown label grouping {group_by!r}.')
+    pbc = np.asarray(atoms.get_pbc(), dtype=bool)
+    name = f'atoms_{len(atoms):04d}'
+    if pbc.all():
+        name += '_periodic'
+    elif pbc.any():
+        name += '_pbc' + ''.join('1' if value else '0' for value in pbc)
+    if TOPOLOGY_ATOM_IDS in atoms.arrays:
+        name += '_tagged'
+    return name
 
 
 def pair_atomic_property(values, atom_index, property_key):
@@ -96,7 +119,7 @@ def store_pair_index(group, system, properties):
         # Mixing pair orderings inside one group would make every stored
         # pair_atomic slice ambiguous.
         raise RuntimeError(
-            "Molecules in one empirical-formula group reported different "
+            "Molecules in one shard group reported different "
             f"{PAIR_INDEX_METADATA_KEY!r} orderings."
         )
 
@@ -110,7 +133,8 @@ def store_current_data(h5path, system_data, properties, attributes=None, *, h5_o
         properties (dict): Dictionary defined in master.json whose keys are the properties that we want to retrieve
                            from the QM calculations and store in the database.
         attributes (dict): Optional strings to record as attributes on the shard.
-        h5_options (dict): Optional HDF5 file creation settings.
+        h5_options (dict): Optional HDF5 file creation settings, and the optional ``group_by``
+                           (``"formula"``, the default, or ``"atom_count"``; see :func:`group_key`).
         label_units (dict): Explicit units of the stored property datasets.
 
     When any converged structure has ``charge`` or ``mult`` metadata, every structure in the shard
@@ -128,6 +152,9 @@ def store_current_data(h5path, system_data, properties, attributes=None, *, h5_o
         # A restart moves past shards stored before a crash, so this means something else wrote here.
         raise FileExistsError(f'{h5path} already exists, and ALF never replaces a shard. Check whether another '
                               'process is writing to this directory.')
+    group_by, writer_options = split_group_by(h5_options)
+    # With atom-count groups, frames of one group can differ in species, so species is stored for each frame.
+    per_frame_species = group_by == 'atom_count'
     # system data is a list of [mol-id(string), atoms, properties dictionary]
     data_dict = {}
     # Total charge and spin multiplicity, stored for the whole shard when any structure records them.
@@ -145,14 +172,14 @@ def store_current_data(h5path, system_data, properties, attributes=None, *, h5_o
         cur_moliculeid = system.get_moleculeid()
         cur_atoms = system.get_atoms()
         cur_properties = system.get_results()
-        molkey = compute_empirical_formula(cur_atoms.get_chemical_symbols())
+        molkey = group_key(cur_atoms, group_by)
 
         # Ensure system converged before saving
         if system.check_convergence():
             # Labels are checked when they're held; this catches callers that store directly.
             validate_label(system, properties)
             if molkey in data_dict and (('cell' in data_dict[molkey]) != bool(cur_atoms.pbc.all())):
-                raise ValueError(f'{molkey}: cannot mix periodic and nonperiodic frames in one formula group.')
+                raise ValueError(f'{molkey}: cannot mix periodic and nonperiodic frames in one shard group.')
             saved_number += 1
             sources.add(system)
             # Main's species contract: every row in a formula group is sorted.
@@ -165,7 +192,7 @@ def store_current_data(h5path, system_data, properties, attributes=None, *, h5_o
                     context=f"{cur_moliculeid}:topology_atom_ids")[atom_index]
             if molkey in data_dict and ((topology_ids is not None) !=
                                          (TOPOLOGY_ATOM_IDS in data_dict[molkey])):
-                raise ValueError("Cannot mix tagged and untagged topology layouts in one formula group.")
+                raise ValueError("Cannot mix tagged and untagged topology layouts in one shard group.")
             state = system.get_metadata()
             has_state = has_state or STATE_METADATA[0] in state or STATE_METADATA[1] in state
             row_state = (int(state.get(STATE_METADATA[0], 0)), int(state.get(STATE_METADATA[1], 1)))
@@ -173,6 +200,8 @@ def store_current_data(h5path, system_data, properties, attributes=None, *, h5_o
             if molkey in data_dict:
                 states[molkey].append(row_state)
                 data_dict[molkey]["_id"].append(cur_moliculeid)
+                if per_frame_species:
+                    data_dict[molkey]["species"].append(np.array(cur_atoms.get_chemical_symbols())[atom_index])
                 data_dict[molkey]["coordinates"].append(cur_atoms.get_positions()[atom_index])
                 if topology_ids is not None:
                     data_dict[molkey][TOPOLOGY_ATOM_IDS].append(topology_ids)
@@ -197,7 +226,8 @@ def store_current_data(h5path, system_data, properties, attributes=None, *, h5_o
             else:
                 states[molkey] = [row_state]
                 data_dict[molkey] = {}
-                data_dict[molkey]["species"] = np.array(cur_atoms.get_chemical_symbols())[atom_index]
+                species = np.array(cur_atoms.get_chemical_symbols())[atom_index]
+                data_dict[molkey]["species"] = [species] if per_frame_species else species
                 data_dict[molkey]["_id"] = [cur_moliculeid]
                 data_dict[molkey]["coordinates"] = [cur_atoms.get_positions()[atom_index]]
                 if topology_ids is not None:
@@ -239,7 +269,9 @@ def store_current_data(h5path, system_data, properties, attributes=None, *, h5_o
                 raise ValueError(f'{isokey}:{key} is not aligned with the {frames} stored frames.')
         # print('isokeys:',isokey)
         for propkey in data_dict[isokey]:
-            if propkey.lower() in ['species','_id']:
+            if per_frame_species and propkey == 'species':
+                data_dict[isokey][propkey] = np.char.encode(np.asarray(data_dict[isokey][propkey]), 'utf-8')
+            elif propkey.lower() in ['species','_id']:
                 data_dict[isokey][propkey] = [el.encode('utf-8') for el in list(data_dict[isokey][propkey])]
                 data_dict[isokey][propkey] = np.array(data_dict[isokey][propkey])
             else:
@@ -254,12 +286,14 @@ def store_current_data(h5path, system_data, properties, attributes=None, *, h5_o
     partial = h5path + PARTIAL_SUFFIX
     try:
         # Mode 'w' overwrites a .partial left by a crash.
-        dpack = LabelH5Writer(partial, mode='w', **(h5_options or {}))
+        dpack = LabelH5Writer(partial, mode='w', **writer_options)
         try:
             for key in data_dict:
                 dpack.store_data(key, **data_dict[key])
             write_shard_label_sources(dpack.store, sources.sources)
             dpack.store.attrs.update({**(attributes or {}), **label_schema_attributes(properties, label_units)})
+            if per_frame_species:
+                dpack.store.attrs[GROUP_BY] = group_by
         finally:
             dpack.cleanup()
         fsync_file(partial)
@@ -268,4 +302,5 @@ def store_current_data(h5path, system_data, properties, attributes=None, *, h5_o
         if os.path.exists(partial):
             os.remove(partial)
         raise
+    many_groups_warning(h5path, len(data_dict), saved_number, group_by)
     return saved_number

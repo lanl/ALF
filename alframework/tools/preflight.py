@@ -18,7 +18,10 @@ from alframework.tools.label_hdf5 import label_units_setting
 from alframework.tools.label_parts import incoming_directory
 from alframework.tools.labeling_coordinator import LabelingCoordinator
 from alframework.tools.loop_timing import coordinator_loop_timer
-from alframework.tools.restarts import held_labels_directory, label_h5_options, label_storage_batch_size, status_on_change_setting
+from alframework.tools.restarts import (
+    check_label_grouping_for_ml, held_labels_directory, label_h5_options, label_storage_batch_size,
+    status_on_change_setting,
+)
 from alframework.tools.retraining import retraining_settings
 from alframework.tools.sampled_frames import data_by_reference_settings
 from alframework.tools.sampler_coordinator import SamplerCoordinator
@@ -138,6 +141,7 @@ def check_workflow(master, builder_config, sampler_config, qm_config, ml_config,
     held_labels_directory(master)
     label_units = label_units_setting(master['properties_list'], master.get('label_units'))
     h5_options = label_h5_options(master)
+    check_label_grouping_for_ml(h5_options, master.get('ML_task'))
     serializer = data_serializer(master)
     config_key = 'parsl_debug_configuration' if debug and 'parsl_debug_configuration' in master else 'parsl_configuration'
     parsl_config = config.load_module_from_string(master[config_key])

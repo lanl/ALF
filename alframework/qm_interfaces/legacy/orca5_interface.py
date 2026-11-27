@@ -1,5 +1,3 @@
-from parsl import python_app
-from alframework.tools.task_timeline import timed
 import os
 import numpy as np
 import ase.io
@@ -7,6 +5,7 @@ import shutil
 import re
 
 from alframework.tools.molecules import MoleculesObject
+from alframework.tools.tasks import alf_task
 
 class orcaGenerator():
     """ ORCA 5.0.1 interface with ALF.
@@ -214,8 +213,7 @@ class orcaGenerator():
 #        return return_dictionary
 
 
-@python_app(executors=['alf_QM_executor'])
-@timed('QM')
+@alf_task('QM')
 def orca_calculator_task(molecule_object, QM_config, QM_scratch_dir, properties_list):
     """ORCA calculator task based on the parameters in qm_config.json.
 
@@ -248,8 +246,7 @@ def orca_calculator_task(molecule_object, QM_config, QM_scratch_dir, properties_
     return molecule_object
 
 
-@python_app(executors=['alf_QM_executor'])
-@timed('QM')
+@alf_task('QM')
 def orca_double_calculator_task(molecule_object, QM_config, QM_scratch_dir, properties_list):
     """Double ORCA calculator task based on the parameters in qm_config.json.
 

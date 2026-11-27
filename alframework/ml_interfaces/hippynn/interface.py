@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from parsl import python_app, join_app
-from alframework.tools.task_timeline import timed
-from alframework.tools.capabilities import declares
 import contextlib
 import multiprocessing
 import re
@@ -22,6 +19,7 @@ from alframework.tools import ensemble_training
 from alframework.ml_interfaces.hippynn.compat import node_from_name, system_energy
 from alframework.tools.excited_state_schema import derive_state_property_table, derive_gap_property_table
 from alframework.tools.data_shards import PAIR_INDEX_DATASET, STRUCTURE_STATE_DATASETS
+from alframework.tools.tasks import alf_task, alf_join_task, configured_executor
 
 
 def _species_numbers(values):
@@ -1008,9 +1006,7 @@ def _single_node_training_devices(ML_config, gpus_per_node):
     return devices
 
 
-@python_app(executors=['alf_ML_executor'])
-@declares('h5_read_workers', 'h5_read_max_inflight_bytes')
-@timed('ML')
+@alf_task('ML', declares=('h5_read_workers', 'h5_read_max_inflight_bytes'))
 def train_HIPPYNN_ensemble_task(ML_config,h5_dir,model_path,current_training_id,gpus_per_node,remove_existing=False,h5_test_dir=None,
                                 h5_path=None,current_h5_id=None):
     """Train a ground-state ensemble on one node, one member per GPU.
@@ -2743,9 +2739,7 @@ def validate_excited_state_task_options(
         )
 
 
-@python_app(executors=["alf_ML_executor"])
-@declares('h5_read_workers', 'h5_read_max_inflight_bytes')
-@timed('ML')
+@alf_task('ML', declares=('h5_read_workers', 'h5_read_max_inflight_bytes'))
 def train_excited_state_HIPPYNN_ensemble_task(
     ML_config,
     h5_dir,
@@ -2825,8 +2819,7 @@ def _train_excited_state_member(arg_dict, attempt):
     return record['completed']
 
 
-@python_app(executors=['alf_ML_executor'])
-@timed('ML')
+@alf_task('ML')
 def _ground_state_member_task(arg_dict, shards, attempt):
     from alframework.ml_interfaces.hippynn import interface as hippynn_interface
     from alframework.tools import ensemble_training
@@ -2834,8 +2827,7 @@ def _ground_state_member_task(arg_dict, shards, attempt):
     return ensemble_training.run_member_in_child(hippynn_interface._train_ground_state_member, arg_dict, attempt)
 
 
-@python_app(executors=['alf_ML_executor'])
-@timed('ML')
+@alf_task('ML')
 def _excited_state_member_task(arg_dict, shards, attempt):
     from alframework.ml_interfaces.hippynn import interface as hippynn_interface
     from alframework.tools import ensemble_training
@@ -2843,13 +2835,14 @@ def _excited_state_member_task(arg_dict, shards, attempt):
     return ensemble_training.run_member_in_child(hippynn_interface._train_excited_state_member, arg_dict, attempt)
 
 
-def _ml_executor():
-    import parsl
-    return parsl.dfk().executors.get('alf_ML_executor')
+def _member_layout(ML_config):
+    """The device, GPUs per member and nodes per member the multi-node tasks train with (preflight checks them)."""
+    return (ML_config.get('device_string', 'from_multiprocessing'), ML_config.get('gpus_per_member', 1),
+            ML_config.get('member_nodes', 1))
 
 
-@join_app
-@declares('shared_training_data', 'stream_final_evaluation', 'h5_read_workers', 'h5_read_max_inflight_bytes')
+@alf_join_task('ML', declares=('shared_training_data', 'stream_final_evaluation', 'h5_read_workers',
+                                 'h5_read_max_inflight_bytes'), member_layout=_member_layout)
 def train_HIPPYNN_ensemble_multinode_task(ML_config, h5_dir, model_path, current_training_id, gpus_per_node,
                                           member_retries=1, h5_path=None, current_h5_id=None):
     """Train a ground-state ensemble with one app per member, so it can span any number of nodes.
@@ -2864,14 +2857,14 @@ def train_HIPPYNN_ensemble_multinode_task(ML_config, h5_dir, model_path, current
     return ensemble_training.train_ensemble_across_nodes(
         lambda member, attempt: _ground_state_member_task(params_list[member], shards, attempt),
         len(params_list), model_path.format(current_training_id), current_training_id, gpus_per_node,
-        ML_config.get('device_string', 'from_multiprocessing'), member_retries, _ml_executor(),
+        ML_config.get('device_string', 'from_multiprocessing'), member_retries, configured_executor('ML'),
         finish=lambda: write_label_sources(model_path.format(current_training_id), shards=shards),
         gpus_per_member=ML_config.get('gpus_per_member', 1),
         member_nodes=ML_config.get('member_nodes', 1))
 
 
-@join_app
-@declares('shared_training_data', 'stream_final_evaluation', 'h5_read_workers', 'h5_read_max_inflight_bytes')
+@alf_join_task('ML', declares=('shared_training_data', 'stream_final_evaluation', 'h5_read_workers',
+                                 'h5_read_max_inflight_bytes'), member_layout=_member_layout)
 def train_excited_state_HIPPYNN_ensemble_multinode_task(ML_config, h5_dir, model_path, current_training_id,
                                                         gpus_per_node, properties_list, remove_existing=False,
                                                         h5_test_dir=None, member_retries=1, h5_path=None,
@@ -2897,18 +2890,7 @@ def train_excited_state_HIPPYNN_ensemble_multinode_task(ML_config, h5_dir, model
     return ensemble_training.train_ensemble_across_nodes(
         lambda member, attempt: _excited_state_member_task(params_list[member], shards, attempt),
         len(params_list), ensemble_dir, int(current_training_id), gpus_per_node,
-        config.get('device_string', 'from_multiprocessing'), member_retries, _ml_executor(),
+        config.get('device_string', 'from_multiprocessing'), member_retries, configured_executor('ML'),
         finish=lambda: write_label_sources(ensemble_dir, shards=shards),
         gpus_per_member=config.get('gpus_per_member', 1),
         member_nodes=config.get('member_nodes', 1))
-
-
-def _member_layout(ML_config):
-    """The device, GPUs per member and nodes per member the multi-node tasks train with (preflight checks them)."""
-    return (ML_config.get('device_string', 'from_multiprocessing'), ML_config.get('gpus_per_member', 1),
-            ML_config.get('member_nodes', 1))
-
-
-for _task in (train_HIPPYNN_ensemble_multinode_task, train_excited_state_HIPPYNN_ensemble_multinode_task):
-    getattr(_task, 'func', _task).member_executors = ('alf_ML_executor',)
-    getattr(_task, 'func', _task).member_layout = _member_layout

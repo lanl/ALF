@@ -27,15 +27,13 @@ from typing import Any
 
 import numpy as np
 from ase.data import chemical_symbols
-from parsl import python_app
-from alframework.tools.task_failure_cleanup import releases_memory_on_failure
-from alframework.tools.task_timeline import timed
 
 from alframework.tools.excited_state_schema import (
     derive_gap_property_table,
     derive_state_property_table,
 )
 from alframework.tools.molecules import MoleculesObject
+from alframework.tools.tasks import alf_task
 
 
 DEFAULT_GPU4PYSCF_CONFIG = {
@@ -1425,9 +1423,7 @@ def label_gpu4pyscf_excited_state_molecule(
     return molecule_object
 
 
-@python_app(executors=["alf_QM_executor"])
-@timed('QM')
-@releases_memory_on_failure
+@alf_task('QM')
 def gpu4pyscf_excited_state_task(
     molecule_object,
     QM_config,

@@ -45,10 +45,6 @@ import time
 
 import numpy as np
 from ase import units
-from parsl import python_app
-from alframework.tools.task_failure_cleanup import releases_memory_on_failure
-from alframework.tools.task_timeline import timed
-from alframework.tools.capabilities import declares
 
 from alframework.ml_interfaces.ensemble_inference import ensemble_statistics, SelectedStateEvaluator
 from alframework.samplers.acquisition import (acquisition_settings, assess_frame, custom_terms, frame_id,
@@ -63,6 +59,7 @@ from alframework.tools.gpu import sampling_device
 from alframework.tools.sampler_coordinator import driver_settings, state_settings, resolve_selected_state
 from alframework.tools.annealing import annealing_schedule
 from alframework.tools.config import load_module_from_config
+from alframework.tools.tasks import alf_task
 from alframework.tools.velocities import initialize_velocities, kinetic_temperature
 
 
@@ -653,10 +650,7 @@ def sample_trajectories(molecule_objects, models, sampler_config, engine_class=N
         if audit is not None:audit.write()
 
 
-@python_app(executors=['alf_sampler_executor'])
-@declares('returned_metadata', 'returned_momenta', 'metadata_files', 'frame_spool')
-@timed('sampler')
-@releases_memory_on_failure
+@alf_task('sampler', declares=('returned_metadata', 'returned_momenta', 'metadata_files', 'frame_spool'))
 def mlmd_trajectories_task(molecule_objects, sampler_config, model_path, current_model_id, gpus_per_node=None,
                            frame_spool=None):
     """Run MLMD for several trajectories in one task.

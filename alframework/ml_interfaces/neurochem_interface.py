@@ -7,9 +7,7 @@ import anitraintools as alt
 from ase_interface import ANIENS, batchedensemblemolecule
 
 from alframework.tools.config import build_input_dict
-
-from parsl import python_app
-from alframework.tools.task_timeline import timed
+from alframework.tools.tasks import alf_task
 
 
 class NeuroChemTrainer():
@@ -147,8 +145,7 @@ def NeuroChemCalculator(model_details):
 
 #Gen
 #configuration,h5_train_dir,ensemble_path,ensemble_index,remove_existing=False,h5_test_dir=None)
-@python_app(executors=['alf_ML_executor'])
-@timed('ML')
+@alf_task('ML')
 def train_ANI_model_task(ML_config, h5_dir, model_path, current_training_id, gpus_per_node, remove_existing=False, h5_test_dir=None):
     """ANI executor task.
 
@@ -183,4 +180,3 @@ def train_ANI_model_task(ML_config, h5_dir, model_path, current_training_id, gpu
     # return(all_nets, completed, current_training_id)
     # return completed, model_index # Shouldn't it be current_training_id? model_index doesn't exist.
     return completed, current_training_id
-

@@ -10,6 +10,7 @@ from typing import NamedTuple, Optional
 
 from alframework.tools.config import load_module_from_string
 from alframework.tools.task_timeline import phase, timed
+from alframework.tools.tasks import role
 from alframework.tools.trajectory_summary import trajectory_row
 
 # The master configuration's opt-in handoff of data by reference through shared files, and what it can hand off.
@@ -159,7 +160,7 @@ def stage_sampled_frames(molecules, directory, batch):
     return frames
 
 
-@timed('QM')
+@timed(role('QM').stage)
 def label_sampled_frames(molecule_objects, task_path, task_inputs, label_parts=None):
     """Resolve frames on the native QM worker, then call the configured labeler.
 

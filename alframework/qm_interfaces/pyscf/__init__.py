@@ -25,11 +25,9 @@ import time
 from typing import Any
 
 import numpy as np
-from parsl import python_app
-from alframework.tools.task_failure_cleanup import releases_memory_on_failure
-from alframework.tools.task_timeline import timed
 
 from alframework.tools.molecules import MoleculesObject
+from alframework.tools.tasks import alf_task
 
 STRESS_KEY = "stress"
 QM_CONFIG_EXTRAS = ("batching", "energy_offset_eV")
@@ -135,13 +133,7 @@ def label_pyscf_molecule(molecule_object, QM_config, properties_list, sampler_co
     return molecule_object
 
 
-@python_app(executors=['alf_QM_executor'])
-@timed('QM')
-@releases_memory_on_failure
+@alf_task('QM', validate_config=validate_pyscf_config)
 def pyscf_task(molecule_object, QM_config, properties_list, sampler_config=None, gpus_per_node=None):
     """Label one structure with PySCF or GPU4PySCF on ALF's QM executor. Works with ``"mode": "sequential"``."""
     return label_pyscf_molecule(molecule_object, QM_config, properties_list, sampler_config, gpus_per_node)
-
-
-# LabelingCoordinator calls this at startup. The docs build replaces python_app with the plain function.
-getattr(pyscf_task, "func", pyscf_task).validate_config = validate_pyscf_config

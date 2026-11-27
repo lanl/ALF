@@ -10,6 +10,7 @@ import math
 import shlex
 
 from alframework.tools.retraining import OLDER_THRESHOLD, RETRAINING, describe as describe_retraining, retraining_settings
+from alframework.tools.tasks import executor_label
 
 # The launcher options that start several worker pools on each node, by the Parsl launcher that reads them. A
 # launcher of another kind can say how many it starts with a ``pools_per_node`` attribute.
@@ -108,7 +109,7 @@ def member_slots(executor, member_nodes=1):
 
 
 def check_member_gpus(executor, gpus_per_node, device_string, gpus_per_member=1, member_nodes=1,
-                      label='alf_ML_executor'):
+                      label=executor_label('ML')):
     """Refuse an ML executor whose members would share a GPU.
 
     A member on ``member_nodes`` nodes uses ``gpus_per_member / member_nodes`` GPUs of each. With

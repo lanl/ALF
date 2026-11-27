@@ -1,8 +1,6 @@
 # The builder code goes here
 import random
 import numpy as np
-from parsl import python_app
-from alframework.tools.task_timeline import timed
 
 from ase import Atoms
 from ase.data import chemical_symbols
@@ -11,6 +9,7 @@ from alframework.tools.config import build_input_dict
 from alframework.tools.label_validation import system_checker
 from alframework.tools.molecules import MoleculesObject
 from alframework.builders.builders import condensed_phase_builder
+from alframework.tools.tasks import alf_task
 
 
 from rdkit import Chem
@@ -51,8 +50,7 @@ def ASEfromSMILES(SMILES,elongate=False,maxD=300,dD=10):
     aseAtoms = Atoms(specString,positions=positions)
     return(aseAtoms)
 
-@python_app(executors=['alf_sampler_executor'])
-@timed('builder')
+@alf_task('builder')
 def rdkit_condensed_phase_builder_task(moleculeid,builder_config,cell_range,Rrange,solute_molecule_options,solvent_molecules):
     """
     Elements in  builder parameters

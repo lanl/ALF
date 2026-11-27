@@ -19,11 +19,13 @@ def _run_tasks(master, run_dir):
     configuration, import as they do for a coordinator started in ``run_dir``."""
     from alframework.tools.config import load_module_from_string
     from alframework.tools.preflight import bind_task
+    from alframework.tools.tasks import relabel_executors
     sys.path.insert(0, str(run_dir))
     try:
         try:
-            executors = {executor.label: executor
-                         for executor in load_module_from_string(master['parsl_configuration']).executors}
+            configured = load_module_from_string(master['parsl_configuration']).executors
+            relabel_executors(configured)
+            executors = {executor.label: executor for executor in configured}
         except Exception:
             executors = {}
         tasks = []

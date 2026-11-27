@@ -4,9 +4,9 @@ import json
 from pathlib import Path
 
 import h5py
-from parsl import python_app
 
 from alframework.tools.files import cached_sha256
+from alframework.tools.tasks import alf_task
 
 SCHEMA = "alf.cpp_ring_pool.v1"
 
@@ -58,7 +58,7 @@ def build_ring_molecules(moleculeids, builder_config, h5_path=None, current_h5_i
     return molecules
 
 
-@python_app(executors=['alf_sampler_executor'])
+@alf_task('builder')
 def ring_molecule_builder_task(moleculeid=None, moleculeids=None, builder_config=None,
                                h5_path=None, current_h5_id=0, master_directory=None):
     """Ordinary scalar/plural ALF builder; no generation or QM inside workers."""
@@ -69,7 +69,7 @@ def ring_molecule_builder_task(moleculeid=None, moleculeids=None, builder_config
 
 
 
-@python_app(executors=['alf_QM_executor'])
+@alf_task('QM')
 def gpu4pyscf_label_task(molecule_object, QM_config, properties_list,
                        sampler_config=None, gpus_per_node=None):
     """Require native cuTENSOR after selecting this worker's inherited device."""

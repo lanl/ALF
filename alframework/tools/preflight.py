@@ -28,6 +28,7 @@ from alframework.tools.sampler_coordinator import SamplerCoordinator
 from alframework.tools.scaling import apply_scaling, describe as describe_scaling, large_run_warning
 from alframework.tools.serialization import data_serializer
 from alframework.tools.sizing import apply_sizing, derive_sizing, describe as describe_sizing, sizing_block
+from alframework.tools.tasks import executor_label, relabel_executors, standby_label
 
 
 def bind_task(path, executors):
@@ -41,7 +42,7 @@ def bind_task(path, executors):
         raise ValueError(f'{path} requires unconfigured Parsl executors {sorted(missing)}.')
     if task.executors == 'all':
         return task
-    standby = (label.replace('_executor', '_standby_executor') for label in task.executors)
+    standby = (standby_label(label) for label in task.executors)
     labels = list(dict.fromkeys([*task.executors, *(label for label in standby if label in executors)]))
     if labels != list(task.executors):
         task = copy(task)
@@ -145,6 +146,9 @@ def check_workflow(master, builder_config, sampler_config, qm_config, ml_config,
     serializer = data_serializer(master)
     config_key = 'parsl_debug_configuration' if debug and 'parsl_debug_configuration' in master else 'parsl_configuration'
     parsl_config = config.load_module_from_string(master[config_key])
+    for former, current in relabel_executors(parsl_config.executors):
+        print(f'Parsl executor {former!r} now runs as {current!r}, its current name; rename it in '
+              f'{master[config_key]}.', flush=True)
     executors = {executor.label: executor for executor in parsl_config.executors}
     builder, sampler, qm, ml = (bind_task(master[key], executors)
                                 for key in ('builder_task', 'sampler_task', 'QM_task', 'ML_task'))
@@ -192,7 +196,7 @@ def check_workflow(master, builder_config, sampler_config, qm_config, ml_config,
             reads_spread = False
         if reads_spread:
             raise ValueError(SINGLE_MEMBER.format(what='The ML configuration (n_models 1)'))
-    member_labels = getattr(ml.func, 'member_executors', ('alf_ML_executor', 'alf_ML_standby_executor'))
+    member_labels = getattr(ml.func, 'member_executors', (executor_label('ML'), standby_label(executor_label('ML'))))
     member_nodes = _check_members(ml, ml_config, master, executors, member_labels)
     lines, warnings = capacity_report(
         master, executors,

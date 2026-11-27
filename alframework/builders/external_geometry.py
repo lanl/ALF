@@ -11,13 +11,12 @@ import h5py
 import numpy as np
 from ase import Atoms
 from ase.io import read
-from parsl import python_app
-from alframework.tools.task_timeline import timed
 
 from alframework.tools.atom_order import TOPOLOGY_ATOM_IDS, validated_atom_ids
 from alframework.tools.elements import atomic_numbers_of, symbol_text
 from alframework.tools.files import cached_sha256, file_key
 from alframework.tools.molecules import MoleculesObject
+from alframework.tools.tasks import alf_task
 
 
 _text = symbol_text
@@ -197,8 +196,7 @@ def _build_one(moleculeid, manifest, mode, builder_config, handles, stack):
     return molecule
 
 
-@python_app(executors=['alf_sampler_executor'])
-@timed('builder')
+@alf_task('builder')
 def external_geometry_builder_task(moleculeid=None, moleculeids=None,
                                    builder_config=None, master_directory=None):
     """Builder compatible with ALF's single and multi-structure dispatch."""

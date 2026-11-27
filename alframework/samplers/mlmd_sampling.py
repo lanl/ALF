@@ -5,9 +5,6 @@ from ase import units
 from ase.io.trajectory import Trajectory
 import time
 import pickle as pkl
-from parsl import python_app
-from alframework.tools.task_failure_cleanup import releases_memory_on_failure
-from alframework.tools.task_timeline import timed
 
 from alframework.tools.annealing import annealing_schedule
 from alframework.tools.config import load_module_from_config
@@ -16,6 +13,7 @@ from alframework.tools.geometry import minimum_distance
 from alframework.tools.config import build_input_dict
 from alframework.tools.molecules import MoleculesObject
 from alframework.tools.gpu import sampling_device, neurochem_device
+from alframework.tools.tasks import alf_task
 from alframework.tools.velocities import initialize_velocities, kinetic_temperature, velocity_initialization_settings
     
 
@@ -209,9 +207,7 @@ def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Ncheck, Tamp, Tper,
         return molecule_object
 
 
-@python_app(executors=['alf_sampler_executor'])
-@timed('sampler')
-@releases_memory_on_failure
+@alf_task('sampler')
 def simple_mlmd_sampling_task(molecule_object, sampler_config, model_path, current_model_id, gpus_per_node):
     """ A simple implementation of uncertanty based MD sampling.
 

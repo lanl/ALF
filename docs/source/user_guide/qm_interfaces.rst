@@ -726,10 +726,10 @@ Custom parser route
    .. code-block:: python
 
       import os
-      from parsl import python_app
+      from alframework.tools.tasks import alf_task
 
 
-      @python_app(executors=["alf_QM_executor"])
+      @alf_task("QM")
       def my_qm_task(molecule_object, QM_config, QM_scratch_dir, properties_list):
           molecule_id = molecule_object.get_moleculeid()
           directory = os.path.join(QM_scratch_dir, molecule_id)

@@ -422,10 +422,10 @@ Training task signature
 
    .. code-block:: python
 
-      from parsl import python_app
+      from alframework.tools.tasks import alf_task
 
 
-      @python_app(executors=["alf_ML_executor"])
+      @alf_task("ML")
       def train_MYMODEL_task(
           ML_config,
           h5_dir,

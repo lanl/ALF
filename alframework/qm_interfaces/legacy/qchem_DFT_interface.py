@@ -1,8 +1,7 @@
 # The builder code goes here
 import os
 import numpy as np
-from parsl import python_app
-from alframework.tools.task_timeline import timed
+from alframework.tools.tasks import alf_task
 from pathlib import Path
 
 
@@ -164,8 +163,7 @@ class qchemGenerator():
         return propertiesout
 
 
-@python_app(executors=['alf_QM_executor'])
-@timed('QM')
+@alf_task('QM')
 def qchem_dft_calculator_task(molecule_object,ncpu,qchem_env_file,QM_run_command,rem,qchemblocks,QM_scratch_dir,properties_list):
     properties = list(properties_list)
     directory = QM_scratch_dir + '/' + molecule_object.get_moleculeid() + '/'

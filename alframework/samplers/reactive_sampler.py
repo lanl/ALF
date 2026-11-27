@@ -1,20 +1,16 @@
 from ase import Atoms
-from parsl import python_app
-from alframework.tools.task_failure_cleanup import releases_memory_on_failure
-from alframework.tools.task_timeline import timed
 
 from alframework.tools.config import load_module_from_config
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator
 from alframework.tools.gpu import sampling_device
+from alframework.tools.tasks import alf_task
 from ase.mep import DimerControl, MinModeAtoms, MinModeTranslate
 
 
 from ase.mep import NEB
 from ase.optimize import BFGS
 
-@python_app(executors=['alf_sampler_executor'])
-@timed('sampler')
-@releases_memory_on_failure
+@alf_task('sampler')
 def reactive_sampling(molecule_object, sampler_config,model_path,current_model_id,gpus_per_node, ase_calculator, N_neb, max_iter, neb_steps, reactive_sampling_method, Escut, Fscut, Fmmult=3.0) :
     # Performs reactive sampling with NEB/dimer methods based on input based in the config file
     

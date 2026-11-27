@@ -1,13 +1,11 @@
 """Labeling with ASE's VASP calculator."""
 import re
-from parsl import python_app
 from alframework.tools.label_sources import LABEL_SOURCE
-from alframework.tools.task_timeline import timed
 from alframework.tools.molecules import MoleculesObject
+from alframework.tools.tasks import alf_task
 from .generic import ase_label_source
 
-@python_app(executors=['alf_QM_executor'])
-@timed('QM')
+@alf_task('QM')
 def VASP_ase_calculator_task(molecule_object, QM_config, QM_scratch_dir, properties_list):
     """ASE VASP calculator based on the parameters in qm_config.json.
 

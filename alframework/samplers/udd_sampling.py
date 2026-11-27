@@ -2,17 +2,13 @@
 
 import copy
 
-from parsl import python_app
-from alframework.tools.task_failure_cleanup import releases_memory_on_failure
-from alframework.tools.task_timeline import timed
 from parsl.app.errors import RemoteExceptionWrapper
 
 from alframework.samplers.mlmd_sampling import simple_mlmd_sampling_task
+from alframework.tools.tasks import alf_task
 
 
-@python_app(executors=['alf_sampler_executor'])
-@timed('sampler')
-@releases_memory_on_failure
+@alf_task('sampler')
 def simple_udd_sampling_task(molecule_object, sampler_config, model_path, current_model_id, gpus_per_node):
     """Run MLMD sampling with uncertainty-driven dynamics enabled.
 

@@ -76,11 +76,12 @@ def check_capacity(n_models, gpus_per_node, device_string, executor, gpus_per_me
     as the startup capacity report's do.
     """
     from alframework.tools.capacity import check_member_gpus, member_slots
+    from alframework.tools.tasks import executor_label
     validated_member_nodes(member_nodes, gpus_per_member)
     check_member_gpus(executor, gpus_per_node, device_string, gpus_per_member, member_nodes)
     slots = member_slots(executor, member_nodes)
     if slots is not None and slots < n_models:
-        print(f'Warning: alf_ML_executor has {slots} slots for {n_models} ensemble members, so some members will '
+        print(f'Warning: {getattr(executor, "label", executor_label("ML"))} has {slots} slots for {n_models} ensemble members, so some members will '
               'wait for others to finish. Check max_workers_per_node and max_blocks.', flush=True)
 
 

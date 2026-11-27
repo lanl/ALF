@@ -25,11 +25,9 @@ metadata are not supported by this adapter.
 """
 
 import numpy as np
-from parsl import python_app
-from alframework.tools.task_failure_cleanup import releases_memory_on_failure
-from alframework.tools.task_timeline import timed
 
 from alframework.tools.molecules import MoleculesObject
+from alframework.tools.tasks import alf_task
 
 DEFAULT_PARAMETERS = {"method": "AM1", "scf_eps": 1.0e-8, "scf_converger": [2]}
 
@@ -148,9 +146,7 @@ def _label_alone(molecule, QM_config, runner, batch_exception):
         return [molecule]
 
 
-@python_app(executors=['alf_QM_executor'])
-@timed('QM')
-@releases_memory_on_failure
+@alf_task('QM')
 def pyseqm_task(molecule_objects, QM_config):
     """Native batched PySEQM labeling on ALF's QM executor.
 
@@ -404,18 +400,14 @@ def label_pyseqm_excited_batch(molecule_objects, QM_config, properties_list,
     return molecules
 
 
-@python_app(executors=['alf_QM_executor'])
-@timed('QM')
-@releases_memory_on_failure
+@alf_task('QM')
 def pyseqm_excited_state_task(molecule_object, QM_config, properties_list,
                               sampler_config=None, gpus_per_node=None):
     return label_pyseqm_excited_batch([molecule_object], QM_config, properties_list,
                                      sampler_config, gpus_per_node)[0]
 
 
-@python_app(executors=['alf_QM_executor'])
-@timed('QM')
-@releases_memory_on_failure
+@alf_task('QM')
 def pyseqm_excited_state_batch_task(molecule_objects, QM_config, properties_list,
                                     sampler_config=None, gpus_per_node=None):
     return label_pyseqm_excited_batch(molecule_objects, QM_config, properties_list,

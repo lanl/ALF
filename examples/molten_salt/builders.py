@@ -3,7 +3,6 @@ import glob
 import random
 import os
 import numpy as np
-from parsl import python_app, bash_app
 import json
 
 import ase
@@ -16,6 +15,7 @@ from ase.io import read, write
 from alframework.tools.geometry import random_rotation_matrix
 from alframework.tools.label_validation import system_checker
 from alframework.tools.config import build_input_dict
+from alframework.tools.tasks import alf_task
 import random
 from copy import deepcopy
 
@@ -27,7 +27,7 @@ from copy import deepcopy
 #    atom_list = [['mol-{:s}-{:010d}'.format(model_string,start_molecule_index+i),cfg.read_cfg(random.choice(cfg_list))] for i in range(number)]
 #    return(atom_list)
 
-@python_app(executors=['alf_sampler_executor'])
+@alf_task('builder')
 def simple_cfg_loader_task(moleculeid, shake=0.05):
     """
     builder_params:
@@ -160,7 +160,7 @@ def condensed_phase_builder(start_system, molecule_library, solute_molecules=[],
     return (start_system)
 
 
-@python_app(executors=['alf_sampler_executor'])
+@alf_task('builder')
 def simple_condensed_phase_builder_task(moleculeid, builder_config, molecule_library_dir, cell_range,
                                         solute_molecule_options, Rrange):
     """
@@ -213,7 +213,7 @@ def simple_condensed_phase_builder_task(moleculeid, builder_config, molecule_lib
     return (system)
 
 
-@python_app(executors=['alf_sampler_executor'])
+@alf_task('builder')
 def simple_multi_condensed_phase_builder_task(moleculeids, builder_config, molecule_library_dir, cell_range,
                                               solute_molecule_options, Rrange):
     """
@@ -515,7 +515,7 @@ def atomic_system_builder(atom_charges, target_num_atoms, min_distance, box_leng
     return ase.Atoms(atoms_type_list, coords, pbc=True, cell=np.diag([box_length]*3))
     
 
-@python_app(executors=['alf_sampler_executor'])
+@alf_task('builder')
 def atomic_system_task(atom_charges, target_num_atoms, min_distance, box_length_range, moleculeid):
     """
     Args:

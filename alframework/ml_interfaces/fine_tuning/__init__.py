@@ -29,13 +29,10 @@ import time
 from importlib import import_module
 from pathlib import Path
 
-from parsl import join_app, python_app
-from alframework.tools.task_timeline import timed
-from alframework.tools.capabilities import declares
-
 from alframework.tools import ensemble_training
 from alframework.tools.gpu import mask_entries
 from alframework.tools.files import cached_sha256, write_json_atomic
+from alframework.tools.tasks import alf_task, alf_join_task, configured_executor
 
 DEVICES = ('cpu', 'cuda')
 # Where shard_atoms puts each frame's labels, as MACE's extended XYZ names them.
@@ -250,9 +247,7 @@ def fine_tune_ensemble(ML_config, h5_dir, model_path, current_training_id, gpus_
     return completed, int(current_training_id)
 
 
-@python_app(executors=['alf_ML_executor'])
-@declares('h5_read_workers', 'h5_read_max_inflight_bytes')
-@timed('ML')
+@alf_task('ML', declares=('h5_read_workers', 'h5_read_max_inflight_bytes'), validate_config=validate_fine_tune_config)
 def fine_tune_ensemble_task(ML_config, h5_dir, model_path, current_training_id, gpus_per_node=None,
                             h5_path=None, current_h5_id=None, master_directory=None):
     """Fine-tune ``fine_tune.n_models`` copies of the foundation model on one node.
@@ -272,8 +267,7 @@ def _fine_tune_member_in_child(settings, shards, member_dir, member, gpus_per_no
     return record['completed']
 
 
-@python_app(executors=['alf_ML_executor'])
-@timed('ML')
+@alf_task('ML')
 def _fine_tune_member_task(settings, shards, member_dir, member, gpus_per_node, attempt):
     from alframework.ml_interfaces import fine_tuning
     from alframework.tools import ensemble_training
@@ -282,8 +276,13 @@ def _fine_tune_member_task(settings, shards, member_dir, member, gpus_per_node, 
                                                  member_dir, member, gpus_per_node, attempt)
 
 
-@join_app
-@declares('h5_read_workers', 'h5_read_max_inflight_bytes')
+def _fine_tune_member_layout(ML_config):
+    """Each copy trains on one GPU of the configured device, as fine_tune_ensemble_multinode_task submits it."""
+    return (ML_config.get('fine_tune') or {}).get('device', 'cuda'), 1, 1
+
+
+@alf_join_task('ML', declares=('h5_read_workers', 'h5_read_max_inflight_bytes'),
+               validate_config=validate_fine_tune_config, member_layout=_fine_tune_member_layout)
 def fine_tune_ensemble_multinode_task(ML_config, h5_dir, model_path, current_training_id, gpus_per_node=None,
                                       master_directory=None, member_retries=1, h5_path=None, current_h5_id=None):
     """Fine-tune each copy as its own app, so a round can span any number of nodes.
@@ -297,12 +296,7 @@ def fine_tune_ensemble_multinode_task(ML_config, h5_dir, model_path, current_tra
     if root.exists() and any(root.iterdir()):
         raise FileExistsError(f'Refusing to overwrite nonempty ensemble directory {root}')
     shards = ensemble_training.training_shards(h5_dir, h5_path, current_h5_id, targets=_label_targets(settings))
-    executor = None
-    try:
-        import parsl
-        executor = parsl.dfk().executors.get('alf_ML_executor')
-    except Exception:
-        pass
+    executor = configured_executor('ML')
 
     def finish():
         from alframework.tools.label_sources import write_label_sources
@@ -323,14 +317,3 @@ def fine_tune_ensemble_multinode_task(ML_config, h5_dir, model_path, current_tra
                                                        gpus_per_node, attempt),
         settings['n_models'], ensemble_dir, int(current_training_id), gpus_per_node, settings['device'],
         member_retries, executor, finish=finish)
-
-
-# __main__ calls this at startup. The docs build replaces the apps with plain functions.
-for _task in (fine_tune_ensemble_task, fine_tune_ensemble_multinode_task):
-    getattr(_task, 'func', _task).validate_config = validate_fine_tune_config
-
-getattr(fine_tune_ensemble_multinode_task, 'func', fine_tune_ensemble_multinode_task).member_executors = (
-    'alf_ML_executor',)
-# Each copy trains on one GPU of the configured device, as fine_tune_ensemble_multinode_task submits it.
-getattr(fine_tune_ensemble_multinode_task, 'func', fine_tune_ensemble_multinode_task).member_layout = (
-    lambda ML_config: ((ML_config.get('fine_tune') or {}).get('device', 'cuda'), 1, 1))

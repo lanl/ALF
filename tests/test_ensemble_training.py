@@ -594,6 +594,7 @@ def test_coordinator_waits_for_a_retried_member_during_the_bootstrap(tmp_path, m
 # Real training.
 
 
+@pytest.mark.slow
 def test_multinode_excited_training_trains_members_that_reload(tmp_path):
     pytest.importorskip("torch")
     pytest.importorskip("hippynn")

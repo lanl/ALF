@@ -92,7 +92,8 @@ def replay(results, cohort_size, k, width, order, selector="top_k"):
     "policy,cap", [("stop", None), ("continue", None), ("continue", 2)], ids=["stop", "continue", "continue_capped"]
 )
 def test_selection_ignores_how_trajectories_finish(policy, cap):
-    results = sampled(50, cohort_config(50, 8, policy, cap))
+    # 21 trajectories hold three of each kind inputs() makes; each is sampled alone, which takes most of the time.
+    results = sampled(21, cohort_config(21, 8, policy, cap))
     outcomes = {r.get_metadata()["trajectory_outcome"] for r in results.values()}
     assert {"eligible", "rejected"} <= outcomes
     counts = [len(r.get_metadata()["acquisition_candidates"]) for r in results.values()]
@@ -102,11 +103,11 @@ def test_selection_ignores_how_trajectories_finish(policy, cap):
             assert max(counts) <= cap
     else:
         assert max(counts) == 1
-    reference, _ = replay(results, 50, 8, 1, "forward")
+    reference, _ = replay(results, 21, 8, 1, "forward")
     assert len(reference) == 8
-    for width in (1, 2, 4, 8, 32, 50):
+    for width in (1, 2, 4, 8, 21):
         for order in ("forward", "reversed", "shuffled"):
-            frames, pool = replay(results, 50, 8, width, order)
+            frames, pool = replay(results, 21, 8, width, order)
             assert selected_ids(frames) == selected_ids(reference), (width, order)
             assert pool.status()["finished"] == 1
 

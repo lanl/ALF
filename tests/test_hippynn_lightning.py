@@ -38,6 +38,7 @@ def _check_member(member, devices=2, batch_size=4):
     assert bundle["controller"].batch_size == batch_size, "checkpoints store the configured total"
 
 
+@pytest.mark.slow
 def test_excited_state_member_trains_on_two_devices(tmp_path):
     pytest.importorskip("hippynn")
     pytest.importorskip("pytorch_lightning")
@@ -57,6 +58,7 @@ def test_excited_state_member_trains_on_two_devices(tmp_path):
         ml._target(model, key)
 
 
+@pytest.mark.slow
 def test_ground_state_member_trains_on_two_devices_inside_a_slurm_step(tmp_path, monkeypatch):
     """Under Parsl's SrunLauncher each worker runs inside a Slurm step. Lightning must still see ALF's ranks,
     not SLURM_PROCID 0 in every rank, which made all of them bind the same port (seen on an HPC system). ALF names
@@ -94,6 +96,7 @@ def _check_training_summary(member, epochs, gpus_per_member):
     assert summary["split_counts"]["test"] > 0 and summary["metric"]["valid"]
 
 
+@pytest.mark.slow
 def test_a_single_device_ground_state_member_records_its_training(tmp_path):
     pytest.importorskip("hippynn")
     write_water_shard(tmp_path / "data")
@@ -155,7 +158,9 @@ def test_single_node_tasks_refuse_several_gpus_per_member():
         ensemble_training.single_gpu_members({"gpus_per_member": 4})
 
 
-@pytest.mark.parametrize('stream, setting', [(False, 'environment'), (True, 'environment'), (True, 'ML_config')])
+# The environment's own route is covered by test_training_options_come_from_ml_config_before_the_environment.
+@pytest.mark.slow
+@pytest.mark.parametrize('stream, setting', [(False, 'environment'), (True, 'ML_config')])
 def test_the_split_final_test_reports_what_one_device_would(tmp_path, monkeypatch, stream, setting):
     """The ranks predict every n-th evaluation batch and the parent computes hippynn's metrics over all of them:
     the same numbers as hippynn's test_model on one device, for every split, after a real two-device training.
@@ -248,16 +253,28 @@ def _train_on_two_nodes(tmp_path, launcher_options=()):
     return member
 
 
-def test_a_member_trains_across_two_nodes(tmp_path, monkeypatch):
+@pytest.mark.slow
+def test_a_member_trains_across_two_nodes_on_shared_node_local_arrays(tmp_path, monkeypatch):
     """Two node processes, each starting its own two ranks, train one model as a world of four, and the member
-    is written like any other. With ALF_LIGHTNING_STATS every rank records its node, steps and peak memory."""
+    is written like any other. With ALF_LIGHTNING_STATS every rank records its node, steps and peak memory. With
+    ALF_LIGHTNING_SHARED_DATA the split arrays go to files that every node copies to its local directory and every
+    rank maps; streaming evaluation removes its temporary reports as well. One training checks all three, since
+    each two-node training starts six processes that import PyTorch and HIPPYNN."""
     pytest.importorskip("hippynn")
     pytest.importorskip("pytorch_lightning")
+    local = tmp_path / "node-local"
+    local.mkdir()
     monkeypatch.setenv("ALF_LIGHTNING_STATS", "1")
+    monkeypatch.setenv("ALF_LIGHTNING_SHARED_DATA", "1")
+    monkeypatch.setenv("ALF_LIGHTNING_STREAM_FINAL", "1")
+    monkeypatch.setenv("ALF_NODE_LOCAL_DIR", str(local))
     member = _train_on_two_nodes(tmp_path)
     _check_member(member, devices=4, batch_size=8)
     record = json.loads((member / "lightning_training.json").read_text())
-    assert record["nodes"] == 2
+    assert record["nodes"] == 2 and record["final_evaluation"] == "streaming"
+    assert not (member / "lightning_data").exists()
+    assert not list(member.glob("final-evaluation-*"))
+    assert list(local.iterdir()) == []
     assert "on 2 nodes, 2 each" in (member / "training_log.txt").read_text()
     assert not (member / "lightning_rendezvous.json").exists()
     stats = [json.loads(path.read_text()) for path in sorted((member / "lightning_stats").glob("rank-*.json"))]
@@ -269,6 +286,7 @@ def test_a_member_trains_across_two_nodes(tmp_path, monkeypatch):
     ml.HIPNN_ASE_calculator(str(member), energy_key="energy", device="cpu")
 
 
+@pytest.mark.slow
 def test_a_failed_node_fails_the_member(tmp_path):
     """When one node's process fails, the launcher stops the others, and the member reports the failure
     rather than waiting for the missing node's ranks."""
@@ -279,6 +297,7 @@ def test_a_failed_node_fails_the_member(tmp_path):
     assert not (tmp_path / "ensemble" / "model-00" / "lightning_rendezvous.json").exists()
 
 
+@pytest.mark.slow
 def test_a_non_finite_training_loss_stops_the_member_at_the_end_of_the_epoch(tmp_path, capfd):
     """A NaN force label makes a batch's loss NaN, and the gradient all-reduce then spreads it to every rank's
     weights. All ranks stop together after that epoch, rather than training to NaN for every remaining epoch and
@@ -372,26 +391,6 @@ def test_shared_split_arrays_come_back_unchanged(tmp_path, monkeypatch):
         for key, tensor in split.items():
             mapped = reader.splits[name][key]
             assert mapped.dtype == tensor.dtype and torch.equal(mapped, tensor), (name, key)
-
-
-def test_a_two_node_member_trains_on_shared_node_local_arrays(tmp_path, monkeypatch):
-    """With ALF_LIGHTNING_SHARED_DATA the split arrays go to files that every node copies to its local
-    directory and every rank maps. Streaming evaluation removes its temporary reports as well."""
-    pytest.importorskip("hippynn")
-    pytest.importorskip("pytorch_lightning")
-    local = tmp_path / "node-local"
-    local.mkdir()
-    monkeypatch.setenv("ALF_LIGHTNING_SHARED_DATA", "1")
-    monkeypatch.setenv("ALF_LIGHTNING_STREAM_FINAL", "1")
-    monkeypatch.setenv("ALF_NODE_LOCAL_DIR", str(local))
-    member = _train_on_two_nodes(tmp_path)
-    _check_member(member, devices=4, batch_size=8)
-    record = json.loads((member / 'lightning_training.json').read_text())
-    assert record['final_evaluation'] == 'streaming'
-    assert not (member / "lightning_data").exists()
-    assert not list(member.glob('final-evaluation-*'))
-    assert list(local.iterdir()) == []
-    ml.HIPNN_ASE_calculator(str(member), energy_key="energy", device="cpu")
 
 
 @pytest.mark.parametrize("value, variable, expected", [

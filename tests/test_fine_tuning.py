@@ -520,6 +520,7 @@ def state(path):
     return torch.load(path, map_location="cpu", weights_only=False)
 
 
+@pytest.mark.slow
 def test_hippynn_round_fine_tunes_copies_that_alf_samplers_load(tmp_path, pretrained):
     torch = pytest.importorskip("torch")
     from alframework.ml_interfaces.hippynn.interface import HIPNN_ASE_load_ensemble, load_hippynn_batched_ensemble

@@ -1,0 +1,6 @@
+4
+Lattice="3.61 0 0 0 3.61 0 0 0 3.61" Properties=species:S:1:pos:R:3 pbc="T T T"
+Cu 0.0   0.0   0.0
+Cu 0.0   1.805 1.805
+Cu 1.805 0.0   1.805
+Cu 1.805 1.805 0.0

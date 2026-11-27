@@ -1,0 +1,23 @@
+{
+  "max_miller": 1,
+  "vacuum_A": 18,
+  "max_atoms": 300,
+  "seed": 42,
+  "adsorbates": [{"file": "co.xyz", "anchor_indices": [0]}],
+  "materials": [
+    {
+      "id": "copper",
+      "bulk_file": "copper.extxyz",
+      "weight": 2,
+      "slab_symmetry": "require"
+    },
+    {
+      "id": "mapi",
+      "bulk_file": "mapi_100K.extxyz",
+      "miller_indices": [[1, 0, 0]],
+      "min_slab_thickness_A": 15,
+      "protected_bonds": [["C", "N", 1.7], ["C", "H", 1.25], ["N", "H", 1.25]],
+      "adsorbates": []
+    }
+  ]
+}

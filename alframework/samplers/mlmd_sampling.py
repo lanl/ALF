@@ -12,6 +12,7 @@ from alframework.tools.task_timeline import timed
 from alframework.tools.annealing import annealing_schedule
 from alframework.tools.config import load_module_from_config
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator
+from alframework.samplers.engines.ase import has_fixed_atoms
 from alframework.ml_interfaces.ensemble_inference import atomic_uncertainty_arrays
 from alframework.tools.geometry import minimum_distance
 from alframework.tools.config import build_input_dict
@@ -75,6 +76,8 @@ def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Ncheck, Tamp, Tper,
     max_uncertainty = {}
 
     ase_atoms = molecule_object.get_atoms()
+    if Rend is not None and ('surface_builder' in molecule_object.get_metadata() or has_fixed_atoms(ase_atoms)):
+        raise ValueError('Sampling slabs or structures with FixAtoms requires a fixed cell. Set end_dens to null.')
     selected_sources = settings.get("selected_force_signals", ())
     force_atom_indices = resolve_force_atom_indices(settings.get("force_atoms"), ase_atoms,
                                                     molecule_object.get_moleculeid())
@@ -97,10 +100,9 @@ def mlmd_sampling(molecule_object, ase_calculator, dt, maxt, Ncheck, Tamp, Tper,
     # Compute energies
     # ase_atoms.calc.get_potential_energy()
 
-    # Define thermostat. The center of mass stays fixed with ASE's FixCom (Langevin's own fixcm is
-    # deprecated and doesn't sample NVT correctly); the original constraints come back before return.
+    # FixAtoms already anchors the substrate. Adding FixCom would translate the fixed positions.
     constraints = list(ase_atoms.constraints)
-    if not any(isinstance(constraint, FixCom) for constraint in constraints):
+    if not has_fixed_atoms(ase_atoms) and not any(isinstance(constraint, FixCom) for constraint in constraints):
         ase_atoms.set_constraint(constraints + [FixCom()])
     dyn = Langevin(ase_atoms, dt * units.fs, friction=0.02, temperature_K=T, fixcm=False)
     if trajectory_interval is not None:
@@ -309,6 +311,8 @@ def simple_mlmd_sampling_task(molecule_object, sampler_config, model_path, curre
         ase_calculator = MLMD_calculator(calculator_list, **sampler_config['MLMD_calculator_options'])
         
     if sampler_config.get('translate_to_center', False):
+        if has_fixed_atoms(molecule_object.atoms):
+            raise ValueError('Sampling with FixAtoms requires translate_to_center=false.')
         molecule_object.atoms.set_positions(molecule_object.atoms.get_positions() - molecule_object.atoms.get_center_of_mass())
     
     # build_input_dict will check for trajectory_frequency from feed_parameters first.

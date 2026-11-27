@@ -1,0 +1,14 @@
+{
+  "bulk_file": "mapi_100K.extxyz",
+  "max_miller": 1,
+  "min_slab_thickness_A": 15,
+  "min_a_A": 10,
+  "max_a_A": 25,
+  "min_b_A": 9,
+  "max_b_A": 25,
+  "max_atoms": 300,
+  "vacuum_A": 18,
+  "protected_bonds": [["C", "N", 1.7], ["C", "H", 1.25], ["N", "H", 1.25]],
+  "face": "both",
+  "seed": 42
+}

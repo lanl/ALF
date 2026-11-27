@@ -11,6 +11,7 @@ install_requirements=[
     "h5py",
     "pandas",
     "numpy",
+    "scipy",
 ]
 
 # Documentation Dependencies

@@ -6,7 +6,7 @@ import numpy as np
 from ase import units
 from ase.calculators.calculator import Calculator, all_changes
 from ase.io.trajectory import Trajectory
-from ase.constraints import FixCom
+from ase.constraints import FixAtoms, FixCom
 from ase.md.langevin import Langevin
 
 from alframework.ml_interfaces.ensemble_inference import SelectedStateEvaluator, add_observed_uncertainty
@@ -15,6 +15,10 @@ from alframework.tools.gap_seeking import gap_seeking_energy_forces
 from alframework.tools.geometry import minimum_distance
 
 OBSERVED_PROPERTIES = ['energy', 'forces', 'energy_stdev', 'forces_stdev_mean', 'forces_stdev_max']
+
+
+def has_fixed_atoms(atoms):
+    return any(isinstance(constraint, FixAtoms) and len(constraint.index) for constraint in atoms.constraints)
 
 
 class _PredictedMember(Calculator):
@@ -95,11 +99,10 @@ class ASEEngine:
         self._states = isinstance(models, SelectedStateEvaluator)
         self.n_models = models.n_models if self._states else len(models)
         self._atoms = list(atoms_list)
-        # Each system's center of mass stays fixed during MD with ASE's FixCom (Langevin's own fixcm is
-        # deprecated and doesn't sample NVT correctly); finish() gives back the constraints it came with.
+        # FixAtoms already anchors the substrate. Adding FixCom would translate the fixed positions.
         self._constraints = [list(atoms.constraints) for atoms in self._atoms]
         for atoms, constraints in zip(self._atoms, self._constraints):
-            if not any(isinstance(constraint, FixCom) for constraint in constraints):
+            if not has_fixed_atoms(atoms) and not any(isinstance(constraint, FixCom) for constraint in constraints):
                 atoms.set_constraint(constraints + [FixCom()])
         self._dynamics = []
         self._writers = {}
@@ -162,6 +165,8 @@ class ASEEngine:
 
     def scale_cell(self, index, scalar):
         atoms = self._atoms[index]
+        if has_fixed_atoms(atoms):
+            raise ValueError('Sampling with FixAtoms requires a fixed cell.')
         atoms.set_cell(scalar * atoms.get_cell(), scale_atoms=True)
 
     def finish(self, index):

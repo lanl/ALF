@@ -93,6 +93,7 @@ pieces to a concrete run.
    examples/fine_tuning
    examples/mace_fine_tuning
    examples/uma_fine_tuning
+   examples/surface_training
 
 .. toctree::
    :maxdepth: 2

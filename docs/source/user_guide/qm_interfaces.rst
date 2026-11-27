@@ -103,6 +103,29 @@ input writing, execution, and result extraction.
    workflows, prefer the generic ``ase_calculator_task`` whenever the engine can
    be represented as an ASE calculator.
 
+Set the top-level VASP QM option ``kpoint_spacing_A_inv`` to the maximum
+reciprocal spacing in Å⁻¹. For each structure the task divides the
+reciprocal vector lengths (including 2π) by this spacing and rounds up.
+It writes a Γ-centered mesh. The cell must be periodic along all three axes.
+Structure metadata ``vacuum_axes`` can list any of ``"a"``, ``"b"``, and
+``"c"`` to use a single point along those cell directions. The surface builder
+sets ``vacuum_axes`` to ``["c"]``, so one run can label both bulk cells and slabs.
+The spacing is recorded in label provenance and the mesh is written to
+``KPOINTS`` in the calculation directory.
+
+Use either ``kpoint_spacing_A_inv``, a fixed ``input.kpts``, or VASP's
+``input.kspacing``. The ALF spacing option also requires you to omit
+per-structure ``kpoints``. The older ``slab_kspacing_A_inv`` option always
+uses one point along ``c`` and requires ``c`` to be perpendicular to the slab plane.
+
+Set the top-level VASP QM option ``slab_dipole_correction: true`` to apply
+the dipole correction to neutral structures from the surface builder.
+The task sets ``LDIPOL``, ``IDIPOL=3``, and ``DIPOL`` for each slab, using
+the mass-weighted fractional position along ``c`` after unwrapping the
+slab through its vacuum gap. The default is off. When enabling it, leave
+these three INCAR tags and ``NELECT`` unset and use neutral electron counts.
+The policy is recorded in label provenance.
+
 .. _qm-interface-extension-points:
 
 How ALF Uses QM Interfaces

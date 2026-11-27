@@ -30,6 +30,7 @@ FAMILIES = (
     "fine_tuning",
     "mace_fine_tuning",
     "uma_fine_tuning",
+    "surface_training",
     "periodic_water",
     "molten_salt",
     "reactive_sampling",

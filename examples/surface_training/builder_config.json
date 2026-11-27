@@ -1,0 +1,29 @@
+{
+  "seed": 17,
+  "miller_indices": [[1, 1, 1]],
+  "min_slab_thickness_A": 7,
+  "min_in_plane_A": 9,
+  "vacuum_A": 20,
+  "max_atoms": 100,
+  "rattle_A": 0.025,
+  "materials": [
+    {
+      "id": "clean_cu111",
+      "bulk_file": "../surface_adsorption/copper.extxyz"
+    },
+    {
+      "id": "co_cu111",
+      "bulk_file": "../surface_adsorption/copper.extxyz",
+      "weight": 2,
+      "adsorbates": [
+        {
+          "file": "../surface_adsorption/co.xyz",
+          "anchor_indices": [0],
+          "mode": "binding_sites",
+          "site_types": ["ontop", "bridge", "hollow"],
+          "surface_elements": ["Cu"]
+        }
+      ]
+    }
+  ]
+}

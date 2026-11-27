@@ -78,6 +78,9 @@ Supported Builder Tasks
      - Loads a random ``.cfg`` crystal structure, then applies random vacancies,
        interstitials, replacements, atom displacements, and cell scaling.
      - Crystals with point defects.
+   * - ``alframework.builders.surface.surface_builder_task``
+     - Cleaves a bulk crystal and optionally places a molecule on its surface.
+     - Clean slabs and adsorption candidates, including hybrid perovskites.
 
 Choosing A Builder
 ------------------
@@ -112,6 +115,9 @@ because RDKit is not part of the lightest ALF setup.
 Use ``external_geometry_builder_task`` when you already have the starting
 structures and want each one labeled again from scratch. It copies only the
 geometry, so it never inherits results or calculator settings from the source file.
+
+Use ``surface_builder_task`` to generate new surface geometries during a run.
+It uses ASE and SciPy for geometry generation and returns one candidate per task.
 
 Common Configuration Fields
 ---------------------------
@@ -276,6 +282,130 @@ Defect crystal builder
    A request for more replacements or vacancies than the available host sites
    raises an error; choose the maximum counts to fit the starting structure.
 
+Surface builder
+   Select ``alframework.builders.surface.surface_builder_task`` in the master
+   config. In the builder config, set ``bulk_file`` to a local ASE-readable
+   file containing one ordered, fully periodic conventional cell. File paths
+   start from ``master_directory``. Specify either ``miller_indices``, a
+   list such as ``[[1, 0, 0]]``, or ``max_miller``, a positive integer.
+   Both modes use the molecule ID and ``seed`` (default ``0``) to select
+   a candidate.
+
+   Automatic enumeration considers primitive triples for which the largest
+   absolute index is at most ``max_miller``. The builder detects which
+   lattice operations preserve the atomic geometry and element identities
+   in the input crystal. It uses these to group equivalent planes.
+   ``symmetry_tolerance_A`` defaults to 0.001 Å. Each surviving facet family is equally likely, then
+   one of its valid cuts is selected. A family with no valid cut is reported
+   and skipped. If no family survives, or any explicitly listed facet has
+   no valid cut, the builder raises an error.
+
+   ``min_slab_thickness_A`` sets the minimum thickness of the substrate
+   (default 10 Å). ``min_a_A`` and ``min_b_A`` default individually to
+   ``min_in_plane_A`` (default 8 Å). Optional ``max_a_A`` and ``max_b_A``
+   bound the final vector lengths. By default the builder uses the smallest whole
+   repeats that meet the minima. Optional ``max_atoms`` caps the final
+   structure and reserves room for the largest configured adsorbate.
+
+   Optional ``target_a_A`` and ``target_b_A`` select whole repeats
+   closest to the requested lengths. The builder minimizes the sum of
+   absolute length differences and prefers fewer atoms in a tie. Hard
+   bounds and the total atom cap still apply. An axis without a target
+   uses its smallest feasible repeat.
+
+   Set ``allow_independent_terminations: true`` to consider different
+   cleavage gaps at the two faces. Each facet uses its thinnest valid
+   cut at or above ``min_slab_thickness_A``. Cuts must preserve bulk
+   stoichiometry, protected neighbors, and any requested face symmetry.
+   The builder records the lower and upper gaps as ``termination_shift``
+   and ``upper_termination_shift`` in fractional bulk-plane periods before
+   orienting the selected face for adsorption. The upper gap includes
+   the intervening repeats. The default is whole-repeat cleavage with
+   matching gaps.
+
+   The slab normal and ``c`` point along Cartesian +z. ``vacuum_A`` is
+   the total gap between periodic images of the finished structure
+   (default 15 Å). The builder centers the finished geometry along z and
+   keeps all three axes periodic. Set ``face`` to ``top`` (default),
+   ``bottom``, or ``both`` to sample either face. ``surface_depth_A`` is
+   the depth of the exposed atom band measured from the highest slab atom
+   (default 2 Å).
+   Sample builder-generated slabs with a fixed cell (``end_dens: null``)
+   to preserve the vacuum gap.
+
+   Set ``fixed_bottom_layers`` to freeze that many substrate planes on the
+   bottom of the oriented slab. It defaults to zero and may be overridden
+   per material. At least one substrate plane stays mobile. The builder
+   attaches ASE ``FixAtoms`` and records ``fixed_substrate_indices`` in the
+   structure metadata. Use scalar ASE sampling or the batched driver's
+   ``ase`` engine with ``end_dens: null`` and
+   ``translate_to_center: false``. Packed TorchSim and ALCHEMI sampling
+   require mobile slabs.
+
+   Set ``slab_symmetry`` to ``report`` to record whether the top and
+   bottom of the bare substrate are equivalent, or to ``require`` to
+   discard cuts with inequivalent faces. The default ``off`` skips the
+   check. The face swap must map every atom onto an atom of the same element
+   with in-plane periodicity. Adsorption can still be on just one face.
+   Neither symmetry feature requires spglib.
+
+   Each ``protected_bonds`` entry is a pair of elements and a cutoff in
+   Angstrom, such as ``["C", "N", 1.7]``. For a hybrid perovskite, set the
+   cutoffs for the internal bonds of its molecular ions. A cut is accepted
+   only if these neighbors are preserved in the slab, including across the
+   in-plane periodic boundaries.
+
+   Leave ``adsorbates`` empty for clean slabs. Each entry specifies exactly
+   one of ``file`` or ``smiles``. The ``topology`` extra (RDKit) is
+   required for SMILES and bond-aware MOL/SDF files. A SMILES entry generates
+   a seeded conformer with hydrogens, which count toward ``max_atoms``.
+   Set ``relax_smiles: true`` on a SMILES entry to minimize its embedded
+   conformer with MMFF94 or UFF if MMFF94 parameters are unavailable.
+   The builder records the force field and reports optimization failures.
+   Coordinate files such as XYZ work with ASE alone. The builder rejects
+   disconnected or overlapping geometries. Each draw chooses one entry and
+   one of its zero-based ``anchor_indices``, in file order or in RDKit
+   input order before hydrogens are added.
+
+   The builder checks declared net charge from ``bulk_charge`` on the
+   material, ``charge`` on an adsorbate, file-level ``charge`` or
+   ``total_charge``, ASE initial charges when present, and RDKit formal charge.
+   It rejects conflicts or a known nonzero charge. Where charge is absent,
+   it assumes neutrality and records that assumption in ``surface_builder``
+   metadata. It does not assign oxidation states or spin.
+
+   Optional ``surface_elements`` restricts site finding within the exposed
+   band. ``random`` samples lateral points
+   across the face. ``binding_sites`` samples geometric sites and accepts
+   ``site_types`` to restrict placement to a subset of ``ontop``, ``bridge``,
+   and ``hollow``. Both modes vary rotation and tilt (up to
+   ``max_tilt_deg``, default 15 degrees) and use a clearance ``gap_A``
+   beyond covalent contact (default 0.1 Å). These are initial geometries for
+   relaxation. The builder records the cut, face, and placement in
+   ``surface_builder`` metadata and tags interior, exposed, and adsorbate
+   atoms as 0, 1, and 2, respectively.
+
+   Use a ``materials`` list instead of a top-level ``bulk_file`` to
+   sample multiple materials. Each entry supplies ``id`` and ``bulk_file``.
+   Optional positive ``weight`` defaults to 1. Entries override shared settings
+   and can set an empty ``adsorbates`` list for clean slabs. If an entry
+   selects its own Miller indices or maximum, it replaces shared facet
+   selection. The builder validates each material pool and samples the
+   material before its facet and cut. For an example, see
+   ``examples/surface_adsorption/builder_materials.json``.
+
+   .. code-block:: json
+
+      {
+        "bulk_file": "mapi_100K.extxyz",
+        "miller_indices": [[1, 0, 0]],
+        "protected_bonds": [["C", "N", 1.7], ["C", "H", 1.25], ["N", "H", 1.25]],
+        "surface_depth_A": 4,
+        "adsorbates": [
+          {"file": "co.xyz", "anchor_indices": [0], "surface_elements": ["Pb"], "mode": "random"}
+        ]
+      }
+
 CFG loader
    ``simple_cfg_loader_task`` loads a random ``.cfg`` file from ``molecule_library_dir``.
    Its optional ``periodic`` setting overrides the file's periodicity: leave it out to keep
@@ -413,6 +543,9 @@ Related Examples
    * - ``examples/AcAc_excited_pyseqm``
      - ``alframework.builders.rdkit_molecule.rdkit_molecule_builder_task``
      - RDKit seeds for one molecule.
+   * - ``examples/surface_adsorption``
+     - ``alframework.builders.surface.surface_builder_task``
+     - Clean MAPbI₃ (100) slabs and CO placements.
 
 Builder API Links
 -----------------
@@ -426,3 +559,4 @@ You can link from this guide directly to API pages:
 * :doc:`External geometry module <../api_documentation/alframework.builders.external_geometry>`
 * :doc:`RDKit molecule module <../api_documentation/alframework.builders.rdkit_molecule>`
 * :doc:`Defect crystal module <../api_documentation/alframework.builders.defect_crystal_builder>`
+* :doc:`Surface builder module <../api_documentation/alframework.builders.surface>`

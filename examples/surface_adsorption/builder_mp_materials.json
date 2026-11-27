@@ -1,0 +1,30 @@
+{
+  "miller_indices": [[1, 0, 0]],
+  "min_slab_thickness_A": 10,
+  "min_in_plane_A": 8,
+  "target_a_A": 9,
+  "target_b_A": 9,
+  "vacuum_A": 20,
+  "max_atoms": 200,
+  "seed": 42,
+  "materials": [
+    {
+      "id": "mp-977013",
+      "bulk_file": "mp-977013.extxyz",
+      "protected_bonds": [["C", "N", 1.7], ["C", "H", 1.25], ["N", "H", 1.25]]
+    },
+    {
+      "id": "mp-977014",
+      "bulk_file": "mp-977014.extxyz",
+      "protected_bonds": [["C", "N", 1.7], ["C", "H", 1.25], ["N", "H", 1.25]]
+    },
+    {
+      "id": "mp-600089",
+      "bulk_file": "mp-600089.extxyz"
+    },
+    {
+      "id": "mp-1069538",
+      "bulk_file": "mp-1069538.extxyz"
+    }
+  ]
+}

@@ -55,7 +55,8 @@ from alframework.samplers.acquisition import (acquisition_settings, assess_frame
                                               require_members, resolve_force_atom_indices,
                                               selected_force_diagnostics, top_k, worker_retention_limit)
 # Keep the old paths importable, including for previously pickled calculators.
-from alframework.samplers.engines.ase import ASEEngine, OBSERVED_PROPERTIES, _PredictedMember, _StateMeanCalculator
+from alframework.samplers.engines.ase import (ASEEngine, OBSERVED_PROPERTIES, _PredictedMember,
+                                             _StateMeanCalculator, has_fixed_atoms)
 from alframework.samplers.engines.factory import make_engine
 from alframework.tools.gap_seeking import adjacent_pairs, gap_seeking_settings, select_trigger
 from alframework.tools.geometry import minimum_distance
@@ -618,6 +619,12 @@ def sample_trajectories(molecule_objects, models, sampler_config, engine_class=N
     seeds, rngs, schedules, trajectory_files = [], [], [], []
     for molecule in molecule_objects:
         assert isinstance(molecule, MoleculesObject), 'molecule_objects must contain MoleculesObject instances'
+        atoms = molecule.get_atoms()
+        fixed = has_fixed_atoms(atoms)
+        if sampler_config.get('end_dens') is not None and ('surface_builder' in molecule.get_metadata() or fixed):
+            raise ValueError('Sampling slabs or structures with FixAtoms requires a fixed cell. Set end_dens to null.')
+        if fixed and sampler_config.get('translate_to_center', False):
+            raise ValueError('Sampling with FixAtoms requires translate_to_center=false.')
         seed = trajectory_seed(molecule.get_moleculeid(), sampler_config.get('random_seed'))
         rng = trajectory_rng(seed)
         schedules.append(draw_schedule(sampler_config, rng))
@@ -625,7 +632,6 @@ def sample_trajectories(molecule_objects, models, sampler_config, engine_class=N
         seeds.append(seed)
         rngs.append(rng)
         if sampler_config.get('translate_to_center', False):
-            atoms = molecule.get_atoms()
             atoms.set_positions(atoms.get_positions() - atoms.get_center_of_mass())
 
     maxt = sampler_config['maxt']

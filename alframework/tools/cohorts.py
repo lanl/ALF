@@ -22,6 +22,7 @@ held in memory only; unfinished cohorts are lost if the coordinator restarts.
 from collections import Counter, deque
 
 from ase import Atoms
+from ase.constraints import FixAtoms
 
 from alframework.samplers.acquisition import select_candidates
 from alframework.tools.molecules import MoleculesObject
@@ -153,6 +154,9 @@ class CohortPool:
     def _frame(self, cohort, candidate, rank):
         atoms = Atoms(numbers=candidate["numbers"], positions=candidate["positions"],
                       cell=candidate["cell"], pbc=candidate["pbc"])
+        metadata = candidate.get('metadata', {})
+        if fixed := metadata.get('fixed_substrate_indices'):
+            atoms.set_constraint(FixAtoms(indices=fixed))
         if candidate.get('topology_atom_ids') is not None:
             from alframework.tools.atom_order import validated_atom_ids
             atoms.set_array('topology_atom_ids', validated_atom_ids(candidate['topology_atom_ids'], len(atoms)))
@@ -160,7 +164,7 @@ class CohortPool:
             name, mask = candidate["force_atom_mask"]
             atoms.set_array(name, mask.copy())
         frame = MoleculesObject(atoms, "{}-s{:09d}".format(candidate["trajectory_id"], candidate["step"]))
-        frame.update_metadata({**candidate.get('metadata', {}),
+        frame.update_metadata({**metadata,
                                "cohort_id": cohort.cohort_id, "cohort_model_id": cohort.model_id,
                                "frame_id": candidate["frame_id"], "trajectory_id": candidate["trajectory_id"],
                                "step": candidate["step"], "time_ps": candidate["time_ps"],

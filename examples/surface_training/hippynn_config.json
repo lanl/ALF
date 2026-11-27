@@ -1,0 +1,46 @@
+{
+  "n_models": 2,
+  "device_string": "cpu",
+  "energy_key": "energy",
+  "force_key": "forces",
+  "coordinates_key": "coordinates",
+  "species_key": "species",
+  "cell_key": "cell",
+  "hipnn_order": "vector",
+  "network_params": {
+    "possible_species": [0, 6, 8, 29],
+    "n_features": 20,
+    "n_sensitivities": 24,
+    "dist_soft_min": 0.8,
+    "dist_soft_max": 4.0,
+    "dist_hard_max": 5.0,
+    "n_interaction_layers": 2,
+    "n_atom_layers": 3,
+    "sensitivity_type": "inverse",
+    "resnet": true
+  },
+  "energy_mae_loss_weight": 5.0,
+  "energy_rmse_loss_weight": 5.0,
+  "force_mae_loss_weight": 1.0,
+  "force_rmse_loss_weight": 1.0,
+  "rbar_loss_weight": 1.0,
+  "l2_reg_loss_weight": 1e-6,
+  "valid_size": 0.2,
+  "test_size": 0.2,
+  "learning_rate": 0.001,
+  "scheduler_options": {
+    "max_batch_size": 16,
+    "patience": 8,
+    "factor": 0.5
+  },
+  "controller_options": {
+    "batch_size": 4,
+    "eval_batch_size": 8,
+    "max_epochs": 60,
+    "termination_patience": 20
+  },
+  "remove_high_energy_cut": null,
+  "remove_high_energy_std": null,
+  "remove_high_forces_cut": null,
+  "remove_high_forces_std": null
+}

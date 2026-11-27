@@ -978,19 +978,24 @@ def test_returned_momenta_is_checked_before_any_task_runs(tmp_path):
 
 
 
-def test_the_ase_engine_holds_the_center_of_mass_and_returns_the_original_constraints():
+@pytest.mark.parametrize('frozen', [False, True])
+def test_the_ase_engine_keeps_fixed_atoms_or_holds_the_center_of_mass(frozen):
     from ase.constraints import FixAtoms, FixCom
     atoms = SPRING_WATER.copy()
-    atoms.set_constraint(FixAtoms(indices=[0]))
+    fixed_position = atoms.positions[0].copy()
+    if frozen:
+        atoms.set_constraint(FixAtoms(indices=[0]))
     atoms.set_momenta(np.random.default_rng(2).normal(size=(len(atoms), 3)))
     engine = ASEEngine([atoms], fake_ensemble(), 0.5, [300.0], [np.random.RandomState(3)])
-    assert any(isinstance(c, FixCom) for c in engine.atoms(0).constraints)
+    assert any(isinstance(c, FixCom) for c in engine.atoms(0).constraints) is (not frozen)
     assert not engine.step([0], 20)
-    momentum = engine.atoms(0).get_momenta().sum(axis=0)
-    np.testing.assert_allclose(momentum, 0.0, atol=1e-9)
+    if frozen:
+        np.testing.assert_array_equal(engine.atoms(0).positions[0], fixed_position)
+        np.testing.assert_array_equal(engine.atoms(0).get_momenta()[0], np.zeros(3))
+    else:
+        np.testing.assert_allclose(engine.atoms(0).get_momenta().sum(axis=0), 0.0, atol=1e-9)
     engine.finish(0)
-    kept = engine.atoms(0).constraints
-    assert len(kept) == 1 and isinstance(kept[0], FixAtoms), "only the structure's own constraint comes back"
+    assert [type(c) for c in engine.atoms(0).constraints] == ([FixAtoms] if frozen else [])
 
 
 def test_the_scalar_sampler_returns_the_original_constraints():

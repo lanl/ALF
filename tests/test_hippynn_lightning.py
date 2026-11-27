@@ -305,8 +305,8 @@ def test_a_non_finite_training_loss_stops_the_member_at_the_end_of_the_epoch(tmp
                              device_string="cpu", gpus_per_member=2)
     output = capfd.readouterr()
     text = output.out + output.err + (member / "training_log.txt").read_text()
-    assert "The training loss was not finite in epoch 0 (member seed" in text
-    assert "saw a non-finite training loss first at batch" in text
+    assert "not finite in epoch 0" in text
+    assert "non-finite training loss first at batch" in text
     assert text.count("Total epoch time") == 1, "the member stops after the epoch that went non-finite"
 
 

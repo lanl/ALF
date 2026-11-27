@@ -175,7 +175,7 @@ def test_keep_files_keeps_the_worker_parts(tmp_path):
     assert __import__('os').path.exists(receipt.path)
 
 
-def test_a_receipt_travels_as_a_small_record():
+def test_a_receipt_survives_pickling():
     import pickle
     receipt = LabelReceipt('/x/task-1.h5', {'H2_O': {'ids': ['a', 'b'], 'periodic': False}}, {'c': 'reason'})
     copy = pickle.loads(pickle.dumps(receipt))

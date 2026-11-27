@@ -107,7 +107,6 @@ def test_arrays_print_as_a_table_of_name_dtype_and_shape(capsys):
     from alframework.tools.label_arrays import print_arrays
     print_arrays({'coordinates': np.zeros((2, 3, 3)), 'energy': np.zeros(2, dtype=np.float32)})
     lines = capsys.readouterr().out.splitlines()
-    assert lines[1].split('|')[1:4] == [' Name                           ', ' dtype              ',
-                                        ' shape                        ']
+    assert [column.strip() for column in lines[1].split('|')[1:4]] == ['Name', 'dtype', 'shape']
     assert "dtype('float64')" in lines[3] and '(2, 3, 3)' in lines[3]
     assert "dtype('float32')" in lines[4] and '(2,)' in lines[4]

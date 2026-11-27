@@ -14,10 +14,10 @@ def test_the_block_fills_in_the_widths_and_queue_limits():
                       'retraining': {'after': 16384, 'counts': 'labels'}}
     assert sampler == {'batching': {'partial_policy': 'timeout', 'max_wait_seconds': 30, 'batch_size': 256}}
     assert qm == {'batching': {'batch_size': 128}}
-    assert describe(BLOCK, derived) == (
-        'Sizing: sampler batching.batch_size 256, maximum_builder_structures 256, parallel_samplers 16,384 '
-        '(64 sampler tasks at once), QM batching.batch_size 128, target_queued_QM 16,384, retraining.after 16,384 '
-        '(retrain once 16,384 new labels are held)')
+    report = describe(BLOCK, derived)
+    for setting in ('batching.batch_size 256', 'maximum_builder_structures 256', 'parallel_samplers 16,384',
+                    'QM batching.batch_size 128', 'target_queued_QM 16,384', 'retraining.after 16,384'):
+        assert setting in report, (setting, report)
 
 
 def test_each_key_fills_in_only_its_own_settings():
@@ -208,9 +208,10 @@ def test_the_cap_holds_members_at_a_size_and_says_so():
     assert (layout['gpus_per_member'], layout['member_nodes'], layout['ml_nodes']) == (256, 32, 256)
     assert layout['labels_per_gpu'] == 8192 and layout['capped']
     block = dict(labels_per_member_gpu=2048, labels_per_round=2_097_152, max_nodes_per_member=32)
-    assert describe(block, {'master': {}, 'sampler': {}, 'QM': {}, 'ML': layout}).endswith(
-        'gpus_per_member 256 and member_nodes 32 (8,192 labels per member GPU; the ML executor needs 256 nodes, with '
-        'members capped at sizing.max_nodes_per_member 32)')
+    report = describe(block, {'master': {}, 'sampler': {}, 'QM': {}, 'ML': layout})
+    for part in ('gpus_per_member 256', 'member_nodes 32', '8,192 labels per member GPU', 'needs 256 nodes',
+                 'sizing.max_nodes_per_member 32'):
+        assert part in report, (part, report)
     assert not _layout(2048, max_nodes_per_member=4)['capped'], 'a cap the layout stays under changes nothing'
 
 

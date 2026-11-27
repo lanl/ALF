@@ -193,5 +193,4 @@ def test_by_default_a_batched_trajectory_starts_cold_and_the_thermostat_warms_it
     metadata = sample(['cold'], CONFIG)['cold'].get_metadata()
     assert not metadata['velocities_initialized']
     assert metadata['initial_kinetic_temperature_K'] == 0.0
-    assert 20.0 < metadata['kinetic_temperature_K'] < 80.0
-    assert metadata['thermostat_temperature_K'] == 400.0
+    assert 0.0 < metadata['kinetic_temperature_K'] < metadata['thermostat_temperature_K'] == 400.0

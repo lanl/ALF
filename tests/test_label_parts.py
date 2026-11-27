@@ -240,11 +240,7 @@ def test_a_label_layout_rejects_unknown_settings(layout, message):
     from alframework.tools.restarts import label_h5_options
     with pytest.raises(ValueError, match=message):
         label_h5_options({'label_h5_layout': layout})
-
-
-def test_without_a_layout_labels_are_written_as_before():
-    from alframework.tools.restarts import label_h5_options
-    assert label_h5_options({}) == {}
+    assert label_h5_options({}) == {}, 'without a layout, labels are written as before'
 
 
 class _Queue:

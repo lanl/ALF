@@ -54,7 +54,7 @@ def test_a_trained_model_lists_its_shards_sources_and_the_shards_without_any(tmp
         "label_sources": [SOURCE], "shards_without_label_sources": ["data-0001.h5"], "shards": 2}
 
 
-def test_label_provenance_uses_the_frozen_inventory(tmp_path):
+def test_label_sources_come_from_the_frozen_inventory(tmp_path):
     from alframework.tools.ensemble_training import training_shards
 
     h5 = tmp_path / "h5"

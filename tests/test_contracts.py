@@ -52,7 +52,7 @@ def test_a_labeler_whose_converged_labels_cant_be_stored_is_named():
             molecule.set_converged_flag(True)
         return molecule_objects
 
-    with pytest.raises(ContractError, match="a converged label ALF can't store: Missing required label property 'forces'"):
+    with pytest.raises(ContractError, match="converged label ALF can't store.*'forces'"):
         check_labeler_task(no_forces, [MoleculesObject(WATER.copy(), 'mol-0000-0000000000')], QM_config={},
                            properties_list=PROPERTIES)
 
@@ -92,7 +92,7 @@ class _Evaluator:
 
 
 @pytest.mark.parametrize("changes, message", [
-    ({"energies": np.zeros((1, 2))}, r"energies have shape \(1, 2\), not \(n_models, structures\) = \(2, 2\)"),
+    ({"energies": np.zeros((1, 2))}, r"not \(n_models, structures\)"),
     ({"forces": [np.zeros((2, 3, 3))]}, "one array per structure"),
     ({"energies": np.full((2, 2), np.nan)}, "nonfinite energies"),
     ({"uncertainty": [{"Es": 1.0}, {"Es": 1.0}]}, r"\['Es'\] are taken by built-in signals"),

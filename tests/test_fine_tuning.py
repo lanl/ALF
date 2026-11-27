@@ -81,7 +81,7 @@ def test_settings_take_the_ml_configs_reader_count(tmp_path):
     (dict(adapter=FAKE, foundation_model="x", n_models=True), "positive integer"),
     (dict(adapter=FAKE, foundation_model="x", seed=-1), "seed"),
     (dict(adapter=FAKE, foundation_model="x", device="cuda:1"), "device"),
-], ids=["missing", "adapter", "foundation", "one_copy", "boolean", "seed", "device"])
+], ids=["missing", "adapter", "foundation", "zero_copies", "boolean", "seed", "device"])
 def test_settings_refuse_mistakes(block, message):
     with pytest.raises(ValueError, match=message):
         fine_tune_settings({} if block is None else {"fine_tune": block})

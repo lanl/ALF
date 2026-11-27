@@ -107,6 +107,8 @@ def test_a_real_cpu_ensemble_evaluates_on_the_held_out_directory(tmp_path):
     if isinstance(result, RemoteExceptionWrapper):
         result.reraise()
     assert result == ([True, True], 0)
-    for member in (tmp_path / "model-0").glob("model-*"):
+    members = sorted((tmp_path / "model-0").glob("model-*"))
+    assert len(members) == 2
+    for member in members:
         log = (member / "training_log.txt").read_text()
         assert str(tmp_path / "heldout") in log and "Training complete" in log

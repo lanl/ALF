@@ -57,5 +57,6 @@ def test_the_coordinator_writes_fewer_status_files_and_ends_with_the_same_status
                                  write_status_on_change=on)
         counts[arm], statuses[arm] = len(calls), run.status
         assert run.status['lifetime_stored_labels'] > 0
+        assert json.loads((run_dir / 'status.json').read_text()) == run.status, 'the file on disk is current'
     assert counts['on_change'] < counts['every_pass'], counts
     assert statuses['on_change']['current_h5_id'] == statuses['every_pass']['current_h5_id']

@@ -14,7 +14,7 @@
 	"status_path":"status.txt",
 	"target_queued_QM": 100, 
 	"minimum_QM": 0, 
-	"retraining": {"after": 101}, 
+	"retraining": {"after": 101},
 	"parallel_samplers": 100, 
 	"bootstrap_set": 100,
 	"parsl_configuration":"parsl_configs.config_1node",

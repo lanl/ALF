@@ -232,8 +232,12 @@ Langevin noise streams. Without a seed, the generated seed is recorded as
 ``initial_velocity_seed``. The scalar sampler still draws Langevin noise from
 the legacy global random stream.
 
-The draw does not rescale to an exact kinetic temperature or remove center-of-mass
-or angular momentum. This retains the Maxwell distribution and its finite-system
+The draw removes its center-of-mass momentum, since every engine holds each
+structure's center of mass at rest: the momenta that remain follow the Maxwell
+distribution at :math:`T_0` over the :math:`3N-3` degrees of freedom the dynamics
+integrate, and ``initial_kinetic_temperature_K`` counts those, as a molecular
+dynamics code's temperature does. The draw does not rescale to an exact kinetic
+temperature or remove angular momentum, which retains the finite-system
 temperature fluctuations. ASE constraints are applied when momenta are assigned;
 the packed engines' existing constraint restrictions still apply. For prescribed
 translation or rotation, supply the desired momenta instead. Thermal velocities

@@ -218,3 +218,25 @@ def test_hippynn_decodes_root_level_species_from_an_explicit_shard(tmp_path, spe
     restored = database.restarter.attempt_restart()
     for reader in (database, restored):
         np.testing.assert_array_equal(reader.arr_dict["Z"].numpy(), [[8, 1, 1], [8, 1, 1]])
+
+
+@pytest.mark.parametrize("budget", [1, 2_000, None])
+def test_a_byte_budget_reads_real_groups_in_order_and_unchanged(tmp_path, budget):
+    """Real reader processes under a budget smaller than any group (each runs alone), one that holds a few, and
+    none: every group arrives in order with the arrays a serial read gives."""
+    import h5py
+    file = tmp_path / "data.h5"
+    rng = np.random.default_rng(3)
+    with h5py.File(file, "w") as handle:
+        for index, frames in enumerate([1, 7, 2, 30, 5]):
+            group = handle.create_group(f"atoms_{index + 2:04d}")
+            group["coordinates"] = rng.random((frames, index + 2, 3))
+            group["energy"] = rng.random(frames)
+            group["_id"] = np.array([f"m{index}-{i}" for i in range(frames)], dtype="S")
+    serial = list(h5_parallel.read_shard(str(file), workers=1))
+    parallel = list(h5_parallel.read_shard(str(file), workers=2, max_inflight_bytes=budget))
+    assert [group["path"] for group in parallel] == [group["path"] for group in serial]
+    for expected, got in zip(serial, parallel):
+        assert expected.keys() == got.keys()
+        for key in expected:
+            np.testing.assert_array_equal(got[key], expected[key])

@@ -1477,3 +1477,11 @@ def test_hippynn_ground_state_reader_reads_a_ground_state_shard(fake_backend, tm
                                    targets=["energy", "forces"], quiet=True, seed=0)
     assert len(database.arr_dict["energy"]) == 3
     assert "total_charge" not in database.arr_dict  # The ground-state reader drops what the model doesn't name.
+
+
+def test_the_charge_center_matches_pyscfs_tddft_origin():
+    gto = pytest.importorskip("pyscf.gto")
+    rhf = pytest.importorskip("pyscf.tdscf.rhf")
+    from alframework.qm_interfaces.pyscf.gpu4pyscf import nuclear_charge_center
+    mol = gto.M(atom="O 0 0 0.1; H 0 0.76 -0.5; H 0.1 -0.76 -0.45", basis="sto-3g", unit="Angstrom")
+    np.testing.assert_allclose(nuclear_charge_center(mol), rhf._charge_center(mol), rtol=0, atol=1e-14)

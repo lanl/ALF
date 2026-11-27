@@ -191,7 +191,7 @@ def fine_tune_hippynn_member(arguments):
     """Fine-tune one copy. ``arguments`` is what ``HippynnFineTuner.train_member`` writes."""
     import numpy as np
     import torch
-    from hippynn.databases.database import prettyprint_arrays
+    from alframework.tools.label_arrays import print_arrays
     from hippynn.experiment import SetupParams, setup_and_train
     from hippynn.experiment.controllers import PatienceController, RaiseBatchSizeOnPlateau
     from alframework.ml_interfaces.hippynn.compat import checkpoints
@@ -231,7 +231,7 @@ def fine_tune_hippynn_member(arguments):
                                            quiet=False, seed=seed, inputs=None, targets=None, **schema)
             clean_arrays(database, db_info, settings)
             print('Array Shapes After Cleaning')
-            prettyprint_arrays(database.arr_dict)
+            print_arrays(database.arr_dict)
             needed = 2 if settings['h5_test_dir'] is not None else 3
             if len(database) < needed:
                 raise ValueError(f'Fine-tuning needs at least {needed} labeled structures for its training, validation, '

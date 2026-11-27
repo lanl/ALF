@@ -18,6 +18,29 @@ from alframework.tools.label_hdf5 import PROPERTY_SCHEMA
 PROPERTY_ATOM_AXES = {'atomic': 1, 'pair_atomic': 2}
 # Columns a group may lack, and the value a frame without them takes (see data_shards.STRUCTURE_STATE_DATASETS).
 STATE_DEFAULTS = {'total_charge': 0, 'spin_multiplicity': 1}
+# Names a species column goes by, matched without regard to case, when a trainer doesn't name it.
+SPECIES_KEYS = ('species', 'atomic_numbers', 'z', 'atom_types', 'atomic_number')
+
+
+def detect_species_key(keys):
+    """The one key among ``keys`` that names species (``SPECIES_KEYS``, any case)."""
+    keys = list(keys)
+    matches = [key for key in keys if key.casefold() in SPECIES_KEYS]
+    if len(matches) != 1:
+        found = 'several species datasets, ' + ', '.join(matches) if matches else 'no species dataset'
+        raise ValueError(f'Found {found} among {keys}; set species_key to name it.')
+    return matches[0]
+
+
+def print_arrays(arrays):
+    """A table of each array's name, dtype and shape, for training logs. Takes NumPy arrays or tensors."""
+    row = '| {:<30} | {:<18} | {:<28} |'
+    line = '-' * len(row.format('', '', ''))
+    print(line, row.format('Name', 'dtype', 'shape'), line, sep='\n')
+    for key, value in arrays.items():
+        value = value.detach().cpu().numpy() if hasattr(value, 'detach') else np.asarray(value)
+        print(row.format(key, repr(value.dtype), repr(value.shape)))
+    print(line)
 
 
 def shard_atom_axes(files):

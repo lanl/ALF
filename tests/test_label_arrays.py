@@ -86,3 +86,28 @@ def test_atom_axes_come_from_each_shards_property_schema(tmp_path):
         handle.attrs[PROPERTY_SCHEMA] = json.dumps({'forces': ['grad', 'pair_atomic', 1.0]})
     with pytest.raises(ValueError, match="'grad' is stored as 'pair_atomic'"):
         shard_atom_axes(files)
+
+
+@pytest.mark.parametrize('keys, found', [(['Species', 'coordinates'], 'Species'), (['Z', 'xyz'], 'Z'),
+                                         (['atomic_numbers', 'energy'], 'atomic_numbers')])
+def test_the_species_key_is_found_by_its_usual_names(keys, found):
+    from alframework.tools.label_arrays import detect_species_key
+    assert detect_species_key(keys) == found
+
+
+def test_no_or_several_species_keys_ask_for_one_to_be_named():
+    from alframework.tools.label_arrays import detect_species_key
+    with pytest.raises(ValueError, match='no species dataset'):
+        detect_species_key(['coordinates'])
+    with pytest.raises(ValueError, match='several species datasets, species, Z'):
+        detect_species_key(['species', 'Z'])
+
+
+def test_arrays_print_as_a_table_of_name_dtype_and_shape(capsys):
+    from alframework.tools.label_arrays import print_arrays
+    print_arrays({'coordinates': np.zeros((2, 3, 3)), 'energy': np.zeros(2, dtype=np.float32)})
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[1].split('|')[1:4] == [' Name                           ', ' dtype              ',
+                                        ' shape                        ']
+    assert "dtype('float64')" in lines[3] and '(2, 3, 3)' in lines[3]
+    assert "dtype('float32')" in lines[4] and '(2,)' in lines[4]

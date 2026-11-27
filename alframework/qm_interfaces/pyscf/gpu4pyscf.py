@@ -679,15 +679,20 @@ def _validated_optical_outputs(dipoles, strengths, *, nroots):
     return dipoles, strengths
 
 
+def nuclear_charge_center(mol):
+    """The nuclear charge center of ``mol``, in bohr: the origin PySCF's TDDFT uses for transition dipoles."""
+    charges = mol.atom_charges()
+    return np.einsum('z,zr->r', charges, mol.atom_coords()) / charges.sum()
+
+
 def transition_dipoles_staged(td, cupy):
     """Two-stage AO->occupied->virtual contraction used by the CPP benchmark.
 
     Avoid the large intermediate in a single three-operand contraction.
     Length-gauge moments are in atomic units; retain the solver's phase.
     """
-    from pyscf.tdscf.rhf import _charge_center
     mol = td.mol
-    with mol.with_common_orig(_charge_center(mol)):
+    with mol.with_common_orig(nuclear_charge_center(mol)):
         ao = cupy.asarray(mol.intor_symmetric("int1e_r", comp=3))
     coefficients = cupy.asarray(td._scf.mo_coeff)
     occupations = cupy.asarray(td._scf.mo_occ)

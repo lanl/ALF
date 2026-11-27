@@ -43,17 +43,6 @@ def _species_numbers(values):
     return species[None] if species.ndim == 1 else species
 
 
-def _detect_species_key(group):
-    try:
-        from hippynn.databases.utils import auto_detect_key
-    except ImportError:
-        matches = [key for key in group if key.lower() in ('species', 'atomic_numbers', 'numbers', 'z')]
-        if len(matches) != 1:
-            raise ValueError(f'Cannot determine the species dataset from {list(group)}. Set species_key explicitly.')
-        return matches[0]
-    return auto_detect_key(list(group), 'species', required=True)
-
-
 def __getattr__(name):
     # Keep HIPPYNN/Torch imports after the training worker's device setup while
     # exposing the database class at a stable module path for checkpoint reload.
@@ -63,7 +52,7 @@ def __getattr__(name):
     from hippynn.databases.database import Database
     from hippynn.databases.restarter import Restartable
     from alframework.tools.h5_parallel import READ_WORKERS, read_shard
-    from alframework.tools.label_arrays import assemble_label_arrays, atom_axes
+    from alframework.tools.label_arrays import assemble_label_arrays, atom_axes, detect_species_key
     from alframework.tools.label_hdf5 import discover_label_shards
 
     class ALFPyAniDirectoryDB(Database, Restartable):
@@ -121,7 +110,7 @@ def __getattr__(name):
             for group in read_shard(file, keys, self.read_workers, group_keys=group_keys,
                                     max_inflight_bytes=self.max_inflight_bytes):
                 if species_key is None:
-                    species_key = self.species_key = _detect_species_key(group)
+                    species_key = self.species_key = detect_species_key(group)
                 if species_key not in group:
                     raise ValueError(f"Species key '{species_key}' not found' in file {file}!\n"
                                      f"\tFound keys: {set(group.keys())}")
@@ -499,7 +488,7 @@ def train_HIPNN_model(model_dir,
     from hippynn.pretraining import hierarchical_energy_initialization
     from hippynn.experiment.controllers import RaiseBatchSizeOnPlateau, PatienceController
     from hippynn.experiment import SetupParams, setup_and_train
-    from hippynn.databases.database import  prettyprint_arrays
+    from alframework.tools.label_arrays import print_arrays
     
     
     with hippynn.tools.active_directory(model_dir):
@@ -816,7 +805,7 @@ def train_HIPNN_model(model_dir,
 
             prepared('converting and removing outliers')
             print("Array Shapes After Cleaning")
-            prettyprint_arrays(database.arr_dict)
+            print_arrays(database.arr_dict)
                         
             database.make_random_split("valid",valid_size)
             if not(h5_test_dir == None):
@@ -832,7 +821,6 @@ def train_HIPNN_model(model_dir,
                 from hippynn.networks.hipnn import compute_hipnn_e0
                 from hippynn.graphs.nodes.tags import Encoder
                 from hippynn.graphs import find_unique_relative
-                from hippynn.graphs.nodes.base import _BaseNode
                 encoder = None
                 species_name = None
                 energy_name = None
@@ -845,8 +833,8 @@ def train_HIPNN_model(model_dir,
                     energy_name = energy_module.main_output.db_name
                 energy_module = energy_module.torch_module
 
-                if isinstance(encoder, _BaseNode):
-                     encoder = encoder.torch_module
+                # A graph node holds its torch module; a module is used as it is.
+                encoder = getattr(encoder, 'torch_module', encoder)
                 train_data = database.splits["train"]
                 z_vals = train_data[species_key]
                 t_vals = train_data[energy_key]

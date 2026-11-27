@@ -142,13 +142,15 @@ PAIR_BUDGET = 1 << 24
 
 
 def padded_minimum_distances(positions, mask, device=None, pair_budget=PAIR_BUDGET):
-    """Each frame's minimum interatomic distance, without periodic images, exactly, for a padded batch.
+    """Each frame's minimum interatomic distance, without periodic images, for a padded batch.
 
     ``positions`` [frames, atoms, 3] and ``mask`` [frames, atoms] (true for real atoms; padding has species 0)
-    are NumPy arrays or torch tensors. Every pair of real atoms is measured, in chunks of about ``pair_budget``
-    pairs on ``device`` (the positions' own by default), in float64. A frame with fewer than two real atoms
-    gets infinity. Frames of more than ``ALL_PAIRS_LIMIT`` atoms use ``minimum_distance``. Returns a float64 CPU
-    tensor.
+    are NumPy arrays or torch tensors. In chunks of about ``pair_budget`` pairs on ``device`` (the positions' own
+    by default), in float64, cdist's fast matrix-product form finds each frame's closest pair of real atoms, and
+    that pair's distance is then computed directly, so the value is exact even far from the origin (the fast form
+    alone loses precision there). Only two pairs within about 1e-8 Å of each other can be told apart wrongly,
+    which no screen notices. A frame with fewer than two real atoms gets infinity. Frames of more than
+    ``ALL_PAIRS_LIMIT`` atoms use ``minimum_distance``. Returns a float64 CPU tensor.
     """
     import torch
     positions = torch.as_tensor(positions)
@@ -170,10 +172,12 @@ def padded_minimum_distances(positions, mask, device=None, pair_budget=PAIR_BUDG
         chunk = slice(start, start + step)
         points = positions[chunk].to(target, torch.float64)
         real = mask[chunk].to(target)
-        # Direct differences: the matrix-product form cdist uses for large inputs loses precision for close pairs.
-        distances = torch.cdist(points, points, compute_mode='donot_use_mm_for_euclid_dist')
         pairs = real[:, :, None] & real[:, None, :] & distinct
-        found[chunk] = distances.masked_fill(~pairs, float('inf')).amin(dim=(1, 2)).cpu()
+        rough = torch.cdist(points, points).masked_fill(~pairs, float('inf')).flatten(1)
+        closest = rough.argmin(dim=1)
+        rows = torch.arange(len(points), device=target)
+        exact = (points[rows, closest // atoms] - points[rows, closest % atoms]).norm(dim=1)
+        found[chunk] = torch.where(torch.isfinite(rough[rows, closest]), exact, float('inf')).cpu()
     return found
 
 

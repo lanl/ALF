@@ -8,7 +8,7 @@ from pathlib import Path
 import h5py
 import numpy as np
 
-from alframework.tools.files import fsync_file
+from alframework.tools.files import fsync_file, replaced_atomically
 from alframework.tools.label_hdf5 import (
     GROUP_BY, LABEL_PARTS, LABEL_UNITS, PROPERTY_SCHEMA, SCHEMA_VERSION, LabelH5Writer, label_schema_attributes,
     many_groups_warning, split_group_by, validate_label_parts,
@@ -171,8 +171,7 @@ def merge_label_parts(job):
                     merged['static'][key] = value
                 merged['pieces'].append(columns)
     stored = 0
-    partial = Path(str(target) + '.partial')
-    try:
+    with replaced_atomically(target) as partial:
         packer = LabelH5Writer(str(partial), mode='w', **{'libver': 'latest', 'track_order': True,
                                                        **split_group_by(h5_options)[1]})
         try:
@@ -194,11 +193,6 @@ def merge_label_parts(job):
             packer.store.attrs[MERGED_FROM] = json.dumps(list(lines))
         finally:
             packer.cleanup()
-        fsync_file(partial)
-        os.replace(partial, target)
-    except BaseException:
-        partial.unlink(missing_ok=True)
-        raise
     return str(target), stored
 
 
@@ -534,8 +528,7 @@ def publish_snapshot(path, parts, attributes, layouts=None):
     if segments > MANY_SEGMENTS:
         warnings.warn(f'{path} maps {segments:,} part segments ({len(groups):,} groups across {len(parts):,} parts), '
                       'so publishing and reading it is dominated by per-segment work.', stacklevel=2)
-    partial = path.with_suffix(path.suffix + '.partial')
-    try:
+    with replaced_atomically(path, sync_directory=True) as partial:
         with h5py.File(partial, 'w', libver='latest', track_order=True) as handle:
             for formula, (static, segments) in sorted(groups.items()):
                 group = handle.create_group(formula)
@@ -546,12 +539,6 @@ def publish_snapshot(path, parts, attributes, layouts=None):
             handle.attrs[LABEL_PARTS] = json.dumps(relative_paths)
             write_shard_label_sources(handle, list(sources.values()))
             validate_label_parts(handle)
-        fsync_file(partial)
-        os.replace(partial, path)
-        fsync_file(path.parent)
-    except BaseException:
-        partial.unlink(missing_ok=True)
-        raise
     return frames
 
 

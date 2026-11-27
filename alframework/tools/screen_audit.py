@@ -42,6 +42,6 @@ class RuntimeScreenAudit:
                 m.update_metadata(dict(screen_audit=_json_value(self.records[m.get_moleculeid()])))
         else:
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            temp = self.path.with_suffix('.tmp')
-            temp.write_text(json.dumps(_json_value(self.records), indent=2, allow_nan=False)+'\n')
-            temp.replace(self.path)
+            from alframework.tools.files import replaced_atomically
+            with replaced_atomically(self.path, suffix='.tmp', durable=False) as temporary:
+                temporary.write_text(json.dumps(_json_value(self.records), indent=2, allow_nan=False) + '\n')

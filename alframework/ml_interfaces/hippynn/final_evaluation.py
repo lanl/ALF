@@ -196,10 +196,11 @@ def _edges(plot, ranges):
 
 
 def _write(path, data):
-    temporary = path.with_suffix('.partial')
-    with temporary.open('wb') as stream:
-        pickle.dump(data, stream, protocol=pickle.HIGHEST_PROTOCOL)
-    temporary.replace(path)
+    from alframework.tools.files import replaced_atomically
+    # A spool file only this evaluation reads, so it needn't reach the disk first.
+    with replaced_atomically(path, durable=False) as temporary:
+        with temporary.open('wb') as stream:
+            pickle.dump(data, stream, protocol=pickle.HIGHEST_PROTOCOL)
 
 
 def _read(path):

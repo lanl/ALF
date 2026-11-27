@@ -23,20 +23,34 @@ def fsync_file(path):
         os.close(descriptor)
 
 
+@contextlib.contextmanager
+def replaced_atomically(path, suffix='.partial', durable=True, sync_directory=False):
+    """Yield a temporary path beside ``path`` (its name plus ``suffix``) for the block to write, then rename it over
+    ``path``, so a reader sees the old file or the whole new one. A failure removes the temporary file.
+
+    ``durable`` flushes the written file to disk before the rename, so a node crash can't expose an empty file;
+    ``sync_directory`` also flushes the directory after it, so the rename itself survives one.
+    """
+    path = Path(path)
+    temporary = path.with_name(path.name + suffix)
+    try:
+        yield temporary
+        if durable:
+            fsync_file(temporary)
+        os.replace(temporary, path)
+        if sync_directory:
+            fsync_file(path.parent)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+
+
 def _replace_atomically(path, write):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + '.tmp')
-    try:
+    with replaced_atomically(path, suffix='.tmp') as temporary:
         with open(temporary, 'wb') as handle:
             write(handle)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, path)
-    except BaseException:
-        if temporary.exists():
-            temporary.unlink()
-        raise
 
 
 def write_json_atomic(path, values):

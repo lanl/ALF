@@ -6,7 +6,7 @@ import numpy as np
 from ase.geometry import complete_cell
 
 from alframework.tools.atom_order import TOPOLOGY_ATOM_IDS, validated_atom_ids
-from alframework.tools.files import fsync_file
+from alframework.tools.files import replaced_atomically
 from alframework.tools.label_hdf5 import GROUP_BY, LabelH5Writer, label_schema_attributes, many_groups_warning, split_group_by
 from alframework.tools.label_sources import LabelSourceCollector, write_shard_label_sources
 from alframework.tools.label_validation import validate_label
@@ -283,10 +283,9 @@ def store_current_data(h5path, system_data, properties, attributes=None, *, h5_o
 #                        data_dict[isokey][propkey] = np.array(data_dict[isokey][propkey])
 #                    print('propkey:', propkey,data_dict[isokey][propkey].shape)
 #
-    partial = h5path + PARTIAL_SUFFIX
-    try:
+    with replaced_atomically(h5path, suffix=PARTIAL_SUFFIX) as partial:
         # Mode 'w' overwrites a .partial left by a crash.
-        dpack = LabelH5Writer(partial, mode='w', **writer_options)
+        dpack = LabelH5Writer(str(partial), mode='w', **writer_options)
         try:
             for key in data_dict:
                 dpack.store_data(key, **data_dict[key])
@@ -296,11 +295,5 @@ def store_current_data(h5path, system_data, properties, attributes=None, *, h5_o
                 dpack.store.attrs[GROUP_BY] = group_by
         finally:
             dpack.cleanup()
-        fsync_file(partial)
-        os.replace(partial, h5path)
-    except BaseException:
-        if os.path.exists(partial):
-            os.remove(partial)
-        raise
     many_groups_warning(h5path, len(data_dict), saved_number, group_by)
     return saved_number

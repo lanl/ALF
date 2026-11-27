@@ -36,3 +36,18 @@ def test_working_directory_returns_and_creates_only_as_asked(tmp_path, monkeypat
     with working_directory('made'):
         pass
     assert (tmp_path / 'made').is_dir()
+
+
+def test_a_replaced_file_is_whole_or_untouched(tmp_path):
+    from alframework.tools.files import replaced_atomically
+    path = tmp_path / 'shard.h5'
+    path.write_text('old')
+    with pytest.raises(OSError):
+        with replaced_atomically(path) as temporary:
+            temporary.write_text('half')
+            raise OSError('disk full')
+    assert path.read_text() == 'old' and not list(tmp_path.glob('*.partial'))
+    with replaced_atomically(path, suffix='.tmp', sync_directory=True) as temporary:
+        assert temporary == tmp_path / 'shard.h5.tmp'
+        temporary.write_text('new')
+    assert path.read_text() == 'new' and sorted(p.name for p in tmp_path.iterdir()) == ['shard.h5']

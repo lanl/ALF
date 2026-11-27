@@ -124,7 +124,8 @@ class AlfLightningModule(HippynnLightningModule):
         os.chdir(self.parent_settings['directory'])
         self._log = contextlib.ExitStack()
         if self.global_rank == 0:
-            self._log.enter_context(hippynn.tools.log_terminal(RANK_LOG, 'wt'))
+            from alframework.tools.files import logged_output
+            self._log.enter_context(logged_output(RANK_LOG, 'wt'))
             # A member's seed is drawn per training, so record it to reproduce one that fails.
             print(f"Member seed: {self.parent_settings.get('seed')}", flush=True)
 

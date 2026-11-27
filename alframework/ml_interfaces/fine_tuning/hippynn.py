@@ -198,7 +198,7 @@ def fine_tune_hippynn_member(arguments):
     load_checkpoint = checkpoints().load_checkpoint
     from hippynn.graphs import find_unique_relative
     from hippynn.graphs.nodes.targets import HEnergyNode
-    from hippynn.tools import active_directory, log_terminal
+    from alframework.tools.files import logged_output, working_directory
 
     from alframework.ml_interfaces.hippynn.interface import ALFPyAniDirectoryDB, use_separate_test_set
 
@@ -210,8 +210,8 @@ def fine_tune_hippynn_member(arguments):
     if device != 'cpu':
         torch.cuda.set_device(device)
     Path(member_dir).mkdir(parents=True, exist_ok=True)
-    with active_directory(member_dir, create=False):
-        with log_terminal('training_log.txt', 'wt'):
+    with working_directory(member_dir, create=False):
+        with logged_output('training_log.txt', 'wt'):
             print(f"Fine-tuning from {source} on {arguments['device']}, seed {seed}.")
             bundle = load_checkpoint(str(source / settings['structure_file']), str(source / settings['checkpoint_file']),
                                      restart_db=False, map_location='cpu')

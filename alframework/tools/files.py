@@ -1,8 +1,10 @@
-"""Write files so that a crash never leaves a half-written one, hash files once per worker, and lock a run.
+"""Write files so that a crash never leaves a half-written one, hash files once per worker, lock a run, and run
+a block in a directory with its output copied to a log.
 
 A reader sees either the old file or the new one: each write goes to a temporary name in the same
 directory, is flushed to disk, and is then renamed over the final name.
 """
+import contextlib
 import fcntl
 import hashlib
 import json
@@ -100,3 +102,59 @@ def cached_sha256(path):
         # Only the latest version of each path is kept.
         _HASHES[key[0]] = (key, digest.hexdigest())
     return _HASHES[key[0]][1]
+
+
+@contextlib.contextmanager
+def working_directory(path, create=None):
+    """Run the block in ``path``, then return to the previous working directory.
+
+    ``create`` None makes ``path`` if it is missing; True requires it to be new; False requires it to exist.
+    """
+    if create not in (None, True, False):
+        raise ValueError("create must be None, True or False.")
+    exists = os.path.exists(path)
+    if create is True and exists:
+        raise FileExistsError(f"Directory '{path}' exists already.")
+    if create is False and not exists:
+        raise FileNotFoundError(f"Directory '{path}' not found.")
+    if not exists:
+        os.makedirs(path)
+    previous = os.getcwd()
+    os.chdir(path)
+    try:
+        yield
+    finally:
+        os.chdir(previous)
+
+
+class _Tee:
+    """A text stream writing to several streams at once."""
+
+    def __init__(self, *streams):
+        self.streams = streams
+
+    def write(self, text):
+        for stream in self.streams:
+            stream.write(text)
+        return len(text)
+
+    def flush(self):
+        for stream in self.streams:
+            stream.flush()
+
+
+@contextlib.contextmanager
+def logged_output(path, mode='wt'):
+    """Copy everything the block prints, to stdout and to stderr, into the log at ``path`` as well; an uncaught
+    exception's traceback goes to the log too. Yields the open log file, which the block may also write to."""
+    import sys
+    import traceback
+    with open(path, mode) as log:
+        teed_stderr = _Tee(log, sys.stderr)
+        with contextlib.redirect_stderr(teed_stderr), contextlib.redirect_stdout(_Tee(log, sys.stdout)):
+            try:
+                yield log
+            except BaseException:
+                print('Uncaught exception, logging interrupted.', file=teed_stderr)
+                traceback.print_exc(file=log)
+                raise

@@ -480,8 +480,9 @@ def train_HIPNN_model(model_dir,
     from alframework.tools.label_arrays import print_arrays
     
     
-    with hippynn.tools.active_directory(model_dir):
-        with hippynn.tools.log_terminal("training_log.txt","wt"):
+    from alframework.tools.files import logged_output, working_directory
+    with working_directory(model_dir):
+        with logged_output("training_log.txt", "wt"):
             
             print("Training device: {}; CUDA_VISIBLE_DEVICES: {}".format(device_cuda, os.environ.get("CUDA_VISIBLE_DEVICES")))
             
@@ -2305,8 +2306,9 @@ def train_single_excited_state_model(
         )
     model_root.mkdir(parents=True, exist_ok=True)
 
-    with hippynn.tools.active_directory(str(model_root)):
-        with hippynn.tools.log_terminal("training_log.txt", "wt"):
+    from alframework.tools.files import logged_output, working_directory
+    with working_directory(str(model_root)):
+        with logged_output("training_log.txt", "wt"):
             print(f"Model ID: {int(model_id)}")
             print(f"Model seed: {seed}")
             print(f"CUDA_VISIBLE_DEVICES: {recorded_device}")

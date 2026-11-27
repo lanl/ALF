@@ -10,18 +10,17 @@ from pathlib import Path
 import h5py
 import numpy as np
 from ase import Atoms
-from ase.data import atomic_numbers
 from ase.io import read
 from parsl import python_app
 from alframework.tools.task_timeline import timed
 
 from alframework.tools.atom_order import TOPOLOGY_ATOM_IDS, validated_atom_ids
+from alframework.tools.elements import atomic_numbers_of, symbol_text
 from alframework.tools.files import cached_sha256, file_key
 from alframework.tools.molecules import MoleculesObject
 
 
-def _text(value):
-    return value.decode('utf8') if isinstance(value, bytes) else str(value)
+_text = symbol_text
 
 
 class GeometryManifest(Sequence):
@@ -117,12 +116,9 @@ def _h5_frame(group, index):
         species = species[0 if species.shape[0] == 1 else index]
     if species.ndim != 1 or len(species) != len(positions):
         raise ValueError('Geometry species must describe each atom')
-    if species.dtype.kind in 'SUO':
-        numbers = [atomic_numbers[_text(v)] for v in species]
-    elif species.dtype.kind in 'iu':
-        numbers = species
-    else:
+    if species.dtype.kind not in 'SUOiu':
         raise ValueError('Species must be chemical symbols or integer atomic numbers')
+    numbers = atomic_numbers_of(species)
     options = {}
     for key, static_shape in [('cell', (3, 3)), ('pbc', (3,))]:
         if key in group:

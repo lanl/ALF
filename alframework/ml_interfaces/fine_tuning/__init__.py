@@ -113,6 +113,7 @@ def shard_atoms(shards, energy_dataset='energy', forces_dataset='forces', read_w
     from ase import Atoms
 
     from alframework.tools.data_shards import STRUCTURE_STATE_DATASETS
+    from alframework.tools.elements import atomic_numbers_of
     from alframework.tools.h5_parallel import read_shard
 
     keys = {'species', 'coordinates', 'cell', energy_dataset, forces_dataset, *STRUCTURE_STATE_DATASETS}
@@ -121,9 +122,8 @@ def shard_atoms(shards, energy_dataset='energy', forces_dataset='forces', read_w
         for group in read_shard(shard, keys, read_workers, max_inflight_bytes=max_inflight_bytes):
             if energy_dataset not in group:
                 continue
-            species = np.asarray(group['species'])
             # One row for the group (grouped by formula) or a row per frame (grouped by atom count).
-            rows = [[_symbol(value) for value in row] for row in (species if species.ndim > 1 else species[None])]
+            rows = np.atleast_2d(atomic_numbers_of(group['species']))
             coordinates = group['coordinates']
             energies = np.asarray(group[energy_dataset], dtype=float).reshape(-1)
             forces = group.get(forces_dataset)
@@ -132,7 +132,7 @@ def shard_atoms(shards, energy_dataset='energy', forces_dataset='forces', read_w
                                  'fine-tune forces on.')
             cells = group.get('cell')
             for index in range(len(energies)):
-                atoms = Atoms(rows[index if len(rows) > 1 else 0], positions=coordinates[index],
+                atoms = Atoms(numbers=rows[index if len(rows) > 1 else 0], positions=coordinates[index],
                               cell=None if cells is None else cells[index], pbc=cells is not None)
                 atoms.info[ENERGY_KEY] = float(energies[index])
                 atoms.arrays[FORCES_KEY] = np.asarray(forces[index], dtype=float)
@@ -141,10 +141,6 @@ def shard_atoms(shards, energy_dataset='energy', forces_dataset='forces', read_w
                         atoms.info[key] = int(group[dataset][index])
                 frames.append(atoms)
     return frames
-
-
-def _symbol(value):
-    return value.decode('utf-8') if isinstance(value, bytes) else str(value)
 
 
 def child_environment(device):

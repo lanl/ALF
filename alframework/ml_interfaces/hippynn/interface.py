@@ -25,21 +25,10 @@ from alframework.tools.data_shards import PAIR_INDEX_DATASET, STRUCTURE_STATE_DA
 
 
 def _species_numbers(values):
-    from ase.data import atomic_numbers
+    """Atomic numbers of a species column, with a leading frame axis (one row when stored once per group)."""
+    from alframework.tools.elements import atomic_numbers_of
 
-    species = np.asarray(values)
-    if species.dtype.kind == 'S' and species.dtype.itemsize <= 2:
-        # Symbols stored as bytes, such as a species row per frame: each symbol's two bytes index a table of
-        # atomic numbers, so a million frames convert at array speed rather than one symbol at a time.
-        pairs = species.astype('S2').view(np.uint8).reshape(*species.shape, 2)
-        codes = pairs[..., 0].astype(np.int32) << 8 | pairs[..., 1]
-        table = np.zeros(1 << 16, dtype=np.int64)
-        for code in np.flatnonzero(np.bincount(codes.ravel(), minlength=1 << 16)):
-            table[code] = atomic_numbers[bytes([code >> 8, code & 255]).rstrip(b'\0').decode('utf-8')]
-        species = table[codes]
-    elif species.dtype.kind in 'SUO':
-        species = np.array([atomic_numbers[value.decode('utf-8') if isinstance(value, bytes) else str(value)]
-                            for value in species.flat]).reshape(species.shape)
+    species = atomic_numbers_of(values)
     return species[None] if species.ndim == 1 else species
 
 

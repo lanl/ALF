@@ -15,7 +15,7 @@ from alframework.tools.retraining import (SAMPLED_WITHOUT_LABEL, describe, ready
                                           retraining_settings)
 from alframework.tools.trajectory_summary import trajectory_row
 from tests.helpers.driver import run_alf_driver
-from tests.test_restarts import LOOP, restart_tasks
+from tests.helpers.driver import LOOP, restart_tasks
 
 ROUND = {key: value for key, value in LOOP.items() if key != 'save_h5_threshold'}
 

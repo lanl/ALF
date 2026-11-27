@@ -43,7 +43,7 @@ def test_the_setting_is_off_unless_true():
 
 def test_the_coordinator_writes_fewer_status_files_and_ends_with_the_same_status(tmp_path, monkeypatch):
     from tests.helpers.driver import run_alf_driver
-    from tests.test_restarts import LOOP, restart_tasks
+    from tests.helpers.driver import LOOP, restart_tasks
 
     counts, statuses = {}, {}
     for arm, on in (('every_pass', False), ('on_change', True)):

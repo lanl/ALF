@@ -440,9 +440,7 @@ def train_HIPNN_model(model_dir,
         remove_high_forces_std (float): Remove structures with a force this many standard deviations or
             more above the mean. If None, this step is skipped.
     """
-    if ensemble_training.validated_gpus_per_member(gpus_per_member) == 1 and member_nodes != 1:
-        raise ValueError(f'member_nodes is {member_nodes!r}, but gpus_per_member is 1: a member on several nodes '
-                         'trains on all of their GPUs, so gpus_per_member counts them.')
+    ensemble_training.validated_member_nodes(member_nodes, gpus_per_member)
     from alframework.tools.h5_parallel import read_budget_setting, read_workers_setting
     from alframework.ml_interfaces.hippynn.lightning import option_setting
     read_workers_setting(h5_read_workers)

@@ -329,26 +329,27 @@ def test_node_rank_comes_from_the_first_variable_set():
         node_rank({})
 
 
-def test_member_nodes_must_share_the_gpus_and_have_a_launcher():
+def test_a_member_on_several_nodes_needs_a_launcher_and_splits_its_gpus():
     pytest.importorskip("pytorch_lightning")
     from alframework.ml_interfaces.hippynn.lightning import _local_devices
 
     assert _local_devices(16, 2, ["srun"]) == 8
     assert _local_devices(8, 1, None) == 8
-    with pytest.raises(ValueError, match="divide evenly"):
-        _local_devices(12, 8, ["srun"])
     with pytest.raises(ValueError, match="member_launcher"):
         _local_devices(16, 2, None)
     with pytest.raises(ValueError, match="list of words"):
         _local_devices(16, 2, "srun -N2")
-    with pytest.raises(ValueError, match="member_nodes"):
-        _local_devices(16, 0, ["srun"])
 
 
-def test_member_nodes_need_several_gpus_per_member(tmp_path):
-    with pytest.raises(ValueError, match="member_nodes is 2, but gpus_per_member is 1"):
+def test_training_and_the_member_launcher_check_member_nodes_as_the_startup_check_does(tmp_path):
+    """One rule (ensemble_training.validated_member_nodes) for the startup check, the trainer and the launcher."""
+    with pytest.raises(ValueError, match="gpus_per_member 1 is a total over member_nodes 2"):
         ml.train_HIPNN_model(str(tmp_path), str(tmp_path), energy_key="energy", coordinates_key="coordinates",
                              species_key="species", device_string="cpu", member_nodes=2)
+    pytest.importorskip("pytorch_lightning")
+    from alframework.ml_interfaces.hippynn.lightning import _local_devices
+    with pytest.raises(ValueError, match="divide evenly"):
+        _local_devices(12, 8, ["srun"])
 
 
 def test_shared_split_arrays_come_back_unchanged(tmp_path, monkeypatch):

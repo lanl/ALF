@@ -91,7 +91,7 @@ def test_the_coordinator_runs_sized_by_the_block_as_by_hand(tmp_path, monkeypatc
     """The same run, sized by the block or with each setting written out, labels the same bootstrap."""
     import h5py
     from tests.helpers.driver import run_alf_driver
-    from tests.test_restarts import LOOP, restart_tasks
+    from tests.helpers.driver import LOOP, restart_tasks
 
     loop = {key: value for key, value in LOOP.items() if key not in ('target_queued_QM', 'save_h5_threshold')}
     first = {}

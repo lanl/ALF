@@ -56,18 +56,13 @@ def test_a_bad_initial_temperature_stops_the_sampler_at_startup(mode, temperatur
         driver_settings(config)
 
 
-def test_by_default_atoms_without_momenta_stay_cold():
-    atoms = gas()
-    metadata = initialize_velocities(atoms, 400.0, molecule_id='a')
-    assert not atoms.has('momenta')
-    assert not metadata['velocities_initialized']
-
-
-def test_by_default_no_random_numbers_are_drawn():
+def test_by_default_atoms_stay_cold_and_draw_no_random_numbers():
     np.random.seed(123)
     expected = np.random.random(5)
     np.random.seed(123)
-    initialize_velocities(gas(), 400.0, molecule_id='a')
+    atoms = gas()
+    metadata = initialize_velocities(atoms, 400.0, molecule_id='a')
+    assert not atoms.has('momenta') and not metadata['velocities_initialized']
     np.testing.assert_array_equal(np.random.random(5), expected)
 
 

@@ -91,7 +91,7 @@ def test_the_coordinator_applies_the_setting_before_parsl_loads(tmp_path, monkey
     import parsl
     from alframework.tools import serialization
     from tests.helpers.driver import run_alf_driver
-    from tests.test_restarts import LOOP, restart_tasks
+    from tests.helpers.driver import LOOP, restart_tasks
 
     class Loaded(Exception):
         pass

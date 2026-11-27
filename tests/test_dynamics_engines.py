@@ -744,17 +744,19 @@ def test_every_neighbor_backend_finds_the_same_pairs(backend):
     assert _pair_set(neighbor_search(backend), positions, cells, counts, 6.0) == reference
 
 
-def test_a_neighbor_backend_is_named_and_installed():
+def test_an_unknown_neighbor_backend_is_refused():
     from alframework.tools.geometry import neighbor_search
     with pytest.raises(ValueError, match="neighbor_backend must be one of"):
         neighbor_search("cells")
-    try:
-        from torch_sim.neighbors.alchemiops import ALCHEMIOPS_AVAILABLE
-    except ImportError:
-        ALCHEMIOPS_AVAILABLE = False
-    if not ALCHEMIOPS_AVAILABLE:
-        with pytest.raises(ValueError, match="alchemiops' needs nvalchemi-toolkit-ops|needs TorchSim"):
-            neighbor_search("alchemiops")
+
+
+def test_alchemiops_without_its_toolkit_names_what_it_needs(monkeypatch):
+    pytest.importorskip("torch_sim")
+    from torch_sim.neighbors import alchemiops
+    from alframework.tools.geometry import neighbor_search
+    monkeypatch.setattr(alchemiops, "ALCHEMIOPS_AVAILABLE", False)
+    with pytest.raises(ValueError, match="alchemiops' needs nvalchemi-toolkit-ops"):
+        neighbor_search("alchemiops")
 
 
 def test_a_missing_vesin_names_the_extra(monkeypatch):

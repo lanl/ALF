@@ -200,7 +200,7 @@ def test_the_coordinator_stores_the_same_labels_with_labels_by_reference(tmp_pat
     from alframework.tools import config as workflow_config, sampled_frames
     from tests.helpers.driver import run_alf_driver, stored_ids
     from tests.test_labeling_coordinator import native_qm
-    from tests.test_restarts import LOOP, restart_tasks
+    from tests.helpers.driver import LOOP, restart_tasks
 
     first = {}
     for arm in ('coordinator', 'by_reference'):

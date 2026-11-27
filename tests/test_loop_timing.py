@@ -81,7 +81,7 @@ def test_unknown_phases_counts_and_loops_are_refused(tmp_path):
 
 def test_the_coordinator_times_every_pass_of_both_loops(tmp_path, monkeypatch):
     from tests.helpers.driver import run_alf_driver
-    from tests.test_restarts import LOOP, restart_tasks
+    from tests.helpers.driver import LOOP, restart_tasks
 
     run = run_alf_driver(tmp_path, monkeypatch, **restart_tasks(tmp_path, []), **LOOP, finite_bootstrap=True,
                          label_storage_batch_size=2, coordinator_loop_path='records/loop.csv')

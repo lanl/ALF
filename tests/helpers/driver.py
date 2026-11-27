@@ -14,12 +14,15 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import h5py
+import numpy as np
 import parsl
 from parsl.config import Config
 from parsl.errors import NoDataFlowKernelError
 from parsl.executors import ThreadPoolExecutor
 
 from alframework.tools import config as workflow_config
+from alframework.tools.molecules import MoleculesObject
+from tests.helpers.molecules import WATER
 
 EXECUTORS = ("alf_builder_executor", "alf_sampler_executor", "alf_QM_executor", "alf_ML_executor")
 MODEL_PATTERN = "models/model-{:04d}"
@@ -153,3 +156,46 @@ def run_alf_driver(
         finally:
             parsl.clear()
     return run
+
+
+# A short loop for coordinator tests, and stand-in tasks for it.
+def restart_tasks(tmp_path, built, release_training=None, qm_seconds=0.0, training_seconds=0.0):
+    """Stand-ins that record every built ID. Training writes its model directory, and training 1 can wait."""
+    import threading
+    import time
+
+    from parsl import python_app
+
+    if release_training is None:  # Training waits only for tests that release it.
+        release_training = threading.Event()
+        release_training.set()
+
+    @python_app(executors=["alf_builder_executor"])
+    def builder(moleculeid):
+        built.append(moleculeid)
+        return MoleculesObject(WATER.copy(), moleculeid)
+
+    @python_app(executors=["alf_sampler_executor"])
+    def sampler(molecule_object):
+        return molecule_object
+
+    @python_app(executors=["alf_QM_executor"])
+    def qm(molecule_object):
+        time.sleep(qm_seconds)
+        molecule_object.store_results({"energy": -1.0, "forces": np.zeros((len(molecule_object), 3))})
+        molecule_object.set_converged_flag(True)
+        return molecule_object
+
+    @python_app(executors=["alf_ML_executor"])
+    def ml(current_training_id):
+        (tmp_path / "models" / f"model-{current_training_id:04d}").mkdir(parents=True)
+        if current_training_id == 1:
+            release_training.wait(30)
+        if current_training_id > 0:
+            time.sleep(training_seconds)
+        return [True, True], current_training_id
+
+    return dict(builder=builder, sampler=sampler, qm=qm, ml=ml)
+
+
+LOOP = dict(bootstrap_set=6, parallel_samplers=2, target_queued_QM=2, save_h5_threshold=3)

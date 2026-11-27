@@ -155,7 +155,9 @@ def _timed_apps():
     for name in TIMED_MODULES:
         try:
             module = importlib.import_module(name)
-        except ImportError:
+        except ModuleNotFoundError as error:
+            if (error.name or '').startswith('alframework'):
+                raise  # A listed ALF module that no longer exists, not an optional library this env lacks.
             continue
         apps += [(f"{name}.{key}", value) for key, value in vars(module).items()
                  if isinstance(value, PythonApp) and hasattr(value.func, "__wrapped__")]

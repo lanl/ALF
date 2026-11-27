@@ -13,7 +13,8 @@ from alframework.tools.restarts import open_held_labels, shard_frames
 from alframework.tools.data_shards import store_current_data
 from alframework.tools.label_sources import LABEL_SOURCE, read_label_sources
 from tests.helpers.driver import run_alf_driver, stored_ids
-from tests.test_restarts import LOOP, PROPERTIES, labeled, restart_tasks
+from tests.helpers.driver import LOOP, restart_tasks
+from tests.test_restarts import PROPERTIES, labeled
 
 
 def test_snapshot_matches_legacy_layout_and_moves_with_its_parts(tmp_path):

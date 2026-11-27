@@ -100,7 +100,7 @@ def test_unknown_executors_and_unbatched_stages_are_described_without_guessing()
 
 def test_the_coordinator_prints_the_report_at_startup(tmp_path, monkeypatch, capsys):
     from tests.helpers.driver import run_alf_driver
-    from tests.test_restarts import LOOP, restart_tasks
+    from tests.helpers.driver import LOOP, restart_tasks
 
     run_alf_driver(tmp_path, monkeypatch, **restart_tasks(tmp_path, []), **LOOP)
     out = capsys.readouterr().out

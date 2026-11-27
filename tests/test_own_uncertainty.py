@@ -169,7 +169,7 @@ def test_the_summary_reads_the_largest_own_uncertainty_back(tmp_path):
 
 def test_the_coordinator_refuses_one_member_when_the_run_reads_the_spread(tmp_path, monkeypatch):
     from tests.helpers.driver import run_alf_driver
-    from tests.test_restarts import LOOP, restart_tasks
+    from tests.helpers.driver import LOOP, restart_tasks
 
     with pytest.raises(ValueError, match=r"The ML configuration \(n_models 1\) has one member"):
         run_alf_driver(tmp_path, monkeypatch, **restart_tasks(tmp_path, []), **LOOP,
@@ -178,7 +178,7 @@ def test_the_coordinator_refuses_one_member_when_the_run_reads_the_spread(tmp_pa
 
 def test_a_one_member_run_that_reads_its_own_uncertainty_trains_and_retrains(tmp_path, monkeypatch):
     from tests.helpers.driver import run_alf_driver
-    from tests.test_restarts import LOOP, restart_tasks
+    from tests.helpers.driver import LOOP, restart_tasks
 
     run = run_alf_driver(tmp_path, monkeypatch, **restart_tasks(tmp_path, []), **LOOP,
                          sampler_config={"acquisition": OWN}, ml_config={"n_models": 1})

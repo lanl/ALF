@@ -63,7 +63,7 @@ def validated_member_nodes(member_nodes, gpus_per_member=1):
         raise ValueError(f'member_nodes must be a positive integer, not {member_nodes!r}.')
     if member_nodes > 1 and (validated_gpus_per_member(gpus_per_member) == 1 or gpus_per_member % member_nodes):
         raise ValueError(f'gpus_per_member {gpus_per_member} is a total over member_nodes {member_nodes}, so it must '
-                         'be above 1 and divide evenly by it.')
+                         'be above 1 and divide evenly by it: a member on several nodes trains on all their GPUs.')
     return member_nodes
 
 

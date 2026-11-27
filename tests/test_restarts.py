@@ -19,7 +19,7 @@ from alframework.tools.label_hdf5 import LabelH5Writer
 from alframework.tools.label_sources import LABEL_SOURCE, write_label_sources
 from alframework.tools.molecules import MoleculesObject
 from alframework.tools.restarts import find_empty_directory, write_status
-from tests.helpers.driver import run_alf_driver, stored_ids
+from tests.helpers.driver import LOOP, restart_tasks, run_alf_driver, stored_ids
 from tests.helpers.molecules import WATER
 
 PROPERTIES = {"energy": ["energy", "system", 1.0], "forces": ["forces", "atomic", 1.0]}
@@ -389,48 +389,6 @@ def test_ase_task_moves_aside_a_scratch_directory_left_by_an_earlier_attempt(tmp
 
 
 # --- Crashing and restarting the real coordinator ----------------------------------------------------
-
-def restart_tasks(tmp_path, built, release_training=None, qm_seconds=0.0, training_seconds=0.0):
-    """Stand-ins that record every built ID. Training writes its model directory, and training 1 can wait."""
-    import threading
-    import time
-
-    from parsl import python_app
-
-    if release_training is None:  # Training waits only for tests that release it.
-        release_training = threading.Event()
-        release_training.set()
-
-    @python_app(executors=["alf_builder_executor"])
-    def builder(moleculeid):
-        built.append(moleculeid)
-        return MoleculesObject(WATER.copy(), moleculeid)
-
-    @python_app(executors=["alf_sampler_executor"])
-    def sampler(molecule_object):
-        return molecule_object
-
-    @python_app(executors=["alf_QM_executor"])
-    def qm(molecule_object):
-        time.sleep(qm_seconds)
-        molecule_object.store_results({"energy": -1.0, "forces": np.zeros((len(molecule_object), 3))})
-        molecule_object.set_converged_flag(True)
-        return molecule_object
-
-    @python_app(executors=["alf_ML_executor"])
-    def ml(current_training_id):
-        (tmp_path / "models" / f"model-{current_training_id:04d}").mkdir(parents=True)
-        if current_training_id == 1:
-            release_training.wait(30)
-        if current_training_id > 0:
-            time.sleep(training_seconds)
-        return [True, True], current_training_id
-
-    return dict(builder=builder, sampler=sampler, qm=qm, ml=ml)
-
-
-LOOP = dict(bootstrap_set=6, parallel_samplers=2, target_queued_QM=2, save_h5_threshold=3)
-
 
 def held_ids(tmp_path):
     from alframework.tools.restarts import HeldLabels

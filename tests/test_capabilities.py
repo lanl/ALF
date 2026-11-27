@@ -67,7 +67,7 @@ def test_preflight_checks_the_executor_a_training_join_uses_for_its_members():
 @pytest.mark.parametrize('role', ['builder', 'sampler'])
 def test_the_coordinator_checks_builder_and_sampler_configs_before_the_bootstrap(tmp_path, monkeypatch, role):
     from tests.helpers.driver import run_alf_driver
-    from tests.test_restarts import LOOP, restart_tasks
+    from tests.helpers.driver import LOOP, restart_tasks
 
     tasks = restart_tasks(tmp_path, [])
 

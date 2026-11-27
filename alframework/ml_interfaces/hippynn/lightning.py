@@ -477,11 +477,8 @@ def _report_final_metrics(metric_tracker, metrics, when):
 
 def _local_devices(n_devices, nodes, launcher):
     """Each node's share of a member's ``n_devices``, after checking ``nodes`` and ``launcher``."""
-    if isinstance(nodes, bool) or not isinstance(nodes, int) or nodes < 1:
-        raise ValueError(f'member_nodes must be a positive integer, not {nodes!r}.')
-    if n_devices % nodes:
-        raise ValueError(f'gpus_per_member {n_devices} is a total over member_nodes {nodes}, so it must divide '
-                         'evenly by it.')
+    from alframework.tools.ensemble_training import validated_member_nodes
+    validated_member_nodes(nodes, n_devices)
     if nodes > 1 and (not launcher or isinstance(launcher, str)):
         raise ValueError('A member on several nodes needs member_launcher: the command, as a list of words, that '
                          'starts one process on each of its nodes, such as srun with one task per node.')

@@ -998,7 +998,7 @@ def test_the_uma_schedule_matches_fairchems_own():
 
 def test_fairchems_command_is_found_by_its_registered_entry_point():
     pytest.importorskip("fairchem.core")
-    import inspect
+    from importlib.metadata import entry_points
     from alframework.ml_interfaces.fine_tuning.uma import fairchem_main
-    main = fairchem_main()
-    assert list(inspect.signature(main).parameters)[:2] == ['args', 'override_args']
+    [registered] = entry_points(group="console_scripts", name="fairchem")
+    assert fairchem_main() is registered.load() and callable(fairchem_main())

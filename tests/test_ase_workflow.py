@@ -209,13 +209,23 @@ def test_scratch_removal_is_a_workflow_setting_not_a_stage_setting(dependent_cal
         validate_ase_workflow_config(config, {'properties_list': PROPERTIES})
 
 
-def test_each_stage_can_set_its_own_initial_magnetic_moments(dependent_calculators):
-    config = dependent_settings()
+def test_each_stage_calculates_with_its_own_initial_magnetic_moments(tmp_path, controlled):
+    calls, _ = controlled
+    config = settings()
+    config['stages'][1]['initial_magnetic_moments'] = {'H': 1.0}
+    validate_ase_workflow_config(config, {'properties_list': PROPERTIES})
+    obj = label_workflow(unlabeled_h2(), config, str(tmp_path), PROPERTIES)
+    assert obj.check_convergence(), obj.metadata
+    first, second = (atoms.get_initial_magnetic_moments() for _, atoms, _ in calls)
+    np.testing.assert_array_equal(first, [0.0, 0.0])
+    np.testing.assert_array_equal(second, [1.0, 1.0])
+
+
+def test_a_stage_s_initial_magnetic_moments_must_be_numbers():
+    config = settings()
     config['stages'][1]['initial_magnetic_moments'] = {'H': 'large'}
     with pytest.raises(ValueError, match='finite number'):
         validate_ase_workflow_config(config, {'properties_list': PROPERTIES})
-    config['stages'][1]['initial_magnetic_moments'] = {'H': 1.0}
-    validate_ase_workflow_config(config, {'properties_list': PROPERTIES})
 
 
 @pytest.mark.parametrize('change,error', [

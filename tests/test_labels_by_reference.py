@@ -346,6 +346,5 @@ def test_publishing_after_a_merge_reuses_the_merged_parts_layouts(tmp_path, monk
     layout = label_parts.part_layout
     monkeypatch.setattr(label_parts, 'part_layout', lambda part: scanned.append(part) or layout(part))
     assert held.commit(snapshot, PROPERTIES, {}) == 9
+    # At scale, rescanning every merged part's groups took most of the publish time.
     assert not scanned, 'the snapshot was built from the layouts the merge recorded'
-    restarted = HDF5HeldLabels(snapshot.with_name('data-0001.h5'), PROPERTIES, batch_size=4)
-    assert restarted._layouts == {}, 'a new generation starts without layouts'

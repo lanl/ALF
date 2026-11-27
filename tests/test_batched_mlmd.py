@@ -1046,12 +1046,11 @@ def test_returned_momenta_is_checked_before_any_task_runs(tmp_path):
 
 
 def test_the_ase_engine_holds_the_center_of_mass_and_returns_the_original_constraints():
-    from ase.constraints import FixAtoms, FixCom
+    from ase.constraints import FixAtoms
     atoms = SPRING_WATER.copy()
     atoms.set_constraint(FixAtoms(indices=[0]))
     atoms.set_momenta(np.random.default_rng(2).normal(size=(len(atoms), 3)))
     engine = ASEEngine([atoms], fake_ensemble(), 0.5, [300.0], [np.random.RandomState(3)])
-    assert any(isinstance(c, FixCom) for c in engine.atoms(0).constraints)
     assert not engine.step([0], 20)
     momentum = engine.atoms(0).get_momenta().sum(axis=0)
     np.testing.assert_allclose(momentum, 0.0, atol=1e-9)

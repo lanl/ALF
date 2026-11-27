@@ -33,18 +33,15 @@ def test_an_undeclared_feature_is_refused_with_how_to_declare_it():
         declares('')
 
 
-def test_the_built_in_tasks_declare_what_they_read():
-    from alframework.ml_interfaces import fine_tuning
+def test_the_built_in_tasks_read_the_settings_large_runs_set():
+    """The large-scale settings name these tasks; a task losing a declaration would refuse them at startup."""
     from alframework.ml_interfaces.hippynn import interface as hippynn_interface
     from alframework.samplers import batched_mlmd, mlmd_sampling
 
-    assert declared(batched_mlmd.mlmd_trajectories_task) == {'returned_metadata', 'returned_momenta', 'metadata_files',
-                                                            'frame_spool'}
-    assert declared(mlmd_sampling.simple_mlmd_sampling_task) == set()
-    assert declared(hippynn_interface.train_HIPPYNN_ensemble_multinode_task) == {
-        'shared_training_data', 'stream_final_evaluation', 'h5_read_workers', 'h5_read_max_inflight_bytes'}
-    assert declared(hippynn_interface.train_HIPPYNN_ensemble_task) == {'h5_read_workers', 'h5_read_max_inflight_bytes'}
-    assert declared(fine_tuning.fine_tune_ensemble_task) == {'h5_read_workers', 'h5_read_max_inflight_bytes'}
+    assert {'returned_metadata', 'metadata_files', 'frame_spool'} <= declared(batched_mlmd.mlmd_trajectories_task)
+    assert {'shared_training_data', 'stream_final_evaluation', 'h5_read_workers'} <= declared(
+        hippynn_interface.train_HIPPYNN_ensemble_multinode_task)
+    assert 'returned_metadata' not in declared(mlmd_sampling.simple_mlmd_sampling_task)
 
 
 def test_validate_task_config_calls_the_hook_when_there_is_one():

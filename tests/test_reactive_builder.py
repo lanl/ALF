@@ -1,5 +1,6 @@
 """The reactive builder's rattle setting: a boolean, or the strings true and false."""
 
+import numpy as np
 import pytest
 from ase import Atoms
 from parsl.app.errors import RemoteExceptionWrapper
@@ -11,13 +12,13 @@ LIBRARY = dict(N_reactions=1, molecule_library_dir="unused", r_files="r", ts_fil
 
 @pytest.mark.parametrize("flag,rattled", [(False, False), ("false", False), (True, True), (" True ", True)])
 def test_rattle_follows_the_flag_and_the_reaction_metadata_is_kept(monkeypatch, flag, rattled):
-    monkeypatch.setattr(reactive.ase.io, "read", lambda *args, **kwargs: Atoms("H"))
-    calls = []
-    monkeypatch.setattr(Atoms, "rattle", lambda self: calls.append(self))
+    monkeypatch.setattr(reactive.ase.io, "read", lambda *args, **kwargs: Atoms("H2", positions=[[0, 0, 0], [0, 0, 0.74]]))
     result = reactive.load_reactive_task.func("reaction-0", dict(LIBRARY), rattle=flag)
     if isinstance(result, RemoteExceptionWrapper):
         result.reraise()
-    assert len(calls) == (3 if rattled else 0), "reactant, transition state and product"
+    moved = [not np.array_equal(result.metadata[name].positions, [[0, 0, 0], [0, 0, 0.74]])
+             for name in ("reactant", "ts", "product")]
+    assert moved == [rattled] * 3, "reactant, transition state and product"
     assert result.get_moleculeid() == "reaction-0"
     assert {"reactant", "ts", "product", "index_mol"} <= set(result.metadata)
 

@@ -248,11 +248,16 @@ def test_every_state_keeps_a_line_past_the_palette():
     assert colors[:8] == list(CATEGORICAL) and colors[8:] == [OVERFLOW] * 3
 
 
-def test_ground_state_errors_keep_rmse_and_mae_for_each_quantity(tmp_path):
-    training = run_records.run_records(make_run(tmp_path / "run"))["training"]
-    ground = run_report._ground_metrics(training)
-    assert list(ground) == ["T", "TperAtom", "Force"], "energy first"
-    assert ground["Force"] == {"RMSE": "final.test.ForceRMSE", "MAE": "final.test.ForceMAE"}
+def test_the_training_figure_shows_energy_errors_before_force_errors(tmp_path, monkeypatch):
+    import matplotlib.pyplot as plt
+    run = make_run(tmp_path / "run")
+    figures = dict(_rendered_figures(monkeypatch, lambda: run_report.write_report(run, tmp_path / "report")))
+    training = figures["run-report-training.png"]
+    titles = [axis.get_title(loc="left") for axis in training.axes if axis.get_title(loc="left")]
+    assert titles == ["Epoch Time", "Final Test Energy Error", "Final Test Energy per Atom Error",
+                      "Final Test Force Error"]
+    for figure in figures.values():
+        plt.close(figure)
 
 
 def _rendered_figures(monkeypatch, draw):

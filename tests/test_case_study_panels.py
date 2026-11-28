@@ -161,3 +161,86 @@ def test_policy_comparison_checks_accepted_labels_and_counts_ntk_fit(tmp_path, m
     (member / 'training_input_manifest.json').write_text(json.dumps({'frames': [{}]}))
     with pytest.raises(ValueError, match='equal accepted QM label counts'):
         evaluate.compare_at_equal_budget(models, [], device='cpu')
+
+
+def test_chromophore_preset_builds_six_state_acquisition_from_one_schema(tmp_path):
+    pytest.importorskip('rdkit')
+    from alframework.qm_interfaces.pyscf.gpu4pyscf import validate_gpu4pyscf_properties
+    from alframework.samplers.acquisition import acquisition_settings
+
+    entries = prepare.load_panel(prepare.PANELS['chromophore'], 40)
+    validation = prepare.load_panel(prepare.HERE / 'property_validation.json', 40, require_training=False)
+    assert Counter(row['split'] for row in entries) == {'train': 27, 'holdout': 8}
+    assert max(row['n_atoms'] for row in entries) == 40
+    assert sum(row['n_atoms'] > 30 and row['split'] == 'train' for row in entries) == 2
+    assert not {row['molecule_id'] for row in entries} & {row['molecule_id'] for row in validation}
+    for row in [*entries, *validation]:
+        row.update(seed_path=f'{row["name"]}.h5', reference_path=f'{row["name"]}.mol')
+    prepare.configure(tmp_path, [*entries, *validation], mode='ntk', bootstrap_per_molecule=8,
+                      seed_size=12, seed=42, local=True, nroots=5, model_width=64, optical=True,
+                      extra_labels=24, gap_seeking_after=324)
+    configs = {path.stem: json.loads(path.read_text()) for path in tmp_path.glob('*.json')}
+    properties = configs['master_config']['properties_list']
+    states, gaps = validate_gpu4pyscf_properties(properties, nroots=5, compute_nacr=False)
+    sampler = configs['sampler_config']
+    assert len(states) == 6 and len(gaps) == 5
+    assert configs['hippynn_config']['network_params']['n_features'] == 64
+    assert 'oscillator_strengths' in properties and 'transition_dipoles' in properties
+    assert sampler['batched_calculator_options']['properties_list'] == properties
+    assert sampler['batched_calculator_options']['scores']['gap_pairs'][-1] == [4, 5]
+    assert len(acquisition_settings(sampler)['eligibility']) == 5
+    assert set(configs['builder_config']['sources']) == {row['seed_path'] for row in entries if row['split'] == 'train'}
+
+
+@pytest.fixture(scope='module')
+def chalcogenide_preview(tmp_path_factory):
+    """The chalcogenide example's preview run, with its seed, fixed-pool and holdout poses."""
+    pytest.importorskip('rdkit')
+    from examples.surface_training import chalcogenide
+
+    run = chalcogenide.prepare(tmp_path_factory.mktemp('chalcogenide') / 'run', preview=True)
+    poses = {name: read(run / f'{name}.extxyz', index=':') for name in ('seeds', 'fixed', 'holdout')}
+    return chalcogenide, run, poses
+
+
+def test_chalcogenide_bootstrap_balances_its_materials(chalcogenide_preview):
+    _, _, poses = chalcogenide_preview
+    bootstrap = poses['seeds'][:48]
+    assert len(bootstrap) == 48
+    assert set(Counter(atoms.info['material'] for atoms in bootstrap).values()) == {8}
+
+
+def test_chalcogenide_hgse_is_held_out_of_training(chalcogenide_preview):
+    _, _, poses = chalcogenide_preview
+    assert all(atoms.info['composition'] != 'HgSe' for atoms in [*poses['seeds'], *poses['fixed']])
+    assert sum(atoms.info['composition'] == 'HgSe' for atoms in poses['holdout']) == 16
+
+
+def test_chalcogenide_poses_share_each_compositions_cell(chalcogenide_preview):
+    chalcogenide, _, poses = chalcogenide_preview
+    every = [*poses['seeds'], *poses['fixed'], *poses['holdout']]
+    for composition in chalcogenide.LATTICES:
+        frames = [atoms for atoms in every if atoms.info['composition'] == composition]
+        for atoms in frames:
+            assert len(atoms) <= 200 and atoms.pbc.all()
+            np.testing.assert_allclose(atoms.cell.array, frames[0].cell.array)
+            assert atoms.cell[2, 2] - np.ptp(atoms.positions[:, 2]) >= 20. - 1.e-6
+            assert atoms.info['metal_donor_A'] > 0
+
+
+def test_chalcogenide_builder_frames_get_slab_vasp_settings(chalcogenide_preview):
+    from alframework.qm_interfaces.ase.vasp import vasp_input_for_structure
+
+    chalcogenide, run, _ = chalcogenide_preview
+    builder = json.loads((run / 'builder_config.json').read_text())
+    sample = chalcogenide.chalcogenide_builder_task.func('test_builder', builder, master_directory=run)
+    vasp = vasp_input_for_structure(sample.get_atoms(), json.loads((run / 'vasp_config.json').read_text()),
+                                    sample.get_metadata())
+    assert vasp['kpts'][2] == 1 and vasp['gamma'] and vasp['idipol'] == 3
+    assert vasp['encut'] == 450 and vasp['sigma'] == .05
+
+
+def test_chalcogenide_label_refuses_shards_outside_the_training_directory(chalcogenide_preview):
+    chalcogenide, run, _ = chalcogenide_preview
+    with pytest.raises(ValueError, match='outside the active training directory'):
+        chalcogenide.label(run, 'holdout', run / 'runs' / 'h5' / 'data-0010.h5')

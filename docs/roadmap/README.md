@@ -1,6 +1,6 @@
 # ALF development roadmap
 
-Last updated: November 12, 2026.
+Last updated November 27, 2026.
 
 This is the plan for ALF's `development` branch: what has been built, what has been shown to work on
 real hardware, the decisions that shape it, and what comes next. Detailed work logs and validation
@@ -8,10 +8,57 @@ evidence are kept outside the repository.
 
 ## Current focus on `ALF_NTK`
 
-The [NTK roadmap](uncertainty-integration.md#current-priority-ntk) is the active work on this branch.
+The [NTK roadmap](uncertainty-integration.md#current-priority-ntk) covers uncertainty development on this branch.
 The [ground-state HIPPYNN path](uncertainty-integration.md#ground-state-hippynn-basis-and-sampling)
 shares a prepared NTK basis across replay and sampling. The [benchmark handoff](uncertainty-integration.md#benchmark-handoff)
 covers the fixed-pool QM-force study and packed GPU measurements on the target machine.
+
+## ALF 2.0 case-study handoff
+
+Both example workflows are ready for configuration and builder checks. The next milestone is
+a short run on the target hardware that produces real reference labels, trains a model, and
+completes a sampling and retraining round. Use the example READMEs for commands and setup.
+
+| Case study | Available in the working tree | First compute-machine run |
+| --- | --- | --- |
+| [Chalcogenide adsorption](../../examples/surface_training/README.md#chalcogenide-adsorption-with-uma-oc25) | Methylamine and methylphosphine on zinc-blende (110) slabs. Forty-eight balanced bootstrap poses on CdSe, CdTe, and HgTe. Independent poses, a fixed-pool baseline, and an HgSe composition holdout. Poses decorate the prepared slabs through `slab_file`, with sampled lateral and height offsets. Full UMA-S 1.2.1 OC25 fine-tuning from the same foundation checkpoint each round. | Set up VASP, the licensed PAWs, the UMA checkpoint, Fairchem, and TorchSim on one CUDA worker. Relax clean slabs and qualify RPBE-D3 settings, including a matched SOC check on the Hg compounds. Run one VASP label, then verify bootstrap training, batched MD, and a second fit that uses newly acquired labels. |
+| [Mixed-molecule excited states](../../examples/molecular_excited_states/README.md#broader-chromophore-pilot) | A 35-molecule chromophore preset with 27 training molecules and eight whole-molecule holdouts, plus a separate optional validation panel. The preset starts with 64-feature HIP-HOP-NN, supports up to five excited roots, and enables optical labels. The carbonyl \(S_0/S_1\) preset is a smaller workflow check. | Set up GPU4PySCF, HIPPYNN, RDKit, and ALCHEMI. Qualify 6-31G* and 6-31+G* on representative relaxed and distorted chromophores, including larger training molecules. Use the root, gradient, convergence, time, and memory checks to choose the production state range. Verify one real label and a complete active-learning round before scaling. |
+
+### Comparisons after the short runs
+
+1. **Surfaces.** Compare pretrained, seed-only, iterative, and fixed-pool UMA against the same
+   independent VASP poses. Match accepted label budgets where applicable. Report relative pose
+   energies, ligand and near-site forces, and HgSe transfer. Compare fixed-cell trajectories
+   from matched starts using donor distance and tilt. Run ordinary batched MD before the separate
+   UDD comparison and check the direction and strength of the bias.
+2. **Molecules.** Compare 64 and 145 features on identical labels and pick the width on validation
+   molecules. Use the selected width for ensemble, NTK, and random acquisition with matched
+   accepted label counts and propagation settings. Compare ordinary adiabatic MD and later
+   gap-seeking in a separate experiment. Report state-resolved force and gap errors, small-gap
+   yield, and labeling and sampling cost. The expansion target is 120 training, 18 validation,
+   and 24 test molecules. Supply that larger manifest through the existing panel input.
+3. **Molecular properties.** After the dynamics checkpoint is qualified, fit the optional
+   oscillator-strength readout on saved optical labels. For neutral partial charges, qualify
+   the smaller \(S_0/S_1\) permanent-dipole dataset, then fit the charge readout through the
+   dipole loss. Evaluate both readouts on separate molecules. Keep their results with the
+   parent dynamics checkpoint and label provenance.
+
+### Validation and transfer
+
+- Local checks exercised both preparations, the configuration and builder entry points, a CPU
+  HipNN train–sample–retrain cycle with stand-in labels, the optical readout fit and reload, and
+  the finite-field dipole logic against stand-in solvers with known dipoles. Prepared slabs
+  (`slab_file`) and the sampled adsorbate offsets have their own builder tests. Gap-seeking runs
+  on one multi-state NTK evaluator, with no ensemble, in ASE, TorchSim and ALCHEMI. The tests for
+  the two examples, the surface builder and the readouts passed 79 tests, and the non-slow suite
+  passed 2,535 on an Apple M3 Max CPU.
+- Before transfer, make the commit containing the examples, tests, and roadmap available on the
+  destination machine, or transfer the complete working tree. A branch checkout only contains
+  committed files. Record the exact revision and any patches used for each run.
+- Archive resolved configurations, panel and pose manifests, PAW and checkpoint identifiers,
+  software versions, split and label inventories, attempted and accepted label counts, timing and
+  memory records, and the evaluation outputs. Use qualified runs and independent results to update
+  the manuscript figures and conclusions.
 
 ## Status
 
@@ -24,7 +71,7 @@ or performance at scale, except where a row says so.
 | Batched labeling and sampling | Native batched labeling (PySEQM) and sequential packing for single-structure labelers. Batched MD on ASE, TorchSim (NVIDIA and AMD), and ALCHEMI. Uncertainty and summed ranking, first-trigger and pooled selection, top-K and farthest-point selection. | Every combination of single or batched dynamics with single or batched labeling, through bootstrap, storage, and retraining. | Result streaming, and replacing finished trajectories in flight. |
 | Excited states | State, gap, and coupling storage. GPU4PySCF TDA labels (energies, forces, couplings, optical properties, C-PCM solvent) and PySEQM CIS labels. Multi-state HIPPYNN training with a shared trunk. Selected-state sampling and acquisition, chemical topology screening, UDD and wells, gap-seeking, and sampling windows. | Active-learning loops for acetylacetone (PySEQM) and a CPP9 ring (GPU4PySCF, in DCM). UDD, wells, and gap-seeking mechanics on all three engines. | Accuracy and long-time stability. Gap-seeking near real crossings. |
 | Restarts | Atomic status and shard writes, a coordinator lock, finished labels held on disk until stored, reconciliation on restart, and spare seeds for a finite bootstrap. | 18 interruption and restart cases, including kills during a store and a finite bootstrap that used a spare. | A killed coordinator leaves its allocations for the scheduler. A training running at a crash starts over. |
-| Multi-node training | One ensemble member per GPU across nodes, with retries of failed members only. | HIPPYNN with 8 members on 2 nodes and 20 on 5 nodes. MACE and UMA fine-tuning on 2 nodes, with a cancelled node retried. | Larger deployments. Data-parallel training of a single member. |
+| Multi-node training | Independent ensemble members across nodes, with retries of failed members only. HIPPYNN also supports data-parallel training of one member across GPUs and nodes. | HIPPYNN with 8 members on 2 nodes and 20 on 5 nodes. MACE and UMA fine-tuning on 2 nodes, with a cancelled node retried. [Single-member scaling measurements](../source/user_guide/running_at_scale.rst). | Scaling and end-to-end qualification on the target campaign. |
 | Teacher labeling | Off-the-shelf MACE and UMA checkpoints as labelers. UMA's `omol` task refuses periodic structures unless opted in. | Both teachers on GPU, each with a real HIPPYNN student trained on its labels. | Teacher accuracy against DFT isn't claimed. |
 | Fine-tuning | Adapters for HIPPYNN, MACE, and UMA. ALF selects the samples, and each round fine-tunes copies of the pretrained model on all labels so far. | The workflow for all three on DFT labels. Held-out accuracy improved for HIPPYNN and MACE. | UMA's held-out accuracy got worse; its recipe needs investigation. |
 | PySCF labeling (`pyscf_task`) | One labeler for molecules and periodic cells, on CPU (PySCF) or GPU (GPU4PySCF), through ALF's `PySCFCalculator` ASE calculator. | GPU4PySCF ground-state DFT and the excited path. Molecular and k-point checks on GPU. | On GPU, periodic energies, forces, and stress missed their tight agreement checks, and the periodic student loop didn't finish. |
@@ -127,7 +174,7 @@ or performance at scale, except where a row says so.
 
 Each needs its own decision: NPT sampling, periodic excited states, surface hopping, native forces for
 mixed-composition CIS batches, grouped non-MD evaluations and reactive batching, a general
-bias/control interface for future biased dynamics, data-parallel training of one member, and AMD MI350
+bias/control interface for future biased dynamics, and AMD MI350
 hardware.
 
 ## Working on `development`

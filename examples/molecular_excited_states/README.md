@@ -51,7 +51,7 @@ below 0.8, or shift a matched excitation by more than 0.2 eV. Inspect
 flagged cases before interpreting the production results. The
 `s1_basis_sensitive` field identifies flags affecting the production root.
 Use `--all`
-to extend the check to the full panel. These diagnostic calculations use
+to extend the check to all training molecules. These diagnostic calculations use
 conventional CPU integrals. Production forces use the GPU4PySCF settings in
 the generated QM configuration.
 
@@ -124,3 +124,91 @@ hold out an entire family to study how transfer changes with chemical distance.
 S₁ is the lowest singlet TDA root at each geometry. Inspect state character
 and basis sensitivity on a subset of conformers before production labeling,
 particularly for diffuse excited states and near-degenerate roots.
+
+## Broader chromophore pilot
+
+Use the 35-molecule chromophore preset for the paper pilot. It has 27 training
+molecules and eight whole-molecule holdouts across six families. Para-terphenyl
+and triphenylamine put molecules above 30 atoms in training. Meta-terphenyl and
+trans,trans-1,4-distyrylbenzene test transfer at 32 and 40 atoms. The optional
+six-molecule validation panel reserves a separate set for model-width and
+property-readout selection.
+
+```bash
+python -m examples.molecular_excited_states.prepare /scratch/chrom --preset chromophore --local \
+  --validation-panel examples/molecular_excited_states/property_validation.json
+python -m examples.molecular_excited_states.qualify /scratch/chrom basis-check.json --nroots 5 --gradients
+```
+
+The preset defaults to `hiphop64`, eight bootstrap labels per training molecule,
+and a limit of 32 total labels per training molecule on average. It records
+oscillator strengths and transition dipoles. RDKit conformers are deduplicated
+before ALF creates the distortion pools. Distinct conformer pools are interleaved
+within a molecule while bootstrap files are interleaved across molecules. The
+parent manifest records the source pools and hashes. For a pilot run, use
+`--pool-size 12 --seed-size 8` to reduce offline preparation.
+
+Qualify the chosen basis and state count before collecting production labels.
+`--gpu-labels` times complete GPU4PySCF labels for both bases and reports sampled
+process GPU memory when `nvidia-smi` is available. Prepare a fresh run with
+`--basis '6-31+g*'` and `--nroots 5` if that basis and state count pass. The run
+configuration supplies the state schema to both the labeler and the sampler.
+For a later gap-seeking comparison, prepare a separate run with
+`--gap-seeking-after LABELS` after qualifying the ordinary-dynamics checkpoint.
+Use the same dynamics settings for the ensemble, NTK, and random acquisition
+comparison. Choose the width using the same training and validation data with
+`--model hiphop64` and `--model hiphop145`.
+
+For production, pass `--panel production.json` with the chromophore preset and
+120 training, 18 validation, and 24 test molecules. Use `train`, `validation`,
+and `holdout` in the `split` field. Include the source identifier, family, and
+SMILES in each record. Supply the exact same manifest, basis, state count and
+seed to all policy comparisons. `evaluate.py score` and `compare` take
+`--run /scratch/chrom` to load the state schema. To label the validation set,
+use `evaluate.py label-holdout /scratch/chrom validation.h5 --split validation`.
+
+### Optional property readouts
+
+Run these commands from the repository root with a finished dynamics checkpoint.
+The readout is a separate fitting stage on the frozen atomic representation.
+Use molecule-disjoint optical or dipole data for readout fitting, validation,
+and evaluation. The scorer checks these splits against the dynamics training
+manifest as well.
+
+```bash
+run=/scratch/chrom
+member="$run/models/model-0000/model-00"
+python -m examples.molecular_excited_states.properties fit oscillator "$run" "$member" strengths.pt \
+  --training "$run"/h5store/data-*.h5 --validation validation.h5
+python -m examples.molecular_excited_states.properties score strengths.pt holdout.h5
+python -m examples.molecular_excited_states.properties predict strengths.pt new-geometries.extxyz
+```
+
+The oscillator head predicts nonnegative dimensionless strengths for each
+\(S_0\)-to-\(S_n\) transition, in ascending root order. It minimizes MSE on the
+strengths. The scorer combines them with model excitation energies to calculate
+broadened absorption overlap and reports per-transition MAE.
+
+For a small permanent-dipole pilot, select shards that contain only the
+molecules you want to label. The CPU calculation obtains \(S_0\) from the SCF
+density and \(S_1\) from finite differences of the state energy in an electric
+field. Use `--check-step` on a small reference set to validate sensitivity to
+the field step. Store the sidecars outside the dynamics label directory.
+
+```bash
+python -m examples.molecular_excited_states.properties label-dipoles "$run" train-dipoles.json \
+  "$run/h5store/data-0000.h5" --frames-per-molecule 2
+python -m examples.molecular_excited_states.properties label-dipoles "$run" valid-dipoles.json \
+  validation.h5 --frames-per-molecule 2 --check-step
+python -m examples.molecular_excited_states.properties label-dipoles "$run" test-dipoles.json \
+  holdout.h5 --frames-per-molecule 2
+python -m examples.molecular_excited_states.properties fit charge "$run" "$member" charges.pt \
+  --training train-dipoles.json --validation valid-dipoles.json
+python -m examples.molecular_excited_states.properties score charges.pt test-dipoles.json
+```
+
+The charge readout projects the atomic charges to zero total per molecule and
+state. It minimizes componentwise dipole MSE in e Å. The scorer reports the
+latent charges in atom order, permanent dipoles, and the error in the change in
+dipole from \(S_0\) to \(S_1\). Use the same `predict` subcommand with
+`charges.pt` for new neutral geometries.

@@ -211,31 +211,78 @@ python perovskite_benchmark.py trajectory uma_md.extxyz
 Repeat across independent starting poses and compare donor distances to Pb
 and Sn and ligand-axis tilts. Keep those trajectories outside the fitting data.
 
-## Chalcogenide alternative
+## Chalcogenide adsorption with UMA OC25
 
-CdSe, CdTe, HgSe, and HgTe give a crossed Cd/Hg and Se/Te comparison for
-ligand binding. All four occur in experimental core/shell quantum-dot
-studies. Use the same ALF slab builder, VASP labeler, and UMA OC25
-fine-tuning workflow with material-specific bulk structures, facets,
-ligands, and binding-metal analysis.
-[Core/shell HgCdTe/HgCdSe quantum dots](https://doi.org/10.1021/jacs.6c09034)
+The dedicated case study uses methylamine and methylphosphine on zinc-blende
+(110) CdSe, CdTe, HgTe, and HgSe. The first three compositions supply 48
+bootstrap labels, eight for each material–ligand pair. The builder places the
+donor near exposed Cd or Hg and varies distance, tilt, azimuth, and lateral
+offset. A separate fixed pool provides a non-adaptive label baseline. The
+holdout pool includes independent poses on seen compositions and every HgSe
+pose. The preparation manifest records material, ligand, cell partition,
+metal–donor distance, and donor-to-carbon tilt.
 
-Start with stoichiometric zinc-blende **(110)** slabs and relax the clean
-surfaces before placing ligands. CdTe(110) exhibits experimentally measured
-surface relaxation. Start with methylamine and trimethylphosphine oxide
-as neutral representatives of amine and phosphine oxide ligands. Place
-the N or O donor atop exposed Cd or Hg using `surface_elements`.
-The geometry preview built all eight composition–ligand combinations
-with 55–62 atoms, at least 10 Å of substrate, and 20 Å of vacuum.
-[CdTe(110) surface relaxation](https://doi.org/10.1103/PhysRevB.51.10774) · [CdSe ligand binding](https://doi.org/10.1021/jp903291d)
+From the repository root:
 
-Use RPBE-D3 with zero damping as the starting reference. Before labeling the
-Hg systems at scale, check k-point and smearing convergence and compare
-forces and relative pose energies with SOC enabled and disabled on the
-same HgSe and HgTe geometries. For a composition-transfer test, train on
-CdSe, CdTe, and HgTe and hold out HgSe. This tests a new Hg–Se combination
-with both elements represented in training.
-[Relativistic effects in Hg and Cd chalcogenides](https://pmc.ncbi.nlm.nih.gov/articles/PMC13690243/)
+```bash
+python -m examples.surface_training.chalcogenide prepare /scratch/chalc-preview --preview
+python -m examples.surface_training.chalcogenide relax /scratch/chalc-preview /scratch/relaxed-slabs
+python -m examples.surface_training.chalcogenide prepare /scratch/chalc --slabs /scratch/relaxed-slabs \
+  --checkpoint /path/to/uma-s-1p2p1.pt --vasp-command vasp_std
+```
+
+The preview uses approximate prototype bulk cells. Qualify the lattice constants
+and clean slab dimensions for production. Supply relaxed, stoichiometric,
+periodic slabs named after their compositions with the normal along +z.
+The preparer uses a common cell for each composition and leaves at least 20 Å
+of vacuum above the occupied slab and ligand extent. The slab plus ligand has
+at most 200 atoms. The VASP configuration uses RPBE-D3 with zero damping,
+450 eV, Gaussian smearing of 0.05 eV, a Γ-centered reciprocal mesh with
+0.15 Å⁻¹ in-plane spacing, and a slab dipole correction. Use the same licensed
+PBE PAW release on all workers. Set `VASP_PP_PATH` and optionally
+`VASP_PP_VERSION` as in the perovskite example. Check reference convergence and
+compare SOC on matched HgTe and HgSe poses before generating training labels.
+
+In the prepared run directory:
+
+```bash
+python -m alframework --master master_config.json --check_config
+python -m alframework --master master_config.json --test_builder
+python -m alframework --master master_config.json --test_qm
+python -m alframework --master master_config.json
+```
+
+Both UMA members start each fit from the original OC25 checkpoint and train
+on cumulative accepted labels with the existing 20:2 energy and force loss.
+The pilot retains the foundation elemental references. Check PAW and energy
+conventions before comparing absolute energies. The first fit uses bootstrap
+labels. Later generations drive fixed-cell batched TorchSim trajectories.
+Adjust the acquisition thresholds if ordinary MD finds too few eligible poses.
+
+From the repository root, label and score the same independent structures at
+each checkpoint:
+
+```bash
+python -m examples.surface_training.chalcogenide label /scratch/chalc holdout holdout.extxyz
+python -m examples.surface_training.chalcogenide label /scratch/chalc holdout holdout-soc.extxyz --soc --count 8
+python -m examples.surface_training.chalcogenide score holdout.extxyz /path/to/uma-s-1p2p1.pt
+python -m examples.surface_training.chalcogenide score holdout.extxyz /scratch/chalc/runs/models/model-0000
+```
+
+For a fixed-pool comparison, copy the prepared run to a fresh directory
+before training. Put the finalized shared bootstrap shard in its `runs/h5/`,
+label the same number of additional poses as used by the AL comparison with
+`label /scratch/chalc fixed /scratch/fixed-run/runs/h5/data-0001.h5 --count N`,
+and run `--test_ml` in the fixed run. Keep the holdout pool outside training.
+
+Use `chalcogenide md RUN OUTPUT --frame 0 --seed 42` to generate the VASP
+reference trajectory. Pass a UMA file or ensemble with `--checkpoint` to run
+the corresponding model trajectory from the same start. The `trajectory`
+subcommand reports donor distance and tilt percentiles from the saved frames.
+Use `sample RUN MODEL OUTPUT --udd-weight -0.1` for a separate ordinary versus
+UDD batch on the same held-out starts. The negative coefficient lowers the
+biased energy in high-disagreement regions. Check stability and bias strength
+on a short pilot before extending the sampling budget.
 
 ## Extend the low-index facet coverage
 

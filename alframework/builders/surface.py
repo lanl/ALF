@@ -41,6 +41,10 @@ def _positive_integer(value, name):
     return value
 
 
+_IN_PLANE_KEYS = frozenset({'min_in_plane_A', *(f'{kind}_{axis}_A' for kind in ('min', 'max', 'target')
+                                                for axis in ('a', 'b'))})
+
+
 def _in_plane_bounds(config):
     shared_min = _length(config.get('min_in_plane_A', 8), 'min_in_plane_A')
     bounds = []
@@ -408,6 +412,8 @@ class _Placement:
     max_tilt: float
     gap: float
     surface_elements: tuple
+    lateral_offset: float
+    additional_height: float
 
 
 @dataclass(frozen=True)
@@ -447,12 +453,19 @@ def _prepare_placement(entry, master_directory, seed):
             or any(not isinstance(symbol, str) or symbol not in atomic_numbers or symbol == 'X'
                    for symbol in elements)):
         raise ValueError(f'{label}: surface_elements must be a list of chemical element symbols')
-    return _Placement(geometry, tuple(anchors), mode, kinds, max_tilt, gap, tuple(elements))
+    lateral_offset = _length(entry.get('max_lateral_offset_A', 0), 'max_lateral_offset_A', allow_zero=True)
+    additional_height = _length(entry.get('max_additional_height_A', 0), 'max_additional_height_A', allow_zero=True)
+    return _Placement(geometry, tuple(anchors), mode, kinds, max_tilt, gap, tuple(elements),
+                      lateral_offset, additional_height)
 
 
 def _prepare_material(config, master_directory, seed, name=None, weight=1.0):
-    source = source_key(config.get('bulk_file'), master_directory)
-    charge = check_neutral(read_geometry(source).charges, config, 'bulk_charge', source[0])
+    prepared = 'slab_file' in config
+    if prepared and 'bulk_file' in config:
+        raise ValueError('specify only one of slab_file and bulk_file')
+    source = source_key(config.get('slab_file' if prepared else 'bulk_file'), master_directory)
+    structure = read_geometry(source)
+    charge = check_neutral(structure.charges, config, 'bulk_charge', source[0])
     automatic = 'max_miller' in config
     if automatic == ('miller_indices' in config):
         raise ValueError('Specify exactly one of max_miller and miller_indices')
@@ -488,9 +501,27 @@ def _prepare_material(config, master_directory, seed, name=None, weight=1.0):
     independent = config.get('allow_independent_terminations', False)
     if type(independent) is not bool:
         raise ValueError('allow_independent_terminations must be Boolean')
-    slabs = _slabs(source, families, _length(config.get('min_slab_thickness_A', 10), 'min_slab_thickness_A'),
-                   _in_plane_bounds(config), _bond_cutoffs(config.get('protected_bonds', [])),
-                   (max_atoms, reserved), automatic, (symmetry, tolerance), independent)
+    thickness = _length(config.get('min_slab_thickness_A', 10), 'min_slab_thickness_A')
+    if prepared:
+        if automatic or len(families) != 1 or symmetry != 'off' or independent or config.get('protected_bonds'):
+            raise ValueError('slab_file needs one explicit facet and no bulk-cutting options')
+        sizes = sorted(_IN_PLANE_KEYS & set(config))
+        if sizes:
+            raise ValueError(f'slab_file sets the lateral size from its cell; remove {", ".join(sizes)}')
+        slab = structure.atoms.copy()
+        cell = np.asarray(slab.cell)
+        if (not slab.pbc.all() or np.linalg.det(cell) <= 0 or cell[2, 2] <= 0
+                or not np.allclose(np.r_[cell[:2, 2], cell[2, :2]], 0, atol=1e-6)):
+            raise ValueError('slab_file needs a right-handed periodic cell with c along +z')
+        if np.ptp(slab.positions[:, 2]) + 1e-6 < thickness:
+            raise ValueError(f'{source[0]}: prepared slab is thinner than {thickness} Å')
+        if max_atoms is not None and len(slab) + reserved > max_atoms:
+            raise ValueError(f'{source[0]}: prepared slab and adsorbate exceed max_atoms')
+        slabs = ((families[0][0], None, slab, None, None),)
+    else:
+        slabs = _slabs(source, families, thickness, _in_plane_bounds(config),
+                       _bond_cutoffs(config.get('protected_bonds', [])),
+                       (max_atoms, reserved), automatic, (symmetry, tolerance), independent)
     return _Material(name, weight, source[0], charge, slabs, automatic, face, depth, vacuum,
                      fixed_bottom_layers, adsorbates)
 
@@ -499,7 +530,7 @@ def _material_pools(config, master_directory, seed):
     if 'materials' not in config:
         return (_prepare_material(config, master_directory, seed),)
     entries = config['materials']
-    if 'bulk_file' in config or not isinstance(entries, list) or not entries:
+    if 'bulk_file' in config or 'slab_file' in config or not isinstance(entries, list) or not entries:
         raise ValueError('Provide a nonempty materials list or one top-level bulk_file')
     defaults = {key: value for key, value in config.items() if key != 'materials'}
     seen, pools = set(), []
@@ -561,8 +592,10 @@ def build_surface(moleculeid, builder_config, master_directory=None):
         fixed_indices = np.flatnonzero(layers < material.fixed_bottom_layers).tolist()
     exposed = slab.positions[:, 2] >= slab.positions[:, 2].max() - material.depth
     slab.set_tags(exposed.astype(int))
-    metadata = dict(bulk_file=material.source, miller_index=list(miller), termination_shift=cut, face=face,
+    source_role = 'slab_file' if cut is None else 'bulk_file'
+    metadata = dict(miller_index=list(miller), termination_shift=cut, face=face,
                     bulk_charge=_charge_metadata(material.charge_sources))
+    metadata[source_role] = material.source
     if upper_cut is not None:
         metadata['upper_termination_shift'] = upper_cut
     if material.name is not None:
@@ -598,8 +631,17 @@ def _add_adsorbate(slab, exposed, entry, vacuum, rng, surface_metadata):
         raise ValueError(f'No {entry.site_types} binding sites found for {surface_metadata}')
     for _ in range(24):
         kind, site = mesh.random(rng) if named is None else named[rng.integers(len(named))]
+        location = site.copy()
+        offset = height = None
+        if entry.lateral_offset:
+            azimuth = rng.uniform(0, 2 * np.pi)
+            offset = entry.lateral_offset * np.sqrt(rng.random()) * np.array([np.cos(azimuth), np.sin(azimuth)])
+            location[:2] += offset
         anchor = int(rng.choice(entry.anchors))
-        combined = _place(slab, _oriented(geometry.atoms, anchor, entry.max_tilt, rng), site, entry.gap)
+        combined = _place(slab, _oriented(geometry.atoms, anchor, entry.max_tilt, rng), location, entry.gap)
+        if entry.additional_height:
+            height = rng.uniform(0, entry.additional_height)
+            combined.positions[len(slab):, 2] += height
         shift = _finish_cell(combined, vacuum)
         if not _has_image_clash(combined):
             metadata = {f'adsorbate_{geometry.source_kind}': geometry.source,
@@ -608,6 +650,11 @@ def _add_adsorbate(slab, exposed, entry, vacuum, rng, surface_metadata):
                         'anchor_index': anchor, 'anchor_atom_index': len(slab) + anchor}
             if geometry.force_field is not None:
                 metadata['adsorbate_force_field'] = geometry.force_field
+            # The sampled displacements from the site, which the anchor no longer sits over.
+            if offset is not None:
+                metadata['lateral_offset_A'] = offset.tolist()
+            if height is not None:
+                metadata['additional_height_A'] = float(height)
             return combined, metadata
     raise ValueError(f'{geometry.source}: no placement clears its periodic images for {surface_metadata}; '
                      'increase the in-plane dimensions or vacuum_A')

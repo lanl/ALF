@@ -307,6 +307,14 @@ Surface builder
    repeats that meet the minima. Optional ``max_atoms`` caps the final
    structure and reserves room for the largest configured adsorbate.
 
+   Use ``slab_file`` in place of ``bulk_file`` to decorate a prepared slab.
+   Supply one explicit Miller index and a right-handed periodic cell with
+   ``c`` along +z. The file provides the lateral dimensions and termination,
+   so the builder refuses the in-plane size options with it.
+   The builder checks the substrate thickness and the final atom cap and
+   sets the vacuum after placement. Bulk-cutting and face-symmetry options
+   apply when generating slabs from bulk inputs.
+
    Optional ``target_a_A`` and ``target_b_A`` select whole repeats
    closest to the requested lengths. The builder minimizes the sum of
    absolute length differences and prefers fewer atoms in a tie. Hard
@@ -366,6 +374,12 @@ Surface builder
    disconnected or overlapping geometries. Each draw chooses one entry and
    one of its zero-based ``anchor_indices``, in file order or in RDKit
    input order before hydrogens are added.
+
+   ``max_lateral_offset_A`` samples a displacement within a disk around
+   the chosen site. ``max_additional_height_A`` samples an upward
+   displacement after establishing clash clearance. Both default to zero.
+   When set, the placement metadata records the sampled ``lateral_offset_A``
+   and ``additional_height_A``.
 
    The builder checks declared net charge from ``bulk_charge`` on the
    material, ``charge`` on an adsorbate, file-level ``charge`` or

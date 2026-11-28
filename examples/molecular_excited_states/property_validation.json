@@ -1,0 +1,8 @@
+[
+  {"name": "butan-2-one", "smiles": "CCC(=O)C", "family": "saturated carbonyl", "split": "validation"},
+  {"name": "cyclohex-2-enone", "smiles": "O=C1C=CCCC1", "family": "conjugated carbonyl", "split": "validation"},
+  {"name": "(E)-penta-1,3-diene", "smiles": "C/C=C/C=C", "family": "hydrocarbon pi", "split": "validation"},
+  {"name": "3-methylpyrrole", "smiles": "Cc1cc[nH]c1", "family": "five-membered heteroaromatic", "split": "validation"},
+  {"name": "3-methylpyridine", "smiles": "Cc1cccnc1", "family": "aza-aromatic", "split": "validation"},
+  {"name": "3-methylphenol", "smiles": "Cc1cccc(O)c1", "family": "benzenoid", "split": "validation"}
+]

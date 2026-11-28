@@ -509,3 +509,81 @@ def test_coordinator_test_builder_mode_uses_surface_app(copper, tmp_path, monkey
                        arguments=['--test_builder'], parallel_samplers=1, target_queued_QM=1)
     assert stopped.value.code in (0, None)
     assert 'Builder testing returned:\nSystem: C' in capsys.readouterr().out
+
+
+@pytest.fixture
+def prepared_copper(tmp_path):
+    """A prepared six-layer Cu(111) slab with c along +z, as a slab_file names it."""
+    from ase.build import fcc111
+
+    write(tmp_path / 'cu111.extxyz', fcc111('Cu', size=(3, 3, 6), vacuum=0, periodic=True))
+    return dict(slab_file='cu111.extxyz', miller_indices=[[1, 1, 1]], min_slab_thickness_A=5)
+
+
+def test_slab_file_keeps_the_prepared_lateral_cell(prepared_copper, tmp_path):
+    original = read(tmp_path / 'cu111.extxyz')
+    molecule = build_surface('seed', dict(prepared_copper, adsorbates=[_co_placement()], vacuum_A=16), tmp_path)
+    atoms, metadata = molecule.get_atoms(), molecule.get_metadata()['surface_builder']
+    np.testing.assert_allclose(atoms.cell[:2], original.cell[:2])
+    assert len(atoms) == len(original) + 2
+    assert metadata['slab_file'] == str(tmp_path / 'cu111.extxyz') and 'bulk_file' not in metadata
+    assert metadata['termination_shift'] is None
+    _check_cell(atoms, 16)
+
+
+def test_slab_file_refuses_a_bulk_file_too(prepared_copper, copper, tmp_path):
+    with pytest.raises(ValueError, match='only one of slab_file and bulk_file'):
+        build_surface('seed', dict(prepared_copper, bulk_file=copper['bulk_file']), tmp_path)
+
+
+@pytest.mark.parametrize('option', [{'miller_indices': [[1, 1, 1], [1, 0, 0]]}, {'slab_symmetry': 'report'},
+                                    {'allow_independent_terminations': True},
+                                    {'protected_bonds': [{'elements': ['Cu', 'Cu'], 'max_A': 3.0}]}],
+                         ids=['two_facets', 'symmetry', 'independent_cuts', 'protected_bonds'])
+def test_slab_file_refuses_bulk_cutting_options(prepared_copper, tmp_path, option):
+    with pytest.raises(ValueError, match='one explicit facet and no bulk-cutting options'):
+        build_surface('seed', dict(prepared_copper, **option), tmp_path)
+
+
+@pytest.mark.parametrize('option', [{'target_a_A': 10.}, {'min_in_plane_A': 8.}, {'max_b_A': 12.}])
+def test_slab_file_refuses_in_plane_size_options(prepared_copper, tmp_path, option):
+    with pytest.raises(ValueError, match=f'remove {next(iter(option))}'):
+        build_surface('seed', dict(prepared_copper, **option), tmp_path)
+
+
+def test_slab_file_refuses_a_cell_without_c_along_z(prepared_copper, tmp_path):
+    slab = read(tmp_path / 'cu111.extxyz')
+    slab.cell[2, 0] = 1.0
+    write(tmp_path / 'cu111.extxyz', slab)
+    with pytest.raises(ValueError, match='c along \\+z'):
+        build_surface('seed', prepared_copper, tmp_path)
+
+
+def test_slab_file_refuses_a_slab_thinner_than_the_minimum(prepared_copper, tmp_path):
+    with pytest.raises(ValueError, match='thinner than 20'):
+        build_surface('seed', dict(prepared_copper, min_slab_thickness_A=20), tmp_path)
+
+
+def test_slab_file_refuses_more_atoms_than_max_atoms(prepared_copper, tmp_path):
+    # 54 substrate atoms and CO's two leave no room under 55.
+    with pytest.raises(ValueError, match='exceed max_atoms'):
+        build_surface('seed', dict(prepared_copper, adsorbates=[_co_placement()], max_atoms=55), tmp_path)
+
+
+def test_adsorbate_offsets_stay_within_their_bounds(copper, tmp_path):
+    config = dict(copper, adsorbates=[_co_placement(mode='binding_sites', site_types=['ontop'],
+                                                    max_lateral_offset_A=0.6, max_additional_height_A=0.4)])
+    for seed in range(8):
+        molecule = build_surface(f'seed-{seed}', config, tmp_path)
+        atoms, metadata = molecule.get_atoms(), molecule.get_metadata()['surface_builder']
+        offset = np.array(metadata['lateral_offset_A'])
+        assert np.linalg.norm(offset) <= 0.6 and 0 <= metadata['additional_height_A'] <= 0.4
+        # The anchor sits over the site moved by the recorded offset.
+        moved = atoms.positions[metadata['anchor_atom_index']] - (np.array(metadata['site']) + [*offset, 0])
+        moved[2] = 0
+        assert find_mic(moved, atoms.cell, pbc=(True, True, False))[1] < 1e-8
+
+
+def test_adsorbates_without_offsets_record_none(copper, tmp_path):
+    metadata = build_surface('seed', dict(copper, adsorbates=[_co_placement()]), tmp_path).get_metadata()
+    assert not {'lateral_offset_A', 'additional_height_A'} & set(metadata['surface_builder'])

@@ -63,6 +63,8 @@ ground-state foundation model, and its license applies.
      - Multi-head fine-tuning with replay of the foundation model's data, which limits forgetting.
    * - ``learning_rate``, ``max_num_epochs``, ``batch_size``
      - Defaults 5e-3, 15, and 10, from X-MACE's fine-tuning tutorial.
+   * - ``dtype``
+     - Training precision, ``float64`` (the default) or ``float32``.
    * - ``valid_fraction``
      - Fraction of ALF frames reserved for validation, 0.1 by default. Each member's seed determines
        its split. ALF gives X-MACE separate training and validation files.

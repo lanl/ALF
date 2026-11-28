@@ -238,7 +238,10 @@ External geometry builder
         - ``"deterministic_hash"`` (default) picks a frame from the molecule ID and
           seed, and can pick the same frame more than once. ``"sequential"`` uses the
           trailing number in the molecule ID as the frame number, and fails once the
-          sources run out of frames.
+          sources run out of frames. ``"sequential_interleave"`` takes the sources'
+          groups (each file, or each HDF5 group) in turn: number *n* is frame *n* // *G*
+          of group *n* mod *G*, for *G* groups. Every group must hold the same number of
+          frames.
       * - ``selection_seed``
         - Seed for ``"deterministic_hash"``. The default is ``0``.
 
@@ -250,6 +253,20 @@ External geometry builder
    file's size, modified time, and inode stay the same. Replacing or editing a
    source is noticed, and it's read again. A task opens each HDF5 source once,
    however many molecules it builds.
+
+   A frame can name its molecule with ``molecule_id``: an ``info`` entry in an
+   ``.xyz`` or ``.extxyz`` file, or a string dataset in an HDF5 group. The
+   builder records it in the molecule's metadata, and labeled shards keep it.
+
+Molecular collection builder
+   ``molecular_collection_builder_task`` builds several molecules in one run from
+   the external-geometry fields above, for mixed-molecule excited-state training.
+   It sets ``selection_mode`` itself: the bootstrap uses ``"sequential_interleave"``,
+   so each molecule's seed file contributes in turn, and later rounds use
+   ``"deterministic_hash"``. After the bootstrap it also samples from the run's
+   closed label shards, unless ``replay_closed_shards`` is ``false``. Every frame
+   must carry a ``molecule_id``. The :download:`excited-state example
+   <../../../examples/molecular_excited_states/prepare.py>` writes this configuration.
 
 Defect crystal builder
    ``defect_cell_builder_task`` reads these fields:

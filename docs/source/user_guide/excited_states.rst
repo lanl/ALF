@@ -343,6 +343,12 @@ differences:
    * - ``hippynn_kernel``
      - HIPPYNN kernel implementation. The default is ``auto``, HIPPYNN's own choice of the fastest
        available (Triton on ROCm); ``pytorch``, ``triton``, ``numba``, ``cupy`` or ``sparse`` select one.
+   * - ``mixed_molecules``
+     - Train one model on several molecules with different atom counts, as the
+       molecular collection builder (:doc:`builders`) supplies them. The default, ``false``,
+       requires one atomic-number sequence. Mixed training leaves ``n_atoms`` unset and needs
+       ``first_is_interacting`` false. ``possible_species`` must start with the padding species
+       ``0`` and list every element; by default it is ``0`` and the elements in the shards.
 
 The trainer never deletes or overwrites model data, so it doesn't support
 ``remove_existing``. It also doesn't support ``h5_test_dir``; use ``valid_size`` and

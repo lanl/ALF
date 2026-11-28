@@ -1,5 +1,5 @@
 Train on CO/Cu(111) with UMA or HIPPYNN
-======================================
+=======================================
 
 The files in ``examples/surface_training`` show two active learning workflows
 for clean and CO decorated Cu(111) slabs. Both use the ALF surface builder

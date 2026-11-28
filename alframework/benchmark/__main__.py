@@ -22,12 +22,17 @@ def _run_tasks(master, run_dir):
     from alframework.tools.tasks import relabel_executors
     sys.path.insert(0, str(run_dir))
     try:
-        try:
-            configured = load_module_from_string(master['parsl_configuration']).executors
-            relabel_executors(configured)
-            executors = {executor.label: executor for executor in configured}
-        except Exception:
-            executors = {}
+        executors = {}
+        name = master.get('parsl_configuration')
+        if name:
+            try:
+                configured = load_module_from_string(name).executors
+                relabel_executors(configured)
+                executors = {executor.label: executor for executor in configured}
+            except Exception as error:
+                # Say why, or a sizing note that follows blames the run's settings for what is this machine.
+                print(f"Note: the Parsl configuration {name} doesn't load here, so the run's executors are unknown "
+                      f"({type(error).__name__}: {error}).", flush=True)
         tasks = []
         for key in ('builder_task', 'sampler_task'):
             try:

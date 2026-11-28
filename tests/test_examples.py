@@ -520,6 +520,8 @@ def test_the_large_scale_parsl_template_runs_one_pool_per_node(monkeypatch):
     monkeypatch.setenv("ALF_THP_DISABLE", "1")
     monkeypatch.setenv("ALF_GPUS_PER_NODE", "8")
     monkeypatch.setenv("ALF_SAMPLER_NODES", "16")
+    # The template finds the coordinator's address on import, which needs this machine's host name to resolve.
+    monkeypatch.setattr("parsl.addresses.address_by_hostname", lambda: "127.0.0.1")
     templates = importlib.import_module("parsl_configs")
     executors = {executor.label: executor for executor in templates.config.executors}
     assert set(executors) == {"alf_sampler_executor", "alf_QM_executor", "alf_ML_executor"}

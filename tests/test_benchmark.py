@@ -88,12 +88,25 @@ def test_benchmark_runs_on_cpu_and_writes_every_measurement(tmp_path, states, ca
     assert "Training (one GPU)" in printed and "Suggestions" in printed
 
 
+def test_benchmark_names_why_a_runs_parsl_configuration_did_not_load(tmp_path, capsys):
+    from alframework.benchmark.__main__ import read_run
+
+    (tmp_path / "unreachable_parsl.py").write_text("raise OSError('no route to the coordinator')\n")
+    (tmp_path / "master_config.json").write_text(json.dumps(dict(parsl_configuration="unreachable_parsl.config",
+                                                                 ML_config_path="ml.json")))
+    (tmp_path / "ml.json").write_text(json.dumps(dict(network_params={"n_features": 8})))
+    read_run(tmp_path)
+    assert "OSError: no route to the coordinator" in capsys.readouterr().out
+
+
 def test_benchmark_reads_a_sized_run_as_its_coordinator_would(tmp_path, monkeypatch):
     """The large-scale example sizes its run with a sizing block and names its Parsl module beside it."""
     from pathlib import Path
     from alframework.benchmark.__main__ import read_run
     example = Path(__file__).resolve().parents[1] / "examples" / "large_scale"
     monkeypatch.chdir(tmp_path)  # not the run directory, which "master_directory": "pwd" would otherwise mean
+    # The template finds the coordinator's address on import, which needs this machine's host name to resolve.
+    monkeypatch.setattr("parsl.addresses.address_by_hostname", lambda: "127.0.0.1")
     run = read_run(example)
     assert (run["sampler_batch"], run["parallel_samplers"]) == (256, 16 * 256)
     assert (run["members"], run["gpus_per_member"]) == (8, 4)

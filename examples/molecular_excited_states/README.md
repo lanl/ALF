@@ -67,10 +67,14 @@ python -m alframework --master master_config.json --test_qm
 python -m alframework --master master_config.json
 ```
 
-Preparation creates one geometry pool and fixed-topology reference per molecule.
-RDKit embeds the reference and generates diverse conformations and local
-distortions, with geometric screening and farthest-point seed selection.
-Bootstrap interleaves equal numbers of seeds from each training molecule.
+The example uses ALF's `rdkit_molecules` module for geometry preparation.
+It embeds reference conformers and generates screened distortion pools with
+farthest-point seed selection. The same functionality is available outside
+this example via `python -m alframework.builders.rdkit_molecules`.
+`prepare.py` supplies the study's QM, HIPPYNN, and acquisition settings.
+The built-in collection builder cycles through the training seed files in
+panel order and draws one geometry per molecule on each pass. Failed labels
+can be replaced from later passes, so accepted counts can vary by molecule.
 Later iterations start from seed geometries or completed label shards and
 propagate short S₀ or S₁ trajectories. The molecule's topology follows it
 through MD, labeling, and replay. The same HIPPYNN fits both states with a
@@ -140,13 +144,16 @@ python -m examples.molecular_excited_states.prepare /scratch/chrom --preset chro
 python -m examples.molecular_excited_states.qualify /scratch/chrom basis-check.json --nroots 5 --gradients
 ```
 
-The preset defaults to `hiphop64`, eight bootstrap labels per training molecule,
-and a limit of 32 total labels per training molecule on average. It records
-oscillator strengths and transition dipoles. RDKit conformers are deduplicated
+The preset defaults to `hiphop64`. The 27 training molecules contribute eight
+initial candidates each for a bootstrap target of 216 accepted labels, with
+up to 108 spares from the remaining four seeds per molecule. The total label
+budget is 32 per training molecule on average. The preset records oscillator
+strengths and transition dipoles. RDKit conformers are deduplicated
 before ALF creates the distortion pools. Distinct conformer pools are interleaved
 within a molecule while bootstrap files are interleaved across molecules. The
-parent manifest records the source pools and hashes. For a pilot run, use
-`--pool-size 12 --seed-size 8` to reduce offline preparation.
+parent manifest records the source pools and hashes. For a shorter preparation
+use `--pool-size 12 --seed-size 8`, which uses all seeds for the initial
+bootstrap and leaves zero spares.
 
 Qualify the chosen basis and state count before collecting production labels.
 `--gpu-labels` times complete GPU4PySCF labels for both bases and reports sampled

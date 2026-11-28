@@ -18,6 +18,7 @@ from scipy.spatial import Delaunay, QhullError
 
 from alframework.builders.surface_inputs import AdsorbateInput, check_neutral, load_adsorbate, read_geometry, source_key
 from alframework.builders.surface_symmetry import bulk_operations, slab_has_equivalent_faces
+from alframework.tools.geometry import periodic_gaps
 from alframework.tools.molecules import MoleculesObject
 from alframework.tools.tasks import alf_task
 
@@ -298,6 +299,24 @@ def _flip_slab(slab):
     slab.set_cell(cell)
 
 
+def _unwrap_prepared_slab(slab):
+    """Recover a contiguous slab around a clear vacuum gap before locating its faces."""
+    heights = slab.positions[:, 2]
+    period = slab.cell[2, 2]
+    ordered, gaps = periodic_gaps(heights, period)
+    index = int(np.argmax(gaps))
+    width = gaps[index]
+    # Compact, already unwrapped references can have no vacuum. Require a unique gap
+    # wider than the largest covalent contact before changing the atom images.
+    if (width > 2 * covalent_radii[slab.numbers].max()
+            and np.count_nonzero(width - gaps <= _LENGTH_TOLERANCE) == 1):
+        unwrapped = np.remainder(heights - (ordered[index] + width / 2), period)
+        if np.ptp(unwrapped) < np.ptp(heights) - _LENGTH_TOLERANCE:
+            heights[:] = unwrapped
+    # Ignore the old c-boundary during layer detection and rebuild it after placement.
+    slab.pbc = _IN_PLANE
+
+
 class _SurfaceSites:
     """A periodic 2D mesh, with Cartesian heights interpolated from the exposed atoms."""
 
@@ -396,7 +415,13 @@ def _has_image_clash(atoms):
     return bool(np.any(images & (distance < radii[i] + radii[j] - 1e-8)))
 
 
-def _finish_cell(atoms, vacuum):
+def _finish_cell(atoms, vacuum, cell_height):
+    if cell_height is not None:
+        clearance = cell_height - np.ptp(atoms.positions[:, 2])
+        if clearance < vacuum - _LENGTH_TOLERANCE:
+            raise ValueError(f'cell_height_A={cell_height:g} leaves only {clearance:.3f} Å of vacuum; '
+                             f'increase it to preserve vacuum_A={vacuum:g}')
+        vacuum = clearance
     shift = vacuum / 2 - atoms.positions[:, 2].min()
     atoms.center(vacuum=vacuum / 2, axis=2)
     atoms.pbc = True
@@ -427,17 +452,32 @@ class _Material:
     face: str
     depth: float
     vacuum: float
+    cell_height: float | None
     fixed_bottom_layers: int
+    fixed_bottom_depth: float
     adsorbates: tuple
 
 
 def _prepare_placement(entry, master_directory, seed):
     geometry = load_adsorbate(entry, master_directory, seed)
     label = geometry.source
-    anchors = entry.get('anchor_indices', [])
-    if (not isinstance(anchors, (list, tuple)) or not anchors
-            or any(type(index) is not int or not 0 <= index < geometry.anchor_count for index in anchors)):
-        raise ValueError(f'{label}: anchor_indices must contain valid zero-based input atom indices')
+    if 'anchor_elements' in entry:
+        if 'anchor_indices' in entry:
+            raise ValueError(f'{label}: specify only one of anchor_indices and anchor_elements')
+        anchor_elements = entry['anchor_elements']
+        if (not isinstance(anchor_elements, (list, tuple)) or not anchor_elements
+                or any(not isinstance(symbol, str) or symbol not in atomic_numbers or symbol == 'X'
+                       for symbol in anchor_elements)):
+            raise ValueError(f'{label}: anchor_elements must be a nonempty list of chemical element symbols')
+        symbols = geometry.atoms.get_chemical_symbols()[:geometry.anchor_count]
+        anchors = [index for index, symbol in enumerate(symbols) if symbol in anchor_elements]
+        if not anchors:
+            raise ValueError(f'{label}: no input atoms match anchor_elements {list(anchor_elements)}')
+    else:
+        anchors = entry.get('anchor_indices', [])
+        if (not isinstance(anchors, (list, tuple)) or not anchors
+                or any(type(index) is not int or not 0 <= index < geometry.anchor_count for index in anchors)):
+            raise ValueError(f'{label}: supply anchor_elements or set anchor_indices to valid zero-based input atom indices')
     mode = entry.get('mode', 'random')
     if mode not in ('random', 'binding_sites'):
         raise ValueError('Adsorbate mode must be random or binding_sites')
@@ -495,9 +535,13 @@ def _prepare_material(config, master_directory, seed, name=None, weight=1.0):
         raise ValueError('face must be top, bottom, or both')
     depth = _length(config.get('surface_depth_A', 2), 'surface_depth_A')
     vacuum = _length(config.get('vacuum_A', 15), 'vacuum_A')
+    cell_height = _length(config['cell_height_A'], 'cell_height_A') if 'cell_height_A' in config else None
     fixed_bottom_layers = config.get('fixed_bottom_layers', 0)
     if type(fixed_bottom_layers) is not int or fixed_bottom_layers < 0:
         raise ValueError('fixed_bottom_layers must be a nonnegative integer')
+    fixed_bottom_depth = _length(config.get('fixed_bottom_depth_A', 0), 'fixed_bottom_depth_A', allow_zero=True)
+    if fixed_bottom_layers and fixed_bottom_depth:
+        raise ValueError('Set only one of fixed_bottom_layers and fixed_bottom_depth_A to a nonzero value')
     independent = config.get('allow_independent_terminations', False)
     if type(independent) is not bool:
         raise ValueError('allow_independent_terminations must be Boolean')
@@ -510,9 +554,10 @@ def _prepare_material(config, master_directory, seed, name=None, weight=1.0):
             raise ValueError(f'slab_file sets the lateral size from its cell; remove {", ".join(sizes)}')
         slab = structure.atoms.copy()
         cell = np.asarray(slab.cell)
-        if (not slab.pbc.all() or np.linalg.det(cell) <= 0 or cell[2, 2] <= 0
+        if (not slab.pbc.all() or not np.isfinite(cell).all() or np.linalg.det(cell) <= 0 or cell[2, 2] <= 0
                 or not np.allclose(np.r_[cell[:2, 2], cell[2, :2]], 0, atol=1e-6)):
             raise ValueError('slab_file needs a right-handed periodic cell with c along +z')
+        _unwrap_prepared_slab(slab)
         if np.ptp(slab.positions[:, 2]) + 1e-6 < thickness:
             raise ValueError(f'{source[0]}: prepared slab is thinner than {thickness} Å')
         if max_atoms is not None and len(slab) + reserved > max_atoms:
@@ -523,7 +568,7 @@ def _prepare_material(config, master_directory, seed, name=None, weight=1.0):
                        _bond_cutoffs(config.get('protected_bonds', [])),
                        (max_atoms, reserved), automatic, (symmetry, tolerance), independent)
     return _Material(name, weight, source[0], charge, slabs, automatic, face, depth, vacuum,
-                     fixed_bottom_layers, adsorbates)
+                     cell_height, fixed_bottom_layers, fixed_bottom_depth, adsorbates)
 
 
 def _material_pools(config, master_directory, seed):
@@ -543,9 +588,10 @@ def _material_pools(config, master_directory, seed):
         seen.add(name)
         weight = _length(entry.get('weight', 1), f'material {name!r} weight')
         settings = defaults.copy()
-        if 'miller_indices' in entry or 'max_miller' in entry:
-            for key in ('miller_indices', 'max_miller'):
-                settings.pop(key, None)
+        for alternatives in (('miller_indices', 'max_miller'), ('fixed_bottom_layers', 'fixed_bottom_depth_A')):
+            if any(key in entry for key in alternatives):
+                for key in alternatives:
+                    settings.pop(key, None)
         settings.update(entry)
         try:
             pools.append(_prepare_material(settings, master_directory, seed, name, weight))
@@ -556,6 +602,26 @@ def _material_pools(config, master_directory, seed):
 
 def _charge_metadata(sources):
     return dict(net=0, assumed=not sources, sources=list(sources))
+
+
+def _fixed_substrate_indices(slab, material, miller):
+    """Select frozen atoms from the oriented substrate before adding an adsorbate."""
+    if material.fixed_bottom_layers:
+        layers, heights = get_layers(slab, (0, 0, 1))
+        if material.fixed_bottom_layers >= len(heights):
+            raise ValueError(f'{material.source}: fixed_bottom_layers must leave a mobile substrate layer '
+                             f'for Miller {miller} ({len(heights)} layers)')
+        fixed = layers < material.fixed_bottom_layers
+    elif material.fixed_bottom_depth:
+        heights = slab.positions[:, 2]
+        fixed = heights - heights.min() <= material.fixed_bottom_depth + _LENGTH_TOLERANCE
+        if (fixed & (heights >= heights.max() - material.depth)).any():
+            raise ValueError(f'{material.source}: fixed_bottom_depth_A must leave the exposed atoms within '
+                             f'surface_depth_A={material.depth:g} mobile for Miller {miller} '
+                             f'({np.ptp(heights):.3f} Å slab)')
+    else:
+        return []
+    return np.flatnonzero(fixed).tolist()
 
 
 def build_surface(moleculeid, builder_config, master_directory=None):
@@ -583,13 +649,7 @@ def build_surface(moleculeid, builder_config, master_directory=None):
         face = ('top', 'bottom')[rng.integers(2)]
     if face == 'bottom':
         _flip_slab(slab)
-    fixed_indices = []
-    if material.fixed_bottom_layers:
-        layers, heights = get_layers(slab, (0, 0, 1))
-        if material.fixed_bottom_layers >= len(heights):
-            raise ValueError(f'{material.source}: fixed_bottom_layers must leave a mobile substrate layer '
-                             f'for Miller {miller} ({len(heights)} layers)')
-        fixed_indices = np.flatnonzero(layers < material.fixed_bottom_layers).tolist()
+    fixed_indices = _fixed_substrate_indices(slab, material, miller)
     exposed = slab.positions[:, 2] >= slab.positions[:, 2].max() - material.depth
     slab.set_tags(exposed.astype(int))
     source_role = 'slab_file' if cut is None else 'bulk_file'
@@ -604,10 +664,10 @@ def build_surface(moleculeid, builder_config, master_directory=None):
         metadata['slab_symmetric'] = symmetric
     if material.adsorbates:
         entry = material.adsorbates[rng.integers(len(material.adsorbates))]
-        slab, placement = _add_adsorbate(slab, exposed, entry, material.vacuum, rng, metadata)
+        slab, placement = _add_adsorbate(slab, exposed, entry, material.vacuum, material.cell_height, rng, metadata)
         metadata.update(placement)
     else:
-        _finish_cell(slab, material.vacuum)
+        _finish_cell(slab, material.vacuum, material.cell_height)
         if _has_image_clash(slab):
             raise ValueError(f'{material.source}: increase vacuum_A for Miller {miller} to avoid periodic overlap')
     molecule = MoleculesObject(slab, moleculeid)
@@ -618,7 +678,7 @@ def build_surface(moleculeid, builder_config, master_directory=None):
     return molecule
 
 
-def _add_adsorbate(slab, exposed, entry, vacuum, rng, surface_metadata):
+def _add_adsorbate(slab, exposed, entry, vacuum, cell_height, rng, surface_metadata):
     geometry = entry.geometry
     eligible = exposed
     if entry.surface_elements:
@@ -642,7 +702,7 @@ def _add_adsorbate(slab, exposed, entry, vacuum, rng, surface_metadata):
         if entry.additional_height:
             height = rng.uniform(0, entry.additional_height)
             combined.positions[len(slab):, 2] += height
-        shift = _finish_cell(combined, vacuum)
+        shift = _finish_cell(combined, vacuum, cell_height)
         if not _has_image_clash(combined):
             metadata = {f'adsorbate_{geometry.source_kind}': geometry.source,
                         'adsorbate_charge': _charge_metadata(geometry.charge_sources),

@@ -45,10 +45,19 @@ def test_starting_state_survives_the_engine(engine_name):
     np.testing.assert_array_equal(engine.atoms(0).positions, frozen)
 
 
-def test_atom_constraints_are_rejected(engine_name):
+def test_packed_engines_refuse_constraints_other_than_fixed_atoms(engine_name):
+    from ase.constraints import FixBondLength
+
     atoms = Atoms("H2", positions=[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
-    atoms.set_constraint(FixAtoms(indices=[0]))
-    with pytest.raises(NotImplementedError, match="constraints"):
+    atoms.set_constraint(FixBondLength(0, 1))
+    with pytest.raises(NotImplementedError, match="only supports ASE FixAtoms"):
+        engine_class(engine_name)([atoms], [Tether(1.0), Tether(2.0)], 0.1, [0.0], [np.random.RandomState(0)])
+
+
+def test_packed_engines_refuse_a_trajectory_with_every_atom_fixed(engine_name):
+    atoms = Atoms("H2", positions=[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
+    atoms.set_constraint(FixAtoms(indices=[0, 1]))
+    with pytest.raises(ValueError, match="at least one mobile atom"):
         engine_class(engine_name)([atoms], [Tether(1.0), Tether(2.0)], 0.1, [0.0], [np.random.RandomState(0)])
 
 

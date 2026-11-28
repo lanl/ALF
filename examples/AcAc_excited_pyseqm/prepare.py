@@ -39,7 +39,7 @@ def prepare(output_dir, *, model='hiphop145', pool_size=None, seed_size=None, ge
                 config['seed_size'] = seed_size
         update('seed_keto.json', seed_settings)
         seed = json.loads((temporary/'seed_keto.json').read_text())
-        from alframework.builders.rdkit_molecule import resolve_config
+        from alframework.builders.rdkit_molecules import resolve_config
         resolve_config(seed, base_directory=temporary)
         update('master_config.json', lambda c: c.update(bootstrap_set=seed['seed_size']))
         def model_settings(config):
@@ -51,7 +51,7 @@ def prepare(output_dir, *, model='hiphop145', pool_size=None, seed_size=None, ge
                     config['network_params'].pop(key, None)
         update('hippynn_config.json', model_settings)
         if generate_seeds:
-            from alframework.builders.rdkit_molecule import prepare_rdkit_seed
+            from alframework.builders.rdkit_molecules import prepare_rdkit_seed
             prepare_rdkit_seed(seed, temporary/'seeds', config_directory=temporary)
             # Retain fingerprint checking while removing staging-directory
             # paths from the library's generated configuration suggestions.

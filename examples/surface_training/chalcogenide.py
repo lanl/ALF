@@ -1,28 +1,18 @@
-"""Prepare and benchmark UMA OC25 runs for ligand adsorption on chalcogenides."""
+"""Benchmark UMA OC25 runs for ligand adsorption on chalcogenides."""
 
 import argparse
-from collections import Counter
 import json
 from pathlib import Path
-import shutil
-import tempfile
 
 import numpy as np
-from ase.build import bulk
 from ase.geometry import find_mic
 from ase.io import read, write
 
 from alframework.builders.surface import build_surface
 from alframework.tools.molecules import MoleculesObject
-from alframework.tools.tasks import alf_task
 
-HERE = Path(__file__).resolve().parent
-LATTICES = {'CdSe': 6.05, 'CdTe': 6.48, 'HgTe': 6.46, 'HgSe': 6.09}
-LIGANDS = {'methylamine': 'NC', 'methylphosphine': 'PC'}
-PROPERTIES = {'free_energy': ['energy', 'system', 1.0], 'forces': ['forces', 'atomic', 1.0]}
-SLAB_METADATA = {'surface_builder': True, 'vacuum_axes': ['c']}
-SLAB = {'miller_indices': [[1, 1, 0]], 'vacuum_A': 20., 'min_slab_thickness_A': 10.,
-        'max_atoms': 200}
+MASTER = 'master_chalcogenide_uma.json'
+LIGANDS = {'NC': 'methylamine', 'PC': 'methylphosphine'}
 
 
 def read_json(path):
@@ -31,61 +21,6 @@ def read_json(path):
 
 def write_json(path, value):
     path.write_text(json.dumps(value, indent=2, allow_nan=False) + '\n')
-
-
-def prototype_slabs(destination):
-    """Create starting slabs for previews and bulk/surface convergence work."""
-    with tempfile.TemporaryDirectory() as source:
-        for material, lattice in LATTICES.items():
-            crystal = Path(source) / f'{material}.extxyz'
-            write(crystal, bulk(material, 'zincblende', a=lattice, cubic=True))
-            settings = {**SLAB, 'bulk_file': str(crystal), 'min_in_plane_A': 8.,
-                        'target_a_A': 10., 'target_b_A': 10., 'slab_symmetry': 'require'}
-            slab = build_surface(f'{material}-clean', settings).get_atoms()
-            write(destination / f'{material}.extxyz', slab)
-
-
-def pose_pairs():
-    return [(material, ligand) for material in LATTICES for ligand in LIGANDS]
-
-
-def relax_slabs(run, output, *, fmax=.03, steps=150):
-    """Relax clean prototype slabs at fixed cell with the configured reference."""
-    from ase.calculators.vasp import Vasp
-    from ase.optimize import BFGS
-    from alframework.qm_interfaces.ase.vasp import vasp_input_for_structure
-
-    if not np.isfinite(fmax) or fmax <= 0 or steps < 1:
-        raise ValueError('Set positive relaxation steps and force tolerance.')
-    qm = read_json(run / 'vasp_config.json')
-    qm['slab_dipole_correction'] = False
-    output.mkdir(parents=True, exist_ok=False)
-    for material in LATTICES:
-        atoms = read(run / 'slabs' / f'{material}.extxyz')
-        inputs = vasp_input_for_structure(atoms, qm, SLAB_METADATA)
-        atoms.calc = Vasp(directory=output / f'vasp-{material}', command=qm['QM_run_command'], **inputs)
-        if (not BFGS(atoms, logfile=str(output / f'{material}.log')).run(fmax=fmax, steps=steps)
-                or not atoms.calc.converged):
-            raise RuntimeError(f'{material} did not relax to {fmax} eV/Å in {steps} steps.')
-        write(output / f'{material}.extxyz', atoms, write_results=False)
-
-
-def pose_geometry(identifier, prefix, material, ligand, root, seed):
-    metal = material[:2]
-    settings = {
-        **SLAB, 'seed': seed, 'slab_file': f'slabs/{material}.extxyz',
-        'adsorbates': [{'smiles': LIGANDS[ligand], 'relax_smiles': True, 'anchor_indices': [0],
-                        'mode': 'binding_sites', 'site_types': ['ontop'], 'surface_elements': [metal],
-                        'max_tilt_deg': 35., 'max_lateral_offset_A': .5, 'max_additional_height_A': .5}],
-    }
-    frame = build_surface(identifier, settings, root)
-    atoms = frame.get_atoms()
-    placement = frame.get_metadata()['surface_builder']
-    anchor = placement['anchor_atom_index']
-    atoms.info.update(frame_id=identifier, material=f'{material}_{ligand}', composition=material,
-                      ligand=ligand, site_metal=metal, anchor=anchor, partition=prefix)
-    atoms.info.update(pose_observables(atoms))
-    return atoms
 
 
 def pose_observables(atoms):
@@ -99,125 +34,64 @@ def pose_observables(atoms):
             'donor_tilt_deg': float(np.rad2deg(np.arccos(np.clip(axis[2] / distance, -1, 1))))}
 
 
-def pose_pool(pairs, count, prefix, root, seed):
-    return [pose_geometry(f'{prefix}-{i:010d}', prefix, material, ligand, root, seed)
-            for i, (material, ligand) in enumerate(pairs * count)]
-
-
-@alf_task('builder')
-def chalcogenide_builder_task(moleculeid, builder_config, master_directory=None, current_h5_id=0):
-    """Interleave the finite bootstrap across pairs, then replay its reserved starts."""
-    root = Path(master_directory or '.').resolve()
-    source = root / builder_config['source']
-    if current_h5_id:
-        import hashlib
-
-        digest = hashlib.sha256(f'{builder_config["seed"]}|{moleculeid}'.encode()).digest()
-        index = int.from_bytes(digest[:8], 'big') % builder_config['n_frames']
-    else:
-        index = 0 if moleculeid == 'test_builder' else int(moleculeid.rsplit('-', 1)[-1])
-    atoms = read(source, index=index, parallel=False)
-    frame = MoleculesObject(atoms, moleculeid)
-    frame.update_metadata({**SLAB_METADATA, 'geometry_source_id': atoms.info['frame_id'],
-                           'surface_material': atoms.info['material']})
-    return frame
-
-
-def prepare(output, *, slabs=None, checkpoint=None, preview=False, vasp_command=None):
-    output = output.resolve()
-    if output.exists():
-        raise FileExistsError(output)
-    if preview == (slabs is not None):
-        raise ValueError('Supply either --preview or a directory of relaxed --slabs.')
-    output.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix='.chalcogenide-', dir=output.parent) as temporary:
-        root = Path(temporary) / 'run'
-        slab_dir = root / 'slabs'
-        slab_dir.mkdir(parents=True)
-        if preview:
-            prototype_slabs(slab_dir)
-        else:
-            for material in LATTICES:
-                shutil.copyfile(slabs / f'{material}.extxyz', slab_dir / f'{material}.extxyz')
-        for material in LATTICES:
-            counts = Counter(read(slab_dir / f'{material}.extxyz').get_chemical_symbols())
-            if set(counts) != {material[:2], material[2:]} or len(set(counts.values())) != 1:
-                raise ValueError(f'Expected a stoichiometric {material} slab, received {counts}.')
-        training = [(material, ligand) for material, ligand in pose_pairs() if material != 'HgSe']
-        pools = {
-            'seeds': pose_pool(training, 10, 'seed', root, 17),
-            'fixed': pose_pool(training, 8, 'fixed', root, 18),
-            'holdout': pose_pool(pose_pairs(), 8, 'holdout', root, 19),
-        }
-        # Use one cell per substrate across all poses. Preserve at least 20 Å of vacuum.
-        for material in LATTICES:
-            frames = [atoms for pool in pools.values() for atoms in pool if atoms.info['composition'] == material]
-            height = max(atoms.cell[2, 2] for atoms in frames)
-            for atoms in frames:
-                atoms.cell[2, 2] = height
-                atoms.center(axis=2)
-        for name, frames in pools.items():
-            write(root / f'{name}.extxyz', frames)
-        master = read_json(HERE / 'master_perovskite_uma.json')
-        master.update(builder_task='chalcogenide.chalcogenide_builder_task', builder_config_path='builder_config.json',
-                      QM_config_path='vasp_config.json', ML_config_path='uma_config.json',
-                      sampler_config_path='sampler_config.json', status_path='status.json',
-                      h5_path='runs/h5/data-{:04d}.h5', model_path='runs/models/model-{:04d}',
-                      QM_scratch_dir='runs/vasp', bootstrap_spares=12)
-        qm = read_json(HERE / 'vasp_perovskite.json')
-        if vasp_command:
-            qm['QM_run_command'] = vasp_command
-        ml = read_json(HERE / 'uma_perovskite.json')
-        ml['fine_tune']['E0s'] = 'foundation'
-        if checkpoint is not None:
-            ml['fine_tune']['foundation_model'] = str(checkpoint.expanduser().resolve(strict=True))
-        sampler = read_json(HERE / 'sampler_perovskite_uma.json')
-        sampler['meta_dir'] = 'runs/sampling'
-        for name, config in (
-            ('master_config', master), ('vasp_config', qm), ('uma_config', ml), ('sampler_config', sampler),
-            ('builder_config', {'source': 'seeds.extxyz', 'n_frames': len(pools['seeds']), 'seed': 17}),
-            ('preparation', {'prototype_slabs': preview, 'bootstrap_frames': 48,
-                             'pools': {name: [dict(atoms.info) for atoms in frames] for name, frames in pools.items()}}),
-        ):
-            write_json(root / f'{name}.json', config)
-        for file in ('parsl_configs.py', 'chalcogenide.py'):
-            shutil.copyfile(HERE / file, root / file)
-        root.rename(output)
-    return output
+def benchmark_frames(run, pool, count=None):
+    """Build a deterministic benchmark panel using the standard surface inputs."""
+    master = read_json(run / MASTER)
+    training = read_json(run / master['builder_config_path'])
+    configs = [training]
+    if pool == 'holdout':
+        configs.append(read_json(run / 'builder_chalcogenide_holdout.json'))
+    pairs = [
+        (config, material, adsorbate)
+        for config in configs
+        for material in config['materials']
+        for adsorbate in material['adsorbates']
+    ] * 8
+    if count is not None and not 1 <= count <= len(pairs):
+        raise ValueError(f'Choose a frame count from 1 to {len(pairs)}.')
+    frames = []
+    for index, (config, material, adsorbate) in enumerate(pairs[:count]):
+        identifier = f'{pool}-{index:010d}'
+        settings = {**config, 'materials': [{**material, 'adsorbates': [adsorbate]}]}
+        frame = build_surface(identifier, settings, run)
+        placement = frame.get_metadata()['surface_builder']
+        composition = placement['material_id']
+        ligand = LIGANDS[placement['adsorbate_smiles']]
+        atoms = frame.get_atoms()
+        atoms.info.update(frame_id=identifier, material=f'{composition}_{ligand}', composition=composition,
+                          ligand=ligand, site_metal=adsorbate['surface_elements'][0],
+                          anchor=placement['anchor_atom_index'], partition=pool)
+        atoms.info.update(pose_observables(atoms))
+        frames.append(frame)
+    return frames
 
 
 def label(run, pool, output, *, soc=False, count=None):
-    """Label a saved pool using the ALF VASP task and write a benchmark or fixed-pool shard."""
+    """Use the ALF VASP task to label a benchmark or fixed pool."""
     from ase.calculators.singlepoint import SinglePointCalculator
     from alframework.qm_interfaces.ase.vasp import VASP_ase_calculator_task
     from alframework.tools.data_shards import store_current_data
 
     if output.exists():
         raise FileExistsError(output)
-    master = read_json(run / 'master_config.json')
+    master = read_json(run / MASTER)
     training_directory = (run / Path(master['h5_path']).parent).resolve()
     if output.resolve().is_relative_to(training_directory):
         raise ValueError('Save benchmark and fixed-pool labels outside the active training directory.')
-    qm = read_json(run / 'vasp_config.json')
+    qm = read_json(run / master['QM_config_path'])
     if soc:
         qm['input'].update(lsorbit=True, isym=-1)
-    atoms_list = read(run / f'{pool}.extxyz', index=':')
-    if count is not None:
-        if not 1 <= count <= len(atoms_list):
-            raise ValueError(f'Choose a label count from 1 to {len(atoms_list)}.')
-        atoms_list = atoms_list[:count]
-    frames = []
-    for atoms in atoms_list:
-        frame = MoleculesObject(atoms, atoms.info['frame_id'])
-        frame.update_metadata(SLAB_METADATA)
-        VASP_ase_calculator_task.func(frame, qm, str(run / 'runs' / ('soc' if soc else 'benchmark')), PROPERTIES)
+    frames = benchmark_frames(run, pool, count)
+    for frame in frames:
+        VASP_ase_calculator_task.func(frame, qm, str(run / 'runs' / ('soc' if soc else 'benchmark')),
+                                     master['properties_list'])
         if not frame.check_convergence():
             raise RuntimeError(f'VASP failed for {frame.get_moleculeid()}.')
         result = frame.get_results()
+        atoms = frame.get_atoms()
         atoms.calc = SinglePointCalculator(atoms, energy=result['free_energy'], forces=result['forces'])
-        frames.append(frame)
     if output.suffix == '.h5':
-        store_current_data(str(output), frames, PROPERTIES)
+        store_current_data(str(output), frames, master['properties_list'])
     else:
         with output.open('x') as stream:
             write(stream, [frame.get_atoms() for frame in frames], format='extxyz')
@@ -254,11 +128,14 @@ def matched_trajectory(run, output, *, checkpoint, frame, seed, steps, temperatu
 
     if steps < 1 or temperature <= 0 or not np.isfinite(temperature):
         raise ValueError('Choose positive steps and temperature.')
-    atoms = read(run / 'holdout.extxyz', index=frame)
+    start = benchmark_frames(run, 'holdout')[frame]
+    atoms = start.get_atoms()
     if checkpoint is None:
-        qm = read_json(run / 'vasp_config.json')
+        master = read_json(run / MASTER)
+        qm = read_json(run / master['QM_config_path'])
         calc = Vasp(directory=run / 'runs' / f'reference-md-{frame}-{seed}',
-                    command=qm['QM_run_command'], **vasp_input_for_structure(atoms, qm, SLAB_METADATA))
+                    command=qm['QM_run_command'],
+                    **vasp_input_for_structure(atoms, qm, start.get_metadata()))
     else:
         calc = uma_calculator(checkpoint, device)
     with output.open('x') as stream:
@@ -272,18 +149,21 @@ def paired_sampling(run, checkpoint, output, count, udd_weight):
 
     if not np.isfinite(udd_weight) or udd_weight >= 0:
         raise ValueError('Use a finite negative UDD weight to lower energy in high-spread regions.')
-    frames = read(run / 'holdout.extxyz', index=':')
-    if not 2 <= count <= len(frames):
-        raise ValueError(f'Choose a batch size from 2 to {len(frames)}.')
+    if count < 2:
+        raise ValueError('Choose a batch size of at least two.')
+    frames = benchmark_frames(run, 'holdout', count)
     output.mkdir(parents=True, exist_ok=False)
     ensemble = load_uma_batched_ensemble(checkpoint, 'oc25', device='cuda:0')
-    baseline = read_json(run / 'sampler_config.json')
+    master = read_json(run / MASTER)
+    baseline = read_json(run / master['sampler_config_path'])
     report = {}
     for name, options in (('ordinary', {'well_params': None}),
                           ('udd', {'well_params': None, 'udd_bias_weight': udd_weight})):
-        starts = [MoleculesObject(atoms.copy(), atoms.info['frame_id']) for atoms in frames[:count]]
-        for start in starts:
-            start.update_metadata(SLAB_METADATA)
+        starts = []
+        for frame in frames:
+            start = MoleculesObject(frame.get_atoms().copy(), frame.get_moleculeid())
+            start.update_metadata(frame.get_metadata())
+            starts.append(start)
         meta = output / name
         meta.mkdir()
         sampler = {**baseline, 'meta_dir': str(meta), 'trajectory_frequency': 1.,
@@ -291,8 +171,9 @@ def paired_sampling(run, checkpoint, output, count, udd_weight):
         result = sample_trajectories(starts, ensemble, sampler, device='cuda:0')
         report[name] = {frame.get_moleculeid(): frame.get_metadata().get('trajectory_outcome')
                         for frame in result}
-        for atoms in frames[:count]:
-            identifier = atoms.info['frame_id']
+        for frame in frames:
+            atoms = frame.get_atoms()
+            identifier = frame.get_moleculeid()
             trajectory = next(meta.rglob(f'metadata-{identifier}.traj'), None)
             if trajectory is not None:
                 images = read(trajectory, index=':')
@@ -306,18 +187,6 @@ def paired_sampling(run, checkpoint, output, count, udd_weight):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest='command', required=True)
-    prep = commands.add_parser('prepare')
-    prep.add_argument('output', type=Path)
-    inputs = prep.add_mutually_exclusive_group(required=True)
-    inputs.add_argument('--slabs', type=Path)
-    inputs.add_argument('--preview', action='store_true')
-    prep.add_argument('--checkpoint', type=Path)
-    prep.add_argument('--vasp-command')
-    relaxation = commands.add_parser('relax')
-    relaxation.add_argument('run', type=Path)
-    relaxation.add_argument('output', type=Path)
-    relaxation.add_argument('--fmax', type=float, default=.03)
-    relaxation.add_argument('--steps', type=int, default=150)
     labels = commands.add_parser('label')
     labels.add_argument('run', type=Path)
     labels.add_argument('pool', choices=('holdout', 'fixed'))
@@ -347,11 +216,7 @@ def main():
     trajectory.add_argument('structures', type=Path, nargs='+')
     args = vars(parser.parse_args())
     command = args.pop('command')
-    if command == 'prepare':
-        print(prepare(**args))
-    elif command == 'relax':
-        relax_slabs(**args)
-    elif command == 'label':
+    if command == 'label':
         label(**args)
     elif command == 'score':
         print(json.dumps(score(**args), indent=2, allow_nan=False))

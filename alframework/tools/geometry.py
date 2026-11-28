@@ -12,6 +12,12 @@ SEARCH_RADIUS = 3.0
 ALL_PAIRS_LIMIT = 1000
 
 
+def periodic_gaps(coordinates, period):
+    """Return sorted wrapped coordinates and the gap after each, including the seam."""
+    ordered = np.sort(np.remainder(coordinates, period))
+    return ordered, np.diff(np.r_[ordered, ordered[0] + period])
+
+
 def minimum_distance(atoms):
     """Minimum image distance between distinct atoms, or infinity without pairs.
 

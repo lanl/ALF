@@ -345,7 +345,8 @@ differences:
        available (Triton on ROCm); ``pytorch``, ``triton``, ``numba``, ``cupy`` or ``sparse`` select one.
    * - ``mixed_molecules``
      - Train one model on several molecules with different atom counts, as the
-       molecular collection builder (:doc:`builders`) supplies them. The default, ``false``,
+       molecular collection builder supplies them. See :ref:`builders-rdkit-collection`
+       for preparing the seed files and topology references from a SMILES panel. The default, ``false``,
        requires one atomic-number sequence. Mixed training leaves ``n_atoms`` unset and needs
        ``first_is_interacting`` false. ``possible_species`` must start with the padding species
        ``0`` and list every element; by default it is ``0`` and the elements in the shards.

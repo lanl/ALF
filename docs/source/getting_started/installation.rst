@@ -86,7 +86,8 @@ install the Python packages that ALF can pull in directly:
    * - ``topology``
      - ``rdkit``
      - The RDKit builders, ``rdkit_condensed_phase_builder_task`` and
-       ``rdkit_molecule_builder_task``, and the sampler's ``topology_check``.
+       ``rdkit_molecule_builder_task``, SMILES collection preparation, and the
+       sampler's ``topology_check``.
    * - ``torchsim``
      - ``torch-sim-atomistic``
      - The TorchSim dynamics engine. Needs Python 3.12 or newer.

@@ -77,7 +77,7 @@ The seeds go in ``seeds/``. The sampler's ``topology_check`` reads
 
 ``prepare.py`` always uses ``seed_keto.json``. The ``seed_enol.json`` and ``enol.xyz``
 files prepare the enol form the same way, with
-``python -m alframework.builders.rdkit_molecule``.
+``python -m alframework.builders.rdkit_molecules``.
 
 Configure Parsl
 ---------------

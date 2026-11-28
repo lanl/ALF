@@ -22,3 +22,15 @@ checks, and guidance on MACE and r²SCAN comparisons.
 
 See :doc:`../user_guide/builders` for surface settings and
 :doc:`../user_guide/fine_tuning_uma` for UMA settings.
+
+Chalcogenide adsorption with UMA OC25
+-------------------------------------
+
+Use ``master_chalcogenide_uma.json`` to run the built-in surface builder on
+conventional zinc-blende bulk cells. ``builder_chalcogenide.json`` cuts (110)
+slabs of CdSe, CdTe, and HgTe, then places methylamine or methylphosphine from
+SMILES. HgSe has a separate builder config for evaluation. Each decorated
+slab has 151 atoms, with a substrate thickness of 17.1–18.3 Å in a 48 Å
+cell. The same master runs VASP labeling, iterative UMA OC25 fine-tuning,
+and batched TorchSim dynamics with a fixed cell and all atoms mobile.
+The README covers the inputs and benchmark comparisons.

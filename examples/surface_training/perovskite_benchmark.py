@@ -12,6 +12,7 @@ from ase.io import iread, read, write
 
 from alframework.builders.surface import build_surface
 from alframework.tools.molecules import MoleculesObject
+from alframework.tools.velocities import has_fixed_atoms
 
 if __package__:
     from .perovskite_bulk import ALLOY_ORDERS, DEFAULT_OUTPUT
@@ -193,7 +194,8 @@ def run_trajectory(atoms, stream, calc, *, steps, dt, temperature, seed):
 
     atoms = atoms.copy()
     atoms.calc = calc
-    atoms.set_constraint(FixCom())
+    if not has_fixed_atoms(atoms):
+        atoms.set_constraint(FixCom())
     rng = np.random.default_rng(seed)
     MaxwellBoltzmannDistribution(atoms, temperature_K=temperature, rng=rng)
     dynamics = Langevin(atoms, dt * units.fs, temperature_K=temperature, friction=.01 / units.fs,

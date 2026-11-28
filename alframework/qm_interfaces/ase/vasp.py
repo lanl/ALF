@@ -3,6 +3,7 @@ import re
 
 import numpy as np
 
+from alframework.tools.geometry import periodic_gaps
 from alframework.tools.label_sources import LABEL_SOURCE
 from alframework.tools.molecules import MoleculesObject
 from alframework.tools.tasks import alf_task
@@ -61,8 +62,7 @@ def _slab_dipole_center(atoms, metadata):
             or not np.allclose(cell.angles()[:2], 90, rtol=0, atol=1e-5)):
         raise ValueError('slab_dipole_correction requires a periodic slab with its vacuum along perpendicular c.')
     heights = atoms.get_scaled_positions(wrap=True)[:, 2]
-    ordered = np.sort(heights)
-    gaps = np.diff(np.r_[ordered, ordered[0] + 1])
+    ordered, gaps = periodic_gaps(heights, 1)
     gap = np.argmax(gaps)
     # Measure positions from the middle of the vacuum so a wrapped slab stays contiguous.
     origin = ordered[gap] + gaps[gap] / 2

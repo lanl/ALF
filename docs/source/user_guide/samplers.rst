@@ -151,17 +151,18 @@ Dynamics engines
         - ``alchemi`` extra, Python 3.11+. Versions 0.2.0 and 0.3.0 are supported.
 
    The ``torchsim`` and ``alchemi`` engines must be installed in the sampler worker
-   environment; see :doc:`../getting_started/installation`. They don't support ASE
-   constraints, and their ``MLMD_calculator_options`` are limited to
+   environment; see :doc:`../getting_started/installation`. They support ASE's
+   ``FixAtoms`` with at least one mobile atom, a fixed cell (``end_dens: null``),
+   and ``translate_to_center: false``. Their ``MLMD_calculator_options`` are limited to
    ``well_params``, ``udd_bias_weight``, ``udd_bias_eps``, and ``debug_print``.
 
    The ``ase`` engine and ``simple_mlmd_sampling_task`` integrate with ASE's ``Langevin``; ``torchsim`` and
    ``alchemi`` with a BAOAB splitting (Leimkuhler and Matthews, 2013). All of them sample the same canonical
-   distribution with each system's center of mass at rest, as ASE's ``FixCom`` constraint holds it: the 3N-3
-   remaining degrees of freedom are at the thermostat's temperature, and the recorded
-   ``kinetic_temperature_K`` counts them. The ASE integrators run with ``fixcm=False`` and ``FixCom`` attached
-   only during dynamics; a structure returns with the constraints it came with, so labels computed through
-   it keep their net force.
+   distribution for the mobile degrees of freedom. Unconstrained systems use ``FixCom`` during dynamics
+   and their recorded ``kinetic_temperature_K`` counts 3N-3 degrees of freedom. With ``FixAtoms``, fixed
+   atoms stay at their original positions and every mobile atom contributes three degrees of freedom.
+   The original constraints are carried through to the returned geometry. Screening and uncertainty
+   use raw model forces, including forces on fixed atoms.
 
    ``examples/simple_water`` includes ``mlmd_config_torchsim.json`` and
    ``mlmd_config_alchemi.json``; see :doc:`../examples/simple_water`.

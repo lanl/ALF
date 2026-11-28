@@ -21,14 +21,15 @@ completes a sampling and retraining round. Use the example READMEs for commands 
 
 | Case study | Available in the working tree | First compute-machine run |
 | --- | --- | --- |
-| [Chalcogenide adsorption](../../examples/surface_training/README.md#chalcogenide-adsorption-with-uma-oc25) | Methylamine and methylphosphine on zinc-blende (110) slabs. Forty-eight balanced bootstrap poses on CdSe, CdTe, and HgTe. Independent poses, a fixed-pool baseline, and an HgSe composition holdout. Poses decorate the prepared slabs through `slab_file`, with sampled lateral and height offsets. Full UMA-S 1.2.1 OC25 fine-tuning from the same foundation checkpoint each round. | Set up VASP, the licensed PAWs, the UMA checkpoint, Fairchem, and TorchSim on one CUDA worker. Relax clean slabs and qualify RPBE-D3 settings, including a matched SOC check on the Hg compounds. Run one VASP label, then verify bootstrap training, batched MD, and a second fit that uses newly acquired labels. |
-| [Mixed-molecule excited states](../../examples/molecular_excited_states/README.md#broader-chromophore-pilot) | A 35-molecule chromophore preset with 27 training molecules and eight whole-molecule holdouts, plus a separate optional validation panel. The preset starts with 64-feature HIP-HOP-NN, supports up to five excited roots, and enables optical labels. The carbonyl \(S_0/S_1\) preset is a smaller workflow check. | Set up GPU4PySCF, HIPPYNN, RDKit, and ALCHEMI. Qualify 6-31G* and 6-31+G* on representative relaxed and distorted chromophores, including larger training molecules. Use the root, gradient, convergence, time, and memory checks to choose the production state range. Verify one real label and a complete active-learning round before scaling. |
+| [Chalcogenide adsorption](../../examples/surface_training/README.md#chalcogenide-adsorption-with-uma-oc25) | The built-in surface builder cuts zinc-blende (110) slabs from CdSe, CdTe, and HgTe bulk files and decorates them with methylamine or methylphosphine from SMILES. Each pose has 151 atoms and uses fixed-cell TorchSim dynamics with all atoms mobile. The pilot samples the six slab–ligand pairs with equal probability, targets 48 accepted labels with up to 12 spares, and keeps HgSe in a separate holdout config. Full UMA-S 1.2.1 OC25 fine-tuning starts from the same foundation checkpoint each round. | Set up VASP, the licensed PAWs, the UMA checkpoint, Fairchem, and TorchSim on one CUDA worker. Qualify the bulk references and RPBE-D3 settings, including a matched SOC check on HgTe and HgSe. Run one VASP label, then verify bootstrap training, batched MD, and a second fit that uses newly acquired labels. |
+| [Mixed-molecule excited states](../../examples/molecular_excited_states/README.md#broader-chromophore-pilot) | The shared RDKit module prepares a 35-molecule chromophore panel with 27 training molecules and eight whole-molecule holdouts, plus a separate optional validation panel. The builder cycles through training molecules for 216 initial candidates, with up to 108 spares. The preset starts with 64-feature HIP-HOP-NN, supports up to five excited roots, and enables optical labels. The carbonyl \(S_0/S_1\) preset is a smaller workflow check. | Set up GPU4PySCF, HIPPYNN, RDKit, and ALCHEMI. Qualify 6-31G* and 6-31+G* on representative relaxed and distorted chromophores, including larger training molecules. Use the root, gradient, convergence, time, and memory checks to choose the production state range. Verify one real label and a complete active-learning round before scaling. |
 
 ### Comparisons after the short runs
 
 1. **Surfaces.** Compare pretrained, seed-only, iterative, and fixed-pool UMA against the same
-   independent VASP poses. Match accepted label budgets where applicable. Report relative pose
-   energies, ligand and near-site forces, and HgSe transfer. Compare fixed-cell trajectories
+   independent VASP poses. Report accepted counts by slab–ligand pair and match the label
+   budgets where applicable. Evaluate relative pose energies, ligand and near-site forces,
+   and HgSe transfer. Compare fixed-cell trajectories
    from matched starts using donor distance and tilt. Run ordinary batched MD before the separate
    UDD comparison and check the direction and strength of the bias.
 2. **Molecules.** Compare 64 and 145 features on identical labels and pick the width on validation
@@ -45,13 +46,11 @@ completes a sampling and retraining round. Use the example READMEs for commands 
 
 ### Validation and transfer
 
-- Local checks exercised both preparations, the configuration and builder entry points, a CPU
-  HipNN train–sample–retrain cycle with stand-in labels, the optical readout fit and reload, and
-  the finite-field dipole logic against stand-in solvers with known dipoles. Prepared slabs
-  (`slab_file`) and the sampled adsorbate offsets have their own builder tests. Gap-seeking runs
-  on one multi-state NTK evaluator, with no ensemble, in ASE, TorchSim and ALCHEMI. The tests for
-  the two examples, the surface builder and the readouts passed 79 tests, and the non-slow suite
-  passed 2,535 on an Apple M3 Max CPU.
+- Local checks cover both examples' configuration and builder commands; the surface builder's
+  bulk cutting, element anchors, fixed cell and frozen atoms; a CPU HipNN train–sample–retrain
+  cycle with stand-in labels; the readouts against stand-in solvers; and single-model NTK
+  gap-seeking in ASE, TorchSim and ALCHEMI. The non-slow suite passes, and the docs build with
+  warnings as errors.
 - Before transfer, make the commit containing the examples, tests, and roadmap available on the
   destination machine, or transfer the complete working tree. A branch checkout only contains
   committed files. Record the exact revision and any patches used for each run.

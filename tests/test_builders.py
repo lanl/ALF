@@ -24,7 +24,7 @@ from ase.calculators.singlepoint import SinglePointCalculator
 from ase.data import atomic_numbers
 from ase.io import write
 
-from alframework.builders import rdkit_molecule as seed
+from alframework.builders import rdkit_molecules as seed
 from alframework.builders.builders import (
     atomic_system_builder,
     construct_simulation_box,
@@ -675,7 +675,7 @@ def test_rdkit_command_line_finds_reference_next_to_config(tmp_path):
         [
             sys.executable,
             "-m",
-            "alframework.builders.rdkit_molecule",
+            "alframework.builders.rdkit_molecules",
             "--config",
             str(path),
             "--output-dir",
@@ -692,6 +692,46 @@ def test_rdkit_command_line_finds_reference_next_to_config(tmp_path):
     assert report["selected_count"] == 6
     assert report["settings"]["reference_geometry"] == str(config_dir / "enol.xyz")
 
+
+def test_rdkit_collection_cli_prepares_balanced_training_seeds(tmp_path):
+    pytest.importorskip('rdkit')
+    from alframework.tools.config import load_module_from_string
+    from alframework.tools.molecules import MOLECULE_ID
+
+    inputs = tmp_path / 'inputs'
+    inputs.mkdir()
+    panel = ['C=O', 'CCCCO', {'smiles': 'CC=O', 'split': 'holdout'}]
+    (inputs / 'panel.json').write_text(json.dumps(panel))
+    path = inputs / 'collection.json'
+    path.write_text(json.dumps(dict(molecules='panel.json', pool_size=8, seed_size=4,
+                                    bootstrap_per_molecule=3, max_conformers=3)))
+    output = tmp_path / 'run'
+    result = subprocess.run(
+        [sys.executable, '-m', 'alframework.builders.rdkit_molecules', '--config', str(path),
+         '--output-dir', str(output)], cwd=tmp_path, env=dict(os.environ, PYTHONPATH=str(ROOT)),
+        capture_output=True, text=True, timeout=60,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    report = json.loads((output / 'panel_manifest.json').read_text())
+    workflow = report['alf_configuration']
+    assert workflow['master']['bootstrap_set'] == 6 and workflow['master']['bootstrap_spares'] == 2
+    assert set(workflow['sampler']['topology_check']['references']) == {'C=O', 'CCCCO'}
+    assert all((output / entry['seed_path']).is_file() for entry in report['molecules'])
+    assert report['molecules'][1]['seed_path'].endswith('/combined_seed.h5')
+    builder = load_module_from_string(workflow['master']['builder_task'])
+    config = json.loads((output / 'builder_config.json').read_text())
+    frames = builder.func(moleculeids=[f'mol-boot-{i:010d}' for i in range(6)],
+                          builder_config=config, master_directory=output)
+    assert [frame.metadata[MOLECULE_ID] for frame in frames] == ['C=O', 'CCCCO'] * 3
+
+
+def test_rdkit_collection_rejects_duplicate_molecules_across_splits(tmp_path):
+    pytest.importorskip('rdkit')
+    config = {'molecules': ['CCO', {'smiles': 'OCC', 'split': 'holdout'}]}
+    output = tmp_path / 'run'
+    with pytest.raises(ValueError, match='Duplicate canonical SMILES'):
+        seed.prepare_rdkit_collection(config, output)
+    assert not output.exists()
 
 
 @pytest.mark.parametrize("periodic", [None, False, True])

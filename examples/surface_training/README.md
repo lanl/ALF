@@ -67,12 +67,10 @@ adsorption-energy reference is a separate DFT calculation.
 
 Use relaxed bulk input cells for the desired lattice constants. To sample
 strain, supply strained bulk cells as additional materials and run
-fixed-cell MD for each candidate. For a frozen substrate in the HIPPYNN
-example, use a separate builder config with `fixed_bottom_layers: 1`
-and point that master to it. The scalar ASE sampler and the batched driver's
-ASE engine support this setting. Keep `end_dens` null and `translate_to_center`
-false. The shared example leaves both slabs fully mobile, which also works
-with the UMA TorchSim sampler.
+fixed-cell MD for each candidate. Set `fixed_bottom_layers: 1` in the builder
+config to freeze the bottom plane. Scalar ASE and the batched ASE, TorchSim,
+and ALCHEMI engines support this setting. Keep `end_dens` null and
+`translate_to_center` false.
 
 To test electrostatic finite-size effects, set `slab_dipole_correction: true`
 at the top level of the VASP config. Test identical clean and decorated slab
@@ -213,44 +211,53 @@ and Sn and ligand-axis tilts. Keep those trajectories outside the fitting data.
 
 ## Chalcogenide adsorption with UMA OC25
 
-The dedicated case study uses methylamine and methylphosphine on zinc-blende
-(110) CdSe, CdTe, HgTe, and HgSe. The first three compositions supply 48
-bootstrap labels, eight for each material–ligand pair. The builder places the
-donor near exposed Cd or Hg and varies distance, tilt, azimuth, and lateral
-offset. A separate fixed pool provides a non-adaptive label baseline. The
-holdout pool includes independent poses on seen compositions and every HgSe
-pose. The preparation manifest records material, ligand, cell partition,
-metal–donor distance, and donor-to-carbon tilt.
+[The master config](master_chalcogenide_uma.json) uses ALF's built-in
+`surface_builder_task` to cut stoichiometric zinc-blende (110) slabs from
+[conventional bulk cells](chalcogenide_bulks/). For each candidate it samples
+CdSe, CdTe, or HgTe and places either methylamine or methylphosphine from
+SMILES. The builder picks the N or P anchor by element and samples a pose
+near an exposed Cd or Hg atop site. The bootstrap targets 48 accepted VASP
+labels and can draw up to 12 additional poses to replace failed labels. Each
+material–ligand pair has a one-in-six chance per draw, with the draw determined
+by the builder seed and the candidate ID. Realized counts vary by pair.
+Record the accepted counts for each pair when comparing models. HgSe has a
+[separate holdout config](builder_chalcogenide_holdout.json).
 
-From the repository root:
+The supplied bulk cells are illustrative zinc-blende references. For paper
+runs, qualify the lattice constants and use consistent conventional bulk
+structures. The builder selects the two cleavage gaps independently and
+requires equivalent faces on the bare slab. With the supplied cells, the
+slab is 17.1–18.3 Å thick. The in-plane repeat is 2 by 2, giving surface
+dimensions of about 17–18 Å by 12–13 Å and 151 atoms including the ligand.
+The cell height is 48 Å with at least 20 Å of vacuum. The reference label
+is a single point on the bulk-cut slab with its ligand. TorchSim trajectories
+hold the cell fixed and keep all atoms mobile by default (`fixed_bottom_layers: 0`).
+For a frozen-bottom run, use `fixed_bottom_layers: 1` for the lowest plane or
+`fixed_bottom_depth_A: 5.0` for the bottom 5 Å in the training and holdout
+builder configs. The same batched sampler honors either setting, and the VASP
+single points still label forces on every atom.
+
+From the repository root, enter `examples/surface_training`. Set the
+checkpoint path in [`uma_chalcogenide.json`](uma_chalcogenide.json), the VASP
+command in [`vasp_chalcogenide.json`](vasp_chalcogenide.json), and the worker
+and PAW paths for your machine. Then run:
 
 ```bash
-python -m examples.surface_training.chalcogenide prepare /scratch/chalc-preview --preview
-python -m examples.surface_training.chalcogenide relax /scratch/chalc-preview /scratch/relaxed-slabs
-python -m examples.surface_training.chalcogenide prepare /scratch/chalc --slabs /scratch/relaxed-slabs \
-  --checkpoint /path/to/uma-s-1p2p1.pt --vasp-command vasp_std
+python -m alframework --master master_chalcogenide_uma.json --check_config
+python -m alframework --master master_chalcogenide_uma.json --test_builder
+python -m alframework --master master_chalcogenide_uma.json --test_qm
+python -m alframework --master master_chalcogenide_uma.json
 ```
 
-The preview uses approximate prototype bulk cells. Qualify the lattice constants
-and clean slab dimensions for production. Supply relaxed, stoichiometric,
-periodic slabs named after their compositions with the normal along +z.
-The preparer uses a common cell for each composition and leaves at least 20 Å
-of vacuum above the occupied slab and ligand extent. The slab plus ligand has
-at most 200 atoms. The VASP configuration uses RPBE-D3 with zero damping,
-450 eV, Gaussian smearing of 0.05 eV, a Γ-centered reciprocal mesh with
-0.15 Å⁻¹ in-plane spacing, and a slab dipole correction. Use the same licensed
-PBE PAW release on all workers. Set `VASP_PP_PATH` and optionally
-`VASP_PP_VERSION` as in the perovskite example. Check reference convergence and
-compare SOC on matched HgTe and HgSe poses before generating training labels.
+The VASP reference uses RPBE-D3 with zero damping, 450 eV, Gaussian
+smearing of 0.05 eV, a Γ-centered reciprocal mesh with 0.15 Å⁻¹ in-plane
+spacing, and a slab dipole correction. It uses `AMIN = 0.01` to damp charge
+sloshing during electronic convergence. [VASP dipole correction guide](https://vasp.at/wiki/LDIPOL)
 
-In the prepared run directory:
-
-```bash
-python -m alframework --master master_config.json --check_config
-python -m alframework --master master_config.json --test_builder
-python -m alframework --master master_config.json --test_qm
-python -m alframework --master master_config.json
-```
+Use a consistent licensed PBE PAW
+release across workers. Set `VASP_PP_PATH` and optionally `VASP_PP_VERSION`
+as in the perovskite example. Check reference convergence and compare SOC on
+matched HgTe and HgSe poses before generating the production labels.
 
 Both UMA members start each fit from the original OC25 checkpoint and train
 on cumulative accepted labels with the existing 20:2 energy and force loss.
@@ -259,21 +266,28 @@ conventions before comparing absolute energies. The first fit uses bootstrap
 labels. Later generations drive fixed-cell batched TorchSim trajectories.
 Adjust the acquisition thresholds if ordinary MD finds too few eligible poses.
 
-From the repository root, label and score the same independent structures at
-each checkpoint:
+### Chalcogenide benchmarks
+
+The optional benchmark commands use the same ALF builder inputs for balanced,
+independent panels. The fixed pool uses additional poses from training
+compositions. The held-out panel uses independent poses from those same
+compositions and every sampled HgSe pose. Score the same reference labels at
+each checkpoint. From the repository root, with `RUN` pointing to the
+directory containing your master and its input files:
 
 ```bash
-python -m examples.surface_training.chalcogenide label /scratch/chalc holdout holdout.extxyz
-python -m examples.surface_training.chalcogenide label /scratch/chalc holdout holdout-soc.extxyz --soc --count 8
+python -m examples.surface_training.chalcogenide label "$RUN" holdout holdout.extxyz
+python -m examples.surface_training.chalcogenide label "$RUN" holdout holdout-soc.extxyz --soc --count 8
 python -m examples.surface_training.chalcogenide score holdout.extxyz /path/to/uma-s-1p2p1.pt
-python -m examples.surface_training.chalcogenide score holdout.extxyz /scratch/chalc/runs/models/model-0000
+python -m examples.surface_training.chalcogenide score holdout.extxyz "$RUN/runs/chalcogenide_oc25/models/model-0000"
 ```
 
-For a fixed-pool comparison, copy the prepared run to a fresh directory
-before training. Put the finalized shared bootstrap shard in its `runs/h5/`,
-label the same number of additional poses as used by the AL comparison with
-`label /scratch/chalc fixed /scratch/fixed-run/runs/h5/data-0001.h5 --count N`,
-and run `--test_ml` in the fixed run. Keep the holdout pool outside training.
+For a fixed-pool comparison, use a separate run directory with the same
+configuration and bootstrap shard. Label the same number of additional
+poses as accepted by the active-learning run. Write those labels to the
+second run's HDF5 directory with `label RUN fixed OUTPUT.h5 --count N`, then
+use `--test_ml` to fit to both shards. Keep all holdout labels outside the
+training directories.
 
 Use `chalcogenide md RUN OUTPUT --frame 0 --seed 42` to generate the VASP
 reference trajectory. Pass a UMA file or ensemble with `--checkpoint` to run

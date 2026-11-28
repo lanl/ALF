@@ -9,7 +9,7 @@ import pickle as pkl
 from alframework.tools.annealing import annealing_schedule
 from alframework.tools.config import load_module_from_config
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator
-from alframework.samplers.engines.ase import has_fixed_atoms
+from alframework.tools.velocities import has_fixed_atoms
 from alframework.ml_interfaces.ensemble_inference import atomic_uncertainty_arrays
 from alframework.tools.geometry import minimum_distance
 from alframework.tools.config import build_input_dict

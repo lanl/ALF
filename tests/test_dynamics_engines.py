@@ -718,6 +718,83 @@ def test_packed_engines_hold_each_center_of_mass_at_rest(engine_name):
     assert engine.atoms(0).constraints == []
 
 
+FIXED = [0, 2]
+
+
+def free_and_anchored_engine(engine_name):
+    """A packed engine holding a free water and one with atoms 0 and 2 fixed, and the anchored start."""
+    from ase.constraints import FixAtoms
+
+    free = WATER.copy()
+    free.translate([2., 2., 2.])
+    free.set_cell([12., 12., 24.])
+    free.pbc = True
+    free.set_momenta(np.ones((len(free), 3)))
+    anchored = free.copy()
+    anchored.set_constraint([FixAtoms(indices=[index]) for index in FIXED])
+    engine = engine_class(engine_name)([free, anchored], [Tether(3.)], .5, [300., 300.],
+                                       [np.random.RandomState(0), np.random.RandomState(1)])
+    return engine, anchored.positions.copy()
+
+
+@pytest.fixture
+def anchored_run(engine_name):
+    """The free and anchored waters run together, then the anchored one alone after the free one finishes."""
+    engine, start = free_and_anchored_engine(engine_name)
+    engine.step([0, 1], 10)
+    engine.finish(0)
+    engine.step([1], 10)
+    return engine, start
+
+
+def test_packed_engines_refuse_to_scale_a_cell_with_fixed_atoms(engine_name):
+    engine, _ = free_and_anchored_engine(engine_name)
+    with pytest.raises(ValueError, match='requires a fixed cell'):
+        engine.scale_cell(1, 1.1)
+
+
+def test_packed_engines_hold_a_free_center_of_mass_beside_an_anchored_trajectory(anchored_run):
+    engine, _ = anchored_run
+    np.testing.assert_allclose(engine.atoms(0).get_momenta().sum(axis=0), 0., atol=1e-9)
+
+
+def test_packed_engines_keep_fixed_atoms_in_place(anchored_run):
+    engine, start = anchored_run
+    np.testing.assert_array_equal(engine.snapshot(1).positions[FIXED], start[FIXED])
+
+
+def test_packed_engines_keep_fixed_atoms_at_rest(anchored_run):
+    engine, _ = anchored_run
+    np.testing.assert_array_equal(engine.snapshot(1).get_momenta()[FIXED], np.zeros((2, 3)))
+
+
+def test_packed_engines_move_the_mobile_atom_of_an_anchored_trajectory(anchored_run):
+    engine, start = anchored_run
+    assert not np.allclose(engine.snapshot(1).positions[1], start[1])
+
+
+def test_packed_engines_count_three_degrees_of_freedom_per_mobile_atom(anchored_run):
+    engine, _ = anchored_run
+    assert engine.snapshot(1).get_number_of_degrees_of_freedom() == 3
+
+
+def test_packed_engines_report_raw_forces_on_fixed_atoms(anchored_run):
+    engine, start = anchored_run
+    raw = engine.observe_physical(1)['prediction']['forces'][0][0]
+    np.testing.assert_allclose(raw[FIXED], -3. * start[FIXED])
+
+
+def test_packed_engine_snapshots_keep_the_fixed_atoms(anchored_run):
+    engine, _ = anchored_run
+    np.testing.assert_array_equal(np.concatenate([c.index for c in engine.snapshot(1).constraints]), FIXED)
+
+
+def test_packed_engines_return_finished_structures_with_their_fixed_atoms(anchored_run):
+    engine, _ = anchored_run
+    engine.finish(1)
+    np.testing.assert_array_equal(np.concatenate([c.index for c in engine.atoms(1).constraints]), FIXED)
+
+
 def _pair_set(search, positions, cells, counts, cutoff):
     import torch
     system_idx = torch.repeat_interleave(torch.arange(len(counts)), torch.as_tensor(counts))

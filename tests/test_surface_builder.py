@@ -78,6 +78,22 @@ def test_co_placement_preserves_geometry_and_uses_the_periodic_surface(copper, t
         assert np.min(find_mic(vectors, atoms.cell, pbc=(True, True, False))[1]) < 1e-6
 
 
+@pytest.mark.parametrize('decorate', [False, True], ids=['clean', 'decorated'])
+def test_fixed_cell_height_preserves_minimum_vacuum(copper, tmp_path, decorate):
+    config = dict(copper, vacuum_A=20, cell_height_A=40, adsorbates=[_co_placement()] if decorate else [])
+    atoms = build_surface('seed', config, tmp_path).get_atoms()
+    assert atoms.cell[2, 2] == pytest.approx(40)
+    vacuum = 40 - np.ptp(atoms.positions[:, 2])
+    assert vacuum >= 20
+    _check_cell(atoms, vacuum)
+
+
+def test_fixed_cell_height_refuses_less_than_the_minimum_vacuum(copper, tmp_path):
+    config = dict(copper, vacuum_A=20, cell_height_A=25, adsorbates=[_co_placement()])
+    with pytest.raises(ValueError, match='increase it to preserve vacuum_A=20'):
+        build_surface('seed', config, tmp_path)
+
+
 def test_alf_builder_contract_and_periodic_hdf5_round_trip(copper, tmp_path):
     clean, = check_builder_task(surface_builder_task, builder_config=copper, master_directory=tmp_path, count=1)
     assert clean.get_atoms().get_chemical_symbols() == ['Cu'] * len(clean)
@@ -375,6 +391,45 @@ def test_smiles_embeds_explicit_hydrogens_and_counts_them(copper, tmp_path):
         build_surface('seed', dict(config, adsorbates=[dict(smiles='O', anchor_indices=[1])]), tmp_path)
 
 
+def test_smiles_anchor_elements_sample_matching_atoms(copper, tmp_path):
+    pytest.importorskip('rdkit')
+    config = dict(copper, adsorbates=[dict(smiles='NCCO', anchor_elements=['N', 'O'])])
+    observed = set()
+    for i in range(12):
+        structure = build_surface(f'anchor-{i}', config, tmp_path)
+        placement = structure.metadata['surface_builder']
+        symbol = structure.atoms[placement['anchor_atom_index']].symbol
+        observed.add((placement['anchor_index'], symbol))
+    assert observed == {(0, 'N'), (3, 'O')}
+
+
+def test_smiles_anchor_elements_refuse_an_absent_element(copper, tmp_path):
+    pytest.importorskip('rdkit')
+    with pytest.raises(ValueError, match='no input atoms match anchor_elements'):
+        build_surface('seed', dict(copper, adsorbates=[dict(smiles='NCCO', anchor_elements=['H'])]), tmp_path)
+
+
+CO_ANCHORED_BY_ELEMENT = dict(file=str(EXAMPLE / 'co.xyz'), anchor_elements=['O', 'S'])
+
+
+def test_coordinate_file_anchor_elements_select_the_matching_atom(copper, tmp_path):
+    structure = build_surface('seed', dict(copper, adsorbates=[CO_ANCHORED_BY_ELEMENT]), tmp_path)
+    placement = structure.metadata['surface_builder']
+    assert placement['anchor_index'] == 1
+    assert structure.atoms[placement['anchor_atom_index']].symbol == 'O'
+
+
+@pytest.mark.parametrize(('change', 'message'), [
+    ({'anchor_indices': [0]}, 'specify only one'),
+    ({'anchor_elements': 'O'}, 'nonempty list of chemical element symbols'),
+    ({'anchor_elements': ['Ox']}, 'nonempty list of chemical element symbols'),
+    ({'anchor_elements': ['S']}, 'no input atoms match anchor_elements'),
+], ids=['with-indices', 'not-a-list', 'not-an-element', 'absent-element'])
+def test_coordinate_file_anchor_elements_refuse_invalid_choices(copper, tmp_path, change, message):
+    with pytest.raises(ValueError, match=message):
+        build_surface('seed', dict(copper, adsorbates=[dict(CO_ANCHORED_BY_ELEMENT, **change)]), tmp_path)
+
+
 def test_bond_file_preserves_geometry_and_validates_formal_charge(copper, tmp_path):
     chem = pytest.importorskip('rdkit.Chem')
     from rdkit.Chem import AllChem
@@ -427,8 +482,41 @@ def test_fixed_layers_match_the_oriented_substrate_without_selecting_adsorbates(
     expected = np.flatnonzero(substrate)[layers < 2]
     np.testing.assert_array_equal(molecule.get_metadata()['fixed_substrate_indices'], expected)
     np.testing.assert_array_equal(atoms.constraints[0].get_indices(), expected)
+
+
+def test_fixed_layers_refuse_to_freeze_every_layer(copper, tmp_path):
     with pytest.raises(ValueError, match='must leave a mobile substrate layer'):
-        build_surface('seed', dict(config, fixed_bottom_layers=1000), tmp_path)
+        build_surface('seed', dict(copper, fixed_bottom_layers=1000), tmp_path)
+
+
+@pytest.mark.parametrize('face', ['top', 'bottom'])
+def test_fixed_depth_matches_the_oriented_substrate_without_selecting_adsorbates(copper, tmp_path, face):
+    config = dict(copper, fixed_bottom_depth_A=5., face=face, adsorbates=[_co_placement()])
+    molecule = build_surface('seed', config, tmp_path)
+    atoms = molecule.get_atoms()
+    substrate = np.flatnonzero(atoms.get_tags() != 2)
+    heights = atoms.positions[substrate, 2]
+    expected = substrate[heights - heights.min() <= 5.]
+    np.testing.assert_array_equal(molecule.get_metadata()['fixed_substrate_indices'], expected)
+    np.testing.assert_array_equal(atoms.constraints[0].get_indices(), expected)
+
+
+def test_fixed_depth_refuses_to_freeze_an_exposed_atom(copper, tmp_path):
+    # Two exposed planes, so the depth reaches the lower one and leaves the top plane mobile.
+    config = dict(copper, surface_depth_A=3.)
+    atoms = build_surface('seed', config, tmp_path).get_atoms()
+    heights = atoms.positions[:, 2]
+    reaches_the_face = heights[atoms.get_tags() == 1].min() - heights.min()
+    with pytest.raises(ValueError, match='must leave the exposed atoms within surface_depth_A=3 mobile'):
+        build_surface('seed', dict(config, fixed_bottom_depth_A=reaches_the_face), tmp_path)
+
+
+def test_fixed_depth_may_reach_just_below_the_exposed_atoms(copper, tmp_path):
+    atoms = build_surface('seed', copper, tmp_path).get_atoms()
+    heights = atoms.positions[:, 2]
+    below_the_face = heights[atoms.get_tags() == 0].max() - heights.min()
+    fixed = build_surface('seed', dict(copper, fixed_bottom_depth_A=below_the_face), tmp_path).get_atoms()
+    assert set(fixed.constraints[0].get_indices()) == set(np.flatnonzero(atoms.get_tags() == 0))
 
 
 @pytest.mark.parametrize(('positions', 'reason'), [
@@ -529,6 +617,66 @@ def test_slab_file_keeps_the_prepared_lateral_cell(prepared_copper, tmp_path):
     assert metadata['slab_file'] == str(tmp_path / 'cu111.extxyz') and 'bulk_file' not in metadata
     assert metadata['termination_shift'] is None
     _check_cell(atoms, 16)
+
+
+def build_wrapped_and_contiguous(prepared_copper, tmp_path, face, freeze):
+    """The same decorated slab built from a contiguous file and from one wrapped across c."""
+    path = tmp_path / prepared_copper['slab_file']
+    slab = read(path)
+    slab.center(vacuum=8., axis=2)
+    write(path, slab)
+    wrapped = slab.copy()
+    z = slab.positions[:, 2]
+    wrapped.positions[:, 2] = (z - (z.max() + z.min()) / 2) % slab.cell[2, 2]
+    write(tmp_path / 'wrapped.extxyz', wrapped)
+    options = dict(prepared_copper, face=face, adsorbates=[_co_placement()], vacuum_A=16., cell_height_A=36., **freeze)
+    return (build_surface('seed', dict(options, slab_file='wrapped.extxyz'), tmp_path),
+            build_surface('seed', options, tmp_path))
+
+
+WRAP_CASES = pytest.mark.parametrize(('face', 'freeze'), [
+    (face, freeze) for face in ('top', 'bottom') for freeze in ({'fixed_bottom_depth_A': 5.}, {'fixed_bottom_layers': 2})
+], ids=['top-depth', 'top-planes', 'bottom-depth', 'bottom-planes'])
+
+
+@WRAP_CASES
+def test_wrapped_prepared_slab_builds_the_contiguous_geometry(prepared_copper, tmp_path, face, freeze):
+    wrapped, contiguous = build_wrapped_and_contiguous(prepared_copper, tmp_path, face, freeze)
+    atoms, expected = wrapped.get_atoms(), contiguous.get_atoms()
+    np.testing.assert_allclose(atoms.positions, expected.positions, atol=1e-8)
+    np.testing.assert_allclose(atoms.cell, expected.cell)
+    np.testing.assert_array_equal(atoms.get_tags(), expected.get_tags())
+
+
+@WRAP_CASES
+def test_wrapped_prepared_slab_freezes_the_contiguous_atoms(prepared_copper, tmp_path, face, freeze):
+    wrapped, contiguous = build_wrapped_and_contiguous(prepared_copper, tmp_path, face, freeze)
+    fixed = wrapped.get_metadata()['fixed_substrate_indices']
+    assert fixed == contiguous.get_metadata()['fixed_substrate_indices']
+    np.testing.assert_array_equal(wrapped.get_atoms().constraints[0].get_indices(), fixed)
+
+
+def buckled_copper(prepared_copper, tmp_path):
+    """The prepared slab with one bottom atom raised 0.15 Å, and the bottom atoms' indices."""
+    path = tmp_path / prepared_copper['slab_file']
+    slab = read(path)
+    z = slab.positions[:, 2]
+    bottom = np.flatnonzero(np.isclose(z, z.min()))
+    z[bottom[0]] += .15
+    write(path, slab)
+    return dict(prepared_copper, id='copper', fixed_bottom_depth_A=.2), bottom
+
+
+def test_fixed_depth_overrides_a_layer_count_for_a_buckled_slab(prepared_copper, tmp_path):
+    material, bottom = buckled_copper(prepared_copper, tmp_path)
+    molecule = build_surface('seed', dict(fixed_bottom_layers=1, materials=[material]), tmp_path)
+    np.testing.assert_array_equal(molecule.get_metadata()['fixed_substrate_indices'], bottom)
+
+
+def test_fixed_depth_refuses_a_layer_count_on_the_same_material(prepared_copper, tmp_path):
+    material, _ = buckled_copper(prepared_copper, tmp_path)
+    with pytest.raises(ValueError, match='Set only one of fixed_bottom_layers and fixed_bottom_depth_A'):
+        build_surface('seed', dict(materials=[dict(material, fixed_bottom_layers=1)]), tmp_path)
 
 
 def test_slab_file_refuses_a_bulk_file_too(prepared_copper, copper, tmp_path):

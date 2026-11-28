@@ -1,0 +1,24 @@
+{
+  "QM_run_command": "vasp_std",
+  "kpoint_spacing_A_inv": 0.15,
+  "input": {
+    "xc": "RPBE",
+    "ivdw": 11,
+    "encut": 450,
+    "ediff": 1e-07,
+    "nelm": 200,
+    "amin": 0.01,
+    "ismear": 0,
+    "sigma": 0.05,
+    "ispin": 1,
+    "lsorbit": false,
+    "isym": 0,
+    "nsw": 0,
+    "ibrion": -1,
+    "lreal": false,
+    "prec": "Accurate",
+    "lwave": false,
+    "lcharg": false
+  },
+  "slab_dipole_correction": true
+}

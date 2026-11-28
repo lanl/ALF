@@ -1,0 +1,62 @@
+{
+  "seed": 17,
+  "miller_indices": [
+    [
+      1,
+      1,
+      0
+    ]
+  ],
+  "slab_symmetry": "require",
+  "allow_independent_terminations": true,
+  "min_slab_thickness_A": 17.0,
+  "min_in_plane_A": 8.0,
+  "target_a_A": 18.0,
+  "target_b_A": 12.5,
+  "max_atoms": 151,
+  "vacuum_A": 20.0,
+  "cell_height_A": 48.0,
+  "fixed_bottom_layers": 0,
+  "materials": [
+    {
+      "id": "HgSe",
+      "bulk_file": "chalcogenide_bulks/HgSe.extxyz",
+      "adsorbates": [
+        {
+          "smiles": "NC",
+          "anchor_elements": [
+            "N"
+          ],
+          "relax_smiles": true,
+          "mode": "binding_sites",
+          "site_types": [
+            "ontop"
+          ],
+          "surface_elements": [
+            "Hg"
+          ],
+          "max_tilt_deg": 35.0,
+          "max_lateral_offset_A": 0.5,
+          "max_additional_height_A": 0.5
+        },
+        {
+          "smiles": "PC",
+          "anchor_elements": [
+            "P"
+          ],
+          "relax_smiles": true,
+          "mode": "binding_sites",
+          "site_types": [
+            "ontop"
+          ],
+          "surface_elements": [
+            "Hg"
+          ],
+          "max_tilt_deg": 35.0,
+          "max_lateral_offset_A": 0.5,
+          "max_additional_height_A": 0.5
+        }
+      ]
+    }
+  ]
+}

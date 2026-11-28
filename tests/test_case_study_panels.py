@@ -180,7 +180,10 @@ def test_chromophore_preset_builds_six_state_acquisition_from_one_schema(tmp_pat
                       seed_size=12, seed=42, local=True, nroots=5, model_width=64, optical=True,
                       extra_labels=24, gap_seeking_after=324)
     configs = {path.stem: json.loads(path.read_text()) for path in tmp_path.glob('*.json')}
-    properties = configs['master_config']['properties_list']
+    master = configs['master_config']
+    assert master['builder_task'] == 'alframework.builders.rdkit_molecules.rdkit_collection_builder_task'
+    assert (master['bootstrap_set'], master['bootstrap_spares']) == (216, 108)
+    properties = master['properties_list']
     states, gaps = validate_gpu4pyscf_properties(properties, nroots=5, compute_nacr=False)
     sampler = configs['sampler_config']
     assert len(states) == 6 and len(gaps) == 5
@@ -193,54 +196,160 @@ def test_chromophore_preset_builds_six_state_acquisition_from_one_schema(tmp_pat
 
 
 @pytest.fixture(scope='module')
-def chalcogenide_preview(tmp_path_factory):
-    """The chalcogenide example's preview run, with its seed, fixed-pool and holdout poses."""
+def chalcogenide_example():
     pytest.importorskip('rdkit')
     from examples.surface_training import chalcogenide
 
-    run = chalcogenide.prepare(tmp_path_factory.mktemp('chalcogenide') / 'run', preview=True)
-    poses = {name: read(run / f'{name}.extxyz', index=':') for name in ('seeds', 'fixed', 'holdout')}
-    return chalcogenide, run, poses
+    run = Path(chalcogenide.__file__).parent
+    master = json.loads((run / chalcogenide.MASTER).read_text())
+    builder = json.loads((run / master['builder_config_path']).read_text())
+    return run, master, builder
 
 
-def test_chalcogenide_bootstrap_balances_its_materials(chalcogenide_preview):
-    _, _, poses = chalcogenide_preview
-    bootstrap = poses['seeds'][:48]
-    assert len(bootstrap) == 48
-    assert set(Counter(atoms.info['material'] for atoms in bootstrap).values()) == {8}
+def chalcogenide_ids(master):
+    from alframework.tools.bootstrap import bootstrap_molecule_ids
+
+    count = master['bootstrap_set']
+    return bootstrap_molecule_ids(0, count, count, finite=master['finite_bootstrap'])
 
 
-def test_chalcogenide_hgse_is_held_out_of_training(chalcogenide_preview):
-    _, _, poses = chalcogenide_preview
-    assert all(atoms.info['composition'] != 'HgSe' for atoms in [*poses['seeds'], *poses['fixed']])
-    assert sum(atoms.info['composition'] == 'HgSe' for atoms in poses['holdout']) == 16
+@pytest.fixture(scope='module')
+def chalcogenide_bootstrap(chalcogenide_example):
+    """The example's bootstrap poses, built with its configured builder."""
+    from alframework.tools.config import load_module_from_string
+
+    run, master, config = chalcogenide_example
+    builder = load_module_from_string(master['builder_task'])
+    return [builder.func(identifier, config, master_directory=run) for identifier in chalcogenide_ids(master)]
 
 
-def test_chalcogenide_poses_share_each_compositions_cell(chalcogenide_preview):
-    chalcogenide, _, poses = chalcogenide_preview
-    every = [*poses['seeds'], *poses['fixed'], *poses['holdout']]
-    for composition in chalcogenide.LATTICES:
-        frames = [atoms for atoms in every if atoms.info['composition'] == composition]
-        for atoms in frames:
-            assert len(atoms) <= 200 and atoms.pbc.all()
-            np.testing.assert_allclose(atoms.cell.array, frames[0].cell.array)
-            assert atoms.cell[2, 2] - np.ptp(atoms.positions[:, 2]) >= 20. - 1.e-6
-            assert atoms.info['metal_donor_A'] > 0
+@pytest.fixture(scope='module')
+def chalcogenide_benchmarks(chalcogenide_example):
+    """The example's fixed-pool and holdout poses."""
+    from examples.surface_training.chalcogenide import benchmark_frames
+
+    run, _, _ = chalcogenide_example
+    return benchmark_frames(run, 'fixed'), benchmark_frames(run, 'holdout')
 
 
-def test_chalcogenide_builder_frames_get_slab_vasp_settings(chalcogenide_preview):
+def placements(frames):
+    return [frame.get_metadata()['surface_builder'] for frame in frames]
+
+
+def test_chalcogenide_uses_the_surface_builder(chalcogenide_example):
+    _, master, _ = chalcogenide_example
+    assert master['builder_task'] == 'alframework.builders.surface.surface_builder_task'
+
+
+def test_chalcogenide_reserves_twelve_bootstrap_spares(chalcogenide_example):
+    from alframework.tools.bootstrap import bootstrap_spare_count
+
+    _, master, _ = chalcogenide_example
+    assert bootstrap_spare_count(master) == 12
+
+
+def test_chalcogenide_bootstrap_rebuilds_the_same_pose(chalcogenide_example, chalcogenide_bootstrap):
+    from alframework.tools.config import load_module_from_string
+
+    run, master, config = chalcogenide_example
+    builder = load_module_from_string(master['builder_task'])
+    repeated = builder.func(chalcogenide_ids(master)[0], config, master_directory=run)
+    assert repeated.get_metadata() == chalcogenide_bootstrap[0].get_metadata()
+    np.testing.assert_array_equal(repeated.get_atoms().positions, chalcogenide_bootstrap[0].get_atoms().positions)
+
+
+def test_chalcogenide_bootstrap_has_48_poses(chalcogenide_bootstrap):
+    assert len(chalcogenide_bootstrap) == 48
+
+
+def test_chalcogenide_bootstrap_covers_every_training_pair(chalcogenide_bootstrap):
+    pairs = {(row['material_id'], row['adsorbate_smiles']) for row in placements(chalcogenide_bootstrap)}
+    assert pairs == {(metal, ligand) for metal in ('CdSe', 'CdTe', 'HgTe') for ligand in ('NC', 'PC')}
+
+
+def test_chalcogenide_slabs_are_symmetric_110_cuts_of_their_bulk_files(chalcogenide_bootstrap):
+    for row in placements(chalcogenide_bootstrap):
+        assert Path(row['bulk_file']).name == f"{row['material_id']}.extxyz"
+        assert row['miller_index'] == [1, 1, 0] and row['slab_symmetric']
+
+
+def test_chalcogenide_ligands_bind_ontop_through_their_donor(chalcogenide_bootstrap):
+    for frame, row in zip(chalcogenide_bootstrap, placements(chalcogenide_bootstrap)):
+        assert row['site_type'] == 'ontop'
+        assert frame.get_atoms()[row['anchor_atom_index']].symbol == {'NC': 'N', 'PC': 'P'}[row['adsorbate_smiles']]
+
+
+def test_chalcogenide_slabs_are_stoichiometric(chalcogenide_bootstrap):
+    for frame, row in zip(chalcogenide_bootstrap, placements(chalcogenide_bootstrap)):
+        atoms = frame.get_atoms()
+        counts = Counter(atoms[atoms.get_tags() != 2].get_chemical_symbols())
+        composition = row['material_id']
+        assert set(counts) == {composition[:2], composition[2:]} and len(set(counts.values())) == 1
+
+
+def test_chalcogenide_slabs_are_17_to_19_angstrom_thick(chalcogenide_bootstrap):
+    for frame in chalcogenide_bootstrap:
+        atoms = frame.get_atoms()
+        assert 17. <= np.ptp(atoms[atoms.get_tags() != 2].positions[:, 2]) < 19.
+
+
+def test_chalcogenide_fixed_pool_balances_its_materials(chalcogenide_benchmarks):
+    fixed, _ = chalcogenide_benchmarks
+    assert len(fixed) == 48
+    assert set(Counter(frame.atoms.info['material'] for frame in fixed).values()) == {8}
+
+
+def test_chalcogenide_hgse_is_held_out_of_the_fixed_pool(chalcogenide_benchmarks):
+    fixed, _ = chalcogenide_benchmarks
+    assert all(frame.atoms.info['composition'] != 'HgSe' for frame in fixed)
+
+
+def test_chalcogenide_holdout_includes_16_hgse_poses(chalcogenide_benchmarks):
+    _, holdout = chalcogenide_benchmarks
+    assert len(holdout) == 64
+    assert sum(frame.atoms.info['composition'] == 'HgSe' for frame in holdout) == 16
+
+
+@pytest.fixture(scope='module')
+def every_chalcogenide_pose(chalcogenide_bootstrap, chalcogenide_benchmarks):
+    fixed, holdout = chalcogenide_benchmarks
+    return [*chalcogenide_bootstrap, *fixed, *holdout]
+
+
+def test_chalcogenide_poses_have_151_mobile_periodic_atoms(every_chalcogenide_pose):
+    for frame in every_chalcogenide_pose:
+        atoms = frame.get_atoms()
+        assert len(atoms) == 151 and atoms.pbc.all() and not atoms.constraints
+
+
+def test_chalcogenide_poses_share_each_compositions_cell(every_chalcogenide_pose):
+    cells = {}
+    for frame, row in zip(every_chalcogenide_pose, placements(every_chalcogenide_pose)):
+        cell = frame.get_atoms().cell.array
+        np.testing.assert_allclose(cell, cells.setdefault(row['material_id'], cell))
+
+
+def test_chalcogenide_poses_keep_20_angstrom_of_vacuum_in_a_48_angstrom_cell(every_chalcogenide_pose):
+    for frame in every_chalcogenide_pose:
+        atoms = frame.get_atoms()
+        assert atoms.cell[2, 2] == pytest.approx(48.)
+        assert atoms.cell[2, 2] - np.ptp(atoms.positions[:, 2]) >= 20.
+
+
+def test_chalcogenide_builder_frames_get_slab_vasp_settings(chalcogenide_example, chalcogenide_bootstrap):
     from alframework.qm_interfaces.ase.vasp import vasp_input_for_structure
 
-    chalcogenide, run, _ = chalcogenide_preview
-    builder = json.loads((run / 'builder_config.json').read_text())
-    sample = chalcogenide.chalcogenide_builder_task.func('test_builder', builder, master_directory=run)
-    vasp = vasp_input_for_structure(sample.get_atoms(), json.loads((run / 'vasp_config.json').read_text()),
-                                    sample.get_metadata())
+    run, master, _ = chalcogenide_example
+    sample = chalcogenide_bootstrap[0]
+    qm = json.loads((run / master['QM_config_path']).read_text())
+    vasp = vasp_input_for_structure(sample.get_atoms(), qm, sample.get_metadata())
     assert vasp['kpts'][2] == 1 and vasp['gamma'] and vasp['idipol'] == 3
-    assert vasp['encut'] == 450 and vasp['sigma'] == .05
+    assert (vasp['encut'], vasp['sigma'], vasp['amin']) == (450, .05, .01)
 
 
-def test_chalcogenide_label_refuses_shards_outside_the_training_directory(chalcogenide_preview):
-    chalcogenide, run, _ = chalcogenide_preview
+def test_chalcogenide_label_refuses_output_in_the_training_directory(chalcogenide_example):
+    from examples.surface_training.chalcogenide import label
+
+    run, master, _ = chalcogenide_example
     with pytest.raises(ValueError, match='outside the active training directory'):
-        chalcogenide.label(run, 'holdout', run / 'runs' / 'h5' / 'data-0010.h5')
+        label(run, 'holdout', run / master['h5_path'].format(10))

@@ -464,7 +464,7 @@ def fps_select(candidates, k):
     """
     if not candidates:
         return []
-    from alframework.builders.rdkit_molecule import farthest_point_order, pair_descriptor
+    from alframework.builders.rdkit_molecules import farthest_point_order, pair_descriptor
     ordered = sorted(candidates, key=lambda candidate: (str(candidate["trajectory_id"]), int(candidate["step"])))
     if any(np.any(candidate["pbc"]) for candidate in ordered):
         raise ValueError("FPS cohort selection supports nonperiodic molecules only.")

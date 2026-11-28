@@ -89,10 +89,12 @@ def test_drawn_momenta_follow_the_maxwell_boltzmann_distribution_for_each_mass()
 
 
 def test_constrained_atoms_get_no_momentum():
-    atoms = gas()
+    atoms = gas(2)
     atoms.set_constraint(FixAtoms(indices=[0]))
-    thermal(atoms, molecule_id='constraint', random_seed=8)
+    metadata = thermal(atoms, molecule_id='constraint', random_seed=8)
     np.testing.assert_array_equal(atoms.get_momenta()[0], 0.0)
+    assert atoms.get_number_of_degrees_of_freedom() == 3
+    assert metadata['initial_kinetic_temperature_K'] == pytest.approx(atoms.get_temperature())
 
 
 def test_with_a_seed_each_molecule_id_always_gets_the_same_momenta():

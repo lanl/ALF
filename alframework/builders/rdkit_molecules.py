@@ -1,8 +1,8 @@
-"""Prepare unlabelled, reference-centred KDG-ladder seeds with stratified FPS.
+"""Prepare and replay unlabeled RDKit seeds for one molecule or a SMILES collection.
 
-Run ``python -m alframework.builders.rdkit_molecule --help``. RDKit is an
-optional dependency; no dynamics, force-field optimization, or QM is performed.
-The numerical method follows the original ALF initial-sampling benchmark.
+Both modes use screened KDG-ladder distortions and stratified farthest-point
+sampling. Collections can also generate their own reference conformers.
+Run ``python -m alframework.builders.rdkit_molecules --help`` for the CPU setup.
 """
 from __future__ import annotations
 
@@ -18,8 +18,10 @@ import tempfile
 
 import h5py
 import numpy as np
-from ase.data import chemical_symbols, covalent_radii
+from ase.data import atomic_numbers, chemical_symbols, covalent_radii
 
+from alframework.builders.external_geometry import build_external_geometries
+from alframework.builders.external_geometry import molecular_collection_builder_task as rdkit_collection_builder_task
 from alframework.tools.atom_order import TOPOLOGY_ATOM_IDS
 from alframework.tools.files import cached_sha256
 from alframework.tools.molecules import MOLECULE_ID
@@ -47,6 +49,13 @@ EMBEDDING_SETTINGS = {
     "enforceChirality": True, "trackFailures": True,
     "enableSequentialRandomSeeds": True,
 }
+
+
+COLLECTION_SCHEMA = 'alf.rdkit_collection.v1'
+SPLITS = ('train', 'validation', 'holdout')
+COLLECTION_BUILDER_TASK = 'alframework.builders.rdkit_molecules.rdkit_collection_builder_task'
+DEFAULT_SCREEN = {**DEFAULT_SETTINGS['geometry_screen'], 'nonbonded_min_scale': 1.25}
+
 
 
 def _rdkit():
@@ -383,7 +392,7 @@ def prepare_rdkit_seed(config, output_dir, *, config_directory=None, molecule_id
               'selection_method': 'per-stratum greedy max-min FPS, centroid-nearest start',
               'descriptor': 'unscaled all-atom pair distances sorted within element-pair type',
               'alf_configuration': {
-                  'master': {'builder_task': 'alframework.builders.rdkit_molecule.rdkit_molecule_builder_task',
+                  'master': {'builder_task': 'alframework.builders.rdkit_molecules.rdkit_molecule_builder_task',
                              'builder_config_path': str(published / 'builder_config.json'),
                              'bootstrap_set': len(selected), 'finite_bootstrap': True},
                   'sampler': {'topology_check': topology_config, 'distcut': screen['min_distance_A']},
@@ -415,7 +424,6 @@ prepare_rdkit_pool = prepare_rdkit_seed
 
 def build_rdkit_molecules(moleculeids, builder_config, h5_path=None, current_h5_id=0, master_directory=None):
     """Replay FPS bootstrap seeds, then geometry from immutable closed label shards."""
-    from alframework.builders.external_geometry import build_external_geometries
     root = Path(master_directory or '.').expanduser().resolve()
     manifest_path = Path(builder_config['seed_manifest_path']).expanduser()
     if not manifest_path.is_absolute():manifest_path = root / manifest_path
@@ -466,15 +474,226 @@ def rdkit_molecule_builder_task(moleculeid=None, moleculeids=None, builder_confi
     return result if plural else result[0]
 
 
+def load_molecule_panel(molecules, max_atoms=None, *, config_directory=None, require_training=True):
+    """Canonicalize a SMILES list or JSON manifest and check molecule-level splits."""
+    Chem, *_ = _rdkit()
+    if max_atoms is not None and (type(max_atoms) is not int or max_atoms < 2):
+        raise ValueError('max_atoms must be an integer of at least two.')
+    if isinstance(molecules, (str, Path)):
+        path = Path(molecules).expanduser()
+        if not path.is_absolute():
+            path = Path(config_directory or '.') / path
+        molecules = json.loads(path.read_text())
+    if not isinstance(molecules, list) or not molecules:
+        raise ValueError('Provide a nonempty JSON list of SMILES or molecule records.')
+
+    panel = {}
+    for item in molecules:
+        record = {'smiles': item} if isinstance(item, str) else item
+        if not isinstance(record, dict) or not isinstance(record.get('smiles'), str) or not record['smiles'].strip():
+            raise ValueError('Every molecule record needs a nonempty SMILES string.')
+        smiles = record['smiles']
+        molecule = Chem.MolFromSmiles(smiles)
+        if molecule is None or len(Chem.GetMolFrags(molecule)) != 1:
+            raise ValueError(f'Expected one connected molecule for {smiles!r}.')
+        if Chem.GetFormalCharge(molecule) or any(atom.GetNumRadicalElectrons() for atom in molecule.GetAtoms()):
+            raise ValueError(f'Expected a neutral closed-shell molecule for {smiles!r}.')
+        identity = Chem.MolToSmiles(molecule, isomericSmiles=True)
+        if identity in panel:
+            raise ValueError(f'Duplicate canonical SMILES across the panel: {identity}')
+        count = Chem.AddHs(molecule).GetNumAtoms()
+        if count < 2 or (max_atoms is not None and count > max_atoms):
+            allowed = 'at least 2' if max_atoms is None else f'2 to {max_atoms}'
+            raise ValueError(f'{identity}: {count} atoms including H, expected {allowed}.')
+        split = record.get('split', 'train')
+        if split not in SPLITS:
+            raise ValueError(f'{identity}: split must be train, validation or holdout.')
+        panel[identity] = dict(record, split=split, n_atoms=count, **{MOLECULE_ID: identity})
+    if require_training and not any(row['split'] == 'train' for row in panel.values()):
+        raise ValueError('The panel needs at least one training molecule.')
+    return list(panel.values())
+
+
+def _reference_conformers(mol, seed, limit, threads):
+    from rdkit import Chem
+    from rdkit.Chem import AllChem, Lipinski, rdMolAlign
+
+    parameters = AllChem.ETKDGv3()
+    parameters.randomSeed = seed
+    parameters.numThreads = threads
+    count = 8 * limit if limit > 1 and Lipinski.NumRotatableBonds(Chem.RemoveHs(mol)) else 1
+    ids = list(AllChem.EmbedMultipleConfs(mol, numConfs=count, params=parameters))
+    if not ids:
+        raise ValueError('RDKit could not embed a reference.')
+    force_field = None
+    if AllChem.MMFFHasAllMoleculeParams(mol):
+        energies = AllChem.MMFFOptimizeMoleculeConfs(mol, maxIters=500)
+        force_field = 'MMFF94'
+    elif AllChem.UFFHasAllMoleculeParams(mol):
+        energies = AllChem.UFFOptimizeMoleculeConfs(mol, maxIters=500)
+        force_field = 'UFF'
+    else:
+        energies = [(0, 0.)] * len(ids)
+    heavy = Chem.RemoveHs(mol)
+    selected = []
+    for conf_id, _ in sorted(zip(ids, energies), key=lambda item: item[1]):
+        if all(rdMolAlign.GetBestRMS(Chem.Mol(heavy), heavy, conf_id, previous) >= .35 for previous in selected):
+            selected.append(conf_id)
+        if len(selected) == limit:
+            break
+    return selected, force_field
+
+
+def _interleave_conformer_seeds(paths, output, count, identity):
+    pools = []
+    for path in paths:
+        with h5py.File(path) as handle:
+            group = handle['molecule']
+            numbers = [atomic_numbers[value.decode()] for value in group['species'][:]]
+            pools.append((numbers, group[TOPOLOGY_ATOM_IDS][:], group['coordinates'][:], group['strata'][:]))
+    numbers, atom_ids, *_ = pools[0]
+    if any(z != numbers or not np.array_equal(ids, atom_ids) for z, ids, *_ in pools):
+        raise ValueError('Conformer pools have incompatible atom order.')
+    rows = [np.linspace(0, len(pool[2]) - 1, len(range(i, count, len(pools))), dtype=int)
+            for i, pool in enumerate(pools)]
+    selected = [(rows[i][round_index], i)
+                for round_index, i in (divmod(index, len(pools)) for index in range(count))]
+    _write_geometry_h5(output, np.stack([pools[i][2][row] for row, i in selected]), numbers, atom_ids,
+                       np.arange(count), np.stack([pools[i][3][row] for row, i in selected]),
+                       np.asarray([row for row, _ in selected]), identity)
+
+
+def _prepare_molecule(root, published, entry, settings, max_conformers):
+    Chem, *_ = _rdkit()
+
+    identity = entry[MOLECULE_ID]
+    seed_size = settings['seed_size']
+    digest = hashlib.sha256(f'{settings["seed"]}|{identity}'.encode()).hexdigest()
+    index = int(digest[:8], 16) & 0x7fffffff
+    mol = Chem.AddHs(Chem.MolFromSmiles(identity))
+    relative = Path(entry['split']) / digest[:16]
+    (root / relative.parent).mkdir(exist_ok=True)
+    path = root / 'reference.mol'
+    try:
+        conformers, force_field = _reference_conformers(mol, index, min(max_conformers, seed_size), settings['threads'])
+        routes = [relative] + [relative / f'conformer-{i}' for i in range(1, len(conformers))]
+        config = dict(settings, smiles=identity, reference_geometry=str(path), reference_charge=0)
+        for i, (route, conf_id) in enumerate(zip(routes, conformers)):
+            Chem.MolToMolFile(mol, str(path), confId=conf_id)
+            prepare_rdkit_seed({**config, 'seed': (index + i) & 0x7fffffff}, root / route,
+                               molecule_identity=identity, published_directory=published / route)
+        seed_path = relative / 'seed.h5'
+        if len(routes) > 1:
+            seed_path = relative / 'combined_seed.h5'
+            _interleave_conformer_seeds([root / route / 'seed.h5' for route in routes],
+                                      root / seed_path, seed_size, identity)
+    except (RuntimeError, ValueError) as exc:
+        raise ValueError(f'Seed preparation failed for {identity}: {exc}') from exc
+    finally:
+        path.unlink(missing_ok=True)
+    reference = relative / 'reference.mol'
+    return dict(entry, seed_path=str(seed_path), reference_path=str(reference),
+                seed_sha256=cached_sha256(root / seed_path), reference_sha256=cached_sha256(root / reference),
+                reference_force_field=force_field,
+                conformer_manifests=[str(route / 'seed_manifest.json') for route in routes])
+
+
+def collection_workflow_settings(panel, *, seed, seed_size, bootstrap_per_molecule, geometry_screen=None):
+    """Build ALF config fragments for training on prepared collection records."""
+    train = [row for row in panel if row['split'] == 'train']
+    if not train:
+        raise ValueError('The panel needs at least one training molecule.')
+    screen = {**DEFAULT_SCREEN, **(geometry_screen or {})}
+    return {
+        'master': {
+            'builder_task': COLLECTION_BUILDER_TASK, 'builder_config_path': 'builder_config.json',
+            'bootstrap_set': len(train) * bootstrap_per_molecule, 'finite_bootstrap': True,
+            'bootstrap_spares': len(train) * (seed_size - bootstrap_per_molecule),
+        },
+        'builder': {
+            'sources': [row['seed_path'] for row in train], 'selection_seed': seed, 'replay_closed_shards': True,
+        },
+        'sampler': {
+            'distcut': screen['min_distance_A'],
+            'topology_check': {
+                'enabled': True, 'reference_format': 'auto', 'reference_charge': 0,
+                'references': {row[MOLECULE_ID]: row['reference_path'] for row in train},
+                **{key: screen[key] for key in ('bond_min_scale', 'bond_max_scale', 'connectivity_scale')},
+            },
+        },
+    }
+
+
+def prepare_rdkit_collection(config, output_dir, *, config_directory=None, published_directory=None):
+    """Publish one RDKit seed pool per molecule and a training-only builder config.
+
+    The collection is prepared on CPU before active learning. Paths in the
+    collection manifest are relative to its output directory. A caller staging
+    an entire run can supply its eventual path as ``published_directory``.
+    """
+    if not isinstance(config, dict):
+        raise TypeError('Collection configuration must be a JSON object.')
+    options = {'molecules', 'max_atoms', 'max_conformers', 'bootstrap_per_molecule'}
+    unknown = set(config) - set(DEFAULT_SETTINGS) - options
+    if unknown:
+        raise ValueError(f'Unknown collection keys: {sorted(unknown)}')
+    output = Path(output_dir).expanduser().resolve()
+    if output.exists():
+        raise FileExistsError(f'Refusing to overwrite collection output: {output}')
+
+    settings = {**DEFAULT_SETTINGS, 'pool_size': 48, 'seed_size': 12, 'max_embedding_rounds': 20}
+    settings.update({key: value for key, value in config.items() if key in DEFAULT_SETTINGS})
+    screen = config.get('geometry_screen', {})
+    if not isinstance(screen, dict):
+        raise ValueError('geometry_screen must be an object.')
+    settings['geometry_screen'] = {**DEFAULT_SCREEN, **screen}
+    conformers = config.get('max_conformers', 1)
+    for key, value in {'pool_size': settings['pool_size'], 'seed_size': settings['seed_size'],
+                       'max_conformers': conformers, 'threads': settings['threads']}.items():
+        if type(value) is not int or value < 1:
+            raise ValueError(f'{key} must be a positive integer.')
+    seed = settings['seed']
+    if type(seed) is not int or seed < 0:
+        raise ValueError('seed must be a nonnegative integer.')
+    seed_size = settings['seed_size']
+    bootstrap = config.get('bootstrap_per_molecule', min(8, seed_size))
+    if type(bootstrap) is not int or not 1 <= bootstrap <= seed_size <= settings['pool_size']:
+        raise ValueError('Require 1 <= bootstrap_per_molecule <= seed_size <= pool_size.')
+    max_atoms = config.get('max_atoms')
+    records = load_molecule_panel(config.get('molecules'), max_atoms, config_directory=config_directory)
+
+    published = output if published_directory is None else Path(published_directory).expanduser().resolve()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=f'.{output.name}-', dir=output.parent) as temporary:
+        root = Path(temporary) / 'collection'
+        root.mkdir()
+        panel = [_prepare_molecule(root, published, entry, settings, conformers) for entry in records]
+        workflow = collection_workflow_settings(panel, seed=seed, seed_size=seed_size,
+                                                bootstrap_per_molecule=bootstrap, geometry_screen=screen)
+        report = {'schema': COLLECTION_SCHEMA, 'molecules': panel, 'alf_configuration': workflow,
+                  'settings': dict(settings, max_atoms=max_atoms, max_conformers=conformers,
+                                   bootstrap_per_molecule=bootstrap)}
+        for name, data in [('builder_config.json', workflow['builder']), ('panel_manifest.json', report)]:
+            (root / name).write_text(json.dumps(data, indent=2, allow_nan=False) + '\n')
+        root.rename(output)
+    return report
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--config', required=True, type=Path, help='JSON seed configuration; reference paths are relative to this file.')
-    parser.add_argument('--output-dir', required=True, type=Path, help='New output directory; existing paths are never overwritten.')
+    parser.add_argument('--config', required=True, type=Path,
+                        help='JSON with smiles and a reference, or a molecules collection. Input paths are relative to this file.')
+    parser.add_argument('--output-dir', required=True, type=Path, help='New output directory.')
     args = parser.parse_args(argv)
     config_path = args.config.expanduser().resolve(strict=True)
     config = json.loads(config_path.read_text())
-    report = prepare_rdkit_seed(config, args.output_dir, config_directory=config_path.parent)
-    print(f"Prepared {report['selected_count']} KDG/FPS seeds from {report['pool_count']} accepted pool frames in {args.output_dir}.")
+    if isinstance(config, dict) and 'molecules' in config:
+        report = prepare_rdkit_collection(config, args.output_dir, config_directory=config_path.parent)
+        bootstrap = report['alf_configuration']['master']['bootstrap_set']
+        print(f"Prepared {len(report['molecules'])} molecules with {bootstrap} initial training seeds in {args.output_dir}.")
+    else:
+        report = prepare_rdkit_seed(config, args.output_dir, config_directory=config_path.parent)
+        print(f"Prepared {report['selected_count']} KDG/FPS seeds from {report['pool_count']} accepted pool frames in {args.output_dir}.")
     return 0
 
 

@@ -1149,6 +1149,25 @@ def test_the_scalar_sampler_returns_the_original_constraints():
     assert [type(c) for c in atoms.constraints] == [FixAtoms], "only the structure's own constraint comes back"
 
 
+def anchored_water():
+    from ase.constraints import FixAtoms
+
+    atoms = SPRING_WATER.copy()
+    atoms.set_constraint(FixAtoms(indices=[0]))
+    return MoleculesObject(atoms, "anchored")
+
+
+def test_the_batched_sampler_refuses_a_changing_cell_with_fixed_atoms():
+    config = dict(GROUP_CONFIG, end_dens=[0.004, 0.004])
+    with pytest.raises(ValueError, match="Set end_dens to null"):
+        sample_trajectories([anchored_water()], fake_ensemble(), config)
+
+
+def test_the_batched_sampler_refuses_to_center_fixed_atoms():
+    with pytest.raises(ValueError, match="translate_to_center=false"):
+        sample_trajectories([anchored_water()], fake_ensemble(), dict(GROUP_CONFIG, translate_to_center=True))
+
+
 def test_an_engine_of_your_own_is_named_by_its_import_path():
     from alframework.tools.sampler_coordinator import driver_settings
     from tests.helpers.engines import CountingASEEngine

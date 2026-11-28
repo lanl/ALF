@@ -69,11 +69,16 @@ Supported Builder Tasks
        stored with them.
      - Starting from structures you already have, including frames from an existing
        dataset that need relabeling.
-   * - ``alframework.builders.rdkit_molecule.rdkit_molecule_builder_task``
+   * - ``alframework.builders.rdkit_molecules.rdkit_molecule_builder_task``
      - Replays molecular seed geometries prepared ahead of time with RDKit, then
        geometries from stored labels.
      - Single molecules that need varied starting geometries; see
        :ref:`builders-rdkit-seeds`.
+   * - ``alframework.builders.rdkit_molecules.rdkit_collection_builder_task``
+     - Interleaves the training molecules' seed files during bootstrap, then
+       samples from seed files and stored labels.
+     - Isolated-molecule collections with optional validation and holdout splits.
+       See :ref:`builders-rdkit-collection`.
    * - ``alframework.builders.defect_crystal_builder.defect_cell_builder_task``
      - Loads a random ``.cfg`` crystal structure, then applies random vacancies,
        interstitials, replacements, atom displacements, and cell scaling.
@@ -265,8 +270,8 @@ Molecular collection builder
    so each molecule's seed file contributes in turn, and later rounds use
    ``"deterministic_hash"``. After the bootstrap it also samples from the run's
    closed label shards, unless ``replay_closed_shards`` is ``false``. Every frame
-   must carry a ``molecule_id``. The :download:`excited-state example
-   <../../../examples/molecular_excited_states/prepare.py>` writes this configuration.
+   must carry a ``molecule_id``. :ref:`builders-rdkit-collection` describes how
+   to generate its seed files and configuration from SMILES.
 
 Defect crystal builder
    ``defect_cell_builder_task`` reads these fields:
@@ -328,9 +333,12 @@ Surface builder
    Supply one explicit Miller index and a right-handed periodic cell with
    ``c`` along +z. The file provides the lateral dimensions and termination,
    so the builder refuses the in-plane size options with it.
-   The builder checks the substrate thickness and the final atom cap and
-   sets the vacuum after placement. Bulk-cutting and face-symmetry options
-   apply when generating slabs from bulk inputs.
+   For a slab that crosses the periodic ``c`` boundary, the builder uses a
+   distinct vacuum gap to recover contiguous coordinates before measuring
+   thickness, selecting the exposed face, or freezing substrate atoms.
+   Supply contiguous coordinates if the input has no distinct vacuum gap.
+   The builder checks the final atom cap and sets the vacuum after placement.
+   Bulk-cutting and face-symmetry options apply to slabs generated from bulk.
 
    Optional ``target_a_A`` and ``target_b_A`` select whole repeats
    closest to the requested lengths. The builder minimizes the sum of
@@ -351,7 +359,10 @@ Surface builder
    The slab normal and ``c`` point along Cartesian +z. ``vacuum_A`` is
    the total gap between periodic images of the finished structure
    (default 15 Å). The builder centers the finished geometry along z and
-   keeps all three axes periodic. Set ``face`` to ``top`` (default),
+   keeps all three axes periodic. Set ``cell_height_A`` to use a common
+   length for ``c`` across poses. In that mode ``vacuum_A`` is the minimum
+   gap, and a structure that needs a taller cell raises an error.
+   Set ``face`` to ``top`` (default),
    ``bottom``, or ``both`` to sample either face. ``surface_depth_A`` is
    the depth of the exposed atom band measured from the highest slab atom
    (default 2 Å).
@@ -359,13 +370,18 @@ Surface builder
    to preserve the vacuum gap.
 
    Set ``fixed_bottom_layers`` to freeze that many substrate planes on the
-   bottom of the oriented slab. It defaults to zero and may be overridden
-   per material. At least one substrate plane stays mobile. The builder
+   bottom of the oriented slab. Use ``fixed_bottom_depth_A`` to freeze the
+   substrate atoms within that distance in Å of the lowest substrate atom.
+   The depth cutoff uses the actual heights, including when a relaxed plane
+   buckles. Both options default to zero. Set at most one to a nonzero value
+   per material. ``fixed_bottom_layers`` must leave at least one plane
+   mobile, and ``fixed_bottom_depth_A`` must leave the exposed atoms within
+   ``surface_depth_A`` mobile. The builder
    attaches ASE ``FixAtoms`` and records ``fixed_substrate_indices`` in the
-   structure metadata. Use scalar ASE sampling or the batched driver's
-   ``ase`` engine with ``end_dens: null`` and
-   ``translate_to_center: false``. Packed TorchSim and ALCHEMI sampling
-   require mobile slabs.
+   structure metadata. Scalar ASE and batched ASE, TorchSim, and ALCHEMI
+   honor the constraint. Set ``end_dens: null`` and
+   ``translate_to_center: false`` to keep the cell and fixed positions.
+   Static VASP labels retain forces on the fixed atoms.
 
    Set ``slab_symmetry`` to ``report`` to record whether the top and
    bottom of the bare substrate are equivalent, or to ``require`` to
@@ -388,9 +404,13 @@ Surface builder
    conformer with MMFF94 or UFF if MMFF94 parameters are unavailable.
    The builder records the force field and reports optimization failures.
    Coordinate files such as XYZ work with ASE alone. The builder rejects
-   disconnected or overlapping geometries. Each draw chooses one entry and
-   one of its zero-based ``anchor_indices``, in file order or in RDKit
-   input order before hydrogens are added.
+   disconnected or overlapping geometries. Each entry must specify either
+   ``anchor_indices`` or ``anchor_elements``. Indices are zero-based, in
+   file order or in RDKit input order before hydrogens are added. Element
+   selectors such as ``["N", "O"]`` make every matching input atom eligible.
+   For SMILES, hydrogens added during embedding are excluded from both
+   selectors. Each draw chooses one entry and one of its eligible anchor atoms.
+   An element selector with no matching atoms raises an error.
 
    ``max_lateral_offset_A`` samples a displacement within a disk around
    the chosen site. ``max_additional_height_A`` samples an upward
@@ -416,13 +436,13 @@ Surface builder
    ``surface_builder`` metadata and tags interior, exposed, and adsorbate
    atoms as 0, 1, and 2, respectively.
 
-   Use a ``materials`` list instead of a top-level ``bulk_file`` to
-   sample multiple materials. Each entry supplies ``id`` and ``bulk_file``.
-   Optional positive ``weight`` defaults to 1. Entries override shared settings
+   Use a ``materials`` list to sample multiple materials. Each entry supplies
+   ``id`` and either a ``bulk_file`` or a ``slab_file``. The builder draws a
+   material using its positive ``weight``, which defaults to 1, then chooses
+   one of that entry's adsorbates uniformly. Entries override shared settings
    and can set an empty ``adsorbates`` list for clean slabs. If an entry
    selects its own Miller indices or maximum, it replaces shared facet
-   selection. The builder validates each material pool and samples the
-   material before its facet and cut. For an example, see
+   selection. The builder validates every material pool. For an example, see
    ``examples/surface_adsorption/builder_materials.json``.
 
    .. code-block:: json
@@ -463,7 +483,7 @@ them first on a CPU, which needs the ``topology`` extra:
 
 .. code-block:: bash
 
-   python -m alframework.builders.rdkit_molecule --config seed_config.json --output-dir seeds
+   python -m alframework.builders.rdkit_molecules --config seed_config.json --output-dir seeds
 
 Preparation embeds a large pool of geometries around your reference at increasing
 levels of distortion, screens them, and uses farthest-point sampling (FPS) to pick a
@@ -524,7 +544,7 @@ Add them to your run:
 .. code-block:: json
 
    {
-     "builder_task": "alframework.builders.rdkit_molecule.rdkit_molecule_builder_task",
+     "builder_task": "alframework.builders.rdkit_molecules.rdkit_molecule_builder_task",
      "builder_config_path": "seeds/builder_config.json",
      "bootstrap_set": 5000,
      "finite_bootstrap": true
@@ -542,6 +562,58 @@ during the bootstrap. After that, it picks geometries from the stored label file
 keeping only the geometry and atom identities. Its atoms carry the
 ``topology_atom_ids`` that the sampler's ``topology_check`` needs; see
 :ref:`samplers-runtime-screens`.
+
+.. _builders-rdkit-collection:
+
+Preparing a SMILES Collection With RDKit
+----------------------------------------
+
+Prepare a collection of isolated molecules with the ``topology`` extra on CPU.
+The ``molecules`` field accepts either an inline list or a path to a JSON list
+relative to the config file. Each string is a training molecule. To reserve a
+whole molecule for evaluation, use a record with ``split`` set to ``validation``
+or ``holdout``. Supply connected, neutral, closed-shell SMILES. Canonically
+equivalent SMILES are rejected even if they occur in different splits.
+
+.. code-block:: json
+
+   {
+     "molecules": ["C=O", "CCCCO", {"smiles": "CC=O", "split": "holdout"}],
+     "max_atoms": 40,
+     "max_conformers": 3,
+     "pool_size": 48,
+     "seed_size": 12,
+     "bootstrap_per_molecule": 8,
+     "seed": 42
+   }
+
+.. code-block:: bash
+
+   python -m alframework.builders.rdkit_molecules --config collection.json --output-dir run
+
+RDKit embeds up to ``max_conformers`` distinct reference conformers per
+molecule (default 1) and relaxes them with MMFF94 or UFF where supported.
+ALF uses the same screened distortion and FPS procedure as for a single
+molecule. It generates ``pool_size`` candidates per reference and selects
+``seed_size`` total seeds per molecule from the conformer pools. A molecule
+can yield fewer distinct references than the requested maximum. The default
+pool and seed sizes are 48 and 12. For each distortion level, collection mode
+defaults to 20 embedding rounds and a nonbonded clearance of 1.25 times the
+sum of covalent radii. ``bootstrap_per_molecule`` defaults to 8 or
+``seed_size``, whichever is smaller. ``max_atoms`` optionally caps the count
+including explicit hydrogens.
+
+In the generated directory, ``builder_config.json`` contains only training
+seeds. ``panel_manifest.json`` records seed and reference files for every split,
+file fingerprints, and the generated ``alf_configuration``. Use the ``master``
+and ``sampler`` entries as configuration fragments with your QM and ML settings.
+Run from the generated directory so the relative input paths resolve. The
+``rdkit_collection_builder_task`` cycles through the training molecules in the
+listed order, taking one geometry per molecule on each bootstrap pass. Each
+training molecule supplies ``bootstrap_per_molecule`` initial candidates.
+The remaining seeds serve as spares for failed labels and can also be picked
+for later dynamics. Validation and holdout seeds are available for separate
+evaluation.
 
 Related Examples
 ----------------
@@ -572,7 +644,7 @@ Related Examples
      - ``alframework.builders.builders.simple_condensed_phase_builder_task``
      - Condensed-phase ionic-liquid style mixtures.
    * - ``examples/AcAc_excited_pyseqm``
-     - ``alframework.builders.rdkit_molecule.rdkit_molecule_builder_task``
+     - ``alframework.builders.rdkit_molecules.rdkit_molecule_builder_task``
      - RDKit seeds for one molecule.
    * - ``examples/surface_adsorption``
      - ``alframework.builders.surface.surface_builder_task``
@@ -588,6 +660,6 @@ You can link from this guide directly to API pages:
 * :doc:`Molten-salt builder module <../api_documentation/alframework.builders.moltensalt_builder>`
 * :doc:`Reactive builder module <../api_documentation/alframework.builders.reactive_builder>`
 * :doc:`External geometry module <../api_documentation/alframework.builders.external_geometry>`
-* :doc:`RDKit molecule module <../api_documentation/alframework.builders.rdkit_molecule>`
+* :doc:`RDKit molecule module <../api_documentation/alframework.builders.rdkit_molecules>`
 * :doc:`Defect crystal module <../api_documentation/alframework.builders.defect_crystal_builder>`
 * :doc:`Surface builder module <../api_documentation/alframework.builders.surface>`

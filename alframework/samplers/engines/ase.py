@@ -6,19 +6,16 @@ import numpy as np
 from ase import units
 from ase.calculators.calculator import Calculator, all_changes
 from ase.io.trajectory import Trajectory
-from ase.constraints import FixAtoms, FixCom
+from ase.constraints import FixCom
 from ase.md.langevin import Langevin
 
 from alframework.ml_interfaces.ensemble_inference import SelectedStateEvaluator, add_observed_uncertainty
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator
 from alframework.tools.gap_seeking import gap_seeking_energy_forces
 from alframework.tools.geometry import minimum_distance
+from alframework.tools.velocities import has_fixed_atoms
 
 OBSERVED_PROPERTIES = ['energy', 'forces', 'energy_stdev', 'forces_stdev_mean', 'forces_stdev_max']
-
-
-def has_fixed_atoms(atoms):
-    return any(isinstance(constraint, FixAtoms) and len(constraint.index) for constraint in atoms.constraints)
 
 
 class _PredictedMember(Calculator):

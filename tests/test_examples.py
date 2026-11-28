@@ -72,7 +72,7 @@ def test_example_configs_are_valid(path):
         # A package may give a name defined in one of its modules, such as alframework.ml_interfaces.hippynn's tasks.
         assert any(
             (isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.name == name)
-            or (isinstance(node, ast.ImportFrom) and any(alias.name == name for alias in node.names))
+            or (isinstance(node, ast.ImportFrom) and any((alias.asname or alias.name) == name for alias in node.names))
             for node in tree.body
         ), master[field]
     assert all(len(spec) == 3 for spec in master["properties_list"].values())

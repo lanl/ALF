@@ -5,6 +5,7 @@ keeps the existing MLMD formulas and NumPy streams common to both engines.
 Cells are stored with lattice vectors as columns internally; the evaluator
 and ASE boundary always receive row-vector cells.
 """
+from copy import deepcopy
 from dataclasses import dataclass
 import logging
 
@@ -35,7 +36,7 @@ class PackedState:
 
 import numpy as np
 from ase import units
-from ase.constraints import FixCom
+from ase.constraints import FixAtoms, FixCom
 from ase.io.trajectory import Trajectory
 
 from alframework.ml_interfaces.ensemble_inference import (ASEEnsembleEvaluator, add_observed_uncertainty,
@@ -43,6 +44,7 @@ from alframework.ml_interfaces.ensemble_inference import (ASEEnsembleEvaluator, 
                                                           merge_uncertainty_observations)
 from alframework.tools.geometry import batched_minimum_distances, minimum_distance
 from alframework.tools.gap_seeking import gap_seeking_energy_forces
+from alframework.tools.velocities import has_fixed_atoms
 
 KB_EV_PER_K = 8.617333262145e-5
 logger = logging.getLogger(__name__)
@@ -92,12 +94,22 @@ class PackedMLMDEngine:
         self._atoms = list(atoms_list)
         if len({tuple(bool(v) for v in atoms.pbc) for atoms in self._atoms}) > 1:
             raise ValueError(f"{self.engine_name} batches must share one periodic boundary condition.")
-        if any(atoms.constraints for atoms in self._atoms):
-            raise NotImplementedError(f"The {self.engine_name} engine does not support ASE constraints.")
-        # Each system's center of mass stays fixed (the 3N-3 degrees of freedom ASE's FixCom leaves), and the
-        # host Atoms say so while they run, so their temperature counts the same degrees of freedom.
-        for atoms in self._atoms:
-            atoms.set_constraint(FixCom())
+        self._constraints = [list(atoms.constraints) for atoms in self._atoms]
+        fixed_masks = []
+        for atoms, constraints in zip(self._atoms, self._constraints):
+            fixed = np.zeros(len(atoms), dtype=bool)
+            for constraint in constraints:
+                if not isinstance(constraint, FixAtoms):
+                    raise NotImplementedError(f"The {self.engine_name} engine only supports ASE FixAtoms constraints.")
+                fixed[constraint.get_indices()] = True
+            if fixed.all():
+                raise ValueError("Packed dynamics requires at least one mobile atom per trajectory.")
+            fixed_masks.append(fixed)
+        # An anchored system keeps its mobile atoms' full degrees of freedom. Other systems use FixCom.
+        remove_com = [not fixed.any() for fixed in fixed_masks]
+        for atoms, enabled in zip(self._atoms, remove_com):
+            if enabled:
+                atoms.set_constraint(FixCom())
         self._options = _calculator_options(calculator_options)
         self._rngs = list(rngs)
         self._temperatures = [float(value) for value in temperatures_K]
@@ -124,8 +136,12 @@ class PackedMLMDEngine:
             energy=torch.zeros(len(counts), dtype=self.dtype, device=self.device),
             forces=torch.zeros((sum(counts), 3), dtype=self.dtype, device=self.device))
         self._rows = list(range(len(self._atoms)))
+        self._fixed_mask = self._com_mask = None
+        if not all(remove_com):
+            self._fixed_mask = tensor(np.concatenate(fixed_masks), torch.bool)[:, None]
+            self._com_mask = tensor(np.repeat(remove_com, counts), torch.bool)[:, None]
         self._layout()
-        self.state.momenta = self._without_center_of_mass(self.state.momenta)
+        self.state.momenta = self._project_motion(self.state.momenta)
         # Find every fully periodic system's minimum distance in one batched search on the device
         # (see geometry.batched_minimum_distances); on the CPU, ASE's per-system search is as fast.
         self.batched_distance_screen = self.device.type != "cpu"
@@ -148,7 +164,7 @@ class PackedMLMDEngine:
         """Copy members back to their Atoms, then remove them from the packed state."""
         for index in indices:
             self._sync(index)
-            self._atoms[index].set_constraint()  # finished Atoms go on to labeling without it
+            self._atoms[index].set_constraint(self._constraints[index])
             if self._observed_scores is not None:
                 self._observed_scores.pop(index, None)
         keep = [row for row, index in enumerate(self._rows) if index not in set(indices)]
@@ -158,6 +174,8 @@ class PackedMLMDEngine:
             atom_mask = self._torch.isin(self.state.system_idx, selection)
             energies, forces = self._members
             self.state = self.state[keep]
+            if self._fixed_mask is not None:
+                self._fixed_mask, self._com_mask = self._fixed_mask[atom_mask], self._com_mask[atom_mask]
             self._members = (energies[:, selection], forces[:, atom_mask])
             if getattr(self, '_state_members', None) is not None:
                 se, sf = self._state_members
@@ -168,6 +186,7 @@ class PackedMLMDEngine:
                 self._atomic_uncertainty = [self._atomic_uncertainty[row] for row in keep]
         else:
             self.state, self._members = None, None
+            self._fixed_mask = self._com_mask = None
             self._state_members = self._uncertainty = None
             self._atomic_uncertainty = None
         self._host = self._distances = None
@@ -188,7 +207,7 @@ class PackedMLMDEngine:
         host, atoms = self._host_arrays(), self._atoms[index]
         selection = self._slices[index]
         atoms.set_cell(host["cell"][self._position[index]], scale_atoms=False)
-        # The state already holds the center of mass fixed; FixCom on the host Atoms only counts it.
+        # The packed integration has already applied the trajectory's motion constraints.
         atoms.set_positions(host["positions"][selection], apply_constraint=False)
         atoms.set_momenta(host["momenta"][selection], apply_constraint=False)
 
@@ -227,7 +246,7 @@ class PackedMLMDEngine:
                                 torch.zeros_like(spread))
             energy = energy + weight * spread
             force = force + bias * scale[state.system_idx, None]
-        state.energy, state.forces = energy, self._without_center_of_mass(force)
+        state.energy, state.forces = energy, self._project_motion(force)
         bad_atoms = (~torch.isfinite(force)).any(1).to(self.dtype)
         bad = ~torch.isfinite(energy) | (torch.zeros_like(energy).index_add_(0, state.system_idx, bad_atoms) > 0)
         return [self._rows[row] for row in torch.nonzero(bad).flatten().tolist()]
@@ -284,15 +303,22 @@ class PackedMLMDEngine:
         mass = torch.zeros(rows, dtype=values.dtype, device=values.device).index_add_(0, state.system_idx, state.masses)
         return values - state.masses[:, None] * (total / mass[:, None])[state.system_idx]
 
+    def _project_motion(self, values):
+        """Apply FixCom to free systems and zero the update on explicitly fixed atoms."""
+        projected = self._without_center_of_mass(values)
+        if self._fixed_mask is None:
+            return projected
+        return self._torch.where(self._com_mask, projected, values).masked_fill(self._fixed_mask, 0.)
+
     def _ou(self):
-        """Ornstein-Uhlenbeck momentum update, with each system's center of mass held at rest (ASE FixCom)."""
+        """Ornstein-Uhlenbeck momentum update in the mobile degrees of freedom."""
         torch, state = self._torch, self.state
         kT = torch.as_tensor([self._temperatures[index] * KB_EV_PER_K for index in self._rows],
                              dtype=self.dtype, device=self.device)
         c1 = float(np.exp(-self._friction * self._dt))
         kick = torch.sqrt(kT * (1 - c1 * c1))[state.system_idx, None] * torch.sqrt(state.masses)[:, None] \
             * self._noise()
-        state.momenta = c1 * state.momenta + self._without_center_of_mass(kick)
+        state.momenta = c1 * state.momenta + self._project_motion(kick)
 
     def _baoab(self):
         raise NotImplementedError("The numerical engine must supply its BAOAB step.")
@@ -429,7 +455,7 @@ class PackedMLMDEngine:
     def snapshot(self, index):
         """A detached copy of the current frame, without the FixCom MD adds, to label later."""
         atoms = self.atoms(index).copy()
-        atoms.set_constraint()
+        atoms.set_constraint(deepcopy(self._constraints[index]))
         return atoms
 
     def set_temperature(self, index, temperature_K):
@@ -437,6 +463,8 @@ class PackedMLMDEngine:
 
     def scale_cell(self, index, scalar):
         """Scale one system's cell and positions; forces are refreshed before the next step."""
+        if has_fixed_atoms(self._atoms[index]):
+            raise ValueError('Sampling with FixAtoms requires a fixed cell.')
         selection, row = self._slices[index], self._position[index]
         self.state.positions[selection] *= scalar
         self.state.cell[row] *= scalar

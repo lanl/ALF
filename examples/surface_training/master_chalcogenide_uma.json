@@ -1,0 +1,40 @@
+{
+  "master_directory": "pwd",
+  "builder_task": "alframework.builders.surface.surface_builder_task",
+  "builder_config_path": "builder_chalcogenide.json",
+  "QM_task": "alframework.qm_interfaces.ase.vasp.VASP_ase_calculator_task",
+  "QM_config_path": "vasp_chalcogenide.json",
+  "ML_task": "alframework.ml_interfaces.fine_tuning.fine_tune_ensemble_task",
+  "ML_config_path": "uma_chalcogenide.json",
+  "sampler_task": "alframework.samplers.batched_mlmd.mlmd_trajectories_task",
+  "sampler_config_path": "sampler_chalcogenide_uma.json",
+  "properties_list": {
+    "free_energy": [
+      "energy",
+      "system",
+      1.0
+    ],
+    "forces": [
+      "forces",
+      "atomic",
+      1.0
+    ]
+  },
+  "status_path": "status_chalcogenide_oc25.json",
+  "h5_path": "runs/chalcogenide_oc25/h5/data-{:04d}.h5",
+  "model_path": "runs/chalcogenide_oc25/models/model-{:04d}",
+  "QM_scratch_dir": "runs/chalcogenide_oc25/vasp/",
+  "parsl_configuration": "parsl_configs.config_local",
+  "parsl_debug_configuration": "parsl_configs.config_debug",
+  "gpus_per_node": 1,
+  "parallel_samplers": 4,
+  "target_queued_QM": 4,
+  "minimum_QM": 0,
+  "bootstrap_set": 48,
+  "finite_bootstrap": true,
+  "bootstrap_spares": 12,
+  "maximum_stored_labels": 96,
+  "retraining": {
+    "after": 24
+  }
+}

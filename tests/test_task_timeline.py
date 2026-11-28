@@ -136,7 +136,7 @@ def test_a_partial_line_does_not_hide_the_other_records(tmp_path, monkeypatch):
 
 
 TIMED_MODULES = [
-    "alframework.builders.builders", "alframework.builders.rdkit_molecule", "alframework.builders.external_geometry",
+    "alframework.builders.builders", "alframework.builders.rdkit_molecules", "alframework.builders.external_geometry",
     "alframework.builders.rdkit_condensed_phase", "alframework.builders.defect_crystal_builder",
     "alframework.builders.reactive_builder", "alframework.samplers.batched_mlmd", "alframework.samplers.mlmd_sampling",
     "alframework.samplers.udd_sampling", "alframework.samplers.reactive_sampler",

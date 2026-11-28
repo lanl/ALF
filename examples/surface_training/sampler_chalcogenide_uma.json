@@ -1,0 +1,50 @@
+{
+  "device": "cuda",
+  "dt": 0.5,
+  "maxt": 0.1,
+  "Escut": 20.0,
+  "Fscut": 0.3,
+  "Ncheck": 5,
+  "distcut": 0.7,
+  "srt_temp": [
+    150.0,
+    300.0
+  ],
+  "end_temp": [
+    150.0,
+    300.0
+  ],
+  "amp_temp": [
+    0.0,
+    0.0
+  ],
+  "per_temp": [
+    0.1,
+    0.1
+  ],
+  "end_dens": null,
+  "amp_dens": null,
+  "per_dens": null,
+  "velocity_initialization": "maxwell_boltzmann_if_missing",
+  "random_seed": 17,
+  "meta_dir": "runs/chalcogenide_oc25/sampling/",
+  "batched_calculator": "alframework.ml_interfaces.fine_tuning.uma.load_uma_batched_ensemble",
+  "batched_calculator_options": {
+    "task": "oc25",
+    "dtype": "float32"
+  },
+  "driver": {
+    "strategy": "batched",
+    "engine": "torchsim"
+  },
+  "batching": {
+    "batch_size": 2,
+    "partial_policy": "timeout",
+    "max_wait_seconds": 1.0
+  },
+  "translate_to_center": false,
+  "MLMD_calculator_options": {
+    "well_params": null
+  },
+  "trajectory_frequency": 0
+}

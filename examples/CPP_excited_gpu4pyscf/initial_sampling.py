@@ -3,7 +3,7 @@
 Phenyl rotations and projected Cartesian rattles follow the original CPP
 initial-sampling study. No QM, optimization, or GPU import occurs here.
 This method supports para-linked cycloparaphenylenes of any size, not arbitrary
-ring chemistry; use rdkit_molecule for reference-centred general molecules.
+ring chemistry; use rdkit_molecules for reference-centred general molecules.
 Run ``python initial_sampling.py --help`` for CPU preparation.
 """
 from __future__ import annotations

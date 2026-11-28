@@ -252,9 +252,9 @@ the trajectory, as ``max_uncertainty`` in its metadata and ``max_uncertainty_<na
 in the trajectory summary. The run report adds a panel for each beside the spread
 (see :doc:`monitoring`).
 
-This covers both sampler families, with every engine. Dynamics on a modified
-potential, UDD and gap-seeking, use the ensemble's spread as their bias and still
-need an ensemble.
+This covers both sampler families, with every engine. UDD dynamics use the
+ensemble's spread as their bias and still need an ensemble. Gap-seeking moves on the
+mean state energies and forces, so one multi-state model can drive it.
 
 Local environment novelty
 ~~~~~~~~~~~~~~~~~~~~~~~~~

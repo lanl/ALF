@@ -429,10 +429,13 @@ and score devices. A separate CPU selection stage is indicated where relevant.
 | Force NTK ASE MD and packed MD | Periodic solid or interface | I | I | I via ASE or TorchSim | I via ASE |
 | Energy AdaptNTK replay and packed MD | Periodic solid or interface | P | P | P via replay or TorchSim | P for replay |
 | Per-provider NEB and dimer acquisition | Molecule or periodic geometry where supported | P | P | P | P |
-| Per-provider UDD bias and excited-state gap seeking | All | — | — | — | — |
+| Per-provider UDD bias | All | — | — | — | — |
+| Excited-state gap seeking on one multi-state NTK evaluator, in ASE, TorchSim and ALCHEMI MD | Molecule | V [9] | I | I via ASE or TorchSim | — |
 
 The ground-state providers do not implement a state gap or a differentiable
-bias potential. ALF's existing UDD and gap-seeking paths use ensemble spread.
+bias potential. UDD biases with ensemble spread, so it needs an ensemble.
+Gap-seeking moves on the mean state energies and forces, not on spread, so one
+multi-state model drives it; the NTK evaluators report every state.
 NEB and dimer currently read ensemble spreads directly. Packed ALF uses a
 float64 MD state, which excludes MPS, and ALCHEMI supports CPU and NVIDIA CUDA.
 Adiabatic state energies are not smooth where states cross, so per-state
@@ -517,6 +520,11 @@ production throughput require separate measurements.
     - the physical-coupling uncertainty formula;
     - LoRA starting at the pretrained model, pickling, merging, and agreeing in both NTK engines, for
       Hipnn and HipHopnn.
+
+9. On Apple M3 Max with HIPPYNN, TorchSim and ALCHEMI, run
+   `python -m pytest tests/test_ntk.py -k gap_seeking` on CPU. A three-state HIPPYNN NTK evaluator, with no
+   ensemble, switched a trajectory onto the gap-seeking surface at its first check and completed it in ASE,
+   TorchSim and ALCHEMI.
 
 Add the ALF revision, upstream revision, checkpoint identity, package versions,
 device placement, dataset and split, command, and observed result when you

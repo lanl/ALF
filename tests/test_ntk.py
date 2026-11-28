@@ -770,6 +770,33 @@ def test_hippynn_ntk_gap_selects_frames_on_the_configured_state(hippynn_ntk, ato
         assert "ntk_dE01" not in metadata
 
 
+@pytest.mark.parametrize("engine", ["ase", "torchsim", "alchemi"])
+def test_hippynn_ntk_drives_gap_seeking_without_an_ensemble(hippynn_ntk, atoms, engine):
+    """Gap-seeking moves on the mean state energies, which one multi-state model supplies; no spread is needed."""
+    from alframework.samplers.batched_mlmd import sample_trajectories
+    from alframework.tools.molecules import MoleculesObject
+
+    require_engine(engine)
+    evaluator = NTKPackedEvaluator(hippynn_ntk.EnergyNTK(molecular_graph("Hipnn", n_states=3), [atoms], sketch_dim=16),
+                                   selected_state=1, forces=False)
+    config = {
+        "driver": {"engine": engine}, "model_mode": "excited_state",
+        "state_selection": {"mode": "fixed", "state": 1}, "random_seed": 7,
+        "dt": 0.25, "maxt": 0.004, "Ncheck": 2, "min_time": 0.0005, "distcut": 0.3,
+        "metadata_files": "none", "srt_temp": [300., 300.], "end_temp": [300., 300.],
+        "amp_temp": [0., 0.], "per_temp": [1., 1.], "amp_dens": None, "per_dens": None, "end_dens": None,
+        # A threshold above any gap of this model, so the trajectory switches at its first check.
+        "gap_seeking": {"enabled": True, "trigger_gap_threshold_eV": 1e6, "sigma": 0.5, "alpha_eV": 0.1},
+        "acquisition": {"terms": {"ntk": {"uncertainty": "ntk_energy_E1", "cutoff": 1e9}},
+                        "eligibility": ["ntk"], "strategy": "largest"},
+    }
+    [molecule] = sample_trajectories([MoleculesObject(atoms.copy(), "mol-0000-0000000000")], evaluator, config,
+                                     device="cpu")
+    metadata = molecule.get_metadata()
+    assert metadata["trajectory_outcome"] == "completed", metadata.get("sampling_error")
+    assert metadata["gap_seeking_switched"] and metadata["gap_seeking_pair"] in ([0, 1], [1, 2])
+
+
 def test_hippynn_ntk_refuses_unordered_gap_pairs(hippynn_ntk, atoms):
     estimator = hippynn_ntk.EnergyNTK(molecular_graph("Hipnn", n_states=3), [atoms], sketch_dim=16)
     with pytest.raises(ValueError, match="ordered states"):

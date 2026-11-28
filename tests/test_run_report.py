@@ -154,6 +154,18 @@ def test_numbered_paths_find_rounds_after_a_removed_one(tmp_path):
     assert [number for number, _ in found] == [1, 2, 10]
 
 
+def test_a_live_runs_timeline_cut_short_by_a_killed_worker_still_reports(tmp_path):
+    """A worker killed while writing leaves half a line; the report reads the rest, as of a finished run."""
+    run = make_run(tmp_path / "run")
+    run_report.write_report(run, tmp_path / "before")
+    complete = json.loads((tmp_path / "before" / "run_report.json").read_text())
+    with open(run / "task_timeline" / "node-a-1.jsonl", "a") as handle:
+        handle.write('{"stage": "QM", "task": "teacher_task", "start": 10')
+    run_report.write_report(run, tmp_path / "after")
+    summary = json.loads((tmp_path / "after" / "run_report.json").read_text())
+    assert summary["skipped"] == [] and summary["stages"] == complete["stages"]
+
+
 def test_the_report_writes_every_figure_and_a_summary(tmp_path):
     out = tmp_path / "report"
     written = run_report.write_report(make_run(tmp_path / "run"), out)

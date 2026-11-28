@@ -104,3 +104,17 @@ def test_a_timing_file_that_cannot_be_written_stops_timing_but_not_the_run(tmp_p
     timer.end_pass('active', 0)
     assert not timer.enabled
     assert 'Could not write the coordinator loop timing' in capsys.readouterr().out
+
+
+def test_a_disk_that_fills_while_timing_stops_timing_but_not_the_run(capsys):
+    """The file opens, but its writes fail, as on a full disk (/dev/full fails every write with ENOSPC). Timing
+    stops with a message, later passes and closing the timer go on without raising."""
+    import os
+    if not os.path.exists('/dev/full'):
+        pytest.skip('this system has no /dev/full')
+    timer = LoopTimer('/dev/full')
+    timer.end_pass('active', 0)
+    assert not timer.enabled
+    assert 'Could not write the coordinator loop timing' in capsys.readouterr().out
+    timer.end_pass('active', 0)
+    timer.close()

@@ -89,6 +89,7 @@ class LoopTimer:
         except OSError as exc:
             print(f'Could not write the coordinator loop timing {self.path}: {exc}; stopping it.', flush=True)
             self.enabled = False
+            self._discard()
         self._reset()
 
     def _open(self):
@@ -107,6 +108,15 @@ class LoopTimer:
         if self._file is not None:
             self._file.close()
             self._file = self._writer = None
+
+    def _discard(self):
+        """Let go of a file that could not be written, without flushing what it still buffers."""
+        file, self._file, self._writer = self._file, None, None
+        if file is not None:
+            try:
+                file.close()
+            except OSError:
+                pass  # The buffered rows hit the same error; the message above already said timing stopped.
 
 
 def coordinator_loop_timer(master_config):

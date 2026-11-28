@@ -162,3 +162,21 @@ def test_preflight_refuses_a_member_layout_that_shares_gpus():
     assert _check_members(ml, {'fine_tune': {'device': 'cpu'}}, {'gpus_per_node': 4}, executors,
                           ['alf_ML_executor']) == 1
     assert _check_members(SimpleNamespace(join=False), {'member_nodes': 3}, {}, executors, []) == 3
+
+
+def test_a_configured_standby_executor_adds_its_slots_to_its_roles_capacity():
+    """At startup a standby executor joins its role's tasks (preflight.bind_task), and the capacity report counts
+    the slots of every executor the task was bound to."""
+    from alframework.tools.preflight import bind_task
+    executors = {'alf_sampler_executor': _htex('alf_sampler_executor', 4, 4, 1),
+                 'alf_QM_executor': _htex('alf_QM_executor', 4, 2, 1),
+                 'alf_QM_standby_executor': _htex('alf_QM_standby_executor', 4, 1, 1),
+                 'alf_ML_executor': _htex('alf_ML_executor', 1, 4, 1)}
+    qm = bind_task('alframework.qm_interfaces.teacher_interface.teacher_batch_task', executors)
+    assert qm.executors == ['alf_QM_executor', 'alf_QM_standby_executor']
+    lines, _ = capacity_report(dict(parallel_samplers=4096, target_queued_QM=3072), executors,
+                               builder_labels=['alf_sampler_executor'], builder_width=256, builder_batches=True,
+                               sampler_labels=['alf_sampler_executor'], sampler_width=256, qm_labels=qm.executors,
+                               qm_width=256, ml_labels=['alf_ML_executor'], n_models=4)
+    [qm_line] = [line for line in lines if line.startswith('QM:')]
+    assert qm_line.startswith('QM: 12 tasks') and '3,072' in qm_line, qm_line

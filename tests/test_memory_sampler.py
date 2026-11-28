@@ -52,3 +52,13 @@ def test_a_restarted_coordinator_appends_without_a_second_header(tmp_path):
         sleeper.wait(timeout=30)
     lines = path.read_text().splitlines()
     assert sum(line.startswith('time,') for line in lines) == 1 and len(lines) > 2
+
+
+def test_a_process_that_has_already_exited_stops_the_sampler_at_once(tmp_path):
+    gone = subprocess.Popen([sys.executable, '-c', 'pass'])
+    gone.wait(timeout=30)
+    path = tmp_path / 'coordinator_memory.csv'
+    sampler = memory_sampler.start({'coordinator_memory_sample': 0.1, 'coordinator_memory_path': str(path)},
+                                   pid=gone.pid)
+    sampler.wait(timeout=10)  # raises if the sampler waits on a process that is not there
+    assert not path.exists() or _rows(path) == [], 'nothing was sampled from a process that was gone'

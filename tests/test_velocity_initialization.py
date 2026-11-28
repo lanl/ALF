@@ -189,3 +189,28 @@ def test_by_default_a_batched_trajectory_starts_cold_and_the_thermostat_warms_it
     assert not metadata['velocities_initialized']
     assert metadata['initial_kinetic_temperature_K'] == 0.0
     assert 0.0 < metadata['kinetic_temperature_K'] < metadata['thermostat_temperature_K'] == 400.0
+
+
+def test_a_thermal_draw_has_no_net_momentum_and_its_temperature_counts_3n_minus_3():
+    """The samplers hold each structure's center of mass at rest, so the draw leaves none, and the remaining
+    Gaussian components are Maxwell-Boltzmann at the target over 3N - 3 degrees of freedom. For a 3-atom molecule,
+    where counting 3N would read the temperature a third low, the mean still matches the target."""
+    reported = []
+    for index in range(3000):
+        atoms = Atoms('OH2', positions=[[0, 0, 0], [0.96, 0, 0], [-0.24, 0.93, 0]])
+        metadata = initialize_velocities(atoms, 300.0, THERMAL, molecule_id=f'water-{index}', random_seed=11)
+        np.testing.assert_allclose(atoms.get_momenta().sum(axis=0), 0.0, atol=1e-12)
+        kinetic = atoms.get_kinetic_energy()
+        assert metadata['initial_kinetic_temperature_K'] == pytest.approx(2 * kinetic / (6 * units.kB))
+        reported.append(metadata['initial_kinetic_temperature_K'])
+    # The mean of 3,000 draws of a 6-degree-of-freedom temperature has a standard error of about 3.2 K.
+    assert np.mean(reported) == pytest.approx(300.0, abs=12.0)
+
+
+def test_the_starting_temperature_of_given_momenta_leaves_out_their_center_of_mass_motion():
+    atoms = Atoms('H2', positions=[[0, 0, 0], [0.74, 0, 0]])
+    atoms.set_momenta([[1.0, 0, 0], [1.0, 0, 0]])  # moving together: no motion left once the drift is held
+    metadata = initialize_velocities(atoms, 300.0, THERMAL, molecule_id='drift')
+    assert not metadata['velocities_initialized'] and metadata['initial_kinetic_temperature_K'] == 0.0
+    np.testing.assert_array_equal(atoms.get_momenta(), [[1.0, 0, 0], [1.0, 0, 0]])  # given momenta are kept
+    assert initialize_velocities(Atoms('H'), 300.0, THERMAL, molecule_id='one')['initial_kinetic_temperature_K'] is None

@@ -1,8 +1,8 @@
-"""Fine-tuning existing models in ALF's loop: the general task and its HIPPYNN, MACE, and UMA adapters.
+"""Fine-tuning existing models in ALF's loop: the general task, its HIPPYNN, MACE, X-MACE and UMA adapters, and LoRA.
 
 The general task runs with ``tests.helpers.fake_fine_tuner``. HIPPYNN fine-tuning runs for real, on CPU,
-from small models that ``tests.helpers.hippynn`` trains. MACE and fairchem aren't installed in the test
-environment, so their training is checked through the commands and configurations ALF builds.
+from small models that ``tests.helpers.hippynn`` trains. MACE, X-MACE and UMA training is checked through
+the commands and configurations ALF builds; X-MACE also runs one real fine-tune where it is installed.
 """
 
 import json
@@ -469,6 +469,212 @@ def test_lineage_records_the_adapters_defaults(run):
     assert recorded["replay_file"] is None and recorded["mace_options"]["ema_decay"] == 0.999
 
 
+# --- X-MACE -----------------------------------------------------------------------------------------
+# Multi-state training data and X-MACE's command without X-MACE; one real fine-tune where it is installed.
+
+XMACE = "alframework.ml_interfaces.fine_tuning.xmace.XMaceFineTuner"
+XMACE_FRAMES, XMACE_STATES = 16, 3
+XMACE_SETTINGS = dict(adapter=XMACE, foundation_model="f.model", n_states=XMACE_STATES, nacs_dataset="nacr",
+                      E0s="average", n_models=1, seed=0, device="cpu")
+
+
+def xmace_shard(path, frames=XMACE_FRAMES):
+    """Water with three states whose energies differ in offset and curvature, and random couplings."""
+    import h5py
+
+    rng = np.random.default_rng(0)
+    coordinates = np.array([[0.0, 0.0, 0.0], [0.96, 0.0, 0.0], [-0.24, 0.93, 0.0]])
+    coordinates = coordinates + rng.normal(scale=0.03, size=(frames, 3, 3))
+    r = np.linalg.norm(coordinates[:, 1] - coordinates[:, 0], axis=1)
+    with h5py.File(path, "w") as handle:
+        group = handle.create_group("water")
+        group["species"] = np.array(["O", "H", "H"], dtype="S")
+        group["coordinates"] = coordinates
+        group["_id"] = np.array([f"frame-{i}" for i in range(frames)], dtype="S")
+        for state in range(XMACE_STATES):
+            group[f"E{state}"] = -10.0 + 2.0 * state + (r - 0.96) ** 2 * (1 + state)
+            group[f"F{state}"] = -0.1 * (state + 1) * (coordinates - coordinates.mean(1, keepdims=True))
+        group["nacr"] = rng.normal(size=(frames, 1, 3, 3))
+        group["nac_pairs"] = np.array([[1, 2]])
+    return path
+
+
+def xmace_state_frames(tmp_path):
+    import h5py
+
+    shard = xmace_shard(tmp_path / "data.h5")
+    frames = fine_tuning.shard_state_atoms([shard], [f"E{i}" for i in range(XMACE_STATES)],
+                                           [f"F{i}" for i in range(XMACE_STATES)], "nacr")
+    with h5py.File(shard) as handle:
+        group = handle["water"]
+        energies = np.stack([group[f"E{i}"][()] for i in range(XMACE_STATES)], 1)
+        nacr = group["nacr"][()]
+    return frames, energies, nacr
+
+
+def test_xmace_state_frames_carry_every_state(tmp_path):
+    frames, energies, _ = xmace_state_frames(tmp_path)
+    assert len(frames) == XMACE_FRAMES
+    for index, atoms in enumerate(frames):
+        np.testing.assert_allclose(atoms.info[fine_tuning.ENERGY_KEY], energies[index])
+        assert atoms.arrays[fine_tuning.FORCES_KEY].shape == (3, XMACE_STATES, 3)
+
+
+def test_xmace_state_frames_carry_smooth_couplings(tmp_path):
+    frames, energies, nacr = xmace_state_frames(tmp_path)
+    for index, atoms in enumerate(frames):
+        gap = abs(energies[index, 2] - energies[index, 1])
+        np.testing.assert_allclose(atoms.arrays[fine_tuning.SMOOTH_NACS_KEY][:, 0], nacr[index, 0] * gap)
+        assert atoms.info["nac_pairs"] == [[1, 2]]
+
+
+def test_xmace_rounds_wait_for_the_first_states_labels():
+    # Which datasets a round waits for has no public view short of a whole round; X-MACE names its states.
+    assert fine_tuning._label_targets({"n_states": 3}) == ("E0", "F0", None)
+    assert fine_tuning._label_targets({"energy_datasets": ["S0", "S1"], "forces_datasets": ["G0", "G1"]}) == \
+        ("S0", "G0", None)
+
+
+def test_xmace_settings_default_to_the_tutorial():
+    from alframework.ml_interfaces.fine_tuning.xmace import XMaceFineTuner
+
+    s = XMaceFineTuner(XMACE_SETTINGS).settings
+    assert (s["learning_rate"], s["max_num_epochs"], s["batch_size"]) == (5e-3, 15, 10)
+    assert s["energy_datasets"] == ["E0", "E1", "E2"] and s["ntk"]["parameters"] == "trainable"
+    assert XMaceFineTuner({**XMACE_SETTINGS, "lora": True}).settings["ntk"]["parameters"] == "excited"
+    assert XMaceFineTuner({**XMACE_SETTINGS, "ntk": None}).settings["ntk"] is None
+
+
+@pytest.mark.parametrize("bad, match", [({"E0s": None}, "E0s"), ({"xmace_options": {"lr": 1}}, "may not set"),
+                                        ({"model": "MACE"}, "model"), ({"ntk": {"sketch": 4}}, "ntk"),
+                                        ({"n_states": 0}, "n_states")])
+def test_xmace_settings_refuse_managed_arguments(bad, match):
+    from alframework.ml_interfaces.fine_tuning.xmace import XMaceFineTuner
+
+    settings = {**XMACE_SETTINGS, **bad}
+    if bad.get("E0s", 1) is None:
+        settings.pop("E0s")
+    with pytest.raises(ValueError, match=match):
+        XMaceFineTuner(settings)
+
+
+def test_xmace_refuses_a_run_without_its_state_labels():
+    from alframework.ml_interfaces.fine_tuning.xmace import XMaceFineTuner
+
+    with pytest.raises(ValueError, match="properties_list"):
+        XMaceFineTuner(XMACE_SETTINGS).validate({"properties_list": {"E0": ["E0", "system", 1.0]}})
+
+
+def xmace_split(tmp_path):
+    from alframework.ml_interfaces.fine_tuning.xmace import XMaceFineTuner
+
+    member = tmp_path / "model-00"
+    member.mkdir()
+    tuner = XMaceFineTuner({**XMACE_SETTINGS, "lora": True, "freeze": 2})
+    data = tuner.write_split(tuner.prepare_data([xmace_shard(tmp_path / "data.h5")], member), member, 7)
+    return tuner, member, data
+
+
+def test_xmace_split_records_every_frame(tmp_path):
+    from ase.io import read
+    from alframework.ml_interfaces.fine_tuning.xmace import SPLIT_FILE
+
+    _, member, data = xmace_split(tmp_path)
+    frames = read(data, index=":")
+    valid = read(member / "valid.xyz", index=":")
+    split = json.loads((member / SPLIT_FILE).read_text())
+    expected = list(range(XMACE_FRAMES))
+    np.random.default_rng(7).shuffle(expected)
+    assert split["seed"] == 7 and len(frames) == XMACE_FRAMES - 1 and len(valid) == 1
+    assert [atoms.info["alf_frame"]["row"] for atoms in frames + valid] == expected
+    assert [atoms.info["alf_frame"] for atoms in frames] == split["train"]["frames"]
+    assert valid[0].info["alf_frame"] == split["valid"]["frames"][0]
+    assert valid[0].info["alf_frame"]["id"] == f"frame-{expected[-1]}"
+    assert frames[0].arrays[fine_tuning.FORCES_KEY].shape == (3, 3 * XMACE_STATES)
+    assert frames[0].arrays[fine_tuning.SMOOTH_NACS_KEY].shape == (3, 3)
+    assert len(frames[0].info[fine_tuning.ENERGY_KEY]) == XMACE_STATES
+    assert json.loads((member / "nac_pairs.json").read_text()) == [[1, 2]]
+
+
+def test_xmace_command_carries_the_member_settings(tmp_path):
+    tuner, member, data = xmace_split(tmp_path)
+    command = tuner.command(data, str(member), 7, "cpu")
+    assert f"--train_file={member / 'train.xyz'}" in command
+    assert f"--valid_file={member / 'valid.xyz'}" in command
+    for argument in ("--model=ExcitedMACE", "--n_energies=3", "--compute_nacs", "--nac_num=1",
+                     f"--nacs_key={fine_tuning.SMOOTH_NACS_KEY}", "--nacs_format=smooth", "--lora=True",
+                     "--lora_rank=4", "--freeze=2", "--E0s=average", "--seed=7", "--forces_weight=100.0",
+                     "--multiheads_finetuning=False"):
+        assert argument in command
+
+
+@pytest.mark.parametrize("lora", [False, True], ids=["full", "lora"])
+@pytest.mark.parametrize("device", list(dict.fromkeys(("cpu", os.environ.get("ALF_TEST_NTK_DEVICE", "cpu")))))
+def test_xmace_fine_tunes_a_member_that_ntk_scores(tmp_path, lora, device):
+    """Fine-tune a 3-state ExcitedMACE from a small ground-state MACE, then score with its NTK basis."""
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("mace.modules.excited", reason="X-MACE is not installed")
+    from mace import modules
+    from e3nn import o3
+    from alframework.ml_interfaces.ensemble_inference import SelectedStateEvaluator
+    from alframework.ml_interfaces.fine_tuning import child_environment
+    from alframework.ml_interfaces.fine_tuning.xmace import (SPLIT_FILE, XMaceFineTuner, fit_member_ntk,
+                                                           load_xmace_excited_state_ensemble,
+                                                           load_xmace_ntk, load_xmace_ntk_estimator)
+
+    with torch.random.fork_rng():
+        torch.manual_seed(0)
+        block = modules.interaction_classes["RealAgnosticResidualInteractionBlock"]
+        foundation = modules.ScaleShiftMACE(
+            r_max=4.0, num_bessel=6, num_polynomial_cutoff=5, max_ell=2, interaction_cls=block,
+            interaction_cls_first=block, num_interactions=2, num_elements=2, hidden_irreps=o3.Irreps("8x0e + 8x1o"),
+            MLP_irreps=o3.Irreps("8x0e"), gate=torch.nn.functional.silu, atomic_energies=np.array([-1.0, -5.0]),
+            avg_num_neighbors=2.0, atomic_numbers=[1, 8], correlation=2, atomic_inter_scale=1.0,
+            atomic_inter_shift=0.0).double()
+    torch.save(foundation, tmp_path / "foundation.model")
+    shard = xmace_shard(tmp_path / "data.h5")
+    member = tmp_path / "models" / "model-00"
+    member.mkdir(parents=True)
+    tuner = XMaceFineTuner({**XMACE_SETTINGS, "foundation_model": str(tmp_path / "foundation.model"),
+                            "max_num_epochs": 2, "batch_size": 4, "ntk": {"sketch_dim": 8}, "lora": lora})
+    data = tuner.prepare_data([shard], member)
+    child, environment = child_environment(device)
+    tuner.train_member(data, member, 0, 0, child, environment)
+    assert tuner.member_complete(member)
+    assert f'"device": "{("cuda:0" if child == "cuda" else child)}"' in (member / "ntk_fit.log").read_text()
+    evaluator = load_xmace_ntk(tmp_path / "models", device, selected_state=1, scores={"hessian_probes": 2})
+    estimator = evaluator.estimator
+    assert estimator.state_names == ("E0", "E1", "E2") and estimator.training_structure_count == XMACE_FRAMES - 1
+    assert f"Total number of configurations: train={XMACE_FRAMES - 1}, valid=1" in (member / "train.log").read_text()
+    with pytest.raises(ValueError, match="training input does not match"):
+        fit_member_ntk(member, member / "valid.xyz", tuner.settings["ntk"])
+    manifest = member / SPLIT_FILE
+    contents = manifest.read_text()
+    manifest.write_text(contents + "\n")
+    with pytest.raises(ValueError, match="basis does not match its recorded training split"):
+        load_xmace_ntk_estimator(member)
+    manifest.unlink()
+    with pytest.raises(ValueError, match="Retrain the X-MACE member"):
+        load_xmace_ntk_estimator(member)
+    manifest.write_text(contents)
+    names = list(estimator.adapter.live_parameters())
+    # With LoRA, X-MACE merges the low-rank weights into the backbone, so NTK covers the readouts and adapter.
+    assert any(name.startswith("backbone.") for name in names) != lora
+    if lora:
+        assert "LoRA" in (member / "train.log").read_text()
+    atoms = fine_tuning.shard_state_atoms([shard], ["E0", "E1", "E2"], ["F0", "F1", "F2"])[0]
+    numbers, positions = torch.tensor(atoms.numbers), torch.tensor(atoms.positions)
+    energies, forces = evaluator.evaluate(numbers, positions, None, torch.tensor(atoms.pbc), [3])
+    observation = evaluator.observe_uncertainty(numbers, positions, None, torch.tensor(atoms.pbc))
+    assert {"ntk_energy_E1", "ntk_hessian_E1", "ntk_dE12"} <= set(observation["uncertainty"])
+    ensemble = load_xmace_excited_state_ensemble(tmp_path / "models", device, dtype="float64")
+    state_energies, state_forces = ensemble.evaluate_states(numbers, positions, None, torch.tensor(atoms.pbc), [3])
+    assert state_energies.shape == (1, 3, 1) and state_forces.shape == (1, 3, 3, 3)
+    np.testing.assert_allclose(energies[0].cpu().numpy(), state_energies[0, 1].cpu().numpy(), rtol=1e-5)
+    wrapped = SelectedStateEvaluator(evaluator, 2)
+    np.testing.assert_allclose(wrapped.predict([atoms])["energies"], state_energies[:, 2].cpu().numpy(), rtol=1e-5)
+
+
 # --- HIPPYNN ----------------------------------------------------------------------------------------
 # Real fine-tuning on CPU, from tiny ensembles that tests.helpers.hippynn trains.
 
@@ -798,6 +1004,106 @@ def test_hippynn_names_what_the_shards_lack(tmp_path, pretrained):
         fine_tune_hippynn_member(dict(source=str(tuner.source(0)), data=tuner.prepare_data(
             [str(labels / "data-0000.h5")], tmp_path / "copy"), member_dir=str(tmp_path / "copy"), seed=0,
             device="cpu", settings=tuner.settings))
+
+# --- HIPPYNN LoRA -----------------------------------------------------------------------------------
+# Low-rank factors on small random graphs: no training, only what LoRA changes.
+
+def lora_graph(kind):
+    """A small random HIPPYNN energy graph."""
+    import torch
+    from hippynn.graphs import GraphModule, inputs, networks, targets
+    from alframework.ml_interfaces.hippynn.compat import system_energy
+
+    with torch.random.fork_rng():
+        torch.manual_seed(2)
+        species, positions = inputs.SpeciesNode("species"), inputs.PositionsNode("positions")
+        net = getattr(networks, kind)("hipnn", (species, positions), module_kwargs={
+            "possible_species": [0, 1, 8], "n_features": 6, "n_sensitivities": 4, "dist_soft_min": 0.5,
+            "dist_soft_max": 2.5, "dist_hard_max": 3.0, "n_interaction_layers": 1, "n_atom_layers": 1})
+        energy = system_energy(targets.HEnergyNode("henergy", net))
+        return GraphModule((species, positions), (energy,)).double().eval()
+
+
+@pytest.fixture(params=["Hipnn", "HipHopnn"])
+def lora_model(request):
+    """A graph from ``lora_graph``, run with HIPPYNN's native kernels."""
+    custom_kernels = pytest.importorskip("hippynn.custom_kernels")
+    previous = custom_kernels.CUSTOM_KERNELS_ACTIVE
+    custom_kernels.set_custom_kernels(False)
+    try:
+        yield lora_graph(request.param)
+    finally:
+        custom_kernels.set_custom_kernels(previous)
+
+
+def lora_energy(graph):
+    import torch
+
+    return graph(torch.tensor([[8, 1, 1]]), torch.tensor(WATER.positions)[None])[0]
+
+
+def trained_lora(graph):
+    """``graph`` with LoRA factors whose B halves are no longer zero, as after training."""
+    import torch
+    from alframework.ml_interfaces.hippynn.lora import apply_lora
+
+    apply_lora(graph, rank=2, alpha=1.0)
+    with torch.no_grad():
+        for name, parameter in graph.named_parameters():
+            if name.endswith("_lora_B"):
+                parameter.normal_(0.0, 0.1)
+    return graph
+
+
+def test_hippynn_lora_starts_as_the_pretrained_model(lora_model):
+    import torch
+    from alframework.ml_interfaces.hippynn.lora import apply_lora, lora_parameter_count
+
+    before = lora_energy(lora_model)
+    assert apply_lora(lora_model, rank=2, alpha=1.0) and lora_parameter_count(lora_model) > 0
+    torch.testing.assert_close(lora_energy(lora_model), before)
+
+
+def test_hippynn_lora_trains_only_the_energy_head_factors(lora_model):
+    from alframework.ml_interfaces.hippynn.lora import apply_lora
+
+    apply_lora(lora_model, rank=2, alpha=1.0)
+    trainable = [n for n, p in lora_model.named_parameters() if p.requires_grad and p.is_floating_point()]
+    network = [n for n in trainable if not n.endswith(("_lora_A", "_lora_B"))]
+    head = tuple(f"moddict.{key}." for node, key in lora_model.names_dict.items() if node.name == "henergy")
+    assert network and all(n.startswith(head) for n in network)
+    assert not any(n.endswith("_lora_base") for n in trainable)
+
+
+def test_hippynn_lora_survives_pickling(lora_model):
+    import copy
+    import io
+    import torch
+
+    changed = lora_energy(trained_lora(lora_model))
+    buffer = io.BytesIO()
+    torch.save(lora_model, buffer)
+    buffer.seek(0)
+    torch.testing.assert_close(lora_energy(torch.load(buffer, weights_only=False)), changed)
+    torch.testing.assert_close(lora_energy(copy.deepcopy(lora_model)), changed)
+
+
+def test_hippynn_lora_merge_keeps_predictions(lora_model):
+    import torch
+    from alframework.ml_interfaces.hippynn.lora import merge_lora
+
+    before = lora_energy(lora_model)
+    changed = lora_energy(trained_lora(lora_model))
+    assert not torch.allclose(changed, before)
+    assert merge_lora(lora_model) > 0 and not any("_lora_" in n for n, _ in lora_model.named_parameters())
+    torch.testing.assert_close(lora_energy(lora_model), changed)
+
+
+def test_hippynn_lora_refuses_unknown_targets(lora_model):
+    from alframework.ml_interfaces.hippynn.lora import apply_lora
+
+    with pytest.raises(ValueError, match="not nodes"):
+        apply_lora(lora_model, targets=["nonesuch"])
 
 
 # --- UMA --------------------------------------------------------------------------------------------
@@ -1135,3 +1441,85 @@ def test_fairchems_command_is_found_by_its_registered_entry_point():
     from alframework.ml_interfaces.fine_tuning.uma import fairchem_main
     [registered] = entry_points(group="console_scripts", name="fairchem")
     assert fairchem_main() is registered.load() and callable(fairchem_main())
+
+def uma_container(**children):
+    import torch
+
+    module = torch.nn.Module()
+    for name, child in children.items():
+        setattr(module, name, child)
+    return module
+
+
+def uma_radial_model():
+    """The module layout UMA's LoRA targets: radial MLPs inside each block's SO(2) convolution."""
+    import torch
+    from types import SimpleNamespace
+
+    radial = uma_container(net=torch.nn.Sequential(torch.nn.Linear(4, 4), torch.nn.SiLU(), torch.nn.Identity(),
+                                                   torch.nn.Linear(4, 4)))
+    block = uma_container(edge_wise=uma_container(so2_conv_1=uma_container(rad_func=radial)))
+    backbone = uma_container(blocks=torch.nn.ModuleList([block]), condition=torch.nn.Linear(2, 4))
+    backbone.regress_config = SimpleNamespace(direct_forces=False)
+    return uma_container(backbone=backbone, output_heads=torch.nn.Linear(4, 1))
+
+
+def test_uma_lora_starts_as_the_pretrained_model():
+    pytest.importorskip("torch")
+    import torch
+    from alframework.ml_interfaces.fine_tuning.uma_lora import install_lora
+
+    model = uma_radial_model()
+    initial = {name: tensor.clone() for name, tensor in model.state_dict().items()}
+    targets = install_lora(model, rank=2, alpha=1.0)
+    assert all(torch.equal(module.weight, initial[f'{name}.weight']) for name, module in targets.items())
+    trainable = {name for name, p in model.named_parameters() if p.requires_grad}
+    assert trainable == {f'{name}.parametrizations.weight.0.{factor}' for name in targets for factor in ('a', 'b')} | {
+        'output_heads.weight', 'output_heads.bias'}
+
+
+def exported_uma_lora(tmp_path):
+    """A LoRA training checkpoint whose regular and EMA factors differ, exported for stock UMA."""
+    import torch
+    from types import SimpleNamespace
+    from alframework.ml_interfaces.fine_tuning.uma_lora import export_lora_checkpoint, install_lora
+
+    model = uma_radial_model()
+    targets = install_lora(model, rank=2, alpha=1.0)
+    ema = torch.optim.swa_utils.AveragedModel(model)
+    for module in targets.values():
+        torch.nn.init.constant_(module.parametrizations.weight[0].b, 0.2)
+    for module in ema.module.modules():
+        if hasattr(module, 'parametrizations'):
+            torch.nn.init.constant_(module.parametrizations.weight[0].b, 0.4)
+    original = tmp_path / 'training.pt'
+    torch.save(SimpleNamespace(model_config={'model_config': {'_target_': 'native'}, 'rank': 2, 'alpha': 1.0},
+                               model_state_dict=model.state_dict(), ema_state_dict=ema.state_dict()), original)
+    output, factors = tmp_path / 'uma.pt', tmp_path / 'uma_lora.pt'
+    export_lora_checkpoint(original, output, factors)
+    return targets, ema, torch.load(output, weights_only=False), factors
+
+
+def test_uma_lora_export_loads_in_stock_uma(tmp_path):
+    pytest.importorskip("torch")
+    import torch
+
+    targets, _, stock, _ = exported_uma_lora(tmp_path)
+    assert stock.model_config == {'_target_': 'native'}
+    torch.optim.swa_utils.AveragedModel(uma_radial_model()).load_state_dict(stock.ema_state_dict, strict=True)
+    for name, module in targets.items():
+        torch.testing.assert_close(stock.model_state_dict[f'{name}.weight'], module.weight)
+        assert not torch.equal(stock.ema_state_dict[f'module.{name}.weight'], module.weight)
+
+
+def test_uma_lora_restores_exact_ema_factors(tmp_path):
+    pytest.importorskip("torch")
+    import torch
+    from alframework.ml_interfaces.fine_tuning.uma_lora import restore_ema_lora
+
+    _, ema, stock, factors = exported_uma_lora(tmp_path)
+    ordinary = torch.optim.swa_utils.AveragedModel(uma_radial_model())
+    ordinary.load_state_dict(stock.ema_state_dict, strict=True)
+    restore_ema_lora(ordinary.module, factors)
+    for name, value in ema.module.state_dict().items():
+        torch.testing.assert_close(ordinary.module.state_dict()[name], value)

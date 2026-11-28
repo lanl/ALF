@@ -1,7 +1,7 @@
 """Acquisition: deciding which sampled frames are worth labeling.
 
 Covers ensemble uncertainty, the rules that make a frame eligible, ranking scores, top-k selection,
-and gap uncertainty. One test uses a trained HIPPYNN model and skips without HIPPYNN.
+gap uncertainty, and adaptive NTK selection. One test uses a trained HIPPYNN model and skips without HIPPYNN.
 """
 
 import numpy as np
@@ -16,6 +16,7 @@ from alframework.samplers.acquisition import (
     assess_frame,
     frame_id,
     ranking_score,
+    select_candidates,
     top_k,
 )
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator
@@ -395,3 +396,88 @@ def test_invalid_gap_cutoffs_are_rejected(cutoff):
     )
     with pytest.raises(ValueError, match="positive finite"):
         acquisition_settings(config)
+
+
+# --- Adaptive NTK -----------------------------------------------------------------------------------
+# Selection from fitted energy-gradient rows, independent of the model, workers and reference labels.
+
+def ntk_candidate(index, row):
+    return {
+        "trajectory_id": "trajectory", "step": index,
+        "energy_ntk": {"basis_id": "frozen-model", "ridge": 0.25, "row": np.array(row)},
+    }
+
+
+def duplicate_pool():
+    """Frames 0 and 1 have the same row; frame 2 a smaller, orthogonal one. Given out of order."""
+    a, b, c = [ntk_candidate(i, row) for i, row in enumerate(([2., 0.], [2., 0.], [0., 1.8]))]
+    return [b, c, a]
+
+
+def test_adaptive_ntk_passes_over_duplicate_rows():
+    adaptive = select_candidates(duplicate_pool(), {"selector": "adaptive_ntk", "k": 2})
+    assert [item["step"] for item in adaptive] == [0, 2]
+    assert adaptive[1]["adaptive_ntk"]["selection_score"] == pytest.approx(0.81)
+
+
+def test_adaptive_ntk_breaks_ties_by_frame_identity():
+    from alframework.samplers.adaptive_ntk import select_ntk_candidates
+
+    assert [item["step"] for item in select_ntk_candidates(duplicate_pool(), 2, adaptive=False)] == [0, 1]
+    assert len(select_ntk_candidates(duplicate_pool(), 8)) == 3
+
+
+def test_adaptive_ntk_refuses_rows_from_two_bases():
+    from alframework.samplers.adaptive_ntk import select_ntk_candidates
+
+    pool = duplicate_pool()
+    pool[0]["energy_ntk"]["basis_id"] = "different-checkpoint"
+    with pytest.raises(ValueError, match="one fitted basis"):
+        select_ntk_candidates(pool, 2)
+
+
+def test_adaptive_ntk_rank_one_updates_match_fresh_solves():
+    """36 selections from 43 frames, past the point where the selector refactors its precision."""
+    from alframework.samplers.adaptive_ntk import select_ntk_candidates
+
+    rng = np.random.default_rng(8)
+    rows = rng.normal(size=(43, 6))
+    pool = [ntk_candidate(i, row) for i, row in enumerate(rows)]
+    precision = np.eye(rows.shape[1])
+    remaining = list(range(len(rows)))
+    expected = []
+    for _ in range(36):
+        trial = rows[remaining]
+        scores = 0.25 * np.einsum("ij,ij->i", trial, np.linalg.solve(precision, trial.T).T)
+        index = int(np.argmax(scores))
+        chosen = remaining.pop(index)
+        expected.append((chosen, scores[index]))
+        precision += np.outer(rows[chosen], rows[chosen])
+
+    result = select_ntk_candidates(pool[::-1], 36)
+    assert [item["step"] for item in result] == [index for index, _ in expected]
+    np.testing.assert_allclose([item["adaptive_ntk"]["selection_score"] for item in result],
+                               [score for _, score in expected], rtol=1e-11)
+    assert [item["adaptive_ntk"]["selection_order"] for item in result] == list(range(36))
+    np.testing.assert_array_equal([item["energy_ntk"]["row"] for item in pool], rows)
+    assert all("adaptive_ntk" not in item for item in pool)
+    assert [item["step"] for item in select_ntk_candidates(pool, 36)] == [item["step"] for item in result]
+
+
+ADAPTIVE_COHORT = {"mode": "cohort_top_k", "cohort_size": 2, "k": 1, "selector": "adaptive_ntk"}
+
+
+def test_adaptive_ntk_requires_a_per_trajectory_cap():
+    with pytest.raises(ValueError, match="max_candidates_per_trajectory"):
+        acquisition_settings({"Escut": 0.1, "Fscut": 0.5, "acquisition": {"selection": dict(ADAPTIVE_COHORT)}})
+
+
+def test_adaptive_ntk_cap_keeps_the_best_initial_scores():
+    # The cap applies inside MD workers, before any frame reaches the coordinator.
+    from alframework.samplers.batched_mlmd import _prune
+
+    selection = dict(ADAPTIVE_COHORT, max_candidates_per_trajectory=2)
+    settings = acquisition_settings({"Escut": 0.1, "Fscut": 0.5, "acquisition": {"selection": selection}})
+    pool = [dict(ntk_candidate(i, [i]), ranking_score=3 - i) for i in range(3)]
+    # The cap is independent of k and of a scalar used for eligibility.
+    assert [item["step"] for item in _prune(pool, settings["selection"])] == [2, 1]

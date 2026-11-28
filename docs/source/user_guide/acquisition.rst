@@ -429,7 +429,7 @@ ROCm. Run the first two commands on NVIDIA and AMD, and the third on NVIDIA.
 
 .. code-block:: sh
 
-   ALF_TEST_NTK_DEVICE=cuda:0 python -m pytest tests/test_hippynn_ntk.py
+   ALF_TEST_NTK_DEVICE=cuda:0 python -m pytest tests/test_ntk.py -k hippynn
    python examples/atom_resolved_uncertainty/ntk_replay.py --device cuda:0 --engine torchsim
    python examples/atom_resolved_uncertainty/ntk_replay.py --device cuda:0 --engine alchemi
 
@@ -731,7 +731,7 @@ ROCm. Run the ALCHEMI command on NVIDIA CUDA.
 
 .. code-block:: sh
 
-   ALF_TEST_NTK_DEVICE=cuda:0 python -m pytest tests/test_hippynn_ntk.py tests/test_adaptive_ntk.py
+   ALF_TEST_NTK_DEVICE=cuda:0 python -m pytest tests/test_ntk.py tests/test_acquisition.py -k 'hippynn or adaptive_ntk'
    python examples/atom_resolved_uncertainty/adaptive_ntk_replay.py --device cuda:0 --engine torchsim
    python examples/atom_resolved_uncertainty/adaptive_ntk_replay.py --device cuda:0 --engine alchemi
 

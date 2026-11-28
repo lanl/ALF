@@ -50,8 +50,8 @@ outside the repository for inputs, scores, logs, and profiles.
    PyTorch device string. On one allocated GPU, run these checks from the repo root.
 
    ```sh
-   python -m pytest tests/test_ntk_core.py tests/test_adaptive_ntk.py
-   ALF_TEST_NTK_DEVICE=cuda:0 python -m pytest tests/test_hippynn_ntk.py
+   python -m pytest tests/test_ntk.py tests/test_acquisition.py -k 'test_ntk_ or adaptive_ntk'
+   ALF_TEST_NTK_DEVICE=cuda:0 python -m pytest tests/test_ntk.py -k hippynn
    python examples/atom_resolved_uncertainty/ntk_replay.py --device cuda:0 --engine torchsim
    ```
 
@@ -67,8 +67,8 @@ outside the repository for inputs, scores, logs, and profiles.
    python -m pytest tests/test_fine_tuning.py \
      -k 'prepares_single_member_ntk and cuda' --basetemp="$(mktemp -d)"
    # In the X-MACE environment:
-   python -m pytest tests/test_fine_tuning_xmace.py \
-     -k 'fine_tuning_then_ntk_end_to_end and cuda' --basetemp="$(mktemp -d)"
+   python -m pytest tests/test_fine_tuning.py \
+     -k 'xmace_fine_tunes_a_member_that_ntk_scores and cuda' --basetemp="$(mktemp -d)"
    ```
 
    The HIPPYNN test fine-tunes one LoRA model, fits on the filtered training
@@ -471,37 +471,37 @@ production throughput require separate measurements.
    `PYTORCH_ENABLE_MPS_FALLBACK=0 python examples/atom_resolved_uncertainty/adaptive_ntk_replay.py --device mps`
    for the fixed-pool Apple GPU check. The small matrix updates use CPU float64
    on every device. Both replays used the same 11-frame synthetic geometry pool.
-4. Run `python -m pytest tests/test_local_novelty.py` with PyTorch and TorchSim
+4. Run `python -m pytest tests/test_own_uncertainty.py -k local_novelty` with PyTorch and TorchSim
    installed. CPU tests compared packed and ASE scores for mixed atom counts
    with molecular, slab, and fully periodic cells, and checked acquisition on
    short molecular trajectories in ASE, TorchSim, and ALCHEMI. For device
    qualification, set `ALF_TEST_ENGINE_DEVICE=cuda:0` on the target hardware.
 5. On a Linux CPU at ALF `4731ad9`, with PyTorch 2.10 and HIPPYNN, run
-   `python -m pytest tests/test_ntk_core.py tests/test_hippynn_ntk.py tests/test_adaptive_ntk.py`.
-   With mace-torch 0.3.17 also installed, run `tests/test_ntk_mace.py`. These tests check:
+   `python -m pytest tests/test_ntk.py tests/test_acquisition.py -k 'test_ntk_ or hippynn_ntk or adaptive_ntk'`.
+   With mace-torch 0.3.17 also installed, run `tests/test_ntk.py -k mace_ntk`. These tests check:
    - rows against parameter finite differences, for both engines, molecular and periodic, HIPPYNN and
      MACE;
    - a pair potential that is linear in its weights against closed-form Bayesian linear regression;
+   - reverse-mode rows unchanged when a model's gradients cannot be batched;
    - the projected force and Hessian scores against exact sums;
    - periodic translation and permutation invariance, and supercell scaling;
    - Hessian-row fitting, and multi-state gap scores.
 
    The replay examples in checks 1 and 3 give the same decisions with ASE and TorchSim.
 6. In an environment with X-MACE installed from github.com/rhyan10/X-MACE at `03d71eb`, run
-   `python -m pytest tests/test_ntk_xmace.py` on a Linux CPU. Small random `ExcitedMACE` and
+   `python -m pytest tests/test_ntk.py -k xmace_ntk` on a Linux CPU. Small random `ExcitedMACE` and
    `AutoencoderExcitedMACE` models with three states were checked for:
    - per-state energy, force and HVP rows, and the rows of the smooth outputs, against parameter finite
      differences;
-   - batched and looped reverse mode agreeing;
    - eigenvalues of the autoencoder's `state_matrix` reproducing the state energies;
    - a frozen backbone staying out of the posterior;
    - energies and forces matching X-MACE's `ExcitedMACECalculator`.
 
-   `tests/test_ntk_core.py` checks the crossing behaviour on a two-state model as the coupling goes from
+   The core tests in `tests/test_ntk.py` check the crossing behaviour on a two-state model as the coupling goes from
    1e-2 to 1e-4: adiabatic Hessian scores grow about tenfold per decade, while the scores of the
    diabatic elements and of the gap stay finite and unchanged.
 
-7. With the same X-MACE environment, run `python -m pytest tests/test_fine_tuning_xmace.py`, and in an
+7. With the same X-MACE environment, run `python -m pytest tests/test_fine_tuning.py -k xmace`, and in an
    environment with HIPPYNN, `python -m pytest tests/test_hippynn_interface.py -k excited_state_ntk`.
    The tests check:
    - multi-state shards becoming X-MACE training frames, with smooth couplings NAC × |ΔE|;
@@ -511,9 +511,9 @@ production throughput require separate measurements.
    - a trained two-state HIPPYNN member's NTK predictions matching ALF's excited-state ensemble, in
      both property scales, with a cached basis.
 
-8. Run `python -m pytest tests/test_ntk_outputs.py tests/test_hippynn_lora.py` with HIPPYNN. The tests check:
+8. Run `python -m pytest tests/test_ntk.py tests/test_fine_tuning.py -k 'output or coupling or hippynn_lora or through_lora'`
+   with HIPPYNN. The tests check:
     - output rows against parameter finite differences;
-    - batched against looped reverse mode;
     - the physical-coupling uncertainty formula;
     - LoRA starting at the pretrained model, pickling, merging, and agreeing in both NTK engines, for
       Hipnn and HipHopnn.

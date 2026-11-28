@@ -1,4 +1,7 @@
-"""Uncertainty a model reports of its own, besides an ensemble's spread, chooses frames in both sampler families."""
+"""Uncertainty a model reports of its own, besides an ensemble's spread, chooses frames in both sampler families.
+
+Local-environment novelty, scored against reference structures, is one such score; its tests come last.
+"""
 import pickle
 
 import numpy as np
@@ -11,6 +14,7 @@ from alframework.samplers.acquisition import acquisition_settings, assess_frame,
 from alframework.samplers.ASE_ensemble_constructor import MLMD_calculator
 from alframework.tools.molecules import MoleculesObject
 from alframework.tools.trajectory_summary import OWN_UNCERTAINTY_PREFIX, trajectory_row
+from tests.helpers.engines import DEVICE, require_engine
 from tests.helpers.fakes import PairSpringCalculator
 from tests.helpers.molecules import SPRING_WATER
 
@@ -302,3 +306,195 @@ def test_a_one_member_run_that_reads_its_own_uncertainty_trains_and_retrains(tmp
     run = run_alf_driver(tmp_path, monkeypatch, **restart_tasks(tmp_path, []), **LOOP,
                          sampler_config={"acquisition": OWN}, ml_config={"n_models": 1})
     assert run.status["current_model_id"] >= 1
+
+
+# --- Local-environment novelty ----------------------------------------------------------------------
+# Distance of each atom's radial environment to the nearest same-element reference environment.
+
+def novelty_structures(periodic=False):
+    """A reference OH, and a query that adds a hydrogen the reference has never seen."""
+    cell = [[7, 0, 0], [1, 7, 0], [0, 0, 7]] if periodic else None
+    reference = Atoms('OH', positions=[[0.2, 0, 0], [1.4, 0, 0]], cell=cell, pbc=periodic)
+    query = Atoms('OHH', positions=[[0.2, 0, 0], [1.4, 0, 0], [6 if periodic else -1, 0, 0]],
+                  cell=cell, pbc=periodic)
+    return reference, query
+
+
+def load_test_potential(model_directory, device, *, sigma):
+    from ase.calculators.lj import LennardJones
+    from alframework.samplers.engines.packed import ASECalculatorBatch
+
+    return ASECalculatorBatch([LennardJones(sigma=sigma)])
+
+
+NOVELTY_CELLS = pytest.mark.parametrize('pbc', [(False, False, False), (True, True, False), (True, True, True)],
+                                        ids=['molecule', 'slab', 'periodic'])
+
+
+def novelty_case(pbc):
+    pytest.importorskip('torch')
+    from alframework.ml_interfaces.local_novelty import LocalEnvironmentNovelty
+
+    reference, query = novelty_structures(any(pbc))
+    for atoms in (reference, query):
+        atoms.pbc = pbc
+    return reference, query, LocalEnvironmentNovelty([reference], device=DEVICE, distance_block_size=1)
+
+
+@NOVELTY_CELLS
+def test_local_novelty_batch_matches_single_structures(pbc):
+    import torch
+    from alframework.tools.geometry import neighbor_search
+
+    require_engine('torchsim')
+    reference, query, novelty = novelty_case(pbc)
+    atoms = [reference, query]
+    numbers = torch.as_tensor(np.concatenate([a.numbers for a in atoms]), device=DEVICE)
+    positions = torch.as_tensor(np.concatenate([a.positions for a in atoms]), device=DEVICE)
+    cells = torch.as_tensor(np.stack([a.cell.array for a in atoms]), device=DEVICE)
+    periodicity = torch.as_tensor(reference.pbc, device=DEVICE)
+    scores, maxima = novelty.score_batch(numbers, positions, cells, periodicity, [2, 3],
+                                         neighbor_search('torch_linked_cell'))
+    assert scores.device == numbers.device and maxima.device == numbers.device
+    expected = [novelty.score_atoms(a) for a in atoms]
+    np.testing.assert_allclose(scores.cpu(), np.concatenate(expected), atol=1e-6)
+    np.testing.assert_allclose(maxima.cpu(), [a.max() for a in expected], atol=1e-6)
+    assert expected[0].max() < 1e-6
+    assert expected[1].max() > 0.05
+
+
+@NOVELTY_CELLS
+def test_local_novelty_scores_are_invariant_to_moving_the_atoms(pbc):
+    """A periodic image, translation or atom permutation cannot change the local descriptor."""
+    _, query, novelty = novelty_case(pbc)
+    moved = query[[2, 0, 1]]
+    moved.translate([2, 3, 4])
+    if any(pbc):
+        moved.positions[0] += query.cell[0]
+    np.testing.assert_allclose(novelty.score_atoms(moved), novelty.score_atoms(query)[[2, 0, 1]], atol=1e-6)
+
+
+def test_local_novelty_refuses_a_missing_element():
+    _, _, novelty = novelty_case((False, False, False))
+    with pytest.raises(ValueError, match='element is missing'):
+        novelty.score_atoms(Atoms('He'))
+
+
+class RecordingEvaluator:
+    """A packed evaluator whose per-atom score is |x|, recording the structures of each scoring call."""
+
+    n_models = 1
+
+    def __init__(self):
+        self.calls = []
+
+    def evaluate(self, numbers, positions, cells, pbc, counts):
+        return positions.new_zeros((1, len(counts))), positions[None, :, :] * 2
+
+    def observe_uncertainty_batch(self, numbers, positions, cells, pbc, counts, energies, forces):
+        import torch
+
+        self.calls.append(list(counts))
+        torch.testing.assert_close(forces[0], positions * 2)
+        scores = positions[:, 0].abs().numpy()
+        return [{'uncertainty': {'test_max': float(row.max())}, 'atomic_uncertainty': {'test': row}}
+                for row in np.split(scores, np.cumsum(counts)[:-1])]
+
+
+def recording_engine():
+    pytest.importorskip('torch')
+    from alframework.samplers.engines.packed import PackedMLMDEngine
+
+    evaluator = RecordingEvaluator()
+    engine = PackedMLMDEngine(list(novelty_structures()), evaluator, 0.5, [100, 100],
+                              [np.random.RandomState(index) for index in range(2)])
+    return engine, evaluator
+
+
+def test_local_novelty_packed_hook_scores_each_frame_once():
+    from alframework.testing import check_evaluator
+
+    engine, evaluator = recording_engine()
+    engine.observe_physical(0)
+    assert evaluator.calls == []
+    assert engine.observe(0)['prediction']['uncertainty'] == [{'test_max': 1.4}]
+    engine.observe(1)
+    assert evaluator.calls == [[2, 3]]
+    engine.finish(0)
+    engine.finish(1)
+    assert check_evaluator(RecordingEvaluator(), list(novelty_structures()))[1]['test_max'] == 1.4
+
+
+def test_local_novelty_packed_hook_keeps_observations_for_survivors():
+    engine, evaluator = recording_engine()
+    engine.observe(0)
+    engine.finish(0)
+    np.testing.assert_allclose(engine.observe(1)['prediction']['atomic_uncertainty'][0]['test'], [0.2, 1.4, 1.0])
+    assert evaluator.calls == [[2, 3]]
+    engine.scale_cell(1, 1.1)
+    assert engine.observe(1)['prediction']['uncertainty'][0]['test_max'] == pytest.approx(1.54)
+    assert evaluator.calls == [[2, 3], [3]]
+    engine.finish(1)
+
+
+def test_local_novelty_packed_hook_isolates_a_failed_structure():
+    pytest.importorskip('torch')
+    from alframework.samplers.engines.packed import PackedMLMDEngine
+
+    class OneBadStructure:
+        n_models = 1
+
+        def evaluate(self, numbers, positions, cells, pbc, counts):
+            return positions.new_zeros((1, len(counts))), positions.new_zeros((1, len(numbers), 3))
+
+        def observe_uncertainty_batch(self, numbers, positions, cells, pbc, counts, energies, forces):
+            if 3 in counts:
+                raise ValueError('Bad structure')
+            return [{'uncertainty': {'ok': 0.}}]
+
+    engine = PackedMLMDEngine(list(novelty_structures()), OneBadStructure(), 0.5, [100, 100],
+                              [np.random.RandomState(0), np.random.RandomState(1)])
+    with pytest.raises(ValueError, match='Bad structure'):
+        engine.observe(1)
+    engine.finish(1)
+    assert engine.observe(0)['prediction']['uncertainty'] == [{'ok': 0.}]
+    engine.finish(0)
+
+
+@pytest.mark.parametrize('engine', ['ase', 'torchsim', 'alchemi'])
+def test_local_novelty_triggers_single_model_sampling(tmp_path, engine):
+    pytest.importorskip('torch')
+    from ase.calculators.lj import LennardJones
+    from ase.io import write
+    from alframework.ml_interfaces.local_novelty import LocalEnvironmentNovelty, LocalNoveltyCalculator
+    from alframework.samplers.batched_mlmd import sample_trajectories, worker_ensemble
+
+    reference, query = novelty_structures()
+    reference_path = tmp_path / 'reference.xyz'
+    write(reference_path, reference)
+    config = dict(dt=0.5, maxt=0.002, Ncheck=5, distcut=0.3, min_time=0., random_seed=5,
+                  srt_temp=[10, 10], end_temp=[10, 10], amp_temp=[0, 0], per_temp=[1, 1],
+                  amp_dens=None, per_dens=None, end_dens=None, driver={'engine': engine},
+                  acquisition={'terms': {'novel': {'uncertainty': 'local_novelty_max', 'cutoff': 0.1}},
+                               'eligibility': ['novel'], 'strategy': 'largest'})
+    novelty = LocalEnvironmentNovelty([reference])
+    if engine == 'ase':
+        models = [LocalNoveltyCalculator(LennardJones(sigma=1.0), novelty)]
+    else:
+        require_engine(engine)
+        require_engine('torchsim')
+        config.update(batched_calculator='alframework.ml_interfaces.local_novelty.load_local_novelty_batched',
+                      batched_calculator_options={'base_loader': f'{__name__}.load_test_potential',
+                                                  'reference_path': str(reference_path),
+                                                  'base_options': {'sigma': 1.0}})
+        models = worker_ensemble(config, tmp_path, DEVICE)
+    molecules = [MoleculesObject(atoms.copy(), f'mol-0000-{index:010d}')
+                 for index, atoms in enumerate([reference, query])]
+    quiet, picked = sample_trajectories(molecules, models, config, device=DEVICE)
+    assert quiet.get_atoms() is None and quiet.get_metadata()['trajectory_outcome'] == 'completed'
+    metadata = picked.get_metadata()
+    assert metadata['acquisition_trigger_flags'] == {'novel': True}
+    # The frame is chosen by its atom scores, and keeps them.
+    expected = novelty.score_atoms(picked.get_atoms())
+    np.testing.assert_allclose(metadata['atomic_uncertainty']['local_novelty'], expected, atol=1e-6)
+    assert metadata['local_novelty_max'] == pytest.approx(expected.max(), abs=1e-6)

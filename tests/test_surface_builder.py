@@ -1,3 +1,6 @@
+"""The surface builder: facets, slab cuts and symmetry, adsorbate placement from coordinates, SMILES or bond files,
+material pools, and its run through ALF's builder contract and the coordinator's builder test mode."""
+
 import json
 import sys
 from collections import Counter

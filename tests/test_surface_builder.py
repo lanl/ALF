@@ -2,6 +2,7 @@
 material pools, and its run through ALF's builder contract and the coordinator's builder test mode."""
 
 import json
+import pickle
 import sys
 from collections import Counter
 from pathlib import Path
@@ -735,3 +736,268 @@ def test_adsorbate_offsets_stay_within_their_bounds(copper, tmp_path):
 def test_adsorbates_without_offsets_record_none(copper, tmp_path):
     metadata = build_surface('seed', dict(copper, adsorbates=[_co_placement()]), tmp_path).get_metadata()
     assert not {'lateral_offset_A', 'additional_height_A'} & set(metadata['surface_builder'])
+
+
+# --- Several adsorbates per cell -------------------------------------------------------------
+
+MIXTURE_GAP_A = 0.4
+
+
+@pytest.fixture
+def fixed_mixture(prepared_copper, tmp_path):
+    """Two CO and one NH3 on the 54-atom Cu(111) slab, with its config."""
+    pytest.importorskip('rdkit')
+    config = dict(prepared_copper, adsorbates=[_co_placement(count=2),
+                                              dict(smiles='N', anchor_elements=['N'], count=1)],
+                  max_atoms=62, fixed_bottom_layers=1, inter_adsorbate_gap_A=MIXTURE_GAP_A,
+                  vacuum_A=20, cell_height_A=36)
+    return build_surface('fixed-mixture', config, tmp_path), config
+
+
+def placed(built):
+    return built.get_metadata()['surface_builder']['adsorbates']
+
+
+def test_fixed_composition_places_every_requested_molecule(fixed_mixture):
+    built, _ = fixed_mixture
+    assert Counter(len(entry['atom_indices']) for entry in placed(built)) == {2: 2, 4: 1}
+
+
+def test_fixed_composition_appends_tagged_adsorbates_after_the_substrate(fixed_mixture):
+    built, _ = fixed_mixture
+    assert [i for entry in placed(built) for i in entry['atom_indices']] == list(range(54, 62))
+    np.testing.assert_array_equal(built.get_atoms().get_tags() == 2, np.arange(len(built)) >= 54)
+
+
+def test_fixed_composition_records_its_area_and_coverage(fixed_mixture):
+    built, _ = fixed_mixture
+    metadata = built.get_metadata()['surface_builder']
+    assert metadata['surface_area_A2'] == pytest.approx(np.linalg.norm(np.cross(*built.get_atoms().cell[:2])))
+    assert metadata['coverage_molecules_per_nm2'] == pytest.approx(300 / metadata['surface_area_A2'])
+
+
+def test_each_adsorbate_sits_over_its_site_through_its_anchor(fixed_mixture):
+    built, _ = fixed_mixture
+    atoms = built.get_atoms()
+    for entry in placed(built):
+        anchor = entry['anchor_atom_index']
+        assert entry['atom_indices'][entry['anchor_index']] == anchor
+        np.testing.assert_allclose(atoms.positions[anchor, :2], entry['site'][:2])
+
+
+def test_smiles_adsorbates_anchor_through_their_chosen_element(fixed_mixture):
+    built, _ = fixed_mixture
+    ammonia, = [entry for entry in placed(built) if 'adsorbate_smiles' in entry]
+    assert built.get_atoms()[ammonia['anchor_atom_index']].symbol == 'N'
+
+
+def test_file_adsorbates_keep_their_geometry(fixed_mixture):
+    built, _ = fixed_mixture
+    for entry in placed(built):
+        if 'adsorbate_file' in entry:
+            assert built.get_atoms().get_distance(*entry['atom_indices']) == pytest.approx(1.13)
+
+
+def assert_adsorbates_keep_their_gap(atoms, adsorbates, gap):
+    radii = covalent_radii[atoms.numbers]
+    distances = atoms.get_all_distances(mic=True)
+    for index, entry in enumerate(adsorbates):
+        for other in adsorbates[:index]:
+            first, second = entry['atom_indices'], other['atom_indices']
+            assert np.all(distances[np.ix_(first, second)] + 1e-8 >= radii[first, None] + radii[second] + gap)
+
+
+def test_fixed_composition_keeps_the_inter_adsorbate_gap(fixed_mixture):
+    built, _ = fixed_mixture
+    assert_adsorbates_keep_their_gap(built.get_atoms(), placed(built), MIXTURE_GAP_A)
+
+
+def test_crowded_adsorbates_keep_the_gap_across_periodic_boundaries(prepared_copper, tmp_path):
+    # Eight CO molecules on a 7.7 Å hexagonal cell: neighbours meet across the skewed lateral boundary.
+    built = build_surface('crowded', dict(prepared_copper, adsorbates=[_co_placement(count=8)]), tmp_path)
+    assert_adsorbates_keep_their_gap(built.get_atoms(), placed(built), 0.1)
+
+
+def test_fixed_composition_keeps_the_fixed_cell_height(fixed_mixture):
+    built, _ = fixed_mixture
+    atoms = built.get_atoms()
+    assert atoms.cell[2, 2] == pytest.approx(36)
+    _check_cell(atoms, 36 - np.ptp(atoms.positions[:, 2]))
+
+
+def test_fixed_composition_freezes_only_substrate_atoms(fixed_mixture):
+    built, _ = fixed_mixture
+    fixed = built.get_metadata()['fixed_substrate_indices']
+    assert len(fixed) == 9 and max(fixed) < 54
+    np.testing.assert_array_equal(built.get_atoms().constraints[0].get_indices(), fixed)
+
+
+def test_fixed_composition_rebuilds_the_same_adslab_from_its_id(fixed_mixture, tmp_path):
+    built, config = fixed_mixture
+    replay = build_surface('fixed-mixture', config, tmp_path)
+    np.testing.assert_array_equal(built.get_atoms().positions, replay.get_atoms().positions)
+    assert built.get_metadata() == replay.get_metadata()
+
+
+def test_adsorbate_metadata_survives_pickle_and_json(fixed_mixture):
+    built, _ = fixed_mixture
+    metadata = built.get_metadata()
+    assert pickle.loads(pickle.dumps(built)).get_metadata() == metadata
+    assert json.loads(json.dumps(metadata['surface_builder'])) == metadata['surface_builder']
+
+
+@pytest.fixture(params=['same', 'any', None], ids=['same', 'any', 'default'])
+def sampled_compositions(request, prepared_copper, tmp_path):
+    """Twenty-four adslabs drawn with 0 to 3 molecules from a CO and O pool, with the sampling mode."""
+    write(tmp_path / 'oxygen.xyz', Atoms('O'))
+    pool = [_co_placement(), dict(file='oxygen.xyz', anchor_elements=['O'])]
+    sampling = dict(min_count=0, max_count=3)
+    if request.param is not None:
+        sampling['mode'] = request.param
+    config = dict(prepared_copper, adsorbates=pool, adsorbate_sampling=sampling, max_atoms=60)
+    return [build_surface(f'coverage-{index}', config, tmp_path) for index in range(24)], request.param
+
+
+def sources(built):
+    return [entry['adsorbate_file'] for entry in placed(built)]
+
+
+def test_adsorbate_sampling_draws_every_count_in_its_range(sampled_compositions):
+    frames, _ = sampled_compositions
+    assert {len(sources(built)) for built in frames} == {0, 1, 2, 3}
+
+
+def test_adsorbate_sampling_repeats_one_entry(sampled_compositions):
+    frames, _ = sampled_compositions
+    assert any(len(sources(built)) > 1 and len(set(sources(built))) == 1 for built in frames)
+
+
+def test_adsorbate_sampling_mixes_entries_except_in_same_mode(sampled_compositions):
+    frames, mode = sampled_compositions
+    assert any(len(set(sources(built))) > 1 for built in frames) == (mode != 'same')
+
+
+def test_adsorbate_sampling_records_each_draws_coverage(sampled_compositions):
+    frames, _ = sampled_compositions
+    for built in frames:
+        metadata = built.get_metadata()['surface_builder']
+        assert metadata['coverage_molecules_per_nm2'] == pytest.approx(
+            100 * len(sources(built)) / metadata['surface_area_A2'])
+
+
+def test_adsorbate_sampling_with_zero_molecules_builds_the_pristine_slab(sampled_compositions):
+    frames, _ = sampled_compositions
+    assert all(len(built) == 54 for built in frames if not sources(built))
+
+
+def atom_cap_case(copper, prepared_copper, tmp_path, prepared, sampled):
+    """A two-entry pool on either substrate, with the atoms it should reserve and a cap one atom short."""
+    substrate = prepared_copper if prepared else copper
+    base_count = len(build_surface('clean', substrate, tmp_path))
+    pool = [_co_placement(), dict(smiles='N', anchor_elements=['N'])]
+    if sampled:
+        options, reservation = dict(adsorbate_sampling={'min_count': 0, 'max_count': 2}), 8
+    else:
+        pool = [dict(entry, count=1) for entry in pool]
+        options, reservation = {}, 6
+    return dict(substrate, adsorbates=pool, max_atoms=base_count + reservation - 1, **options), reservation
+
+
+ATOM_CAP_CASES = pytest.mark.parametrize(('prepared', 'sampled'), [
+    (False, False), (False, True), (True, False), (True, True)],
+    ids=['bulk-fixed', 'bulk-sampled', 'prepared-fixed', 'prepared-sampled'])
+
+
+@ATOM_CAP_CASES
+def test_adsorbate_atom_cap_refuses_too_little_room_for_the_full_composition(
+        copper, prepared_copper, tmp_path, prepared, sampled):
+    pytest.importorskip('rdkit')
+    config, reservation = atom_cap_case(copper, prepared_copper, tmp_path, prepared, sampled)
+    with pytest.raises(ValueError, match=rf'{reservation} reserved.*exceed max_atoms'):
+        build_surface('budget', config, tmp_path)
+
+
+@ATOM_CAP_CASES
+def test_adsorbate_atom_cap_accepts_exactly_enough_room(copper, prepared_copper, tmp_path, prepared, sampled):
+    pytest.importorskip('rdkit')
+    config, _ = atom_cap_case(copper, prepared_copper, tmp_path, prepared, sampled)
+    config['max_atoms'] += 1
+    assert len(build_surface('budget', config, tmp_path)) <= config['max_atoms']
+
+
+@pytest.mark.parametrize(('changes', 'message'), [
+    ({'adsorbates': [_co_placement(count=0)]}, 'count must be a positive integer'),
+    ({'adsorbates': [_co_placement(count=True)]}, 'count must be a positive integer'),
+    ({'adsorbates': [_co_placement(count=1), _co_placement()]}, 'Set count on every adsorbate entry'),
+    ({'adsorbates': [_co_placement(count=1)], 'adsorbate_sampling': {'max_count': 2}}, 'cannot be combined'),
+    ({'adsorbates': [], 'adsorbate_sampling': {'max_count': 2}}, 'needs a nonempty adsorbates list'),
+    ({'adsorbate_sampling': {'max_count': 0}}, 'max_count must be a positive integer'),
+    ({'adsorbate_sampling': {'min_count': 3, 'max_count': 2}}, 'min_count must be an integer'),
+    ({'adsorbate_sampling': {'max_count': 2, 'mode': 'mixed'}}, 'mode must be same or any'),
+    ({'inter_adsorbate_gap_A': -0.1}, 'inter_adsorbate_gap_A must be a finite nonnegative number'),
+    ({'max_placement_attempts': False}, 'max_placement_attempts must be a positive integer'),
+    ({'max_arrangement_attempts': 0}, 'max_arrangement_attempts must be a positive integer'),
+])
+def test_adsorbate_composition_options_are_validated(copper, tmp_path, changes, message):
+    config = dict(copper, adsorbates=[_co_placement()]) | changes
+    with pytest.raises(ValueError, match=message):
+        build_surface('invalid', config, tmp_path)
+
+
+@pytest.mark.parametrize(('material', 'expected'), [
+    (dict(adsorbate_sampling={'max_count': 1}), 1),
+    (dict(adsorbate_sampling=None, adsorbates=[_co_placement(count=2)]), 2),
+    (dict(adsorbate_sampling=None, adsorbates=[]), None),
+], ids=['override', 'fixed-count', 'pristine'])
+def test_material_can_override_or_disable_shared_adsorbate_sampling(prepared_copper, tmp_path, material, expected):
+    common = dict(adsorbates=[_co_placement()], adsorbate_sampling=dict(min_count=3, max_count=3))
+    config = dict(common, materials=[dict(prepared_copper, id='copper', **material)])
+    metadata = build_surface('material', config, tmp_path).get_metadata()['surface_builder']
+    assert (len(metadata['adsorbates']) if 'adsorbates' in metadata else None) == expected
+
+
+UPRIGHT_ONTOP_CO = _co_placement(mode='binding_sites', site_types=['ontop'], max_tilt_deg=0)
+
+
+def test_binding_site_molecules_take_distinct_sites(prepared_copper, tmp_path):
+    # The 3 × 3 cell has nine ontop sites, and nine upright CO molecules fill them.
+    built = build_surface('full', dict(prepared_copper, adsorbates=[dict(UPRIGHT_ONTOP_CO, count=9)]), tmp_path)
+    sites = {tuple(np.round(entry['site'][:2], 6)) for entry in placed(built)}
+    assert len(sites) == 9
+
+
+def test_more_binding_site_molecules_than_sites_are_refused(prepared_copper, tmp_path):
+    config = dict(prepared_copper, adsorbates=[dict(UPRIGHT_ONTOP_CO, count=10)])
+    with pytest.raises(ValueError, match=r'Miller \(1, 1, 1\).*10 × .*co.xyz.*reduce coverage'):
+        build_surface('crowded', config, tmp_path)
+
+
+def test_a_molecule_wider_than_the_cell_is_refused(prepared_copper, tmp_path):
+    pytest.importorskip('rdkit')
+    from ase.build import fcc111
+
+    write(tmp_path / 'cu1.extxyz', fcc111('Cu', size=(1, 1, 6), vacuum=0, periodic=True))
+    config = dict(prepared_copper, slab_file='cu1.extxyz',
+                  adsorbates=[dict(smiles='c1ccccc1', anchor_indices=[0], count=1)])
+    with pytest.raises(ValueError, match='could not fit the requested adsorbates'):
+        build_surface('wide', config, tmp_path)
+
+
+CROWDED_CO = [_co_placement(count=8)]
+
+
+def test_crowded_adsorbates_fit_with_the_default_retries(prepared_copper, tmp_path):
+    assert len(placed(build_surface('x-0', dict(prepared_copper, adsorbates=CROWDED_CO), tmp_path))) == 8
+
+
+def test_crowded_adsorbates_fail_with_one_attempt_each(prepared_copper, tmp_path):
+    config = dict(prepared_copper, adsorbates=CROWDED_CO, max_placement_attempts=1, max_arrangement_attempts=1)
+    with pytest.raises(ValueError, match='could not fit the requested adsorbates'):
+        build_surface('x-0', config, tmp_path)
+
+
+def test_material_retry_limits_override_the_shared_ones(prepared_copper, tmp_path):
+    material = dict(prepared_copper, id='copper', max_placement_attempts=1, max_arrangement_attempts=1)
+    config = dict(materials=[material], adsorbates=CROWDED_CO)
+    with pytest.raises(ValueError, match='could not fit the requested adsorbates'):
+        build_surface('x-0', config, tmp_path)

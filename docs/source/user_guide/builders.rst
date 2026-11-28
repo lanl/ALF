@@ -85,7 +85,7 @@ Supported Builder Tasks
      - Crystals with point defects.
    * - ``alframework.builders.surface.surface_builder_task``
      - Cleaves a bulk crystal and optionally places a molecule on its surface.
-     - Clean slabs and adsorption candidates, including hybrid perovskites.
+     - Slabs and adslabs, including hybrid perovskites.
 
 Choosing A Builder
 ------------------
@@ -305,6 +305,9 @@ Defect crystal builder
    raises an error; choose the maximum counts to fit the starting structure.
 
 Surface builder
+   A slab is the pristine surface model. An adslab contains the slab and
+   one or more adsorbates.
+
    Select ``alframework.builders.surface.surface_builder_task`` in the master
    config. In the builder config, set ``bulk_file`` to a local ASE-readable
    file containing one ordered, fully periodic conventional cell. File paths
@@ -326,10 +329,11 @@ Surface builder
    (default 10 Å). ``min_a_A`` and ``min_b_A`` default individually to
    ``min_in_plane_A`` (default 8 Å). Optional ``max_a_A`` and ``max_b_A``
    bound the final vector lengths. By default the builder uses the smallest whole
-   repeats that meet the minima. Optional ``max_atoms`` caps the final
-   structure and reserves room for the largest configured adsorbate.
+   repeats that meet the minima. Optional ``max_atoms`` caps the total atoms
+   in the slab or adslab, including hydrogens. Omitting it leaves
+   the atom count uncapped.
 
-   Use ``slab_file`` in place of ``bulk_file`` to decorate a prepared slab.
+   Use ``slab_file`` in place of ``bulk_file`` to build an adslab from a prepared slab.
    Supply one explicit Miller index and a right-handed periodic cell with
    ``c`` along +z. The file provides the lateral dimensions and termination,
    so the builder refuses the in-plane size options with it.
@@ -360,7 +364,7 @@ Surface builder
    the total gap between periodic images of the finished structure
    (default 15 Å). The builder centers the finished geometry along z and
    keeps all three axes periodic. Set ``cell_height_A`` to use a common
-   length for ``c`` across poses. In that mode ``vacuum_A`` is the minimum
+   length for ``c`` across structures. In that mode ``vacuum_A`` is the minimum
    gap, and a structure that needs a taller cell raises an error.
    Set ``face`` to ``top`` (default),
    ``bottom``, or ``both`` to sample either face. ``surface_depth_A`` is
@@ -396,7 +400,7 @@ Surface builder
    only if these neighbors are preserved in the slab, including across the
    in-plane periodic boundaries.
 
-   Leave ``adsorbates`` empty for clean slabs. Each entry specifies exactly
+   Leave ``adsorbates`` empty to generate slabs. Each entry specifies exactly
    one of ``file`` or ``smiles``. The ``topology`` extra (RDKit) is
    required for SMILES and bond-aware MOL/SDF files. A SMILES entry generates
    a seeded conformer with hydrogens, which count toward ``max_atoms``.
@@ -409,8 +413,59 @@ Surface builder
    file order or in RDKit input order before hydrogens are added. Element
    selectors such as ``["N", "O"]`` make every matching input atom eligible.
    For SMILES, hydrogens added during embedding are excluded from both
-   selectors. Each draw chooses one entry and one of its eligible anchor atoms.
-   An element selector with no matching atoms raises an error.
+   selectors. By default, each draw chooses one entry and one of its eligible
+   anchor atoms. An element selector with no matching atoms raises an error.
+
+   To place a fixed composition, set a positive integer ``count`` on every
+   adsorbate entry. For example, add these settings to a bulk or slab config
+   to generate an adslab with three ligands per cell.
+
+   .. code-block:: json
+
+      {
+        "max_atoms": 200,
+        "adsorbates": [
+          {"smiles": "CN", "anchor_elements": ["N"], "count": 2},
+          {"smiles": "CP", "anchor_elements": ["P"], "count": 1}
+        ]
+      }
+
+   To vary the composition across candidates, omit all entry counts and use
+   ``adsorbate_sampling``. For example, this draws one to four ligands per cell.
+
+   .. code-block:: json
+
+      {
+        "max_atoms": 200,
+        "adsorbate_sampling": {"min_count": 1, "max_count": 4, "mode": "any"},
+        "adsorbates": [
+          {"smiles": "CN", "anchor_elements": ["N"]},
+          {"smiles": "CP", "anchor_elements": ["P"]}
+        ]
+      }
+
+   The count is uniform over the inclusive range. ``min_count`` defaults to
+   one and may be zero to include slabs. In ``any`` mode (the default),
+   each molecule is drawn independently and uniformly from the list, so both
+   repeats and mixtures can occur. In ``same`` mode, the builder draws one
+   entry uniformly and repeats it for the sampled count. When ``max_atoms``
+   is set, the builder reserves room for the fixed composition or for
+   ``max_count`` copies of the largest entry. Without either composition
+   option, the builder reserves room for one copy of the largest entry.
+
+   Set ``max_placement_attempts`` to cap how many times the builder tries to
+   place each molecule (default 24). In either multi-adsorbate mode, ``max_arrangement_attempts``
+   caps the number of complete attempts starting from the pristine slab
+   (default 8, including the first attempt). Each attempt keeps the same
+   composition. Both limits are positive integers and can be overridden per
+   material. Each pair of atoms on different molecules must be at least the
+   sum of their covalent radii plus ``inter_adsorbate_gap_A`` (default 0.1 Å)
+   apart, including across lateral periodic boundaries. Increase
+   the lateral cell or reduce coverage if the requested packing fails.
+   The ``surface_builder.adsorbates`` metadata list records the site, anchor,
+   and global atom indices of each placed molecule. ``surface_area_A2``
+   gives the area of one face, and ``coverage_molecules_per_nm2`` gives the
+   molecular count per unit area of that face.
 
    ``max_lateral_offset_A`` samples a displacement within a disk around
    the chosen site. ``max_additional_height_A`` samples an upward
@@ -438,11 +493,12 @@ Surface builder
 
    Use a ``materials`` list to sample multiple materials. Each entry supplies
    ``id`` and either a ``bulk_file`` or a ``slab_file``. The builder draws a
-   material using its positive ``weight``, which defaults to 1, then chooses
-   one of that entry's adsorbates uniformly. Entries override shared settings
-   and can set an empty ``adsorbates`` list for clean slabs. If an entry
-   selects its own Miller indices or maximum, it replaces shared facet
-   selection. The builder validates every material pool. For an example, see
+   material using its positive ``weight``, which defaults to 1, then uses
+   that material's composition settings. Entries override shared settings.
+   Use ``adsorbate_sampling: null`` to disable inherited sampling and an
+   empty ``adsorbates`` list to generate slabs. If an entry selects its own
+   Miller indices or maximum, it replaces shared facet selection.
+   The builder validates every material pool. For an example, see
    ``examples/surface_adsorption/builder_materials.json``.
 
    .. code-block:: json

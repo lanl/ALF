@@ -21,6 +21,7 @@
   "driver": {"strategy": "batched", "engine": "torchsim"},
   "batching": {"batch_size": 2, "partial_policy": "timeout", "max_wait_seconds": 1.0},
   "translate_to_center": false,
+  "anomaly_check": {"enabled": true},
   "MLMD_calculator_options": {"well_params": null},
   "trajectory_frequency": 0
 }

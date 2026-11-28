@@ -17,7 +17,9 @@
   "random_seed": 17,
   "meta_dir": "runs/hippynn/sampling/",
   "ase_calculator": "alframework.ml_interfaces.hippynn.HIPNN_ASE_load_ensemble",
+  "driver": {"strategy": "single", "engine": "ase"},
   "translate_to_center": false,
+  "anomaly_check": {"enabled": true},
   "MLMD_calculator_options": {"well_params": null},
   "trajectory_frequency": 0
 }

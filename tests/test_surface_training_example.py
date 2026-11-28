@@ -146,9 +146,9 @@ def test_example_stores_vasp_free_energy_and_periodic_cells(tmp_path, monkeypatc
 
 
 @pytest.mark.parametrize('name', ['uma', 'hippynn', 'ase-cohort'])
-def test_example_samplers_keep_the_slab_cell(name, tmp_path, monkeypatch):
+def test_example_samplers_keep_the_slab_cell(name, tmp_path):
     from ase.io import read
-    from alframework.samplers import mlmd_sampling
+    from alframework.samplers.batched_mlmd import sample_trajectories
 
     candidate = _build(0, fixed_bottom_layers=int(name != 'uma'))
     fixed = candidate.get_metadata().get('fixed_substrate_indices', [])
@@ -165,11 +165,10 @@ def test_example_samplers_keep_the_slab_cell(name, tmp_path, monkeypatch):
                   min_time=0.001, trajectory_frequency=1, trajectory_interval=1)
     if name == 'uma':
         pytest.importorskip('torch_sim')
-        from alframework.samplers.batched_mlmd import sample_trajectories
         assert config['batched_calculator_options']['task'] == _config('uma_config.json')['fine_tune']['task']
+    if name in ('uma', 'hippynn'):
         sample_trajectories([candidate], members, config, device='cpu')
-    elif name == 'ase-cohort':
-        from alframework.samplers.batched_mlmd import sample_trajectories
+    else:
         from alframework.tools.cohorts import CohortPool
 
         selection = dict(mode='cohort_top_k', cohort_size=1, k=1)
@@ -180,9 +179,6 @@ def test_example_samplers_keep_the_slab_cell(name, tmp_path, monkeypatch):
         sample_trajectories([candidate], members, config, device='cpu')
         pool.record(candidate)
         candidate, = pool.ready()
-    else:
-        monkeypatch.setattr(mlmd_sampling, 'load_module_from_config', lambda *_: lambda *args, **kwargs: members)
-        mlmd_sampling.simple_mlmd_sampling_task.func(candidate, config, 'model-{:04d}', 0, 0)
     assert candidate.get_metadata()['vacuum_axes'] == ['c']
     np.testing.assert_allclose(candidate.get_atoms().cell, cell, rtol=1e-7, atol=1e-8)
     if fixed:

@@ -2,7 +2,7 @@
 
 This example places CO near lead sites on a pseudocubic MAPbI₃(100) slab built
 from the Materials Project cell `mp-977013`. The C–N, C–H, and N–H distance
-cutoffs keep methylammonium ions intact during cleavage. The slab has 96
+cutoffs keep methylammonium ions intact during cleavage. The adslab has 96
 substrate atoms plus two CO atoms and 20 Å of vacuum. The substrate is
 10.52–12.82 Å thick, depending on the termination, and its in-plane vectors
 are approximately 12.88 × 12.98 Å.
@@ -77,8 +77,8 @@ adsorbates. To try water from SMILES, install ALF with `python -m pip install
 `builder_materials.json` with `{"smiles": "O", "anchor_indices": [0]}`. The
 anchor is oxygen. ALF adds the hydrogens and counts them against the atom cap.
 
-For clean slabs, the substrate is centered along `z`. With an adsorbate, ALF
-centers the whole structure. Half of `vacuum_A` lies on either side.
+ALF centers the slab or the entire adslab along `z`, leaving half of
+`vacuum_A` on either side.
 
 ## Bulk structure sources
 

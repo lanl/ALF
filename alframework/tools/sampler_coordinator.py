@@ -217,6 +217,12 @@ class SamplerCoordinator(BatchedSubmitter):
                 raise ValueError("Sampler driver, batching, and acquisition.selection settings require a "
                                  "sampler_task that accepts molecule_objects; {} accepts a single "
                                  "molecule_object.".format(sampler_task_path))
+            screens = enabled_screens(sampler_config)
+            if screens:
+                raise ValueError("{} run only in alframework.samplers.batched_mlmd.mlmd_trajectories_task; {} "
+                                 "would skip them. For ASE dynamics, use that task with "
+                                 "driver {{\"strategy\": \"single\", \"engine\": \"ase\"}}.".format(
+                                     ", ".join(screens), sampler_task_path))
             super().__init__(sampler_task, None)
             self.driver = None
             return
@@ -355,6 +361,21 @@ class SamplerCoordinator(BatchedSubmitter):
         if self.driver["strategy"] == "single":
             return "one trajectory per task ({} engine)".format(self.driver["engine"])
         return "{} engine, ".format(self.driver["engine"]) + super().describe()
+
+
+def enabled_screens(sampler_config):
+    """The runtime structure screens a sampler config turns on, which only the trajectory sampler runs."""
+    from alframework.tools.molecular_topology import topology_enabled
+    from alframework.tools.surface_screen import anomaly_check_settings
+
+    screens = []
+    if topology_enabled(sampler_config):
+        screens.append("topology_check")
+    if anomaly_check_settings(sampler_config) is not None:
+        screens.append("anomaly_check")
+    if sampler_config.get("max_force_cutoff") is not None:
+        screens.append("max_force_cutoff")
+    return screens
 
 
 def _lookup(name, input_dicts):

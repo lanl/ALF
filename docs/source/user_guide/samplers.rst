@@ -121,7 +121,7 @@ Select it in ``master_config.json``, then add its settings to the sampler config
      - Optional. Langevin friction per femtosecond, for all three engines. It must
        be zero or more. Without it, the engines use a friction of ``0.02`` in ASE
        units.
-   * - ``topology_check``, ``max_force_cutoff``, ``screen_audit_dir``
+   * - ``topology_check``, ``anomaly_check``, ``max_force_cutoff``, ``screen_audit_dir``
      - Optional. End trajectories that break or develop unphysical forces; see
        :ref:`samplers-runtime-screens`.
 
@@ -172,7 +172,10 @@ Other differences from ``simple_mlmd_sampling_task``:
 * ``use_potential_specific_code`` isn't supported, so NeuroChem workflows need
   ``simple_mlmd_sampling_task``.
 * ALF stops at startup if a single-structure sampler task is given ``driver``,
-  ``batching``, or ``acquisition.selection``.
+  ``batching``, or ``acquisition.selection``, or has ``topology_check``,
+  ``anomaly_check`` or ``max_force_cutoff`` enabled. For those screens with ASE
+  dynamics, use ``mlmd_trajectories_task`` with
+  ``"driver": {"strategy": "single", "engine": "ase"}``.
 * For excited-state sampling, see :doc:`excited_states`.
 
 .. _samplers-initial-velocities:
@@ -276,9 +279,11 @@ Runtime Screens
 ---------------
 
 ``mlmd_trajectories_task`` can end a trajectory that has left the chemistry you
-meant to sample, so that its broken geometries never reach QM. Both screens are off
-by default, work with all three engines, and run when a trajectory starts and at each
-uncertainty check, every ``Ncheck`` steps.
+meant to sample, so that its broken geometries never reach QM. The screens are off
+by default, work with all three engines and both driver strategies, and run when a
+trajectory starts and at each uncertainty check, every ``Ncheck`` steps. The
+single-structure tasks, such as ``simple_mlmd_sampling_task``, don't run them and
+refuse them at startup.
 
 .. code-block:: json
 
@@ -343,6 +348,45 @@ The bond check has these requirements:
   them, every trajectory fails with ``topology_identity``. See :doc:`builders`.
 * Sampler workers need the ``topology`` extra, because RDKit reads the reference; see
   :doc:`../getting_started/installation`.
+
+Surface anomaly check
+~~~~~~~~~~~~~~~~~~~~~
+
+For adslabs from the ALF surface builder, enable ``anomaly_check`` in
+the sampler config. It uses the original ligand atom groups and ASE tags
+to recognize adsorbates (``2``) and exposed substrate (``1``). Pristine
+slabs skip the ligand checks.
+
+.. code-block:: json
+
+   {
+     "anomaly_check": {
+       "enabled": true,
+       "connectivity_scale": 1.5,
+       "desorption_distance_A": 4.0
+     }
+   }
+
+At step zero and at each uncertainty checkpoint, atoms within each ligand
+count as connected if their minimum-image distance is at most
+``connectivity_scale`` times the sum of their covalent radii. A ligand that
+splits into separate components ends its trajectory with
+``adsorbate_fragmentation``. Use a smaller ``Ncheck`` to check more often.
+The check catches a ligand coming apart, not a rearrangement that keeps it in
+one piece, a bond between ligands, or a change in the substrate.
+
+The screen needs the builder's ligand atom groups and tags to agree. When
+the ``surface_builder`` metadata lists groups that don't cover every atom
+tagged ``2`` exactly once, or the tags are missing, the structure is
+rejected before dynamics with ``adsorbate_identity``, and
+``anomaly_check_error`` says why.
+
+For a ligand that starts within ``desorption_distance_A`` of the exposed
+substrate, the screen records the first checked step where it is intact
+and farther away than that threshold. Intact desorption only adds a
+diagnostic in ``surface_adsorbates``. This screen uses distances and needs
+no RDKit reference. Use ``topology_check`` for isolated molecules with a
+fixed set of bonds.
 
 .. _samplers-sampling-windows:
 

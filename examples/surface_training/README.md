@@ -72,9 +72,15 @@ config to freeze the bottom plane. Scalar ASE and the batched ASE, TorchSim,
 and ALCHEMI engines support this setting. Keep `end_dens` null and
 `translate_to_center` false.
 
+Every sampler config here enables `anomaly_check`. A trajectory ends when an
+adsorbate splits apart, and the first loss of surface contact is recorded
+without ending it. The HIPPYNN example runs one ASE trajectory per task
+through `mlmd_trajectories_task`, which runs this check like the TorchSim
+examples do.
+
 To test electrostatic finite-size effects, set `slab_dipole_correction: true`
-at the top level of the VASP config. Test identical clean and decorated slab
-geometries in separate scratch directories. Compare dipole off and on and
+at the top level of the VASP config. Use the same slab and adslab geometries
+for each test and separate the scratch directories. Compare dipole off and on and
 compare 0.15 Å⁻¹ with 0.12 Å⁻¹ (6 × 6 × 1 on the example cell) using forces
 and relative site energies. Start fresh label sets when changing the reference
 settings.
@@ -171,7 +177,7 @@ For a geometry-only check, use
 and pass `--bulk-dir /tmp/alf-perovskite-preview` to the benchmark's
 `prepare` subcommand.
 
-For an independent comparison, hold out bridge and hollow initial poses,
+For an independent comparison, hold out starting geometries at bridge and hollow sites,
 label them with the same VASP settings, and score pretrained UMA OC20,
 pretrained UMA OC25, and fine-tuned UMA OC25 on those exact geometries.
 The MACE-MH-1 surface head provides an additional PBE baseline.
@@ -189,13 +195,13 @@ done
 
 The alloy partition reserves CsPb₀.₅Sn₀.₅I₃ for composition transfer. It uses
 ordered checkerboard and stripe B-site arrangements on the same interpolated
-pseudocubic lattice and includes both Pb-atop and Sn-atop poses with both
+pseudocubic lattice and includes both Pb-atop and Sn-atop geometries with both
 ligands. Keep the two alloy arrangements and all benchmark labels outside
-the training run. The default is 64 held-out end-member poses and 16 alloy poses.
+the training run. The default is 64 held-out end-member structures and 16 alloy structures.
 [All-inorganic Pb–Sn alloy experiments](https://doi.org/10.1039/D0RA10110A)
 
 The scorer reports adsorbate and nearby substrate force errors and relative
-pose energies at fixed composition, including separate errors by alloy
+energies of adsorption geometries at fixed composition, including separate errors by alloy
 binding metal. Run short fixed-cell trajectories from
 the same held-out geometry, velocity seed and thermostat settings:
 
@@ -206,7 +212,7 @@ python perovskite_benchmark.py trajectory dft_md.extxyz
 python perovskite_benchmark.py trajectory uma_md.extxyz
 ```
 
-Repeat across independent starting poses and compare donor distances to Pb
+Repeat across independent starting geometries and compare donor distances to Pb
 and Sn and ligand-axis tilts. Keep those trajectories outside the fitting data.
 
 ## Chalcogenide adsorption with UMA OC25
@@ -215,9 +221,9 @@ and Sn and ligand-axis tilts. Keep those trajectories outside the fitting data.
 `surface_builder_task` to cut stoichiometric zinc-blende (110) slabs from
 [conventional bulk cells](chalcogenide_bulks/). For each candidate it samples
 CdSe, CdTe, or HgTe and places either methylamine or methylphosphine from
-SMILES. The builder picks the N or P anchor by element and samples a pose
+SMILES. The builder picks the N or P anchor by element and places the ligand
 near an exposed Cd or Hg atop site. The bootstrap targets 48 accepted VASP
-labels and can draw up to 12 additional poses to replace failed labels. Each
+labels and can draw up to 12 additional structures to replace failed labels. Each
 material–ligand pair has a one-in-six chance per draw, with the draw determined
 by the builder seed and the candidate ID. Realized counts vary by pair.
 Record the accepted counts for each pair when comparing models. HgSe has a
@@ -257,21 +263,21 @@ sloshing during electronic convergence. [VASP dipole correction guide](https://v
 Use a consistent licensed PBE PAW
 release across workers. Set `VASP_PP_PATH` and optionally `VASP_PP_VERSION`
 as in the perovskite example. Check reference convergence and compare SOC on
-matched HgTe and HgSe poses before generating the production labels.
+matched HgTe and HgSe geometries before generating the production labels.
 
 Both UMA members start each fit from the original OC25 checkpoint and train
 on cumulative accepted labels with the existing 20:2 energy and force loss.
 The pilot retains the foundation elemental references. Check PAW and energy
 conventions before comparing absolute energies. The first fit uses bootstrap
 labels. Later generations drive fixed-cell batched TorchSim trajectories.
-Adjust the acquisition thresholds if ordinary MD finds too few eligible poses.
+Adjust the acquisition thresholds if ordinary MD finds too few eligible frames.
 
 ### Chalcogenide benchmarks
 
 The optional benchmark commands use the same ALF builder inputs for balanced,
-independent panels. The fixed pool uses additional poses from training
-compositions. The held-out panel uses independent poses from those same
-compositions and every sampled HgSe pose. Score the same reference labels at
+independent panels. The fixed pool uses additional geometries from training
+compositions. The held-out panel uses independent geometries from those same
+compositions and every sampled HgSe geometry. Score the same reference labels at
 each checkpoint. From the repository root, with `RUN` pointing to the
 directory containing your master and its input files:
 
@@ -284,7 +290,7 @@ python -m examples.surface_training.chalcogenide score holdout.extxyz "$RUN/runs
 
 For a fixed-pool comparison, use a separate run directory with the same
 configuration and bootstrap shard. Label the same number of additional
-poses as accepted by the active-learning run. Write those labels to the
+structures as the active-learning run accepts. Write those labels to the
 second run's HDF5 directory with `label RUN fixed OUTPUT.h5 --count N`, then
 use `--test_ml` to fit to both shards. Keep all holdout labels outside the
 training directories.

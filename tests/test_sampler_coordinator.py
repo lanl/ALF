@@ -193,6 +193,21 @@ def test_legacy_sampler_rejects_batching_settings():
             SamplerCoordinator(simple_mlmd_sampling_task, "mlmd", {key: {}})
 
 
+@pytest.mark.parametrize("screen", [
+    {"topology_check": {"enabled": True}},
+    {"anomaly_check": {"enabled": True}},
+    {"max_force_cutoff": 10.0},
+], ids=["topology", "anomaly", "force"])
+def test_legacy_sampler_refuses_screens_it_would_skip(screen):
+    with pytest.raises(ValueError, match=f"{next(iter(screen))} run only in .*mlmd_trajectories_task"):
+        SamplerCoordinator(simple_mlmd_sampling_task, "mlmd", dict(SAMPLER, **screen))
+
+
+def test_legacy_sampler_accepts_disabled_screens():
+    config = dict(SAMPLER, topology_check={"enabled": False}, anomaly_check={"enabled": False})
+    assert not SamplerCoordinator(simple_mlmd_sampling_task, "mlmd", config).batched
+
+
 @pytest.mark.parametrize(
     "policy,capacity,rejected",
     [("full_only", 3, True), ("full_only", 4, False), ("timeout", 3, False)],

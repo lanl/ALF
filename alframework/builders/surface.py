@@ -1,4 +1,4 @@
-"""Generate bare slabs and adsorbed molecules from a pool of bulk materials."""
+"""Generate pristine slabs and adslabs from a pool of bulk materials."""
 
 import hashlib
 import warnings
@@ -27,6 +27,8 @@ _IN_PLANE = (True, True, False)
 _BULK_INDEX = 'surface_bulk_index'
 _SITE_TYPES = ('ontop', 'bridge', 'hollow')
 _LENGTH_TOLERANCE = 1e-8
+_DEFAULT_PLACEMENT_ATTEMPTS = 24
+_DEFAULT_ARRANGEMENT_ATTEMPTS = 8
 
 
 def _length(value, name, *, allow_zero=False):
@@ -396,7 +398,7 @@ def _place(slab, adsorbate, site, gap):
     lift = np.max(np.sqrt(needed_z2[close]) - differences[:, :, 2][close], initial=gap)
     adsorbate.translate((0, 0, lift))
     adsorbate.set_tags(np.full(len(adsorbate), 2))
-    return slab + adsorbate
+    return adsorbate
 
 
 def _has_image_clash(atoms):
@@ -442,6 +444,13 @@ class _Placement:
 
 
 @dataclass(frozen=True)
+class _AdsorbateSampling:
+    min_count: int
+    max_count: int
+    mode: str
+
+
+@dataclass(frozen=True)
 class _Material:
     name: str | None
     weight: float
@@ -456,6 +465,11 @@ class _Material:
     fixed_bottom_layers: int
     fixed_bottom_depth: float
     adsorbates: tuple
+    adsorbate_counts: tuple | None
+    adsorbate_sampling: _AdsorbateSampling | None
+    inter_adsorbate_gap: float
+    max_placement_attempts: int
+    max_arrangement_attempts: int
 
 
 def _prepare_placement(entry, master_directory, seed):
@@ -499,6 +513,29 @@ def _prepare_placement(entry, master_directory, seed):
                       lateral_offset, additional_height)
 
 
+def _adsorbate_composition_settings(entries, sampling):
+    if any('count' in entry for entry in entries):
+        if sampling is not None:
+            raise ValueError('adsorbate_sampling cannot be combined with explicit adsorbate counts')
+        if not all('count' in entry for entry in entries):
+            raise ValueError('Set count on every adsorbate entry when requesting a fixed composition')
+        return tuple(_positive_integer(entry['count'], 'adsorbate count') for entry in entries), None
+    if sampling is None:
+        return None, None
+    if not isinstance(sampling, dict) or set(sampling) - {'min_count', 'max_count', 'mode'}:
+        raise ValueError('adsorbate_sampling must be an object with max_count and optional min_count and mode')
+    if not entries:
+        raise ValueError('adsorbate_sampling needs a nonempty adsorbates list')
+    minimum = sampling.get('min_count', 1)
+    maximum = _positive_integer(sampling.get('max_count'), 'adsorbate_sampling.max_count')
+    if type(minimum) is not int or not 0 <= minimum <= maximum:
+        raise ValueError('adsorbate_sampling.min_count must be an integer from zero through max_count')
+    mode = sampling.get('mode', 'any')
+    if mode not in ('same', 'any'):
+        raise ValueError('adsorbate_sampling.mode must be same or any')
+    return None, _AdsorbateSampling(minimum, maximum, mode)
+
+
 def _prepare_material(config, master_directory, seed, name=None, weight=1.0):
     prepared = 'slab_file' in config
     if prepared and 'bulk_file' in config:
@@ -525,11 +562,21 @@ def _prepare_material(config, master_directory, seed, name=None, weight=1.0):
     entries = config.get('adsorbates', [])
     if not isinstance(entries, list) or any(not isinstance(entry, dict) for entry in entries):
         raise ValueError('adsorbates must be a list of objects')
+    counts, sampling = _adsorbate_composition_settings(entries, config.get('adsorbate_sampling'))
     adsorbates = tuple(_prepare_placement(entry, master_directory, seed) for entry in entries)
+    inter_adsorbate_gap = _length(config.get('inter_adsorbate_gap_A', 0.1), 'inter_adsorbate_gap_A', allow_zero=True)
+    max_placement_attempts = _positive_integer(
+        config.get('max_placement_attempts', _DEFAULT_PLACEMENT_ATTEMPTS), 'max_placement_attempts')
+    max_arrangement_attempts = _positive_integer(
+        config.get('max_arrangement_attempts', _DEFAULT_ARRANGEMENT_ATTEMPTS), 'max_arrangement_attempts')
     max_atoms, reserved = None, 0
     if 'max_atoms' in config:
         max_atoms = _positive_integer(config['max_atoms'], 'max_atoms')
-        reserved = max((len(placement.geometry.atoms) for placement in adsorbates), default=0)
+        sizes = [len(placement.geometry.atoms) for placement in adsorbates]
+        if counts is not None:
+            reserved = sum(count * size for count, size in zip(counts, sizes))
+        else:
+            reserved = max(sizes, default=0) * (sampling.max_count if sampling else 1)
     face = config.get('face', 'top')
     if face not in ('top', 'bottom', 'both'):
         raise ValueError('face must be top, bottom, or both')
@@ -561,14 +608,16 @@ def _prepare_material(config, master_directory, seed, name=None, weight=1.0):
         if np.ptp(slab.positions[:, 2]) + 1e-6 < thickness:
             raise ValueError(f'{source[0]}: prepared slab is thinner than {thickness} Å')
         if max_atoms is not None and len(slab) + reserved > max_atoms:
-            raise ValueError(f'{source[0]}: prepared slab and adsorbate exceed max_atoms')
+            raise ValueError(f'{source[0]}: {len(slab)} prepared slab atoms and {reserved} reserved adsorbate atoms '
+                             f'exceed max_atoms={max_atoms}')
         slabs = ((families[0][0], None, slab, None, None),)
     else:
         slabs = _slabs(source, families, thickness, _in_plane_bounds(config),
                        _bond_cutoffs(config.get('protected_bonds', [])),
                        (max_atoms, reserved), automatic, (symmetry, tolerance), independent)
     return _Material(name, weight, source[0], charge, slabs, automatic, face, depth, vacuum,
-                     cell_height, fixed_bottom_layers, fixed_bottom_depth, adsorbates)
+                     cell_height, fixed_bottom_layers, fixed_bottom_depth, adsorbates, counts, sampling,
+                     inter_adsorbate_gap, max_placement_attempts, max_arrangement_attempts)
 
 
 def _material_pools(config, master_directory, seed):
@@ -662,9 +711,15 @@ def build_surface(moleculeid, builder_config, master_directory=None):
         metadata['material_id'] = material.name
     if symmetric is not None:
         metadata['slab_symmetric'] = symmetric
-    if material.adsorbates:
+    if material.adsorbate_counts is not None or material.adsorbate_sampling is not None:
+        composition = _draw_composition(material, rng)
+        slab, placements = _add_adsorbates(slab, exposed, material, composition, rng, metadata)
+        area = float(np.linalg.norm(np.cross(slab.cell[0], slab.cell[1])))
+        metadata.update(adsorbates=placements, surface_area_A2=area,
+                        coverage_molecules_per_nm2=100 * len(placements) / area)
+    elif material.adsorbates:
         entry = material.adsorbates[rng.integers(len(material.adsorbates))]
-        slab, placement = _add_adsorbate(slab, exposed, entry, material.vacuum, material.cell_height, rng, metadata)
+        slab, placement = _add_adsorbate(slab, exposed, entry, material, rng, metadata)
         metadata.update(placement)
     else:
         _finish_cell(slab, material.vacuum, material.cell_height)
@@ -678,8 +733,7 @@ def build_surface(moleculeid, builder_config, master_directory=None):
     return molecule
 
 
-def _add_adsorbate(slab, exposed, entry, vacuum, cell_height, rng, surface_metadata):
-    geometry = entry.geometry
+def _placement_sites(slab, exposed, entry, surface_metadata):
     eligible = exposed
     if entry.surface_elements:
         eligible = eligible & np.isin(slab.get_chemical_symbols(), entry.surface_elements)
@@ -689,35 +743,142 @@ def _add_adsorbate(slab, exposed, entry, vacuum, cell_height, rng, surface_metad
     named = mesh.named(entry.site_types) if entry.mode == 'binding_sites' else None
     if named == []:
         raise ValueError(f'No {entry.site_types} binding sites found for {surface_metadata}')
-    for _ in range(24):
+    return mesh, named
+
+
+def _sample_adsorbate(slab, entry, kind, site, rng, atom_start):
+    geometry = entry.geometry
+    location = site.copy()
+    offset = height = None
+    if entry.lateral_offset:
+        azimuth = rng.uniform(0, 2 * np.pi)
+        offset = entry.lateral_offset * np.sqrt(rng.random()) * np.array([np.cos(azimuth), np.sin(azimuth)])
+        location[:2] += offset
+    anchor = int(rng.choice(entry.anchors))
+    adsorbate = _place(slab, _oriented(geometry.atoms, anchor, entry.max_tilt, rng), location, entry.gap)
+    if entry.additional_height:
+        height = rng.uniform(0, entry.additional_height)
+        adsorbate.positions[:, 2] += height
+    metadata = {f'adsorbate_{geometry.source_kind}': geometry.source,
+                'adsorbate_charge': _charge_metadata(geometry.charge_sources),
+                'mode': entry.mode, 'site_type': kind, 'site': site.tolist(),
+                'anchor_index': anchor, 'anchor_atom_index': atom_start + anchor}
+    if geometry.force_field is not None:
+        metadata['adsorbate_force_field'] = geometry.force_field
+    if offset is not None:
+        metadata['lateral_offset_A'] = offset.tolist()
+    if height is not None:
+        metadata['additional_height_A'] = float(height)
+    return adsorbate, metadata
+
+
+def _add_adsorbate(slab, exposed, entry, material, rng, surface_metadata):
+    mesh, named = _placement_sites(slab, exposed, entry, surface_metadata)
+    for _ in range(material.max_placement_attempts):
         kind, site = mesh.random(rng) if named is None else named[rng.integers(len(named))]
-        location = site.copy()
-        offset = height = None
-        if entry.lateral_offset:
-            azimuth = rng.uniform(0, 2 * np.pi)
-            offset = entry.lateral_offset * np.sqrt(rng.random()) * np.array([np.cos(azimuth), np.sin(azimuth)])
-            location[:2] += offset
-        anchor = int(rng.choice(entry.anchors))
-        combined = _place(slab, _oriented(geometry.atoms, anchor, entry.max_tilt, rng), location, entry.gap)
-        if entry.additional_height:
-            height = rng.uniform(0, entry.additional_height)
-            combined.positions[len(slab):, 2] += height
-        shift = _finish_cell(combined, vacuum, cell_height)
+        adsorbate, metadata = _sample_adsorbate(slab, entry, kind, site, rng, len(slab))
+        combined = slab + adsorbate
+        shift = _finish_cell(combined, material.vacuum, material.cell_height)
         if not _has_image_clash(combined):
-            metadata = {f'adsorbate_{geometry.source_kind}': geometry.source,
-                        'adsorbate_charge': _charge_metadata(geometry.charge_sources),
-                        'mode': entry.mode, 'site_type': kind, 'site': (site + [0, 0, shift]).tolist(),
-                        'anchor_index': anchor, 'anchor_atom_index': len(slab) + anchor}
-            if geometry.force_field is not None:
-                metadata['adsorbate_force_field'] = geometry.force_field
-            # The sampled displacements from the site, which the anchor no longer sits over.
-            if offset is not None:
-                metadata['lateral_offset_A'] = offset.tolist()
-            if height is not None:
-                metadata['additional_height_A'] = float(height)
+            metadata['site'][2] += float(shift)
             return combined, metadata
-    raise ValueError(f'{geometry.source}: no placement clears its periodic images for {surface_metadata}; '
+    raise ValueError(f'{entry.geometry.source}: no placement clears its periodic images for {surface_metadata}; '
                      'increase the in-plane dimensions or vacuum_A')
+
+
+def _draw_composition(material, rng):
+    if material.adsorbate_counts is not None:
+        return [index for index, count in enumerate(material.adsorbate_counts) for _ in range(count)]
+    sampling = material.adsorbate_sampling
+    count = int(rng.integers(sampling.min_count, sampling.max_count + 1))
+    if count == 0:
+        return []
+    if sampling.mode == 'same':
+        return [int(rng.integers(len(material.adsorbates)))] * count
+    return rng.integers(len(material.adsorbates), size=count).tolist()
+
+
+def _adsorbates_clash(adsorbate, placed, gap):
+    if not len(placed):
+        return False
+    vectors = adsorbate.positions[:, None, :] - placed.positions
+    distances = find_mic(vectors.reshape(-1, 3), placed.cell, pbc=_IN_PLANE)[1].reshape(vectors.shape[:2])
+    clearance = covalent_radii[adsorbate.numbers, None] + covalent_radii[placed.numbers] + gap
+    return bool(np.any(distances < clearance - _LENGTH_TOLERANCE))
+
+
+def _has_lateral_self_clash(adsorbate, cell):
+    adsorbate.set_cell(cell)
+    adsorbate.pbc = _IN_PLANE
+    radii = covalent_radii[adsorbate.numbers]
+    i, j, distance, shift = neighbor_list('ijdS', adsorbate, 2 * radii.max())
+    return bool(np.any(shift.any(axis=1) & (distance < radii[i] + radii[j] - _LENGTH_TOLERANCE)))
+
+
+def _unused_named_sites(named, occupied, cell):
+    if not occupied:
+        return named
+    vectors = np.array([site for _, site in named])[:, None, :] - occupied
+    vectors[:, :, 2] = 0
+    distances = find_mic(vectors.reshape(-1, 3), cell, pbc=_IN_PLANE)[1].reshape(vectors.shape[:2])
+    return [point for point, available in zip(named, (distances > _LENGTH_TOLERANCE).all(axis=1)) if available]
+
+
+def _try_adsorbate_arrangement(slab, material, order, sites, max_span, rng):
+    combined = slab.copy()
+    placements, occupied = [], []
+    if np.ptp(slab.positions[:, 2]) > max_span:
+        return None
+    for index in order:
+        entry = material.adsorbates[index]
+        mesh, named = sites[index]
+        if named is not None:
+            named = _unused_named_sites(named, occupied, slab.cell)
+            if not named:
+                return None
+        placed = combined[len(slab):]
+        start = len(combined)
+        low, high = combined.positions[:, 2].min(), combined.positions[:, 2].max()
+        for _ in range(material.max_placement_attempts):
+            kind, site = mesh.random(rng) if named is None else named[rng.integers(len(named))]
+            adsorbate, metadata = _sample_adsorbate(slab, entry, kind, site, rng, start)
+            z = adsorbate.positions[:, 2]
+            if (max(high, z.max()) - min(low, z.min()) > max_span
+                    or _adsorbates_clash(adsorbate, placed, material.inter_adsorbate_gap)
+                    or _has_lateral_self_clash(adsorbate, slab.cell)):
+                continue
+            if named is not None:
+                occupied.append(site)
+            combined += adsorbate
+            metadata['atom_indices'] = list(range(start, len(combined)))
+            placements.append(metadata)
+            break
+        else:
+            return None
+    return combined, placements
+
+
+def _add_adsorbates(slab, exposed, material, composition, rng, surface_metadata):
+    counts = Counter(composition)
+    requested = ', '.join(f'{count} × {material.adsorbates[index].geometry.source}'
+                          for index, count in sorted(counts.items())) or 'clean slab'
+    context = (f'{material.name or material.source}, Miller {tuple(surface_metadata["miller_index"])} '
+               f'({requested})')
+    sites = {index: _placement_sites(slab, exposed, material.adsorbates[index], context) for index in counts}
+    max_span = float('inf') if material.cell_height is None else (
+        material.cell_height - material.vacuum + _LENGTH_TOLERANCE)
+    for _ in range(material.max_arrangement_attempts):
+        arrangement = _try_adsorbate_arrangement(slab, material, rng.permutation(composition), sites, max_span, rng)
+        if arrangement is None:
+            continue
+        combined, placements = arrangement
+        shift = _finish_cell(combined, material.vacuum, material.cell_height)
+        if not _has_image_clash(combined):
+            for placement in placements:
+                placement['site'][2] += float(shift)
+            return combined, placements
+    raise ValueError(f'{context}: could not fit the requested adsorbates with the required clearance and vacuum; '
+                     'increase the in-plane dimensions or cell height, or reduce coverage')
 
 
 @alf_task('builder')

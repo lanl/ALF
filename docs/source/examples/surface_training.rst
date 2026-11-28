@@ -2,9 +2,9 @@ Train on CO/Cu(111) with UMA or HIPPYNN
 =======================================
 
 The files in ``examples/surface_training`` show two active learning workflows
-for clean and CO decorated Cu(111) slabs. Both use the ALF surface builder
+for pristine Cu(111) slabs and CO/Cu(111) adslabs. Both use the ALF surface builder
 and VASP RPBE energies and forces. The example starts from perturbed clean
-slabs and from atop, bridge, and hollow adsorption poses, then keeps the
+slabs and from adslabs with CO at atop, bridge, and hollow sites, then keeps the
 periodic cell fixed during MD.
 
 Use ``master_uma.json`` to fine-tune the ``oc20`` task of a local UMA-S

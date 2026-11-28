@@ -43,6 +43,9 @@
     "max_wait_seconds": 1.0
   },
   "translate_to_center": false,
+  "anomaly_check": {
+    "enabled": true
+  },
   "MLMD_calculator_options": {
     "well_params": null
   },

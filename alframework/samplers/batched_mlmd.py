@@ -91,8 +91,8 @@ def draw_schedule(sampler_config, rng):
             'Rend': _draw(rng, sampler_config['end_dens'])}
 
 
-def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, seeds=None, *, topology=None, screen_audit=None,
-                          bundle_dir=None):
+def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, seeds=None, *, topology=None,
+                          surface_checks=None, screen_audit=None, bundle_dir=None):
     """Run trajectories in lockstep with first-trigger or final-frame selection.
 
     With ``acquisition.distcut_frames`` "label", a ``distcut`` violation is a frame to label: under first-trigger
@@ -108,6 +108,7 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
             ``Fscut`` and optional ``distcut``, ``min_time``, ``meta_dir``,
             ``metadata_files``, ``acquisition``.
         seeds (list): Optional per-trajectory seeds to record.
+        surface_checks (list): Optional per-trajectory adsorbate screens prepared at step zero.
         bundle_dir (str): Where ``metadata_files`` "per_task" writes its one file (default ``meta_dir``).
 
     Returns:
@@ -216,43 +217,47 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
                                       gap_seeking_trigger_time_ps=float(time_ps)))
 
     cutoff = sampler_config.get('max_force_cutoff')
-    screening = topology is not None or cutoff is not None
+    screening = topology is not None or surface_checks is not None or cutoff is not None
     if cutoff is not None:
         from alframework.tools.force_screen import validated_force_cutoff
         cutoff = validated_force_cutoff(cutoff)
 
-    def inspect_frame(index, observation, time_ps):
+    def inspect_frame(index, observe):
         from alframework.tools.molecular_topology import validate_fixed_topology, topology_metadata
         from alframework.tools.force_screen import physical_force_diagnostics, physical_force_exceeds, force_screen_metadata
         molecule = molecule_objects[index]
         atoms = engine.atoms(index)
         reference = topology[index] if isinstance(topology, list) else topology
         report = topology_metadata(validate_fixed_topology(atoms, reference)) if reference is not None else {}
-        force = physical_force_diagnostics(observation['prediction']) if cutoff is not None else None
+        step = engine.steps[index]
+        time_ps = step * dt / 1000
+        surface_check = surface_checks[index] if surface_checks is not None else None
+        if surface_check is not None:
+            report.update(surface_check.inspect(atoms, step, time_ps))
+        observation = None if report.get('surface_reject_reason') else observe(index)
+        force = physical_force_diagnostics(observation['prediction']) if cutoff is not None and observation else None
         if force is not None:
             report.update(force_screen_metadata(force))
             report['physical_force_valid'] = not physical_force_exceeds(force, cutoff)
             report['max_force_cutoff'] = cutoff
-        reason = report.get('topology_reject_reason')
+        reason = report.get('topology_reject_reason') or report.get('surface_reject_reason')
         if reason is None and force is not None and not report['physical_force_valid']:
             reason = 'physical_force'
         report['screen_reject_reason'] = reason
         molecule.update_metadata(report)
         if screen_audit is not None:
             diagnostics = dict(report, **({'physical_forces': force['physical_forces']} if force is not None else {}))
-            if engine.steps[index] == 0:
+            if step == 0:
                 screen_audit.record(molecule, 'initial', atoms, 0, 0., diagnostics)
-            screen_audit.record(molecule, 'rejected' if reason else 'last_valid', atoms,
-                                engine.steps[index], engine.steps[index] * dt / 1000, diagnostics)
-        return report, reason
+            screen_audit.record(molecule, 'rejected' if reason else 'last_valid', atoms, step, time_ps, diagnostics)
+        return report, reason, observation
 
     active = list(range(count))
-    if screening:
+    if topology is not None or cutoff is not None:
         observe_physical = getattr(engine, "observe_physical", engine.observe)
         for index in list(active):
             try:
-                observation = observe_physical(index)
-                report, reason = inspect_frame(index, observation, 0.)
+                report, reason, _ = inspect_frame(index, observe_physical)
                 if reason:
                     state[index].update(decision=dict(outcome='rejected'),
                                         signals={k:v for k,v in report.items() if k == 'Fmeanmax' or k.startswith('physical_F')})
@@ -270,9 +275,8 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
         for index in list(active):
             entry, schedule = state[index], schedules[index]
             try:
-                observation = engine.observe(index)
                 if screening:
-                    report, reason = inspect_frame(index, observation, time_ps)
+                    report, reason, observation = inspect_frame(index, engine.observe)
                     if reason:
                         # Keep the last valid uncertainty, since this frame's is physically suspect.
                         entry.update(decision=dict(outcome='rejected'), check=check,
@@ -280,6 +284,8 @@ def run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, s
                                               **{k:v for k,v in report.items() if k == 'Fmeanmax' or k.startswith('physical_F')}})
                         finish(index, 'rejected')
                         continue
+                else:
+                    observation = engine.observe(index)
                 prediction = observation['prediction']
                 signals = ensemble_statistics(prediction)[0]
                 diagnostics = {}
@@ -614,35 +620,56 @@ def sample_trajectories(molecule_objects, models, sampler_config, engine_class=N
     from alframework.tools.molecules import MOLECULE_ID
     from alframework.tools.force_screen import validated_force_cutoff
     from alframework.tools.screen_audit import RuntimeScreenAudit
+    from alframework.tools.surface_screen import anomaly_check_settings, prepare_surface_anomaly_check
     references = load_reference_topologies(
         sampler_config, [molecule.get_metadata().get(MOLECULE_ID) for molecule in original_molecules])
     topology = references if any(reference is not None for reference in references) else None
+    surface_settings = anomaly_check_settings(sampler_config)
+    check_surfaces = surface_settings is not None and any(
+        'surface_builder' in molecule.get_metadata() for molecule in original_molecules)
     if sampler_config.get('max_force_cutoff') is not None:
         validated_force_cutoff(sampler_config['max_force_cutoff'])
-    screening = topology is not None or sampler_config.get('max_force_cutoff') is not None
+    screening = topology is not None or check_surfaces or sampler_config.get('max_force_cutoff') is not None
     audit = RuntimeScreenAudit(original_molecules, sampler_config) if screening else None
     if states is not None:
         resolved = {resolve_selected_state(m, states) for m in original_molecules}
         if len(resolved) != 1:
             raise ValueError('A sampler task must share one selected state')
-    if topology is not None:
+    surface_checks = None
+    if topology is not None or check_surfaces:
         valid = []
         valid_references = []
-        for molecule, reference in zip(original_molecules, topology):
+        valid_surface_checks = []
+        for molecule, reference in zip(original_molecules, references):
             atoms = molecule.get_atoms()
-            report = topology_metadata(validate_fixed_topology(atoms, reference))
-            audit.record(molecule, 'initial', atoms, diagnostics=report)
-            molecule.update_metadata(report)
-            if not report['topology_valid']:
+            # With topology checks on, every structure gets topology metadata, as before surface checks.
+            report = topology_metadata(validate_fixed_topology(atoms, reference)) if topology is not None else {}
+            try:
+                surface_check = prepare_surface_anomaly_check(molecule, surface_settings)
+            except ValueError as exc:
+                surface_check = None
+                report.update(surface_reject_reason='adsorbate_identity', anomaly_check_error=str(exc))
+            if surface_check is not None:
+                report.update(surface_check.inspect(atoms, 0, 0.))
+            reason = report.get('topology_reject_reason') or report.get('surface_reject_reason')
+            if report:
+                report['screen_reject_reason'] = reason
+                audit.record(molecule, 'initial', atoms, diagnostics=report)
+                molecule.update_metadata(report)
+                if surface_check is not None and reason is None:
+                    audit.record(molecule, 'last_valid', atoms, diagnostics=report)
+            if reason:
                 molecule.update_metadata(dict(trajectory_outcome='rejected', step=0, simulationtime=0.,
-                    acquisition_candidates=[], screen_reject_reason=report['topology_reject_reason']))
+                                              acquisition_candidates=[]))
                 audit.record(molecule, 'rejected', atoms, diagnostics=report)
                 molecule.update_atoms(None)
             else:
                 valid.append(molecule)
                 valid_references.append(reference)
+                valid_surface_checks.append(surface_check)
         molecule_objects = valid
-        topology = valid_references
+        topology = valid_references if topology is not None else None
+        surface_checks = valid_surface_checks if any(check is not None for check in valid_surface_checks) else None
     for molecule in original_molecules:
         molecule.update_metadata(dict(sampling_initial_active_width=len(molecule_objects)))
     if not molecule_objects:
@@ -717,7 +744,7 @@ def sample_trajectories(molecule_objects, models, sampler_config, engine_class=N
             engine.attach_trajectory(index, meta_dir + "/metadata-" + molecule.get_moleculeid() + '.traj', interval)
     try:
         run_mlmd_trajectories(molecule_objects, engine, schedules, sampler_config, seeds,
-                              topology=topology, screen_audit=audit, bundle_dir=bundle_dir)
+                              topology=topology, surface_checks=surface_checks, screen_audit=audit, bundle_dir=bundle_dir)
         entered = molecule_objects[0].get_metadata()['sampling_entered_dynamics_width']
         for molecule in original_molecules:
             molecule.update_metadata(dict(sampling_entered_dynamics_width=entered))

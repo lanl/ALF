@@ -597,6 +597,7 @@ def test_timing_boundaries_preserve_packed_trajectories(engine_name, monkeypatch
 
 
 def test_topology_or_force_rejection_stops_before_first_step(engine_name, tmp_path):
+    pytest.importorskip("rdkit")  # The topology check perceives bonds with RDKit.
     reference = Atoms("OHH", positions=[[0, 0, 0], [0.9572, 0, 0], [-0.239, 0.927, 0]])
     path = tmp_path / "water.xyz"
     write(path, reference)

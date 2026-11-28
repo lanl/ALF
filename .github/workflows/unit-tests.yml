@@ -18,11 +18,13 @@ jobs:
       matrix:
         # base: no torch or HIPPYNN. hippynn: the common ML stack.
         # engines: optional sampler dependencies, including their CPU import checks.
+        # mace: mace-torch for the MACE NTK adapter and teacher, in its own job because
+        # mace-torch and fairchem-core have needed different e3nn versions.
         # GPU4PySCF tests use fakes in every CPU job; no additional CUDA,
         # GPU4PySCF, CuPy or cuTENSOR install is needed for those tests.
         # Real CPP/PCM GPU qualification and its native-cuTENSOR guard live
         # in external alf_validation.
-        dependencies: [base, hippynn, engines]
+        dependencies: [base, hippynn, engines, mace]
 
     steps:
       - name: Checkout code
@@ -46,6 +48,10 @@ jobs:
               python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
               python -m pip install ".[tests,full,topology,torchsim,vesin,alchemi]" "hippynn[full]" \
                 "git+https://github.com/lanl/PYSEQM@52850b4"
+              ;;
+            mace)
+              python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+              python -m pip install ".[tests,full,teacher-mace]"
               ;;
             *)
               python -m pip install ".[tests]"
@@ -71,6 +77,10 @@ jobs:
           installed = version('nvalchemi-toolkit')
           assert installed in SUPPORTED_VERSIONS, f'ALCHEMI {installed} is not in {SUPPORTED_VERSIONS}'
           EOF
+
+      - name: Confirm MACE is usable
+        if: matrix.dependencies == 'mace'
+        run: python -c "from mace import modules; from alframework.ml_interfaces.ntk.mace import MACENTKAdapter"
 
       - name: Run pytest
         run: python -m pytest
